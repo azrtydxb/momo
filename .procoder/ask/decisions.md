@@ -597,6 +597,51 @@ Decision (2026-11-13, integrator): as above.
   the JSON literal null is the text `null`. A MySQL type a stored document
   cannot have (DATE, OPAQUE) maps to NULL.
 
+## Parity: MySQL and MariaDB write read-back and upsert targets (2026-11-14, integrator)
+
+- **MariaDB read-back:** `CreateGraph`, the identity read-back of a single
+  insert and `FindOrCreate` check `InsertReturning` as well as `Returning`, so
+  MariaDB reads generated keys with `INSERT ... RETURNING`. The bulk insert of
+  graph children uses one multi-row `RETURNING` statement.
+- **MySQL read-back:** `CreateGraph` is allowed on MySQL. Every row is inserted
+  one statement at a time inside the graph's transaction and its key is read
+  with `LAST_INSERT_ID`. A lock-mode 0 or 1 shortcut (one multi-row statement,
+  keys first + i*increment, read from `@@innodb_autoinc_lock_mode`) was built
+  and removed: CI's MySQL servers all run mode 2, so it never ran against a
+  real server, and the probe could fail behind proxies. Keys are never guessed,
+  `ON DUPLICATE KEY UPDATE` never reads keys, a plain multi-row `Exec` still
+  writes no keys back, children mixing zero and explicit keys are
+  `ErrValidation`, a non-integer generated key is `ErrUnsupported`, and the
+  rows share one statement clock.
+- **FindOrCreate on MySQL and MariaDB:** the brief proposed a no-op
+  `ON DUPLICATE KEY UPDATE` plus the affected-rows count to tell created from
+  found. The driver sets `clientFoundRows`, under which an inserted row and an
+  untouched existing row both report 1 (and MariaDB's `RETURNING` returns the
+  row either way), so that signal does not exist. `FindOrCreate` instead runs in
+  a transaction (a savepoint on a `Tx`) as a plain insert; on a unique violation
+  it re-selects by key with a shared-lock read (`FOR SHARE`, `LOCK IN SHARE
+MODE` on MariaDB). A shared lock reads the latest committed row at any
+  isolation level, and shared locks do not conflict with each other, so losers
+  of the same race do not block one another (`FOR UPDATE` would). If the first
+  inserter rolls back, the waiting losers can still deadlock (1213). On a
+  caller's `Tx` InnoDB keeps the locks taken after a savepoint until the outer
+  transaction ends. Cost: a failed insert plus a select when the row exists,
+  and one burned auto-increment value. A violation on another unique key stays
+  `ErrUniqueViolation`; the Go-side key still wins for a new row.
+- **Upsert target:** on MySQL and MariaDB a target is accepted when it is a unique
+  key of the table and every other unique key is made only of auto-increment
+  columns the insert leaves to the database (an auto-increment primary key plus
+  `UNIQUE(email)`, key omitted). Those keys take a fresh value, so
+  `ON DUPLICATE KEY UPDATE` can act only on the target. A Go-side id, an
+  identity written by the statement, an expression key, a composite key
+  with an ordinary column, and a model without a schema stay `ErrUnsupported`,
+  and the message says why.
+- **Upsert column list:** the conflict-target rule decides "the insert leaves
+  the auto-increment column out" from the column list the statement writes (the
+  resolved model columns, the `Values` columns or the `FromSelect` targets), not
+  from builder state.
+- **Not done:** a multi-row `Exec` on MySQL still returns no keys.
+
 ## Parity: --from-db on MySQL and MariaDB (2026-11-14, integrator)
 
 - **Scope:** `momo generate --from-db` reads MySQL 8.4, MySQL 9.7 and MariaDB

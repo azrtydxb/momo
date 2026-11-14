@@ -124,10 +124,17 @@ func TestCreateGraphRejectsMissingReturnedRows(t *testing.T) {
 	}
 }
 
-// TestGraphWritesUnsupportedBeforeTransaction checks that a dialect without
-// RETURNING or ON CONFLICT is rejected before a transaction is opened.
+// TestGraphWritesUnsupportedBeforeTransaction checks that a dialect with no way
+// to read keys back (neither RETURNING nor LAST_INSERT_ID) or to insert on
+// conflict is rejected before a transaction is opened. MySQL and MariaDB are
+// not such dialects: see write_mysql_readback_unit_test.go.
+//
+// Catches: CreateGraph or FindOrCreate opening a transaction, or running a
+// statement, on a dialect that cannot read the generated keys back.
 func TestGraphWritesUnsupportedBeforeTransaction(t *testing.T) {
-	g := newGraphDriver(dialect.MySQL)
+	none := *dialect.For(dialect.SQLite)
+	none.Returning, none.InsertReturning, none.OnDuplicateKey, none.OnConflict = false, false, false, false
+	g := &graphDriver{Driver: fakedriver.NewDialect(&none), inserts: map[string]int{}}
 	db := momo.New(g)
 	ctx := context.Background()
 
