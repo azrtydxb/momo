@@ -7,6 +7,7 @@ package momo_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -114,22 +115,53 @@ func TestDBDefaultLive(t *testing.T) {
 			}
 		}
 
-		// Mixed rows: DEFAULT inside VALUES, or a clear refusal on SQLite.
+		// Mixed rows: DEFAULT inside VALUES, or on SQLite (which has none) one
+		// statement per run of rows that agree on their unset columns.
 		mixed := []dbdLive{{Name: "m1"}, {Name: "m2", Tag: "set", N: 5}, {Name: "m3"}}
-		_, err = momo.Insert[dbdLive](db).Models(mixed).Exec(ctx)
-		if !d.DefaultInValues {
-			if !errors.Is(err, momo.ErrUnsupported) {
-				t.Fatalf("mixed rows on %s: err = %v, want ErrUnsupported", name, err)
+		if _, err = momo.Insert[dbdLive](db).Models(mixed).Exec(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if mixed[0].Tag != "auto" || mixed[0].N != 7 || mixed[1].Tag != "set" || mixed[1].N != 5 || mixed[2].Tag != "auto" || mixed[2].N != 7 {
+			t.Fatalf("mixed rows: %+v", mixed)
+		}
+		for _, w := range []struct {
+			name, tag string
+			n         int64
+		}{{"m1", "auto", 7}, {"m2", "set", 5}, {"m3", "auto", 7}} {
+			if tag, n := stored(w.name); tag != w.tag || n != w.n {
+				t.Fatalf("%s stored %q/%d, want %q/%d", w.name, tag, n, w.tag, w.n)
 			}
-		} else {
-			if err != nil {
+		}
+
+		// Rows partly mixed on two columns, read back in the order given.
+		many := []dbdLive{{Name: "r1"}, {Name: "r2", Tag: "t2"}, {Name: "r3", N: 9}, {Name: "r4", Tag: "t4", N: 4}, {Name: "r5"}}
+		rows, err := momo.Insert[dbdLive](db).Models(many).Returning(momo.NewColumn[string]("dbd_live", "name", 0)).Rows(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var order []string
+		for rows.Next() {
+			var m dbdLive
+			if err := rows.ScanModel(&m); err != nil {
 				t.Fatal(err)
 			}
-			if mixed[0].Tag != "auto" || mixed[0].N != 7 || mixed[1].Tag != "set" || mixed[1].N != 5 || mixed[2].Tag != "auto" {
-				t.Fatalf("mixed rows: %+v", mixed)
-			}
-			if tag, n := stored("m2"); tag != "set" || n != 5 {
-				t.Fatalf("m2 stored %q/%d", tag, n)
+			order = append(order, m.Name)
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		if err := rows.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if want := []string{"r1", "r2", "r3", "r4", "r5"}; !slices.Equal(order, want) {
+			t.Fatalf("returned %v, want %v", order, want)
+		}
+		for _, w := range []struct {
+			name, tag string
+			n         int64
+		}{{"r1", "auto", 7}, {"r2", "t2", 7}, {"r3", "auto", 9}, {"r4", "t4", 4}, {"r5", "auto", 7}} {
+			if tag, n := stored(w.name); tag != w.tag || n != w.n {
+				t.Fatalf("%s stored %q/%d, want %q/%d", w.name, tag, n, w.tag, w.n)
 			}
 		}
 

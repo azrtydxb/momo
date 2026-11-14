@@ -74,8 +74,29 @@ func TestDeleteUsingGoldenSQL(t *testing.T) {
 	if want := "DELETE `del_notes` FROM `del_notes`, `src` WHERE `del_notes`.`id` = `src`.`id`"; err != nil || c.SQL != want {
 		t.Errorf("mysql: got %q %v, want %q", c.SQL, err, want)
 	}
-	if _, err := build(dialect.SQLite).SQL(); !errors.Is(err, momo.ErrUnsupported) {
-		t.Errorf("sqlite err = %v, want ErrUnsupported", err)
+	c, err = build(dialect.SQLite).SQL()
+	if want := `DELETE FROM "del_notes" WHERE EXISTS (SELECT 1 FROM "src" WHERE "del_notes"."id" = "src"."id")`; err != nil || c.SQL != want {
+		t.Errorf("sqlite: got %q %v, want %q", c.SQL, err, want)
+	}
+}
+
+// Catches: the SQLite USING emulation keying on a single column (wrong for a
+// composite key), binding arguments out of order across the subquery and the
+// outer predicates, and dropping the sources when AllRows leaves no WHERE.
+func TestDeleteUsingSQLiteEmulationSQL(t *testing.T) {
+	db := withDB(dialect.SQLite)
+	pairSrc := momo.TableRef{Name: "src"}
+	c, err := momo.Delete[delPair](db).Using(pairSrc).
+		Where(momo.ColumnOf[int64]("del_pairs", "a").EqExpr(momo.ColumnOf[int64]("src", "a")),
+			momo.ColumnOf[int64]("del_pairs", "b").EqExpr(momo.ColumnOf[int64]("src", "b")),
+			momo.ColumnOf[string]("src", "tag").Eq("x")).SQL()
+	want := `DELETE FROM "del_pairs" WHERE EXISTS (SELECT 1 FROM "src" WHERE ("del_pairs"."a" = "src"."a") AND ("del_pairs"."b" = "src"."b") AND ("src"."tag" = ?))`
+	if err != nil || c.SQL != want || len(c.Args) != 1 || c.Args[0] != "x" {
+		t.Errorf("composite: got %q %v %v, want %q", c.SQL, c.Args, err, want)
+	}
+	c, err = momo.Delete[delNote](db).Using(withSrc).AllRows().SQL()
+	if want := `DELETE FROM "del_notes" WHERE EXISTS (SELECT 1 FROM "src")`; err != nil || c.SQL != want {
+		t.Errorf("all rows: got %q %v, want %q", c.SQL, err, want)
 	}
 }
 
