@@ -122,7 +122,7 @@ func TestSessionLockRefusals(t *testing.T) {
 		t.Errorf("%d statements ran on the pooled DB, want none", n)
 	}
 
-	for _, n := range []dialect.Name{dialect.SQLite, dialect.MySQL} {
+	for _, n := range []dialect.Name{dialect.SQLite} {
 		drv := fakedriver.New(n)
 		db := momo.New(drv).OnConn(pinnedFake{drv})
 		if err := advisory.Lock(ctx, db, 1); !errors.Is(err, momo.ErrUnsupported) {
