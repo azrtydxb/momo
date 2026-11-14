@@ -276,6 +276,15 @@ back as it was.
 The `type:` tag carries the declared type unless the Go type's own SQLite
 column already spells it that way (`INTEGER`, `TEXT`, `BLOB`, `REAL`).
 
+`NUMERIC` is mapped, with a note, because a bare `NUMERIC` column converts
+well-formed text to an integer or a real and `float64` reads either; a
+`DECIMAL(10,2)` column is not, because its declared precision says the values
+are exact decimals that `float64` would round, so a rule must choose
+`types.Numeric` or a decimal type. `BOOLEAN`, `DATETIME`, `TIMESTAMP` and `DATE`
+columns get a report note too: SQLite keeps what was written, so a value other
+than 0 or 1, a unix-timestamp integer or text that is not a date fails to scan
+into `bool`, `time.Time` or `types.Date`.
+
 Any other declared type has NUMERIC affinity, which holds integers, floats and
 text alike, so it has no single Go type: `DECIMAL(10,2)`, a `json` column and a column
 with no declared type are errors until an `introspect.types` or

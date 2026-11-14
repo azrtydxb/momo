@@ -55,9 +55,9 @@ input, or the name of an environment variable that holds it. Prefer the last
 two: a URL on the command line is visible in the process list.
 
 For SQLite the value is the database file: a path, a sqlite: or file: URL, or
-the name of an environment variable that holds one. The file must exist, and
-opening it with the pure-Go driver sets WAL mode on it, as every momo SQLite
-connection does. A SQLite table's AUTOINCREMENT, WITHOUT ROWID and STRICT
+the name of an environment variable that holds one. The file must exist, and it
+is opened read-only with the pure-Go driver: it is never written and keeps its
+journal mode. A SQLite table's AUTOINCREMENT, WITHOUT ROWID and STRICT
 options are written as the autoincrement, without_rowid and strict options of
 the momo.Model tag.
 

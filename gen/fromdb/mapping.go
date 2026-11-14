@@ -102,10 +102,10 @@ var sqliteTypes = map[string]GoType{
 	"TEXT":      {Expr: "string"},
 	"BLOB":      {Expr: "[]byte", Nilable: true},
 	"NUMERIC":   {Expr: "float64", Note: "numeric-as-float64: SQLite NUMERIC is carried as float64"},
-	"BOOLEAN":   {Expr: "bool"},
-	"DATETIME":  {Expr: "time.Time", Import: "time"},
-	"TIMESTAMP": {Expr: "time.Time", Import: "time"},
-	"DATE":      {Expr: "types.Date", Import: importTypes},
+	"BOOLEAN":   {Expr: "bool", Note: "BOOLEAN is read as bool: a stored value other than 0 or 1 (the text 'true') fails to scan"},
+	"DATETIME":  {Expr: "time.Time", Import: "time", Note: "DATETIME is read as time.Time: a unix-timestamp integer instead of date text fails to scan"},
+	"TIMESTAMP": {Expr: "time.Time", Import: "time", Note: "TIMESTAMP is read as time.Time: a unix-timestamp integer instead of date text fails to scan"},
+	"DATE":      {Expr: "types.Date", Import: importTypes, Note: "DATE is read as types.Date: it must hold YYYY-MM-DD text"},
 }
 
 // sqliteAffinity maps a declared SQLite type name to the Go type of its

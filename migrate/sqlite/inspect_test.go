@@ -160,3 +160,50 @@ func TestSQLiteInspectDetails(t *testing.T) {
 		t.Errorf("SQLite has no extensions, functions, policies or schemas to report: %+v", got)
 	}
 }
+
+// TestSQLiteInspectRowidAliasIsNotNull checks that an INTEGER PRIMARY KEY, the
+// rowid, is reported NOT NULL although the pragma says nullable for one that is
+// not declared so, and that the columns that are not a rowid alias keep what
+// the database says.
+//
+// Catches: the rowid alias reported nullable, so a model that declares it NOT
+// NULL differs from its own database; or the fix reaching columns that are not
+// the rowid (a DESC key, a WITHOUT ROWID key, a composite key).
+func TestSQLiteInspectRowidAliasIsNotNull(t *testing.T) {
+	db := testopen.SQLite(t)
+	c := pinned(t, db)
+	for _, stmt := range []string{
+		`CREATE TABLE alias (id INTEGER PRIMARY KEY, v TEXT)`,
+		`CREATE TABLE descending (id INTEGER PRIMARY KEY DESC, v TEXT)`,
+		`CREATE TABLE norowid (id INTEGER PRIMARY KEY, v TEXT) WITHOUT ROWID`,
+		`CREATE TABLE composite (a INTEGER, b INTEGER, PRIMARY KEY (a, b))`,
+		`CREATE TABLE textkey (k TEXT PRIMARY KEY, v TEXT)`,
+	} {
+		mustExec(t, c, stmt)
+	}
+	got, err := msqlite.New().Inspect(context.Background(), c, migrate.InspectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		table, col string
+		nullable   bool
+		identity   string
+	}{
+		{"alias", "id", false, "by_default"},
+		{"descending", "id", true, ""},
+		{"norowid", "id", false, ""}, // WITHOUT ROWID: SQLite reports NOT NULL for its key columns
+		{"composite", "a", true, ""},
+		{"composite", "b", true, ""},
+		{"textkey", "k", true, ""},
+	} {
+		tbl, ok := got.Table(tc.table)
+		if !ok {
+			t.Fatalf("%s not inspected", tc.table)
+		}
+		col, _ := tbl.Column(tc.col)
+		if col.Nullable != tc.nullable || col.Identity != tc.identity {
+			t.Errorf("%s.%s: nullable=%v identity=%q, want nullable=%v identity=%q", tc.table, tc.col, col.Nullable, col.Identity, tc.nullable, tc.identity)
+		}
+	}
+}

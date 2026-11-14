@@ -7,6 +7,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -220,6 +221,76 @@ func TestFromDBSQLiteDatabaseRoundTrip(t *testing.T) {
 	e.Reset()
 	if code := Run([]string{"generate", "--from-db", "file:" + a, "--check"}, &o, &e); code != 1 || !strings.Contains(o.String(), "stale: models/tenants_model.go") {
 		t.Fatalf("--check after a change: exit %d, want 1 naming tenants_model.go\n%s%s", code, o.String(), e.String())
+	}
+}
+
+// journalMode reads the journal mode of the SQLite file at path with a plain
+// connection, which does not change it.
+func journalMode(t *testing.T, path string) string {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var mode string
+	if err := db.QueryRowContext(context.Background(), "PRAGMA journal_mode").Scan(&mode); err != nil {
+		t.Fatal(err)
+	}
+	return mode
+}
+
+// TestFromDBSQLiteLeavesTheFileAlone reads a rollback-journal database with
+// --from-db and --from-db --check and checks that the file is byte for byte
+// what it was: still in journal mode delete, with no -wal or -shm file.
+//
+// Catches: --from-db opening the database like a read-write momo connection,
+// which converts it to WAL (a persistent change to a file the command was only
+// asked to read) and leaves -wal and -shm files behind.
+func TestFromDBSQLiteLeavesTheFileAlone(t *testing.T) {
+	a := filepath.Join(t.TempDir(), "legacy.db")
+	db, err := sql.Open("sqlite", a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range sqliteLegacyDDL {
+		if _, err := db.ExecContext(context.Background(), s); err != nil {
+			t.Fatalf("%v\n%s", err, s)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if m := journalMode(t, a); m != "delete" {
+		t.Fatalf("the fixture is in journal mode %q, want delete", m)
+	}
+	before, err := os.ReadFile(a) //nolint:gosec // test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := copyModule(t, t.TempDir())
+	writeFile(t, filepath.Join(root, "momo.yaml"), "version: 1\npackages:\n  - ./models\ndialects: [sqlite]\n")
+	chdir(t, root)
+	for _, args := range [][]string{{"generate", "--from-db", a}, {"generate", "--from-db", a, "--check"}} {
+		var o, e bytes.Buffer
+		if code := Run(args, &o, &e); code != 0 {
+			t.Fatalf("%v: exit %d\n%s%s", args, code, o.String(), e.String())
+		}
+	}
+	if m := journalMode(t, a); m != "delete" {
+		t.Errorf("--from-db changed the journal mode to %q", m)
+	}
+	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+		if _, err := os.Stat(a + suffix); err == nil {
+			t.Errorf("--from-db left %s%s behind", filepath.Base(a), suffix)
+		}
+	}
+	after, err := os.ReadFile(a) //nolint:gosec // test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Error("--from-db wrote to the database file")
 	}
 }
 

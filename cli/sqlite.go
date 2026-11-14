@@ -5,6 +5,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,10 +16,10 @@ import (
 
 // openSQLiteEngine builds an engine on the SQLite database at dsn with the
 // pure-Go driver, so the CLI needs no cgo. Like every momo SQLite connection it
-// puts the database in WAL mode, which a read-only command such as
-// generate --from-db leaves behind.
+// puts the database in WAL mode, except when l.readOnly is set (generate
+// --from-db): then the file is opened read-only and keeps its journal mode.
 func (l *cli) openSQLiteEngine(dsn string, opts []migrate.Option) (*migrate.Engine, func(), int) {
-	db, drv, err := sqlitepure.Open(sqliteDSN(dsn), sqlitepure.Config{})
+	db, drv, err := sqlitepure.Open(sqliteDSN(dsn), sqlitepure.Config{ReadOnly: l.readOnly})
 	if err != nil {
 		return nil, nil, l.errf(exitDatabase, "connect: %v", err)
 	}
@@ -64,15 +65,41 @@ func looksLikeSQLiteSource(src string) bool {
 	return err == nil
 }
 
-// requireSQLiteFile refuses a database file that does not exist: opening one
-// creates an empty database, and a mistyped path would then read as a database
-// with no tables. A file: URI and :memory: are not checked.
-func requireSQLiteFile(dsn string) error {
-	path := sqliteDSN(dsn)
-	if path == ":memory:" || strings.HasPrefix(path, "file:") {
-		return nil
+// sqliteFile reads the database file a --from-db value names: the path of a
+// plain path, of a sqlite: URL, or of a file: URI (the file: prefix, an empty
+// authority and the query dropped, percent escapes decoded). memory is true for
+// :memory:, file::memory: and mode=memory, which name no file.
+func sqliteFile(dsn string) (path string, memory bool) {
+	p := sqliteDSN(dsn)
+	if p == ":memory:" {
+		return "", true
 	}
-	path, _, _ = strings.Cut(path, "?")
+	p, rawQuery, _ := strings.Cut(p, "?")
+	rest, isURI := strings.CutPrefix(p, "file:")
+	if !isURI {
+		return p, false
+	}
+	if q, err := url.ParseQuery(rawQuery); err == nil && q.Get("mode") == "memory" {
+		return "", true
+	}
+	rest = strings.TrimPrefix(rest, "//")
+	if dec, err := url.PathUnescape(rest); err == nil {
+		rest = dec
+	}
+	if rest == ":memory:" {
+		return "", true
+	}
+	return rest, false
+}
+
+// requireSQLiteFile refuses a database that is not an existing file: an
+// in-memory database holds nothing, and opening a missing file creates an empty
+// one that a mistyped path would then pass off as a database with no tables.
+func requireSQLiteFile(dsn string) error {
+	path, memory := sqliteFile(dsn)
+	if memory {
+		return errors.New("--from-db: an in-memory SQLite database is empty; name a database file")
+	}
 	fi, err := os.Stat(path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):

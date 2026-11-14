@@ -224,7 +224,34 @@ func (b *schemaBuilder) applyTableOptions(m *Model, t *schema.Table) {
 			return
 		}
 	}
+	if m.Autoincrement {
+		var col *schema.Column
+		if len(t.PrimaryKey) == 1 {
+			col = colByName(t, t.PrimaryKey[0])
+		}
+		switch {
+		case m.WithoutRowID:
+			b.diag(m.Pos, fmt.Sprintf("model %s: autoincrement needs a rowid table, so it cannot be combined with without_rowid", m.GoName))
+		case col == nil:
+			b.diag(m.Pos, fmt.Sprintf("model %s: autoincrement needs a primary key of exactly one column, not %d", m.GoName, len(t.PrimaryKey)))
+		case schema.NormalizeType(dialect.SQLite, col.Type) != "INTEGER":
+			b.diag(m.Pos, fmt.Sprintf("model %s: autoincrement needs an INTEGER primary key, but %s is %s", m.GoName, col.Name, col.Type))
+		}
+	}
+	if m.WithoutRowID && len(t.PrimaryKey) == 0 {
+		b.diag(m.Pos, fmt.Sprintf("model %s: without_rowid needs a primary key", m.GoName))
+	}
 	t.Autoincrement, t.WithoutRowID, t.Strict = m.Autoincrement, m.WithoutRowID, m.Strict
+}
+
+// colByName returns the column of t with the given name, or nil.
+func colByName(t *schema.Table, name string) *schema.Column {
+	for i := range t.Columns {
+		if t.Columns[i].Name == name {
+			return &t.Columns[i]
+		}
+	}
+	return nil
 }
 
 // applyColumnTags maps the column-level tags of f to a schema column.

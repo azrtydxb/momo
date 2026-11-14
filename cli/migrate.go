@@ -127,6 +127,9 @@ type cli struct {
 	file        *config.File
 	cfgDir, cwd string
 	dialectName string
+	// readOnly asks for a connection that never writes the database, for
+	// commands that only read it (generate --from-db). Only SQLite honors it.
+	readOnly bool
 }
 
 func (l *cli) say(format string, args ...any) {

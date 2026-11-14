@@ -48,9 +48,13 @@ const driverName = "sqlite"
 // the adapter, so a DSN cannot switch them off, and a "_pragma" parameter is
 // refused for the same reason. The mode and cache parameters are SQLite URI
 // parameters, which SQLite sees only for a "file:" DSN, so any other DSN
-// carrying them is refused. mode=ro cannot open a database that is not in WAL
-// mode yet, because the adapter sets journal_mode=WAL on every connection:
-// create the database read-write first. An in-memory database with
+// carrying them is refused. mode=ro in a DSN cannot open a database that is
+// not in WAL mode yet, because the adapter sets journal_mode=WAL on every
+// connection: create the database read-write first, or set cfg.ReadOnly,
+// which skips the WAL pragma, opens the file with mode=ro and sets
+// PRAGMA query_only, so the file keeps its journal mode and is never written.
+// A database that is already in WAL mode still needs its -shm and -wal files
+// or a directory SQLite can create them in. An in-memory database with
 // MaxOpenConns above 1 needs cache=shared, and then a statement can fail with
 // SQLITE_LOCKED, which ClassifyError reports as momo.ErrBusy.
 func Open(dsn string, cfg Config) (*sql.DB, momo.Driver, error) {
@@ -144,16 +148,38 @@ func buildDSN(dsn string, cfg Config) (string, error) {
 	if !q.Has("_txlock") {
 		q.Set("_txlock", lock)
 	}
+	if cfg.ReadOnly {
+		if isMemory(base, q) {
+			return "", &momo.Error{Kind: momo.ErrValidation, Op: "open", Err: errors.New("sqlitepure: ReadOnly needs a database file, not an in-memory database")}
+		}
+		if m := q.Get("mode"); m != "" && m != "ro" {
+			return "", &momo.Error{Kind: momo.ErrValidation, Op: "open", Err: errors.New("sqlitepure: ReadOnly conflicts with the DSN parameter mode")}
+		}
+		if !strings.HasPrefix(base, "file:") {
+			base = fileURI(base) // SQLite sees mode only on a "file:" URI
+		}
+		q.Set("mode", "ro")
+	}
 	// modernc writes time.Time with Go's String layout unless told otherwise;
 	// the "sqlite" layout is the one the scanners in timescan.go read.
 	q.Set("_time_format", "sqlite")
-	q["_pragma"] = []string{
-		"busy_timeout(" + strconv.FormatInt(busy.Milliseconds(), 10) + ")",
-		"journal_mode(WAL)",
-		"synchronous(" + synchronous + ")",
-		"foreign_keys(1)",
+	pragmas := []string{"busy_timeout(" + strconv.FormatInt(busy.Milliseconds(), 10) + ")"}
+	if cfg.ReadOnly {
+		// journal_mode(WAL) would convert a rollback-journal database and create
+		// -wal and -shm files. A read-only open leaves the journal mode alone and
+		// refuses every write at the connection too.
+		pragmas = append(pragmas, "query_only(1)")
+	} else {
+		pragmas = append(pragmas, "journal_mode(WAL)")
 	}
+	q["_pragma"] = append(pragmas, "synchronous("+synchronous+")", "foreign_keys(1)")
 	return base + "?" + q.Encode(), nil
+}
+
+// fileURI turns a file path into a "file:" URI, escaping the characters that
+// are special in one.
+func fileURI(path string) string {
+	return "file:" + strings.NewReplacer("%", "%25", "?", "%3f", "#", "%23").Replace(path)
 }
 
 // allowedDSNKeys is an allowlist: any other parameter, including ones a later

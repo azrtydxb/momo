@@ -25,6 +25,10 @@ for an edit:
   reports it as nullable when the DDL does not say NOT NULL, but the column is
   the rowid and cannot hold NULL. A model that declares it NOT NULL no longer
   differs from such a database.
+- A snapshot taken before this release holds such a column as nullable, so the
+  next `momo migrate diff` of an existing SQLite project can show one
+  `SET NOT NULL` rebuild of each table whose rowid alias the model declares NOT
+  NULL. It changes no data.
 - The `momo.Model` marker tag accepts the new options `autoincrement`,
   `without_rowid` and `strict`, which declare the SQLite table options of the
   same name. A model that does not use them is unchanged.

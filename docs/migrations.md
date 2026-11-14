@@ -544,12 +544,16 @@ Limits of the rebuild:
 - `sqlite.Rebuild` and `sqlite.Capture` rebuild from a live connection
   (captured views and triggers are recreated verbatim); the engine path rebuilds
   from the snapshot instead.
-- A model cannot declare `WITHOUT ROWID`, `STRICT` or `AUTOINCREMENT`, so a
-  table that has one in the database and not in the model is not a difference:
-  `diff` and `AutoMigrate` leave it alone and a rebuild writes it back
-  (`TestSQLiteAutoMigrateWithStrictTable`). Asking for one the table lacks is
-  refused by `diff` (write a custom migration). `schema.Table` carries `Strict`
-  and `Autoincrement`; inspection reads them. A rebuild of an `AUTOINCREMENT`
+- A model declares `WITHOUT ROWID`, `STRICT` and `AUTOINCREMENT` with the
+  `without_rowid`, `strict` and `autoincrement` options of its `momo.Model` tag;
+  `momo generate --from-db` writes them from an existing database, and
+  `CREATE TABLE` carries them. They are one-way after that. Changing them on an
+  existing table needs a custom migration: asking for one the table lacks is
+  refused by `diff`. Removing one from a model is not detected: a table that
+  has one in the database and not in the model is not a difference, `diff` and
+  `AutoMigrate` leave it alone and a rebuild writes it back
+  (`TestSQLiteAutoMigrateWithStrictTable`). `schema.Table` carries `Strict` and
+  `Autoincrement`; inspection reads them. A rebuild of an `AUTOINCREMENT`
   table copies its `sqlite_sequence` value to the new table, so ids of deleted
   rows are not handed out again (`TestSQLiteStrictAutoincrementRoundTrip`).
   An `INTEGER PRIMARY KEY DESC` is not a rowid alias and is not reported as an
@@ -845,8 +849,8 @@ rules (the first six) run for the `postgres` dialect only; the destructive rule
 runs for every dialect. A statement built inside a `DO` block or a function is
 not seen, and a keyword inside a string literal can cause a false report.
 `SET NOT NULL` is a warning, not an error, because the staged flow (below) ends
-with it. The plan also sketches a `--db` row count rule for SQLite rebuilds;
-`momo migrate` does not select SQLite, so it is not built.
+with it. The plan also sketches a `--db` row count rule for SQLite rebuilds; it
+is not built.
 
 ### Other items
 
@@ -1087,10 +1091,16 @@ database has.
 
 With `dialects: [sqlite]` in `momo.yaml`, `--from-db` takes the database file:
 a path, a `sqlite:` or `file:` URL, or the name of an environment variable that
-holds one. The file must exist. The CLI opens it with the pure-Go driver
-`driver/sqlitepure`, so no cgo is needed, and, like every momo SQLite
-connection, that sets WAL mode on the file. `--schema` is refused: SQLite has
-one namespace per database file. The same `momo migrate` commands (`diff`,
+holds one. The file must exist; `:memory:` and `mode=memory` are refused, as
+they are empty. The CLI opens it with the pure-Go driver `driver/sqlitepure`,
+so no cgo is needed, and read-only: `--from-db` and `--from-db --check` never
+write the file, keep its journal mode and do not convert a rollback-journal
+database to WAL (`sqlitepure.Config.ReadOnly`: no WAL pragma, `mode=ro` and
+`PRAGMA query_only`). A database that is already in WAL mode still needs its
+`-shm` and `-wal` files, or a directory SQLite can create them in; for one in a
+directory you cannot write, inspect a copy. `--schema` is refused: SQLite has
+one namespace per database file. The other `momo migrate` commands open the
+file read-write and set WAL mode, as every momo SQLite connection does. The same `momo migrate` commands (`diff`,
 `apply`, `baseline`, `drift` and the rest) run on SQLite with `--url` or
 `migrate.url_env` pointing at the file.
 
@@ -1105,13 +1115,18 @@ The models of a SQLite database keep what a rebuild from the models needs:
   affinity that is not one of those (`DECIMAL(10,2)`, a `json` column) or no declared type
   is an error until an `introspect.types` or `introspect.columns` rule names a
   Go type; see [TYPE_MAPPING.md](TYPE_MAPPING.md#reading-a-sqlite-database-with---from-db).
+  A `BOOLEAN`, `DATETIME`, `TIMESTAMP` or `DATE` column gets a report note:
+  SQLite stores whatever was written, and a value that is not 0 or 1, a unix
+  integer or text that is not a date fails to scan into the Go type.
 - An `INTEGER PRIMARY KEY` is the rowid alias: the field is tagged `pk,identity`
   and the column is NOT NULL, which SQLite does not report for it. A primary key
   column of another kind that allows NULL (SQLite permits that on a rowid table)
   is written NOT NULL with a warning, and the baseline reports the column.
 - `AUTOINCREMENT`, `WITHOUT ROWID` and `STRICT` are the `autoincrement`,
   `without_rowid` and `strict` options of the `momo.Model` tag, valid on SQLite
-  only.
+  only. They are read by `--from-db` and written by `CREATE TABLE`. Changing
+  them on an existing table needs a custom migration, and removing one from a
+  model is not detected (see the SQLite rebuild notes above).
 - A `CHECK (col IN ('a', 'b'))` on a TEXT column is an enum column
   (`enum:<table>_<column>` plus a `c.Enum` call), which SQLite builds back as the
   same CHECK. Other checks are `c.Check` calls with the constraint name SQLite
@@ -1120,7 +1135,10 @@ The models of a SQLite database keep what a rebuild from the models needs:
   a NOT NULL column with a default gets `dbdefault`, and a `bool` or number
   column whose constant default is true or non-zero becomes a pointer, as on
   PostgreSQL; a computed default (`CURRENT_TIMESTAMP`, `datetime('now')`) is
-  tagged without the option. SQLite reads the value back with `RETURNING`.
+  tagged without the option. SQLite reads the value back with `RETURNING`. A
+  bulk insert whose rows mix zero and set values of a `dbdefault` column returns
+  `ErrUnsupported` on SQLite, which has no per-row `DEFAULT` in a multi-row
+  `VALUES` list; insert such rows separately.
 - A unique constraint is `c.Unique`, a unique index is a `unique` tag or
   `c.Index(...).Unique()`, and partial and expression indexes keep their
   `WHERE` text and expressions (`c.Index(...).Where(...)`, `c.IndexExpr`).

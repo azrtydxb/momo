@@ -157,9 +157,19 @@ func TestGenerateFromDBSQLiteMissingFile(t *testing.T) {
 	root := t.TempDir()
 	chdir(t, root)
 	writeFile(t, filepath.Join(root, "momo.yaml"), "version: 1\npackages:\n  - ./models\ndialects: [sqlite]\n")
-	for _, src := range []string{filepath.Join(root, "missing.db"), "missing.db", "sqlite://" + filepath.Join(root, "missing.db")} {
+	missing := filepath.Join(root, "missing.db")
+	for _, src := range []string{
+		missing, "missing.db", "sqlite://" + missing, "file:" + missing, "file://" + missing,
+		"file:" + missing + "?mode=ro", "file:missing.db", "file:" + filepath.Join(root, "mis%73ing.db"),
+	} {
 		var out, errb bytes.Buffer
 		if code := Run([]string{"generate", "--from-db", src}, &out, &errb); code != exitUsage || !strings.Contains(errb.String(), "does not exist") {
+			t.Fatalf("%s: exit %d, %q", src, code, errb.String())
+		}
+	}
+	for _, src := range []string{":memory:", "file::memory:", "file:x.db?mode=memory", "sqlite://:memory:"} {
+		var out, errb bytes.Buffer
+		if code := Run([]string{"generate", "--from-db", src}, &out, &errb); code != exitUsage || !strings.Contains(errb.String(), "in-memory") {
 			t.Fatalf("%s: exit %d, %q", src, code, errb.String())
 		}
 	}

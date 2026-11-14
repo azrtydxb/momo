@@ -36,7 +36,7 @@ func (a fromDBArgs) othersSet() bool {
 // and, when the migration directory has no snapshot yet, the init migration
 // and snapshot of the inspected schema.
 func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) int {
-	l := &cli{out: stdout, errOut: stderr, env: os.Getenv}
+	l := &cli{out: stdout, errOut: stderr, env: os.Getenv, readOnly: true}
 	var err error
 	if l.cwd, err = os.Getwd(); err != nil {
 		return l.errf(exitUsage, "%v", err)

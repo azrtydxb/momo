@@ -98,6 +98,9 @@ func buildDSN(dsn string, cfg Config) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("sqlitedriver: parse DSN query: %w", err)
 	}
+	if cfg.ReadOnly {
+		return "", &momo.Error{Kind: momo.ErrValidation, Op: "open", Err: errors.New("sqlitedriver: Config.ReadOnly is not supported; use driver/sqlitepure")}
+	}
 	busy := cfg.BusyTimeout
 	if busy <= 0 {
 		busy = 5 * time.Second

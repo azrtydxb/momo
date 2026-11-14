@@ -520,8 +520,13 @@ Decision (2026-11-13, integrator): as above.
 - **Scope:** `momo generate --from-db` reads a SQLite database. The dialect
   comes from `momo.yaml`; the value is a path, a `sqlite:` or `file:` URL, or an
   environment variable name. The CLI opens it with `driver/sqlitepure`, so the
-  binary needs no cgo. Opening sets WAL mode, as every momo SQLite connection
-  does; the file must exist, because opening a missing one would create it.
+  binary needs no cgo. The open is read-only (`sqlitepure.Config.ReadOnly`: no
+  WAL pragma, `mode=ro`, `PRAGMA query_only`), so `--from-db` and `--check`
+  never convert a rollback-journal file to WAL. A database already in WAL mode
+  needs its `-shm` and `-wal` files or a writable directory; no `immutable=1`
+  fallback, which would be unsafe on a live database. The file must exist,
+  because opening a missing one would create it, and `file:` URIs are parsed
+  for their path; `:memory:` and `mode=memory` are refused as empty.
 - **Reuse:** the inspection is `migrate/sqlite`'s, through `Engine.Inspect`, not
   a second reader. `fromdb.Generate` takes `Options.Dialect` (PostgreSQL or
   SQLite). The CLI's `dialectImpl` and `openEngineAt` gain SQLite, so
