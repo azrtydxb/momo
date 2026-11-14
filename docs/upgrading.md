@@ -7,10 +7,48 @@ later releases can break more.
 
 ## Upgrading to 0.12.0
 
-Nothing needs an edit. Three calls that returned `ErrUnsupported` on some
-dialects now return results, so code that relied on the error (a fallback
-branch, a test that expects the refusal) now takes the success path. Check the
-semantic differences below before you drop a workaround.
+No change is needed in your code. Two things can change what a command does,
+both below: a `momo.yaml` that lists several dialects, and a MySQL or MariaDB
+schema that the library generated earlier. Several calls that returned
+`ErrUnsupported` on some dialects now return results, so code that relied on
+the error (a fallback branch, a test that expects the refusal) now takes the
+success path. Check the semantic differences below before you drop a
+workaround.
+
+### `momo migrate` runs on SQLite, MySQL and MariaDB
+
+Before this release `momo migrate` ran the PostgreSQL dialect alone and exited 2
+for any other. It now runs every subcommand on SQLite (`--dialect sqlite`) and on MySQL and
+MariaDB (`--dialect mysql`; one dialect for both servers). A project with a
+single PostgreSQL dialect behaves as before. One thing does change: with
+`dialects: [sqlite, postgres]` in `momo.yaml`, `--dialect postgres` used to read
+the models for the first listed dialect (SQLite) and now reads them for the one
+you chose, so `diff` writes PostgreSQL column types. If you worked around the old
+behaviour by reordering `dialects`, you no longer need to; check the next
+`diff` of such a project. For the new dialects:
+
+- SQLite uses the pure-Go driver, so the `momo` binary still needs no cgo. The
+  URL is a file path, a `file:` URI or `sqlite:///path.db`.
+- MySQL and MariaDB take a `mysql://` or `mariadb://` URL, or a go-sql-driver
+  DSN, and the URL must name a database.
+- `momo generate` and `momo migrate diff` now map Go types to MySQL and
+  MariaDB column types (`gen/typemap`); before, every field failed with
+  `ErrUnsupported` there.
+- DDL is not transactional on MySQL and MariaDB: a failed `apply` leaves the
+  statements that ran, and `status` shows the migration as `dirty` until
+  `resolve` settles it.
+- On MySQL and MariaDB a string without `size:N` is `text`, which the servers
+  cannot use in a primary key, unique key or index (error 1170). The generator
+  refuses such a schema, naming the column and asking for `size:N`, before
+  anything is written. The same holds for a blob or json column in a key.
+- A `types.Numeric` with a `precision` tag is `decimal(p,s)` on MySQL and
+  MariaDB; before, the library generated `text` for it. A schema that an earlier
+  release generated for these servers gets an `ALTER ... text` to
+  `decimal(p,s)` on the next `diff`, which rewrites the column and fails on a
+  value that is not a number. `decimal` cannot hold `NaN` or an infinity,
+  so a `types.Numeric` that carries one is refused when it is written. A precision without a scale means scale 0. The generator checks
+  that the precision is at most 65, the scale at most 30 and the scale not
+  above the precision. Without a `precision` tag the column stays `text`.
 
 ### `ILike` on SQLite, MySQL and MariaDB
 

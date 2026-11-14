@@ -19,14 +19,14 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
-	"github.com/azrtydxb/momo/driver/pgxdriver"
 	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/gen/config"
 	"github.com/azrtydxb/momo/internal/migratecfg"
 	"github.com/azrtydxb/momo/migrate"
+	mmysql "github.com/azrtydxb/momo/migrate/mysql"
 	mpg "github.com/azrtydxb/momo/migrate/postgres"
+	msqlite "github.com/azrtydxb/momo/migrate/sqlite"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -69,6 +69,21 @@ The PostgreSQL migration lock is a session advisory lock: it is released when it
 holder's connection ends, and there is no flag to force it. When apply keeps
 exiting 3 with "held by pid=N", find that session in pg_stat_activity and end it
 with pg_terminate_backend(N) once you know it is dead. apply waits for --lock-wait.
+The SQLite lock is a row in momo_migration_lock that a killed process leaves behind
+(delete it by hand once nothing migrates); the MySQL and MariaDB lock is a GET_LOCK
+name that the server frees when the connection ends.
+
+Databases (--dialect postgres, sqlite or mysql; default: the single dialect in momo.yaml,
+else postgres):
+  postgres  a postgres:// URL or a libpq key=value string
+  sqlite    a file path, a file: URI or a sqlite:///path URL (sqlite://rel/path is relative);
+            the file is created when it is missing; the pure-Go driver needs no cgo
+  mysql     a mysql:// or mariadb:// URL, or a go-sql-driver DSN (user:password@tcp(host:3306)/db);
+            one dialect for MySQL and MariaDB, told apart by the server; the URL must name
+            a database; ?socket=/path uses a unix socket; ?tls=true turns TLS on
+DDL is transactional on PostgreSQL and SQLite. On MySQL and MariaDB it is not: a failed
+migration keeps the statements that ran before the failure, status shows it as dirty,
+and resolve settles it once the database is repaired by hand.
 
 The database URL comes from --url, else the environment variable named by
 migrate.url_env.<dialect> in momo.yaml, else MOMO_DATABASE_URL. Offline
@@ -289,6 +304,9 @@ func (l *cli) chooseDialect() (string, error) {
 			return "", fmt.Errorf("several dialects are configured (%s): pass --dialect", strings.Join(names, ", "))
 		}
 	}
+	if name == "mariadb" {
+		return "", errors.New(`unknown dialect "mariadb": MariaDB and MySQL share the dialect "mysql"; pass --dialect mysql`)
+	}
 	if dialect.For(dialect.Name(name)) == nil {
 		return "", fmt.Errorf("unknown dialect %q", name)
 	}
@@ -322,12 +340,18 @@ func dirFS(dir string) iofs.FS {
 	return os.DirFS(dir)
 }
 
-// dialectImpl returns the migration dialect, or an error when none exists yet.
+// dialectImpl returns the migration dialect of the chosen database. MySQL and
+// MariaDB share one dialect; the server flavor is read from the server.
 func (l *cli) dialectImpl() (migrate.Dialect, error) {
-	if l.dialectName == string(dialect.Postgres) {
+	switch dialect.Name(l.dialectName) {
+	case dialect.Postgres:
 		return mpg.New(), nil
+	case dialect.SQLite:
+		return msqlite.New(), nil
+	case dialect.MySQL:
+		return mmysql.New(), nil
 	}
-	return nil, fmt.Errorf("migrations for dialect %q are not available yet", l.dialectName)
+	return nil, fmt.Errorf("no migration dialect for %q", l.dialectName)
 }
 
 // engineOptions maps the migrate: section of momo.yaml to engine options.
@@ -346,6 +370,7 @@ func (l *cli) engineOptions(d migrate.Dialect, extra ...migrate.Option) ([]migra
 		LockTimeout:      migrate.WithLockTimeout,
 		StatementTimeout: migrate.WithStatementTimeout,
 	})
+	l.warnDialectConfig()
 	opts := append([]migrate.Option{migrate.WithDialect(d), migrate.WithClock(migrateClock)}, cfgOpts...)
 	return append(opts, extra...), nil
 }
@@ -389,12 +414,25 @@ func (l *cli) databaseURL() (string, error) {
 // noteURL registers the URL and its password as secrets to redact, and warns
 // when TLS is not enforced for a remote host.
 func (l *cli) noteURL(u string) {
+	if l.dialectName == string(dialect.SQLite) {
+		// A SQLite target is a path with no credentials; registering it as a
+		// secret would blank every word of it that appears in a message.
+		return
+	}
 	if l.dialectName == string(dialect.MySQL) {
+		// noteMySQLURL covers the URL and DSN forms --from-db accepts; mysqlConfig
+		// also reads the forms only momo migrate takes, such as ?socket=.
 		l.noteMySQLURL(u)
+		if cfg, err := mysqlConfig(u); err == nil && len(cfg.Passwd) >= 4 {
+			l.secrets = append(l.secrets, cfg.Passwd)
+		}
+		if w := l.connWarning(u); w != "" {
+			_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", migrate.RedactURLs(w, l.secrets...))
+		}
 		return
 	}
 	l.secrets = append(l.secrets, u)
-	if w := tlsWarning(u, l.env); w != "" {
+	if w := l.connWarning(u); w != "" {
 		_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", migrate.RedactURLs(w, l.secrets...))
 	}
 	if parsed, err := url.Parse(u); err == nil && parsed.User != nil {
@@ -424,20 +462,16 @@ func (l *cli) openEngineAt(ctx context.Context, dsn string, extra ...migrate.Opt
 	if err != nil {
 		return nil, nil, l.errf(exitUsage, "%v", err)
 	}
-	if l.dialectName != string(dialect.Postgres) {
-		return nil, nil, l.errf(exitUsage, "no driver for dialect %q", l.dialectName)
+	drv, closeFn, code := l.openDriver(ctx, dsn)
+	if drv == nil {
+		return nil, nil, code
 	}
-	pool, err := pgxdriver.NewPool(ctx, dsn)
-	if err != nil {
-		return nil, nil, l.errf(exitDatabase, "connect: %v", err)
-	}
-	var drv momo.Driver = pgxdriver.New(pool)
 	e, err := migrate.NewEngine(drv, dirFS(l.migrationDir()), opts...)
 	if err != nil {
-		pool.Close()
+		closeFn()
 		return nil, nil, l.errf(exitUsage, "%v", err)
 	}
-	return e, pool.Close, -1
+	return e, closeFn, -1
 }
 
 // failure maps an engine error to the documented exit code: refusals and
@@ -535,7 +569,7 @@ func (l *cli) applyCmd(fs *flag.FlagSet) func([]string) int {
 	return l.withEngine(fs, extra, func(ctx context.Context, e *migrate.Engine, _ []string) int {
 		rep, err := e.Apply(ctx, migrate.ApplyOptions{To: to, LockWait: waitD})
 		if err != nil {
-			return l.failure(err)
+			return l.failureWithHint(err)
 		}
 		if rep == nil || len(rep.Applied) == 0 {
 			l.say("no pending migrations")
@@ -1006,7 +1040,7 @@ func (l *cli) rollbackCmd(fs *flag.FlagSet) func([]string) int {
 	return l.withEngine(fs, extra, func(ctx context.Context, e *migrate.Engine, _ []string) int {
 		rep, err := e.Rollback(ctx, migrate.RollbackOptions{Group: group, LockWait: waitD})
 		if err != nil {
-			return l.failure(err)
+			return l.failureWithHint(err)
 		}
 		if rep == nil || len(rep.Applied) == 0 {
 			l.say("nothing to roll back")
@@ -1140,6 +1174,9 @@ func (l *cli) desiredSchema() (*schema.Schema, int) {
 	if err != nil {
 		return nil, l.errf(exitUsage, "%v", err)
 	}
+	// The first dialect names the column types the schema uses, so the chosen
+	// one leads: the models of a project that lists several are read for it.
+	cfg.Dialects = primaryFirst(cfg.Dialects, dialect.Name(l.dialectName))
 	g, diags, err := gen.Load(patterns, cfg)
 	if err != nil {
 		return nil, l.errf(exitUsage, "%v", err)

@@ -515,6 +515,55 @@ n DAY)` and `DATEDIFF(a, b)`. SQLite, which stores a date as `YYYY-MM-DD`
 
 Decision (2026-11-13, integrator): as above.
 
+## Parity: momo migrate CLI on SQLite and MySQL (2026-11-14, integrator)
+
+- **Dialects:** `momo migrate --dialect sqlite|mysql` runs every subcommand
+  with `migrate/sqlite` and `migrate/mysql`. MySQL and MariaDB stay one dialect
+  name, `mysql` (the name `dialect.For` knows); `--dialect mariadb` is refused
+  with a message saying so. The server flavor comes from `VERSION()`: the CLI
+  opens as MySQL and rebuilds the driver as MariaDB when the server says so.
+- **Drivers:** SQLite uses `driver/sqlitepure` (modernc, no cgo), so `go
+install` of `cmd/momo` needs no C toolchain; it has no vector functions,
+  which a migration does not need. MySQL uses `driver/mysqldriver` with a pool
+  of at most 4 connections. No new root dependency: all three are already in
+  the root `go.mod`. The bench module, which imports the cli, gained their
+  indirect requirements in its `go.mod` and `go.sum`, taken from CI's
+  tidy-check output.
+- **URLs:** SQLite takes a file path, a `file:` URI (passed on) or
+  `sqlite:///abs.db` / `sqlite://rel.db` (a query string becomes a `file:`
+  URI); a memory database and other schemes are refused. MySQL takes
+  `mysql://` or `mariadb://` (`?socket=` for a unix socket, other options are
+  go-sql-driver parameters) or a go-sql-driver DSN; a URL without a database is
+  refused. Errors never quote the URL. The URL password is redacted as before.
+- **Dialect-specific behavior surfaced:** a failed apply or rollback on MySQL
+  exits 3 with a hint about the dirty state and `resolve`; SQLite stays
+  transactional. TLS warning for a remote MySQL host without `tls=true`;
+  none for SQLite. `migrate.external_extensions` (and the SQLite timeouts)
+  warn on a dialect they do not apply to instead of failing, because the keys
+  are shared by every dialect of one `momo.yaml`. `--lock-wait` works on all.
+  There is no CLI unlock for a SQLite lock row left by a dead process; the
+  docs say to delete the row.
+- **Models:** the desired schema is built with the chosen dialect first, so the
+  column types are that dialect's (before, `dialects[0]` or PostgreSQL). With
+  `dialects: [sqlite, postgres]` and `--dialect postgres` the diff now has
+  PostgreSQL types: a fix, noted in upgrading.md.
+- **SQLite lock wait:** a busy database (another connection's write lock held
+  past the driver's busy timeout) is `migrate.ErrLocked` in `migrate/sqlite`,
+  so `--lock-wait` retries.
+- **Type map:** `gen/typemap` gains a MySQL/MariaDB branch: integers (unsigned
+  too), `bool` as `tinyint(1)`, `varchar(n)` or `text`, `blob`, `datetime(6)`,
+  `char(36)` for UUID, `json` for `types.JSON`, `decimal(p,s)` for a
+  `types.Numeric` with a precision tag, `vector(N)` for `vector.Vector`.
+  `types.Date` and an untagged `types.Numeric` stay text, as their codecs
+  store them. One stored format does change on MySQL: a `types.Numeric` with a
+  precision tag is `decimal(p,s)` where the library produced text, so a schema
+  generated earlier gets an ALTER on its next diff (upgrading.md). A string
+  without `size:N`, or a blob or json column, in a key is refused at generate
+  time on MySQL (error 1170 would otherwise stop a migration half-way);
+  decimal precision and scale are validated (p <= 65, s <= 30, s <= p).
+- **Docs:** the capabilities row comes from the dialects named in the CLI's
+  `dialectImpl`, so it follows the switch.
+
 ## Parity: ILIKE, NULLS ordering and FILTER emulation (2026-11-14, integrator)
 
 - **Question:** momo refused `ILike` on SQLite, MySQL and MariaDB, NULLS
