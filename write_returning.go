@@ -206,8 +206,7 @@ func oneRow[T any](r *ModelRows[T], op, table string) (T, error) {
 // no row came back (ON CONFLICT DO NOTHING, or a DO UPDATE whose WHERE did
 // not hold) and ErrTooManyRows when more than one did. Without a Returning
 // list it returns every column, as ReturningAll does. On a dialect without
-// RETURNING (MySQL, and MariaDB for UPDATE and DELETE, where momo has no
-// RETURNING form) it fails with ErrUnsupported.
+// RETURNING (MySQL) it fails with ErrUnsupported.
 //
 // A multi-row Models insert is refused with ErrValidation before anything runs:
 // a bulk insert can be split into chunks that commit together, which One
@@ -255,9 +254,9 @@ func (u UpdateQuery[T]) One(ctx context.Context) (T, error) {
 
 // One runs the DELETE and returns the single RETURNING row: ErrNotFound when
 // no row matched and ErrTooManyRows when more than one did. Without a
-// Returning list it returns every column. On a dialect without RETURNING
-// (MySQL, and MariaDB, where momo has no RETURNING form for DELETE) it fails
-// with ErrUnsupported.
+// Returning list it returns every column. On a dialect without DELETE
+// RETURNING (MySQL, and a MariaDB DELETE with Using, which MariaDB refuses
+// with RETURNING) it fails with ErrUnsupported.
 //
 // Without WithImplicitTx or an explicit transaction the statement has already
 // changed every matched row when One returns ErrTooManyRows; run One inside
@@ -299,12 +298,25 @@ func (r returningSet) hasSource(table string) bool {
 // sources qualifies the target's columns too, since a name the source shares
 // would be ambiguous. Elsewhere a source column is ErrUnsupported: SQLite's
 // RETURNING reads the modified table only.
-func renderWriteReturning[T any](b *Builder, m *Meta[T], r returningSet, hasSources bool, invalid func(col string) error) {
+//
+// del marks a DELETE, which MariaDB supports through DeleteReturning while
+// UPDATE has no RETURNING there. MariaDB refuses RETURNING on a multi-table
+// DELETE, so a DELETE with USING sources is ErrUnsupported on the MySQL family.
+func renderWriteReturning[T any](b *Builder, m *Meta[T], r returningSet, hasSources, del bool, invalid func(col string) error) {
 	if !r.active() {
 		return
 	}
-	if !b.Dialect().Returning {
-		b.unsupported("RETURNING")
+	d := b.Dialect()
+	if !d.Returning && (!del || !d.DeleteReturning) {
+		if del && d.Name == dialect.MySQL {
+			b.unsupported("DELETE ... RETURNING (MySQL has none; MariaDB 10.0 or later supports it)")
+		} else {
+			b.unsupported("RETURNING")
+		}
+		return
+	}
+	if del && hasSources && d.Name == dialect.MySQL {
+		b.unsupported("RETURNING on a multi-table DELETE (Using)")
 		return
 	}
 	pg := b.d.Name == dialect.Postgres

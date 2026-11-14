@@ -264,7 +264,7 @@ func (d DeleteQuery[T]) render(b *Builder) {
 			b.WriteString(" WHERE ")
 			appendAnd(b, where)
 		}
-		renderWriteReturning(b, d.meta, d.returning, len(d.using) > 0, func(col string) error {
+		renderWriteReturning(b, d.meta, d.returning, len(d.using) > 0, true, func(col string) error {
 			return d.fail(ErrValidation, fmt.Errorf("Returning: column %q is not mapped by %s", col, d.meta.Table))
 		})
 	})

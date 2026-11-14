@@ -19,9 +19,9 @@ var mysqlBase = Dialect{
 //
 // MySQL Community has VECTOR storage from 9.0 but no distance function, so it
 // lists no metrics and no index. MariaDB 11.8 has VEC_DISTANCE_EUCLIDEAN and
-// VEC_DISTANCE_COSINE and VECTOR INDEX, and supports INSERT ... RETURNING but
-// not UPDATE or DELETE ... RETURNING. A server-version gate in migrate/mysql
-// rejects VECTOR on MySQL 8.4.
+// VEC_DISTANCE_COSINE and VECTOR INDEX, and supports INSERT ... RETURNING and
+// single-table DELETE ... RETURNING but not UPDATE ... RETURNING. A
+// server-version gate in migrate/mysql rejects VECTOR on MySQL 8.4.
 func MySQLFlavor(f Flavor) *Dialect {
 	d := mysqlBase
 	d.Flavor = f
@@ -30,6 +30,7 @@ func MySQLFlavor(f Flavor) *Dialect {
 		d.Vector = VectorCaps{Storage: true}
 	case FlavorMariaDB:
 		d.InsertReturning = true
+		d.DeleteReturning = true
 		d.Vector = VectorCaps{
 			Storage: true,
 			Metrics: []Metric{MetricL2, MetricCosine},
