@@ -919,3 +919,60 @@ Decision (2026-11-14, integrator): as above.
   VALUES, so no generated row changes.
 
 Decision (2026-11-14, integrator): as above.
+
+## DistinctOn on SQLite, MySQL and MariaDB (2026-11-14, integrator)
+
+- **Approach:** the three dialects have no `DISTINCT ON`, so `DistinctOn`
+  renders a derived table `momo_d` that holds the select list (aliased
+  `momo_cN`), the ORDER BY expressions (aliased `momo_oN`) and
+  `ROW_NUMBER() OVER (PARTITION BY keys ORDER BY order)` as `momo_rn`, over the
+  original FROM, joins, WHERE, GROUP BY and HAVING. The outer query keeps
+  `momo_rn = 1`, sorts by the `momo_oN` columns and applies LIMIT and OFFSET.
+  PostgreSQL still renders its native clause. `dialect.Dialect.WindowFunctions`
+  gates it (SQLite 3.25, MySQL 8.0, MariaDB 10.2).
+- **Same validation everywhere:** the ORDER BY prefix rule (an OrderBy whose
+  leading items are the DISTINCT ON expressions) is checked on every dialect by
+  the code PostgreSQL uses, so a query that builds on one builds on all.
+- **No helper column leaks:** the outer select list holds only the user's
+  columns, so a scan and a raw read see no `momo_rn`. Each select-list item is
+  aliased inside the derived table, so a join with two same-named columns does
+  not trip MySQL's duplicate-column check, and the outer query gives each item
+  back its column name or `As` alias. An item that is neither (a bare function)
+  keeps `momo_cN`; alias it.
+- **ORDER BY outside the select list:** every ORDER BY expression is projected
+  as a hidden `momo_oN` column of the derived table and the outer ORDER BY
+  sorts by it, keeping the direction and the NULLS term (MySQL's `IS NULL` key
+  included). An ORDER BY on an `As` alias orders the window by the aliased
+  expression, because MySQL does not resolve a select alias there; an alias not
+  in the select list is `ErrValidation`.
+- **Interactions:** WHERE, joins, GROUP BY, HAVING, soft-delete and the keyset
+  `After` predicate apply before the dedupe, as on PostgreSQL; LIMIT and OFFSET
+  apply after it, on the outer query. `Count` and `Exists` count the groups, as
+  on PostgreSQL, from a form whose outer select list is one constant column
+  (`momo_one`) without the ORDER BY: wrapping the real select list would give
+  MySQL a derived table with repeated names for a join that selects `p.id` and
+  `c.id` (error 1060). NULL keys form one group, as in `DISTINCT ON`.
+- **Alias check:** the emulation renders an `As` expression itself, so it calls
+  the same name check as `Aliased.AppendSQL`; an empty, malformed or over-long
+  alias is `ErrValidation` on every dialect.
+- **Unaliased expressions:** an item that is neither a column nor an `As`
+  alias is `momo_cN` on the emulated dialects, so a subquery or CTE that reads
+  it by its PostgreSQL name must alias it.
+- **Refused:** `ForUpdate`, `ForShare` and the other row locks with `DistinctOn`
+  return `ErrUnsupported` on SQLite, MySQL and MariaDB: the rows are read in a
+  derived table, so a lock would not cover the rows returned, and PostgreSQL
+  refuses the same combination (`ErrValidation`).
+- **NULL placement:** PostgreSQL sorts NULLs last in an ascending order and
+  first in a descending one; the other three do the opposite. Where momo knows
+  an `OrderBy` item is nullable (a model column or `NullColumn`) and it has no
+  NULLS term, the emulation writes PostgreSQL's placement out, so the tiebreak
+  picks the same row. For `ColumnOf` and expressions momo cannot know, so those
+  need an explicit `NullsFirst` or `NullsLast`; the docs say so. The rows
+  therefore equal PostgreSQL's for a total `OrderBy` with that caveat, not
+  unconditionally.
+- **Tests:** goldens for the three dialects; integration tests with ties and a
+  NULL key on PostgreSQL and SQLite (`testopen.Each`) and on MySQL 8.4, MySQL
+  9.7 and MariaDB 11.8 (`testopen.EachMySQL`), against the rows PostgreSQL's
+  `DISTINCT ON` returns.
+
+Decision (2026-11-14, integrator): as above.

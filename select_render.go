@@ -50,6 +50,10 @@ func (sq SelectQuery[T]) renderBare(b *Builder, onConflictFollows bool) {
 // error on the builder and stops the statement.
 func (sq SelectQuery[T]) renderBody(b *Builder, onConflictFollows bool) {
 	s := &sq.s
+	if len(s.distinctOn) > 0 && b.d.Name != dialect.Postgres {
+		sq.renderDistinctOnWindow(b) // writes the WITH clause itself
+		return
+	}
 	writeWithClause(b, s.with)
 	b.WriteString("SELECT ")
 	if len(s.distinctOn) > 0 {

@@ -50,8 +50,14 @@ Run on MySQL 8.4, MySQL 9.7 and MariaDB 11.8:
 `CreateGraph` and `FindOrCreate` work on all three (see below), and a test
 checks the stored keys and the found and created cases on each server.
 `SelectQuery.Explain`, the aggregate `FILTER` clause on `agg.JSONB`,
-`agg.Array`, an ordered or distinct `agg.JSONB`, `unnest` and `generate_series` sources and `DISTINCT ON` are `ErrUnsupported`;
-the tests check the error on each server.
+`agg.Array`, an ordered or distinct `agg.JSONB`, `unnest` and `generate_series` sources are `ErrUnsupported`;
+the tests check the error on each server. `DistinctOn` is emulated with
+`ROW_NUMBER() OVER (PARTITION BY ...)` in a derived table. A nullable model or
+`NullColumn` `OrderBy` item with no NULLS term gets PostgreSQL's placement
+(ASC last, DESC first), so the rows match; give a `ColumnOf` or expression item
+an explicit `NullsFirst` or `NullsLast`. A subquery or CTE that reads an
+unaliased expression by its PostgreSQL name must alias it, because it is
+`momo_cN` here. Combined with a row lock it is `ErrUnsupported`.
 
 Differences the tests pin down:
 
