@@ -99,12 +99,13 @@ func planFile(dir string, f File, overwrite bool) (Action, error) {
 		a.Kind, a.Content = ActionHeader, refreshed
 		return a, nil
 	}
-	edited, generated := Edited(existing)
+	lf := bytes.ReplaceAll(existing, []byte("\r\n"), []byte("\n"))
+	edited, generated := Edited(lf)
 	if generated && edited {
 		// Edited by hand, but the database did not change the model since it
 		// was written: the header hash is still the hash of the new body.
 		if _, newHash, ok := SplitHeader(f.Content); ok {
-			if _, oldHash, ok := SplitHeader(existing); ok && newHash == oldHash {
+			if _, oldHash, ok := SplitHeader(lf); ok && newHash == oldHash {
 				a.Kind, a.Content = ActionUnchanged, nil
 				return a, nil
 			}
@@ -136,8 +137,14 @@ func refreshHeader(existing, regenerated []byte) ([]byte, bool) {
 	if !ok {
 		return nil, false
 	}
-	oldBody, oldHash, ok := SplitHeader(bytes.ReplaceAll(existing, []byte("\r\n"), []byte("\n")))
+	lf := bytes.ReplaceAll(existing, []byte("\r\n"), []byte("\n"))
+	oldBody, oldHash, ok := SplitHeader(lf)
 	if !ok || oldHash == newHash || !bytes.Equal(oldBody, newBody) {
+		return nil, false
+	}
+	// Everything between the first line and the body must match too: a line
+	// added right below the header, such as a build constraint, is an edit.
+	if !bytes.Equal(preamble(lf, oldBody), preamble(regenerated, newBody)) {
 		return nil, false
 	}
 	i := bytes.IndexByte(existing, '\n')
@@ -151,6 +158,14 @@ func refreshHeader(existing, regenerated []byte) ([]byte, bool) {
 	return append([]byte(line), existing[i:]...), true
 }
 
+// preamble returns the bytes of content between its first line and body, the
+// suffix of content that SplitHeader returned.
+func preamble(content, body []byte) []byte {
+	head := content[:len(content)-len(body)]
+	_, rest, _ := bytes.Cut(head, []byte("\n"))
+	return rest
+}
+
 func readFile(path string) ([]byte, error) {
 	b, err := os.ReadFile(path) // #nosec G304 -- path is in the model directory the user named
 	if err != nil {
@@ -162,10 +177,11 @@ func readFile(path string) ([]byte, error) {
 	return b, nil
 }
 
-// Apply carries out the actions through write, which stores one file. A
-// header action writes the file with its first line replaced. A conflict writes the regenerated version next to the file with the .new
-// suffix and leaves the file alone. It returns the paths it wrote. The caller
-// supplies write so that this package never touches the filesystem itself.
+// Apply carries out the actions through write, which stores one file. A header
+// action writes the file with its first line replaced. A conflict writes the
+// regenerated version next to the file with the .new suffix and leaves the
+// file alone. It returns the paths it wrote. The caller supplies write so that
+// this package never touches the filesystem itself.
 func Apply(dir string, actions []Action, write func(path string, content []byte) error) ([]string, error) {
 	var written []string
 	for _, a := range actions {

@@ -276,6 +276,9 @@ func TestGenerateFromDBCheckBodyEqualsDatabase(t *testing.T) {
 	if gotLine, gotBody, _ := bytes.Cut(got, []byte("\n")); !bytes.Equal(gotLine, newLine) || !bytes.Equal(gotBody, body) {
 		t.Fatalf("only the header line may change:\n%s", got)
 	}
+	if code, out, errOut := fromDB(t, "--no-snapshot", "--check"); code != 0 || strings.Contains(out, "stale") {
+		t.Fatalf("--check after the plain run: exit %d, want 0\n%s%s", code, out, errOut)
+	}
 }
 
 // TestGenerateFromDBSnapshotFailureWritesNoModels: a migration directory whose
