@@ -2,23 +2,29 @@
 
 ## [0.12.0](https://github.com/azrtydxb/momo/compare/v0.11.0...v0.12.0) (2026-11-14)
 
+_The dialect parity release: `momo migrate` and `momo generate --from-db` now run on SQLite, MySQL and MariaDB as well as PostgreSQL, and query features that returned `ErrUnsupported` on some dialects now work on all of them. It also fixes four issues from the NovaCRM and Owl ports. Upgrading needs a code change only where `momo.Avg` is used as an uninstantiated function value, or where `--from-db --schema` is passed on MySQL or MariaDB; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.12.0/docs/upgrading.md). [Changes since 0.11.0](https://github.com/azrtydxb/momo/compare/v0.11.0...v0.12.0)._
+
+### ⚠ BREAKING CHANGES
+
+- **agg:** `momo.Avg` is generic over any numeric column, so code that uses it as an uninstantiated function value must write `momo.Avg[float64]` ([#129](https://github.com/azrtydxb/momo/issues/129))
+- **cli:** `momo generate --from-db --schema` is a usage error on MySQL and MariaDB, which ignored the flag before; `--schema` applies to PostgreSQL only ([#141](https://github.com/azrtydxb/momo/pull/141))
 
 ### Features
 
-* **cli:** momo generate --from-db reads a SQLite database ([#141](https://github.com/azrtydxb/momo/issues/141)) ([9932cbf](https://github.com/azrtydxb/momo/commit/9932cbf95a66182c9e420a03626ea9cd9b7498d3))
-* **cli:** run momo migrate on SQLite, MySQL and MariaDB ([#139](https://github.com/azrtydxb/momo/issues/139)) ([32837f4](https://github.com/azrtydxb/momo/commit/32837f464f6d3fce60a84ee90aef58b984a53359))
-* **fromdb:** generate models from a MySQL or MariaDB database ([#134](https://github.com/azrtydxb/momo/issues/134)) ([367b3d6](https://github.com/azrtydxb/momo/commit/367b3d6f149c98f45bde3533566d33bd09ada7df))
-* ILike, NULLS ordering and aggregate Filter on every dialect ([#132](https://github.com/azrtydxb/momo/issues/132)) ([2913d4f](https://github.com/azrtydxb/momo/commit/2913d4f635ce3305fb45db1bb4a42b431d43c009))
-* **insert:** Explicit writes identity, serial and auto-increment values ([#138](https://github.com/azrtydxb/momo/issues/138)) ([c4bd145](https://github.com/azrtydxb/momo/commit/c4bd145426968b6eebb84fd8958623dbe497834a))
-* read generated keys back and upsert on a secondary key on MySQL ([#135](https://github.com/azrtydxb/momo/issues/135)) ([e8defaf](https://github.com/azrtydxb/momo/commit/e8defaf1894e140a16515db683d71972b62451c3))
-* **sqlfn:** Greatest, Least, Floor, Ceil; jsonop.TypeOf ([#137](https://github.com/azrtydxb/momo/issues/137)) ([c8101e9](https://github.com/azrtydxb/momo/commit/c8101e913846a0436c9c063bf9801be8d6857818))
-* SumInt, SumNumeric and AvgNumeric; Avg over any numeric column ([#140](https://github.com/azrtydxb/momo/issues/140)) ([efd2694](https://github.com/azrtydxb/momo/commit/efd26948089ea2af5df5b3dcb5495c075550ef5b))
-
+- **cli:** `momo migrate` runs every subcommand on SQLite, MySQL and MariaDB, with dialect-specific column types, URL forms, password redaction and a TLS warning for remote MySQL hosts ([#139](https://github.com/azrtydxb/momo/pull/139))
+- **cli:** `momo generate --from-db` reads MySQL and MariaDB databases ([#134](https://github.com/azrtydxb/momo/pull/134)) and SQLite files, opened read-only through the pure-Go driver ([#141](https://github.com/azrtydxb/momo/pull/141))
+- **gen:** the `momo.Model` tag options `autoincrement`, `without_rowid` and `strict` declare SQLite table options ([#141](https://github.com/azrtydxb/momo/pull/141))
+- **agg:** `momo.SumInt`, `momo.SumNumeric` and `momo.AvgNumeric`, and `momo.Avg` over integer and `types.Numeric` columns ([#129](https://github.com/azrtydxb/momo/issues/129))
+- **insert:** `Explicit` writes a caller-chosen value into an identity, serial or auto-increment column ([#127](https://github.com/azrtydxb/momo/issues/127))
+- **sqlfn:** `sqlfn.Greatest`, `sqlfn.Least`, `sqlfn.Floor` and `sqlfn.Ceil`, and `jsonop.TypeOf`, on every dialect ([#131](https://github.com/azrtydxb/momo/issues/131))
+- `ILike`, `NullsFirst`/`NullsLast` and aggregate `Filter` work on SQLite, MySQL and MariaDB ([#132](https://github.com/azrtydxb/momo/pull/132))
+- On MySQL and MariaDB, inserts read generated keys back, `CreateGraph` and `FindOrCreate` work, and `Upsert` can target a secondary unique key ([#135](https://github.com/azrtydxb/momo/pull/135))
 
 ### Bug Fixes
 
-* **fromdb:** --check compares the model body, not only the header hash ([#130](https://github.com/azrtydxb/momo/issues/130)) ([a43e6cb](https://github.com/azrtydxb/momo/commit/a43e6cbcfe24f36b03433593408d8d22ae369af7))
-* jsonop.Contains and timeop intervals on MariaDB; MySQL server tests ([#142](https://github.com/azrtydxb/momo/issues/142)) ([c121dcf](https://github.com/azrtydxb/momo/commit/c121dcf7a25aaf16731361a32d22c2d54dfb51a1))
+- **fromdb:** `--check` compares the generated model body, not only the header hash, so a hand-edited model is reported as stale ([#128](https://github.com/azrtydxb/momo/issues/128))
+- **jsonop:** `Contains` on MariaDB sent `CAST(? AS JSON)`, a syntax error there; it now passes the candidate as JSON text ([#142](https://github.com/azrtydxb/momo/pull/142))
+- **timeop:** `AddInterval` and `SubInterval` over a bound time on MariaDB returned text the driver could not read as a time ([#142](https://github.com/azrtydxb/momo/pull/142))
 
 ## [0.11.0](https://github.com/azrtydxb/momo/compare/v0.10.0...v0.11.0) (2026-11-13)
 
