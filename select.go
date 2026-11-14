@@ -322,7 +322,8 @@ func (sq SelectQuery[T]) ForUpdate(opt ...string) SelectQuery[T] {
 	return sq.withLock("FOR UPDATE", opt)
 }
 
-// ForShare adds FOR SHARE (PostgreSQL). Options and restrictions are those of
+// ForShare adds FOR SHARE (PostgreSQL and MySQL; MariaDB renders LOCK IN SHARE
+// MODE). Options and restrictions are those of
 // ForUpdate.
 func (sq SelectQuery[T]) ForShare(opt ...string) SelectQuery[T] { return sq.withLock("FOR SHARE", opt) }
 

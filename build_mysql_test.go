@@ -38,11 +38,11 @@ func TestMySQLUpsertRendering(t *testing.T) {
 func TestMySQLConflictTargetRule(t *testing.T) {
 	pk := []string{"id"}
 	only := &schema.Table{Name: "users", PrimaryKey: []string{"id"}}
-	if err := checkMySQLConflictTarget(only, []string{"id"}, pk); err != nil {
+	if err := checkMySQLConflictTarget(only, []string{"id"}, pk, nil); err != nil {
 		t.Fatalf("sole primary key target rejected: %v", err)
 	}
 	onlyUnique := &schema.Table{Name: "users", Uniques: []schema.Unique{{Name: "users_email", Columns: []string{"email"}}}}
-	if err := checkMySQLConflictTarget(onlyUnique, []string{"email"}, pk); err != nil {
+	if err := checkMySQLConflictTarget(onlyUnique, []string{"email"}, pk, nil); err != nil {
 		t.Fatalf("sole unique target rejected: %v", err)
 	}
 	// Catches: a target accepted although the primary key is a second unique key
@@ -50,20 +50,64 @@ func TestMySQLConflictTargetRule(t *testing.T) {
 	both := &schema.Table{Name: "users", PrimaryKey: []string{"id"},
 		Uniques: []schema.Unique{{Name: "users_email", Columns: []string{"email"}}}}
 	for _, target := range [][]string{{"email"}, {"id"}} {
-		if err := checkMySQLConflictTarget(both, target, pk); !errors.Is(err, ErrUnsupported) {
+		if err := checkMySQLConflictTarget(both, target, pk, nil); !errors.Is(err, ErrUnsupported) {
 			t.Errorf("PK plus unique key, target %v: err = %v, want ErrUnsupported", target, err)
 		}
 	}
 	// A unique index counts like a unique constraint.
 	withIndex := &schema.Table{Name: "users", PrimaryKey: []string{"id"},
 		Indexes: []schema.Index{{Name: "ix", Unique: true, Parts: []schema.IndexPart{{Column: "handle"}}}}}
-	if err := checkMySQLConflictTarget(withIndex, []string{"id"}, pk); !errors.Is(err, ErrUnsupported) {
+	if err := checkMySQLConflictTarget(withIndex, []string{"id"}, pk, nil); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("PK plus unique index: err = %v, want ErrUnsupported", err)
 	}
-	if err := checkMySQLConflictTarget(nil, []string{"id"}, pk); err != nil {
+	if err := checkMySQLConflictTarget(nil, []string{"id"}, pk, nil); err != nil {
 		t.Errorf("no schema, primary key target: %v", err)
 	}
-	if err := checkMySQLConflictTarget(nil, []string{"email"}, pk); !errors.Is(err, ErrUnsupported) {
+	if err := checkMySQLConflictTarget(nil, []string{"email"}, pk, nil); !errors.Is(err, ErrUnsupported) {
 		t.Errorf("no schema, non-key target: err = %v, want ErrUnsupported", err)
+	}
+}
+
+// Catches: the secondary-target relaxation widening past the safe case: a
+// second unique key is tolerated only when every one of its columns is an
+// auto-increment column the insert leaves to the database.
+func TestMySQLConflictTargetSecondaryKeyRule(t *testing.T) {
+	pk := []string{"id"}
+	ts := &schema.Table{Name: "users", PrimaryKey: []string{"id"},
+		Uniques: []schema.Unique{{Name: "users_email", Columns: []string{"email"}}}}
+	if err := checkMySQLConflictTarget(ts, []string{"email"}, pk, []string{"id"}); err != nil {
+		t.Errorf("auto-increment PK omitted, UNIQUE(email) target rejected: %v", err)
+	}
+	// The key is written, so it can match an existing row.
+	if err := checkMySQLConflictTarget(ts, []string{"email"}, pk, nil); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("PK supplied: err = %v, want ErrUnsupported", err)
+	}
+	// A different column is left to the database, not the key.
+	if err := checkMySQLConflictTarget(ts, []string{"email"}, pk, []string{"seq"}); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("other column unsupplied: err = %v, want ErrUnsupported", err)
+	}
+	// An ordinary second unique key stays refused, whatever else is omitted.
+	two := &schema.Table{Name: "users", PrimaryKey: []string{"id"}, Uniques: []schema.Unique{
+		{Name: "users_email", Columns: []string{"email"}}, {Name: "users_handle", Columns: []string{"handle"}}}}
+	err := checkMySQLConflictTarget(two, []string{"email"}, pk, []string{"id"})
+	if !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "[handle]") {
+		t.Errorf("second ordinary key: err = %v, want ErrUnsupported naming [handle]", err)
+	}
+	// A composite key that mixes an auto-increment column with another one is not made only of generated columns.
+	mixed := &schema.Table{Name: "users", PrimaryKey: []string{"id"}, Uniques: []schema.Unique{
+		{Name: "users_email", Columns: []string{"email"}}, {Name: "users_pair", Columns: []string{"id", "tenant"}}}}
+	if err := checkMySQLConflictTarget(mixed, []string{"email"}, pk, []string{"id"}); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("composite key with an ordinary column: err = %v, want ErrUnsupported", err)
+	}
+	// A target that is not a unique key at all is refused with the reason.
+	err = checkMySQLConflictTarget(ts, []string{"name"}, pk, []string{"id"})
+	if !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "not a unique key") {
+		t.Errorf("non-key target: err = %v, want ErrUnsupported saying it is not a unique key", err)
+	}
+	// An expression key has no column and is never treated as generated.
+	expr := &schema.Table{Name: "users", PrimaryKey: []string{"id"}, Uniques: []schema.Unique{{Name: "users_email", Columns: []string{"email"}}},
+		Indexes: []schema.Index{{Name: "ix", Unique: true, Parts: []schema.IndexPart{{Expr: "lower(name)"}}}}}
+	if err := checkMySQLConflictTarget(expr, []string{"email"}, pk, []string{"id"}); !errors.Is(err, ErrUnsupported) {
+		t.Errorf("expression unique index: err = %v, want ErrUnsupported", err)
 	}
 }
