@@ -6,6 +6,7 @@ package momo_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -108,6 +109,42 @@ func TestSplitInsertIsAtomicIntegration(t *testing.T) {
 		}
 		if n := countRuns(t, db); n != 2 {
 			t.Fatalf("%d rows after commit, want taken and kept", n)
+		}
+	})
+}
+
+// Catches: docs and code disagreeing about Models with a zero dbdefault field on
+// the MySQL family. MySQL has no RETURNING and refuses it (single row and mixed
+// rows) before storing anything; MariaDB writes DEFAULT inline and reads the
+// values back.
+func TestMixedModelsMySQLFamilyIntegration(t *testing.T) {
+	testopen.EachMySQL(t, func(t *testing.T, db *momo.DB) {
+		ctx := context.Background()
+		for _, stmt := range []string{"DROP TABLE IF EXISTS dbd_live", dbdLiveDDL[dialect.MySQL]} {
+			if _, err := db.Driver().Exec(ctx, stmt, nil); err != nil {
+				t.Fatalf("%s: %v", stmt, err)
+			}
+		}
+		t.Cleanup(func() { _, _ = db.Driver().Exec(context.Background(), "DROP TABLE IF EXISTS dbd_live", nil) })
+		mixed := []dbdLive{{Name: "m1"}, {Name: "m2", Tag: "set", N: 5}}
+		single := []dbdLive{{Name: "s1"}}
+		_, errMixed := momo.Insert[dbdLive](db).Models(mixed).Exec(ctx)
+		_, errSingle := momo.Insert[dbdLive](db).Models(single).Exec(ctx)
+		n, err := momo.Select[dbdLive](db).Count(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if db.Dialect().Flavor == dialect.FlavorMariaDB {
+			if errMixed != nil || errSingle != nil || n != 3 {
+				t.Fatalf("MariaDB: errors %v %v, %d rows, want success and 3 rows", errMixed, errSingle, n)
+			}
+			if mixed[0].Tag != "auto" || mixed[0].N != 7 || mixed[1].Tag != "set" || single[0].Tag != "auto" {
+				t.Fatalf("MariaDB read-back: %+v %+v", mixed, single)
+			}
+			return
+		}
+		if !errors.Is(errMixed, momo.ErrUnsupported) || !errors.Is(errSingle, momo.ErrUnsupported) || n != 0 {
+			t.Fatalf("MySQL: errors %v %v, %d rows, want ErrUnsupported twice and nothing stored", errMixed, errSingle, n)
 		}
 	})
 }

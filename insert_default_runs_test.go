@@ -109,6 +109,40 @@ func TestMixedModelsOtherDialectsUnchanged(t *testing.T) {
 	}
 }
 
+// Catches: docs claiming MySQL behaves like MariaDB for a zero dbdefault field.
+// MySQL has no RETURNING to read the value back, so a single row and a mixed
+// multi-row Models insert are both refused with ErrUnsupported before anything
+// reaches the driver; MariaDB (INSERT ... RETURNING) writes DEFAULT inline in one
+// statement. Each call builds fresh models: a successful insert writes the
+// read-back values into them.
+func TestMixedModelsMySQLRefusesMariaDBWritesInline(t *testing.T) {
+	fresh := func() []dbdRow {
+		return []dbdRow{{Title: "a", At: dbdStamp}, {ID: "kept", Title: "b", At: dbdStamp}}
+	}
+	ctx := context.Background()
+	my, mydrv := dbdSetup(dialect.MySQL, nil)
+	if _, err := momo.Insert[dbdRow](my).Models(fresh()).Exec(ctx); !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("MySQL mixed Models: err = %v, want ErrUnsupported", err)
+	}
+	if _, err := momo.Insert[dbdRow](my).Models(fresh()[:1]).Exec(ctx); !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("MySQL single-row Models: err = %v, want ErrUnsupported", err)
+	}
+	if n := len(runInserts(mydrv)); n != 0 {
+		t.Fatalf("MySQL sent %d INSERTs, want none", n)
+	}
+
+	drv := fakedriver.NewDialect(dialect.MySQLFlavor(dialect.FlavorMariaDB))
+	drv.SetRows([][]any{{"g1"}, {"kept"}})
+	if _, err := momo.Insert[dbdRow](momo.New(drv)).Models(fresh()).Exec(ctx); err != nil {
+		t.Fatalf("MariaDB mixed Models: %v", err)
+	}
+	got := runInserts(drv)
+	want := "INSERT INTO `dbd_rows` (`id`, `title`, `at`) VALUES (DEFAULT, ?, ?), (?, ?, ?) RETURNING `id`"
+	if len(got) != 1 || got[0].SQL != want {
+		t.Fatalf("MariaDB = %v, want one statement %q", got, want)
+	}
+}
+
 // Catches: MySQL being split like SQLite: it takes DEFAULT inline in ValuesRows,
 // so a mixed insert stays one statement.
 func TestMixedValuesRowsMySQLStaysOneStatement(t *testing.T) {
