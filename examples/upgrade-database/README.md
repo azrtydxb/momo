@@ -31,7 +31,7 @@ offline and never touches a database. Run it again with nothing changed and it
 prints `no changes`.
 
 A new `NOT NULL` column is safe on a table with rows only when it has a
-default. Without one `diff` refuses. Do not rely on `--stage` in v0.11.0: it <!-- x-release-please-version -->
+default. Without one `diff` refuses. Do not rely on `--stage` in v0.12.0: it <!-- x-release-please-version -->
 splits the change into add-nullable, backfill and `SET NOT NULL` steps, but the
 `NOT NULL` is never enforced afterwards (known issue s2, story
 `20261106-staged-not-null-is-never-enforced-after-diff-stage`). Give the column

@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.12.0](https://github.com/azrtydxb/momo/compare/v0.11.0...v0.12.0) (2026-11-14)
+
+_The dialect parity release: `momo migrate` and `momo generate --from-db` now run on SQLite, MySQL and MariaDB as well as PostgreSQL, and query features that returned `ErrUnsupported` on some dialects now work on all of them. It also fixes four issues from the NovaCRM and Owl ports. Upgrading needs a code change only where `momo.Avg` is used as an uninstantiated function value, or where `--from-db --schema` is passed on MySQL or MariaDB; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.12.0/docs/upgrading.md). [Changes since 0.11.0](https://github.com/azrtydxb/momo/compare/v0.11.0...v0.12.0)._
+
+### ⚠ BREAKING CHANGES
+
+- **agg:** `momo.Avg` is generic over any numeric column, so code that uses it as an uninstantiated function value must write `momo.Avg[float64]` ([#129](https://github.com/azrtydxb/momo/issues/129))
+- **cli:** `momo generate --from-db --schema` is a usage error on MySQL and MariaDB, which ignored the flag before; `--schema` applies to PostgreSQL only ([#141](https://github.com/azrtydxb/momo/pull/141))
+
+### Features
+
+- **cli:** `momo migrate` runs every subcommand on SQLite, MySQL and MariaDB, with dialect-specific column types, URL forms, password redaction and a TLS warning for remote MySQL hosts ([#139](https://github.com/azrtydxb/momo/pull/139))
+- **cli:** `momo generate --from-db` reads MySQL and MariaDB databases ([#134](https://github.com/azrtydxb/momo/pull/134)) and SQLite files, opened read-only through the pure-Go driver ([#141](https://github.com/azrtydxb/momo/pull/141))
+- **gen:** the `momo.Model` tag options `autoincrement`, `without_rowid` and `strict` declare SQLite table options ([#141](https://github.com/azrtydxb/momo/pull/141))
+- **agg:** `momo.SumInt`, `momo.SumNumeric` and `momo.AvgNumeric`, and `momo.Avg` over integer and `types.Numeric` columns ([#129](https://github.com/azrtydxb/momo/issues/129))
+- **insert:** `Explicit` writes a caller-chosen value into an identity, serial or auto-increment column ([#127](https://github.com/azrtydxb/momo/issues/127))
+- **sqlfn:** `sqlfn.Greatest`, `sqlfn.Least`, `sqlfn.Floor` and `sqlfn.Ceil`, and `jsonop.TypeOf`, on every dialect ([#131](https://github.com/azrtydxb/momo/issues/131))
+- `ILike`, `NullsFirst`/`NullsLast` and aggregate `Filter` work on SQLite, MySQL and MariaDB ([#132](https://github.com/azrtydxb/momo/pull/132))
+- On MySQL and MariaDB, inserts read generated keys back, `CreateGraph` and `FindOrCreate` work, and `Upsert` can target a secondary unique key ([#135](https://github.com/azrtydxb/momo/pull/135))
+
+### Bug Fixes
+
+- **fromdb:** `--check` compares the generated model body, not only the header hash, so a hand-edited model is reported as stale ([#128](https://github.com/azrtydxb/momo/issues/128))
+- **jsonop:** `Contains` on MariaDB sent `CAST(? AS JSON)`, a syntax error there; it now passes the candidate as JSON text ([#142](https://github.com/azrtydxb/momo/pull/142))
+- **timeop:** `AddInterval` and `SubInterval` over a bound time on MariaDB returned text the driver could not read as a time ([#142](https://github.com/azrtydxb/momo/pull/142))
+
 ## [0.11.0](https://github.com/azrtydxb/momo/compare/v0.10.0...v0.11.0) (2026-11-13)
 
 _JSON null and SQL NULL are now kept apart, `updated_at` behaves the same on every write path, and `timeop` gains typed date arithmetic. It fixes three issues from the NovaCRM and Owl ports. Upgrading can need code changes where a JSON null was read as nil on PostgreSQL, or where a `DoUpdate` set `updated_at` explicitly; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.11.0/docs/upgrading.md). [Changes since 0.10.0](https://github.com/azrtydxb/momo/compare/v0.10.0...v0.11.0)._
