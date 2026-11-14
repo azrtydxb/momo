@@ -4,6 +4,7 @@ package momo_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -17,6 +18,8 @@ var (
 	aggI64 = momo.NewColumn[int64]("t", "c", 0)
 	aggNum = momo.NewColumn[types.Numeric]("t", "d", 0)
 	aggF64 = momo.NewColumn[float64]("t", "e", 0)
+	aggInt = momo.NewColumn[int]("t", "f", 0)
+	aggI8  = momo.NewColumn[int8]("t", "g", 0)
 )
 
 func renderAgg(d dialect.Name, e momo.Expr) (string, error) {
@@ -73,6 +76,52 @@ func TestAggregatesIntegerAndExactRender(t *testing.T) {
 		{"avgnumeric numeric mysql", dialect.MySQL, momo.AvgNumeric(aggNum), "AVG(CAST(`t`.`d` AS DECIMAL(65,30)))", false},
 		{"avgnumeric int sqlite", dialect.SQLite, momo.AvgNumeric(aggI32), "", true},
 		{"avgnumeric numeric sqlite", dialect.SQLite, momo.AvgNumeric(aggNum), "", true},
+
+		// FILTER and OVER on the numeric aggregates. PostgreSQL keeps the cast
+		// around the call and its tail; MySQL and MariaDB have no FILTER and
+		// move the predicate into the argument, keeping the DECIMAL cast inside.
+		{"sumint filter mysql", dialect.MySQL, momo.SumInt(aggI32).Filter(aggI64.Gt(1)),
+			"SUM(CASE WHEN `t`.`c` > ? THEN `t`.`b` END)", false},
+		{"sumint filter over mysql", dialect.MySQL, momo.SumInt(aggI32).Filter(aggI64.Gt(1)).Over(over),
+			"SUM(CASE WHEN `t`.`c` > ? THEN `t`.`b` END) OVER (PARTITION BY `t`.`c`)", false},
+		{"sumnumeric numeric filter mysql", dialect.MySQL, momo.SumNumeric(aggNum).Filter(aggI64.Gt(1)),
+			"SUM(CASE WHEN `t`.`c` > ? THEN CAST(`t`.`d` AS DECIMAL(65,30)) END)", false},
+		{"sumnumeric int filter mysql", dialect.MySQL, momo.SumNumeric(aggI32).Filter(aggI64.Gt(1)),
+			"SUM(CASE WHEN `t`.`c` > ? THEN `t`.`b` END)", false},
+		{"sumnumeric numeric filter over mysql", dialect.MySQL, momo.SumNumeric(aggNum).Filter(aggI64.Gt(1)).Over(over),
+			"SUM(CASE WHEN `t`.`c` > ? THEN CAST(`t`.`d` AS DECIMAL(65,30)) END) OVER (PARTITION BY `t`.`c`)", false},
+		{"avgnumeric numeric filter mysql", dialect.MySQL, momo.AvgNumeric(aggNum).Filter(aggI64.Gt(1)),
+			"AVG(CASE WHEN `t`.`c` > ? THEN CAST(`t`.`d` AS DECIMAL(65,30)) END)", false},
+		{"avg int filter mysql", dialect.MySQL, momo.Avg(aggI32).Filter(aggI64.Gt(1)),
+			"AVG(CASE WHEN `t`.`c` > ? THEN `t`.`b` END)", false},
+
+		{"sumnumeric numeric filter postgres", dialect.Postgres, momo.SumNumeric(aggNum).Filter(aggI64.Gt(1)),
+			`SUM("t"."d") FILTER (WHERE "t"."c" > $1)`, false},
+		{"sumnumeric int filter postgres", dialect.Postgres, momo.SumNumeric(aggI32).Filter(aggI64.Gt(1)),
+			`SUM(CAST("t"."b" AS numeric)) FILTER (WHERE "t"."c" > $1)`, false},
+		{"sumnumeric numeric over postgres", dialect.Postgres, momo.SumNumeric(aggNum).Over(over),
+			`SUM("t"."d") OVER (PARTITION BY "t"."c")`, false},
+		{"sumnumeric int filter over postgres", dialect.Postgres, momo.SumNumeric(aggI32).Filter(aggI64.Gt(1)).Over(over),
+			`SUM(CAST("t"."b" AS numeric)) FILTER (WHERE "t"."c" > $1) OVER (PARTITION BY "t"."c")`, false},
+		{"avgnumeric numeric filter postgres", dialect.Postgres, momo.AvgNumeric(aggNum).Filter(aggI64.Gt(1)),
+			`AVG("t"."d") FILTER (WHERE "t"."c" > $1)`, false},
+		{"avgnumeric int over postgres", dialect.Postgres, momo.AvgNumeric(aggI32).Over(over),
+			`AVG(CAST("t"."b" AS numeric)) OVER (PARTITION BY "t"."c")`, false},
+		{"avgnumeric numeric filter over postgres", dialect.Postgres, momo.AvgNumeric(aggNum).Filter(aggI64.Gt(1)).Over(over),
+			`AVG("t"."d") FILTER (WHERE "t"."c" > $1) OVER (PARTITION BY "t"."c")`, false},
+		{"avg int filter postgres", dialect.Postgres, momo.Avg(aggI32).Filter(aggI64.Gt(1)),
+			`CAST(AVG("t"."b") FILTER (WHERE "t"."c" > $1) AS double precision)`, false},
+
+		// int and int8 columns.
+		{"sumint int postgres", dialect.Postgres, momo.SumInt(aggInt), `CAST(SUM("t"."f") AS bigint)`, false},
+		{"sumint int8 postgres", dialect.Postgres, momo.SumInt(aggI8), `CAST(SUM("t"."g") AS bigint)`, false},
+		{"sumint int mysql", dialect.MySQL, momo.SumInt(aggInt), "SUM(`t`.`f`)", false},
+		{"sumint int8 sqlite", dialect.SQLite, momo.SumInt(aggI8), `SUM("t"."g")`, false},
+		{"sumnumeric int postgres 2", dialect.Postgres, momo.SumNumeric(aggInt), `SUM(CAST("t"."f" AS numeric))`, false},
+		{"sumnumeric int8 sqlite", dialect.SQLite, momo.SumNumeric(aggI8), `SUM("t"."g")`, false},
+		{"avgnumeric int8 mysql", dialect.MySQL, momo.AvgNumeric(aggI8), "AVG(`t`.`g`)", false},
+		{"avg int postgres", dialect.Postgres, momo.Avg(aggInt), `CAST(AVG("t"."f") AS double precision)`, false},
+		{"avg int8 sqlite", dialect.SQLite, momo.Avg(aggI8), `AVG("t"."g")`, false},
 	}
 	for _, c := range cases {
 		got, err := renderAgg(c.d, c.e)
@@ -88,6 +137,33 @@ func TestAggregatesIntegerAndExactRender(t *testing.T) {
 		}
 		if got != c.want {
 			t.Errorf("%s:\n got %s\nwant %s", c.name, got, c.want)
+		}
+	}
+}
+
+// Catches: an ErrUnsupported on SQLite that does not say which aggregate
+// failed or what to call instead, so the caller cannot fix the query from the
+// message.
+func TestExactAggregateSQLiteMessage(t *testing.T) {
+	cases := []struct {
+		name string
+		e    momo.Expr
+		want string
+	}{
+		{"sumnumeric", momo.SumNumeric(aggNum), "SumNumeric"},
+		{"avgnumeric int", momo.AvgNumeric(aggI32), "AvgNumeric"},
+		{"avgnumeric numeric", momo.AvgNumeric(aggNum), "AvgNumeric"},
+	}
+	for _, c := range cases {
+		_, err := renderAgg(dialect.SQLite, c.e)
+		if !errors.Is(err, momo.ErrUnsupported) {
+			t.Errorf("%s: err = %v, want ErrUnsupported", c.name, err)
+			continue
+		}
+		for _, w := range []string{c.want, "Avg", "float64", "SumInt", "integer"} {
+			if !strings.Contains(err.Error(), w) {
+				t.Errorf("%s: error %q lacks %q", c.name, err, w)
+			}
 		}
 	}
 }

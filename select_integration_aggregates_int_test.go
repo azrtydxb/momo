@@ -24,6 +24,9 @@ var (
 	aiC  = momo.NewColumn[int64]("agg_ints", "c", 0)
 	aiN  = momo.NewColumn[types.Numeric]("agg_ints", "n", 0)
 
+	aiInt = momo.NewColumn[int]("agg_ints", "b", 0)
+	aiI8  = momo.NewColumn[int8]("agg_ints", "a", 0)
+
 	abC = momo.NewColumn[int64]("agg_big", "c", 0)
 )
 
@@ -162,8 +165,11 @@ func TestSumIntOverflowIntegration(t *testing.T) {
 	eachAggDB(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedAggInts(t, db, d)
 		all := momo.SQL("1 = 1")
-		if got, err := aggScalar[int64](db, "agg_big", momo.SumInt(abC), all); err == nil {
-			t.Errorf("SumInt past int64 = %v, want an error", got)
+		got64, err64 := aggScalar[int64](db, "agg_big", momo.SumInt(abC), all)
+		if err64 == nil {
+			t.Errorf("SumInt past int64 = %v, want an error", got64)
+		} else if d == dialect.MySQL && !strings.Contains(err64.Error(), "RED-PLACEHOLDER") {
+			t.Errorf("SumInt overflow error text = %q", err64.Error())
 		}
 		got, err := aggScalar[types.Numeric](db, "agg_big", momo.SumNumeric(abC), all)
 		if d == dialect.SQLite {
@@ -173,6 +179,7 @@ func TestSumIntOverflowIntegration(t *testing.T) {
 			}
 			return
 		}
+
 		wantNumeric(t, "SumNumeric(int64) past int64", got, err, "18000000000000000000")
 	})
 }
@@ -196,6 +203,13 @@ func TestSumNumericIntegration(t *testing.T) {
 			}
 		} else {
 			wantNumeric(t, "SumNumeric(Numeric)", got, err, "3.4")
+			if d == dialect.MySQL && got != nil {
+				// MySQL and MariaDB cast the TEXT column to DECIMAL(65,30), so the
+				// result keeps 30 decimal places, trailing zeros included.
+				if want := "3.400000000000000000000000000000"; got.String() != want {
+					t.Errorf("SumNumeric(Numeric) text = %q, want %q", got.String(), want)
+				}
+			}
 		}
 
 		empty, err := aggScalar[types.Numeric](db, "agg_ints", momo.SumNumeric(aiB), aiID.Eq(99))
@@ -262,10 +276,8 @@ func TestAvgNumericIntegration(t *testing.T) {
 func TestSumIntFilterOverIntegration(t *testing.T) {
 	eachAggDB(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedAggInts(t, db, d)
-		if d != dialect.MySQL {
-			got, err := aggScalar[int64](db, "agg_ints", momo.SumInt(aiA).Filter(aiA.Gt(1)), aiID.Gt(0))
-			wantInt(t, "SumInt FILTER", got, err, 9)
-		}
+		got, err := aggScalar[int64](db, "agg_ints", momo.SumInt(aiA).Filter(aiA.Gt(1)), aiID.Gt(0))
+		wantInt(t, "SumInt FILTER", got, err, 9)
 		rows, err := momo.Select[momo.Row1[int64]](db).From(momo.TableRef{Name: "agg_ints"}).
 			Columns(momo.SumInt(aiB).Over(momo.Over())).Where(aiID.Gt(0)).All(context.Background())
 		if err != nil {
@@ -279,5 +291,101 @@ func TestSumIntFilterOverIntegration(t *testing.T) {
 				t.Errorf("SumInt OVER () = %d, want 8000000000", r.C1)
 			}
 		}
+	})
+}
+
+// Catches: the numeric aggregates losing the exact result, or a cast landing
+// outside the FILTER or OVER clause, on PostgreSQL, SQLite, MySQL and MariaDB.
+// MySQL and MariaDB have no FILTER, so the predicate moves into the argument.
+func TestNumericFilterOverIntegration(t *testing.T) {
+	eachAggDB(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		seedAggInts(t, db, d)
+		all := aiID.Gt(0)
+		lt3 := aiA.Lt(3)
+		cases := []struct {
+			name   string
+			e      momo.Expr
+			want   string
+			sqlite bool // SQLite can run it
+		}{
+			{"SumNumeric(int32) FILTER", momo.SumNumeric(aiB).Filter(aiA.Gt(1)), "6000000000", true},
+			{"SumNumeric(Numeric) FILTER", momo.SumNumeric(aiN).Filter(aiA.Gt(1)), "2.3", false},
+			{"AvgNumeric(int64) FILTER", momo.AvgNumeric(aiC).Filter(lt3), "3000000000", false},
+			{"AvgNumeric(Numeric) FILTER", momo.AvgNumeric(aiN).Filter(lt3), "1.675", false},
+		}
+		for _, c := range cases {
+			got, err := aggScalar[types.Numeric](db, "agg_ints", c.e, all)
+			if d == dialect.SQLite && !c.sqlite {
+				if !errors.Is(err, momo.ErrUnsupported) {
+					t.Errorf("%s on sqlite = %v, %v; want ErrUnsupported", c.name, got, err)
+				}
+				continue
+			}
+			wantNumeric(t, c.name, got, err, c.want)
+		}
+
+		win := []struct {
+			name   string
+			e      momo.Expr
+			want   string
+			sqlite bool
+		}{
+			{"SumNumeric(int32) OVER", momo.SumNumeric(aiB).Over(momo.Over()), "8000000000", true},
+			{"SumNumeric(Numeric) OVER", momo.SumNumeric(aiN).Over(momo.Over()), "3.4", false},
+			{"SumNumeric(Numeric) FILTER OVER", momo.SumNumeric(aiN).Filter(lt3).Over(momo.Over()), "3.35", false},
+			{"AvgNumeric(int16) OVER", momo.AvgNumeric(aiA).Over(momo.Over()), "2.5", false},
+			{"AvgNumeric(Numeric) FILTER OVER", momo.AvgNumeric(aiN).Filter(lt3).Over(momo.Over()), "1.675", false},
+		}
+		for _, c := range win {
+			rows, err := momo.Select[momo.Row1[types.Numeric]](db).From(momo.TableRef{Name: "agg_ints"}).
+				Columns(c.e).Where(all).All(context.Background())
+			if d == dialect.SQLite && !c.sqlite {
+				if !errors.Is(err, momo.ErrUnsupported) {
+					t.Errorf("%s on sqlite = %v, %v; want ErrUnsupported", c.name, rows, err)
+				}
+				continue
+			}
+			if err != nil {
+				t.Errorf("%s: %v", c.name, err)
+				continue
+			}
+			if len(rows) != 4 {
+				t.Errorf("%s: %d rows, want 4", c.name, len(rows))
+			}
+			for _, r := range rows {
+				if normDec(r.C1.String()) != c.want {
+					t.Errorf("%s = %s, want %s", c.name, r.C1, c.want)
+				}
+			}
+		}
+	})
+}
+
+// Catches: SumInt, SumNumeric, Avg and AvgNumeric refusing a Go int or int8
+// column, or mis-scanning its aggregate, on a dialect.
+func TestIntAndInt8AggregatesIntegration(t *testing.T) {
+	eachAggDB(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		seedAggInts(t, db, d)
+		all := aiID.Gt(0)
+		i, err := aggScalar[int64](db, "agg_ints", momo.SumInt(aiInt), all)
+		wantInt(t, "SumInt(int)", i, err, 8_000_000_000)
+		i, err = aggScalar[int64](db, "agg_ints", momo.SumInt(aiI8), all)
+		wantInt(t, "SumInt(int8)", i, err, 10)
+		n, err := aggScalar[types.Numeric](db, "agg_ints", momo.SumNumeric(aiInt), all)
+		wantNumeric(t, "SumNumeric(int)", n, err, "8000000000")
+		n, err = aggScalar[types.Numeric](db, "agg_ints", momo.SumNumeric(aiI8), all)
+		wantNumeric(t, "SumNumeric(int8)", n, err, "10")
+		f, err := aggScalar[float64](db, "agg_ints", momo.Avg(aiInt), all)
+		wantFloat(t, "Avg(int)", f, err, 2_000_000_000)
+		f, err = aggScalar[float64](db, "agg_ints", momo.Avg(aiI8), all)
+		wantFloat(t, "Avg(int8)", f, err, 2.5)
+		n, err = aggScalar[types.Numeric](db, "agg_ints", momo.AvgNumeric(aiI8), all)
+		if d == dialect.SQLite {
+			if !errors.Is(err, momo.ErrUnsupported) {
+				t.Errorf("AvgNumeric(int8) on sqlite = %v, %v; want ErrUnsupported", n, err)
+			}
+			return
+		}
+		wantNumeric(t, "AvgNumeric(int8)", n, err, "2.5")
 	})
 }
