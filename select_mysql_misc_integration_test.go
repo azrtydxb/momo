@@ -58,10 +58,10 @@ func TestRowValuesAndDatesOnMySQLFamily(t *testing.T) {
 		if got := titles(suite.DocTitle.NotIn("a", "b", "c", "d")); !slices.Equal(got, []string{"e", "f", "g"}) {
 			t.Errorf("NotIn = %v", got)
 		}
-		if got := titles(suite.DocBody.IsDistinctFrom("x")); len(got) != 7 {
-			t.Errorf("NULL body IS DISTINCT FROM 'x' matched %d rows, want 7", len(got))
+		if got := titles(suite.DocBody.IsDistinctFrom("x")); !slices.Equal(got, []string{"a", "b", "c", "d", "e", "f", "g"}) {
+			t.Errorf("NULL body IS DISTINCT FROM 'x' = %v, want every title", got)
 		}
-		if got := titles(suite.DocBody.IsNotDistinctFrom("x")); len(got) != 0 {
+		if got := titles(suite.DocBody.IsNotDistinctFrom("x")); !slices.Equal(got, []string{}) {
 			t.Errorf("NULL body IS NOT DISTINCT FROM 'x' matched %v, want none", got)
 		}
 		if got := titles(momo.Or(suite.DocTenantID.Eq(2), momo.And(suite.DocTenantID.Eq(3), suite.DocVersion.Gt(7)))); !slices.Equal(got, []string{"d", "g"}) {
@@ -76,12 +76,17 @@ func TestRowValuesAndDatesOnMySQLFamily(t *testing.T) {
 			t.Errorf("one-element row = %v, want ErrValidation", err)
 		}
 
+		// The session time zone is UTC, so CURRENT_DATE is the UTC date; the
+		// clock is read on both sides of the query to tolerate midnight.
+		const dayLayout = "2006-01-02"
+		before := time.Now().UTC().Format(dayLayout)
 		day, err := momo.Select[anT](db).From(anDocs).Columns(sqlfn.CurrentDate()).Limit(1).One(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if d := time.Since(day.T); d < -48*time.Hour || d > 48*time.Hour || day.T.Hour() != 0 {
-			t.Errorf("CURRENT_DATE = %v, want today's date at midnight", day.T)
+		after := time.Now().UTC().Format(dayLayout)
+		if got := day.T.UTC().Format(dayLayout); (got != before && got != after) || day.T.UTC().Hour() != 0 {
+			t.Errorf("CURRENT_DATE = %v, want the UTC date %s (or %s) at midnight", day.T, before, after)
 		}
 		if _, err := momo.Select[anT](db).From(anDocs).Columns(sqlfn.Infinity()).Limit(1).All(ctx); !errors.Is(err, momo.ErrUnsupported) {
 			t.Errorf("Infinity = %v, want ErrUnsupported", err)
@@ -92,12 +97,29 @@ func TestRowValuesAndDatesOnMySQLFamily(t *testing.T) {
 	})
 }
 
-// Catches: bulk-insert chunking on a MySQL-family server writing a chunk
-// larger than WithMaxParams allows, losing rows between chunks, or writing a
-// single row that does not fit instead of failing with ErrLimitExceeded.
+// mwInsertHook records the bind count of every INSERT statement.
+type mwInsertHook struct{ inserts []int }
+
+func (h *mwInsertHook) BeforeQuery(ctx context.Context, _ *momo.QueryEvent) context.Context {
+	return ctx
+}
+
+func (h *mwInsertHook) AfterQuery(_ context.Context, e *momo.QueryEvent) {
+	if e.Op == "insert" {
+		h.inserts = append(h.inserts, e.NumArgs)
+	}
+}
+
+// Catches: bulk-insert chunking on a MySQL-family server sending a statement
+// with more binds than WithMaxParams allows, a wrong chunk count, losing rows
+// between chunks, or writing a single row that does not fit instead of failing
+// with ErrLimitExceeded.
 func TestInsertChunkingHonorsMaxParamsOnMySQLFamily(t *testing.T) {
-	// Five columns per row: a limit of 12 binds takes two rows per statement.
+	// Five columns per row: a limit of 12 binds takes two rows (10 binds) per
+	// statement, so ten rows are five statements.
+	hook := &mwInsertHook{}
 	testopen.EachMySQL(t, func(t *testing.T, db *momo.DB) {
+		hook.inserts = nil
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := context.Background()
 		ms := make([]suite.Document, 10)
@@ -111,7 +133,15 @@ func TestInsertChunkingHonorsMaxParamsOnMySQLFamily(t *testing.T) {
 		if n, err := momo.Select[suite.Document](db).Count(ctx); err != nil || n != 10 {
 			t.Fatalf("count = %d, %v, want 10", n, err)
 		}
-	}, momo.WithMaxParams(12))
+		if len(hook.inserts) != 5 {
+			t.Errorf("insert statements = %d (binds %v), want 5", len(hook.inserts), hook.inserts)
+		}
+		for _, n := range hook.inserts {
+			if n > 12 {
+				t.Errorf("an insert bound %d parameters, over the limit of 12 (all: %v)", n, hook.inserts)
+			}
+		}
+	}, momo.WithMaxParams(12), momo.WithHook(hook))
 
 	testopen.EachMySQL(t, func(t *testing.T, db *momo.DB) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
