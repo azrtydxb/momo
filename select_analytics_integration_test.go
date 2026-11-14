@@ -46,7 +46,7 @@ func wantUnsupported(t *testing.T, d dialect.Name, err error) bool {
 }
 
 func TestAnalyticsUnnestSources(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		ctx := context.Background()
 		cur := momo.UnnestValues("currency", []string{"EUR", "USD"})
 		rate := momo.UnnestValues("rate", []float64{1.1, 1})
@@ -101,7 +101,7 @@ func TestAnalyticsUnnestSources(t *testing.T) {
 }
 
 func TestAnalyticsGenerateSeries(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		ctx := context.Background()
 		s := momo.GenerateSeries("g", "n", int64(1), int64(6), int64(2))
 		rows, err := momo.Select[anN](db).From(s).Columns(s.Column()).OrderBy(s.Column().Asc()).All(ctx)
@@ -134,7 +134,7 @@ func TestAnalyticsGenerateSeries(t *testing.T) {
 }
 
 func TestAnalyticsWindowFunctions(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedAnalytics(t, db)
 		ctx := context.Background()
 		byTenant := momo.Over().PartitionBy(suite.DocTenantID).OrderBy(suite.DocVersion.Desc())
@@ -221,7 +221,7 @@ func TestAnalyticsAggregateFilter(t *testing.T) {
 }
 
 func TestAnalyticsDistinctOn(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedAnalytics(t, db)
 		ctx := context.Background()
 		q := momo.Select[anKT](db).From(anDocs).Columns(suite.DocTenantID, suite.DocTitle).
