@@ -46,6 +46,31 @@ func TestRowValuesAndDatesOnMySQLFamily(t *testing.T) {
 		if got := titles(row.Ge(bound)); !slices.Equal(got, []string{"g"}) {
 			t.Errorf("row >= (3, 8) = %v", got)
 		}
+
+		// Typed predicates beyond the shared suite: Between, In, NotIn, the
+		// NULL-safe comparisons (<=> on MySQL) and the boolean combinators.
+		if got := titles(suite.DocVersion.Between(5, 9)); !slices.Equal(got, []string{"d", "e", "f", "g"}) {
+			t.Errorf("Between(5, 9) = %v", got)
+		}
+		if got := titles(suite.DocTitle.In("a", "d", "zz")); !slices.Equal(got, []string{"a", "d"}) {
+			t.Errorf("In = %v", got)
+		}
+		if got := titles(suite.DocTitle.NotIn("a", "b", "c", "d")); !slices.Equal(got, []string{"e", "f", "g"}) {
+			t.Errorf("NotIn = %v", got)
+		}
+		if got := titles(suite.DocBody.IsDistinctFrom("x")); len(got) != 7 {
+			t.Errorf("NULL body IS DISTINCT FROM 'x' matched %d rows, want 7", len(got))
+		}
+		if got := titles(suite.DocBody.IsNotDistinctFrom("x")); len(got) != 0 {
+			t.Errorf("NULL body IS NOT DISTINCT FROM 'x' matched %v, want none", got)
+		}
+		if got := titles(momo.Or(suite.DocTenantID.Eq(2), momo.And(suite.DocTenantID.Eq(3), suite.DocVersion.Gt(7)))); !slices.Equal(got, []string{"d", "g"}) {
+			t.Errorf("Or/And = %v", got)
+		}
+		if got := titles(momo.Not(suite.DocTenantID.Eq(1))); !slices.Equal(got, []string{"d", "e", "f", "g"}) {
+			t.Errorf("Not = %v", got)
+		}
+
 		_, err := momo.Select[suite.Document](db).Where(momo.Row(suite.DocTenantID).Lt(momo.Row(momo.Value(int64(1))))).All(ctx)
 		if !errors.Is(err, momo.ErrValidation) {
 			t.Errorf("one-element row = %v, want ErrValidation", err)
