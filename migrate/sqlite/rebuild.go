@@ -247,8 +247,9 @@ func (r *renderer) rebuild(table string, plan []migrate.Change) ([]migrate.State
 	if !ok {
 		return nil, fmt.Errorf("%w: %q is not in the starting schema", errNoTable, oldName)
 	}
-	// A model cannot declare WITHOUT ROWID, STRICT or AUTOINCREMENT yet, so the
-	// rebuilt table keeps the ones the table has.
+	// WITHOUT ROWID, STRICT and AUTOINCREMENT are written when a table is
+	// created and are not changed in place (the diff refuses to add one), so
+	// the rebuilt table keeps the ones the table has, whatever the model says.
 	target := *desired
 	target.WithoutRowID = target.WithoutRowID || old.WithoutRowID
 	target.Strict = target.Strict || old.Strict

@@ -23,4 +23,11 @@ type Config struct {
 	Synchronous  string        // "NORMAL" (default), "FULL", "EXTRA", "OFF"
 	TxLock       string        // "immediate" (default), "deferred", "exclusive"
 	MaxOpenConns int           // default 1 (single-writer guidance); 0 means 1
+	// ReadOnly opens the database for reading only and leaves the file as it
+	// is: no WAL pragma, mode=ro and PRAGMA query_only. Only driver/sqlitepure
+	// honors it; driver/sqlitedriver refuses it. A database that is already
+	// in WAL mode needs its -shm and -wal files, or a directory SQLite may
+	// create them in, so a WAL database in a read-only directory cannot be
+	// opened this way.
+	ReadOnly bool
 }

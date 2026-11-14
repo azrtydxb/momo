@@ -44,7 +44,8 @@ Models from a database:
     momo generate --from-db <url|-|ENVVAR> [--out dir] [--package name]
                   [--schema a,b] [--no-snapshot] [--overwrite] [--check]
 
-Inspects the PostgreSQL, MySQL or MariaDB database and writes one model file
+Inspects the PostgreSQL, MySQL, MariaDB or SQLite database (the dialect of
+momo.yaml) and writes one model file
 per table into the model package (default: introspect.out, else the first
 local entry of packages, else ./models), plus the init migration and snapshot
 into the migration directory when it has none. Then run "momo generate" for
@@ -52,10 +53,18 @@ the generated code and "momo migrate baseline --version <init version>".
 For MySQL and MariaDB set dialects: [mysql] in momo.yaml; the value is a
 mysql:// or mariadb:// URL or a go-sql-driver DSN such as
 user:pass@tcp(host:3306)/app or user:pass@unix(/run/mysqld.sock)/app.
+--schema applies to PostgreSQL only.
 
 The value of --from-db is a database URL, "-" to read the URL from standard
 input, or the name of an environment variable that holds it. Prefer the last
 two: a URL on the command line is visible in the process list.
+
+For SQLite the value is the database file: a path, a sqlite: or file: URL, or
+the name of an environment variable that holds one. The file must exist, and it
+is opened read-only with the pure-Go driver: it is never written and keeps its
+journal mode. A SQLite table's AUTOINCREMENT, WITHOUT ROWID and STRICT
+options are written as the autoincrement, without_rowid and strict options of
+the momo.Model tag.
 
 Settings that the database cannot tell (Prisma updatedAt, Json shapes,
 Unsupported columns) go in the introspect section of momo.yaml: package and out

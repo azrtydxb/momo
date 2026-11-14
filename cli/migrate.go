@@ -394,7 +394,9 @@ func (l *cli) databaseURL() (string, error) {
 		}
 	case "":
 	default:
-		_, _ = fmt.Fprintln(l.errOut, "momo: warning: --url puts the database URL in the process list, where other users can read it; use MOMO_DATABASE_URL, migrate.url_env or --url - (stdin) instead")
+		if l.dialectName != string(dialect.SQLite) {
+			_, _ = fmt.Fprintln(l.errOut, "momo: warning: --url puts the database URL in the process list, where other users can read it; use MOMO_DATABASE_URL, migrate.url_env or --url - (stdin) instead")
+		}
 	}
 	if u == "" {
 		if name := l.file.Migrate.URLEnv[l.dialectName]; name != "" {

@@ -245,6 +245,35 @@ Two calls that did not work on MariaDB now do.
   time. The bound operand is now `CAST(? AS DATETIME(6))` on MySQL and MariaDB,
   so the call returns a `DATETIME`. Column operands render as before.
 
+### `momo generate --from-db` reads SQLite
+
+No change is needed. `momo generate --from-db` now also reads a SQLite
+database: set `dialects: [sqlite]` in `momo.yaml` and pass the file (a path, a
+`sqlite:` or `file:` URL, or an environment variable that holds one). The CLI
+opens it with the pure-Go driver `driver/sqlitepure`, so the binary needs no
+cgo, and opens it read-only, so the file is never written. A project that uses
+PostgreSQL, MySQL or MariaDB sees no difference.
+
+Two details can change what an existing SQLite project sees, and neither asks
+for an edit:
+
+- Inspection now reports an `INTEGER PRIMARY KEY` column as NOT NULL. SQLite
+  reports it as nullable when the DDL does not say NOT NULL, but the column is
+  the rowid and cannot hold NULL. A model that declares it NOT NULL no longer
+  differs from such a database.
+- A snapshot taken before this release holds such a column as nullable, so the
+  next `momo migrate diff` of an existing SQLite project can show one
+  `SET NOT NULL` rebuild of each table whose rowid alias the model declares NOT
+  NULL. It changes no data.
+
+The `momo.Model` marker tag also accepts the new options `autoincrement`,
+`without_rowid` and `strict`, which declare the SQLite table options of the same
+name. A model that does not use them is unchanged.
+
+`--schema` applies to PostgreSQL only. With MySQL, MariaDB or SQLite it is now
+a usage error (exit 2) that writes nothing; before, MySQL and MariaDB ignored
+it. Remove the flag from such a command.
+
 ## Upgrading to 0.11.0
 
 Two changes can need an edit in your code: an explicit `updated_at` in
