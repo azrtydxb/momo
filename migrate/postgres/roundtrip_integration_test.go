@@ -53,9 +53,30 @@ func applyStatements(t *testing.T, db *momo.DB, stmts []migrate.Statement) {
 	}
 }
 
+// concurrentIndexSchema is the schema of the database concurrentIndexDB opens.
+const concurrentIndexSchema = "public"
+
+// concurrentIndexDB opens a database private to t, for a test that runs CREATE
+// INDEX CONCURRENTLY. That statement waits for every other transaction that
+// is open in the same database, and the migration engine's session lock_timeout
+// (5s) applies to that wait, so on the shared test database any long
+// transaction of a test package running in parallel fails it with "canceling
+// statement due to lock timeout". A scratch database has no other sessions.
+// Objects land in its public schema, named by concurrentIndexSchema.
+func concurrentIndexDB(t *testing.T) *momo.DB {
+	t.Helper()
+	return testopen.PostgresIn(t, testdb.ScratchDatabase(t, "momo_cic_"))
+}
+
 func inspectNow(t *testing.T, db *momo.DB) *schema.Schema {
 	t.Helper()
-	got, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{Schemas: []string{testdb.Schema(t)}})
+	return inspectIn(t, db, testdb.Schema(t))
+}
+
+// inspectIn is inspectNow for the schema sch.
+func inspectIn(t *testing.T, db *momo.DB, sch string) *schema.Schema {
+	t.Helper()
+	got, err := inspectOnce(context.Background(), t, db, migrate.InspectOptions{Schemas: []string{sch}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +89,13 @@ func inspectNow(t *testing.T, db *momo.DB) *schema.Schema {
 // engineOn returns an engine on db's per-test schema for the migration directory fsys.
 func engineOn(t *testing.T, db *momo.DB, fsys fs.FS) *migrate.Engine {
 	t.Helper()
-	return migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithConfig(migrate.Config{Schemas: []string{testdb.Schema(t)}}))
+	return engineIn(t, db, testdb.Schema(t), fsys)
+}
+
+// engineIn is engineOn for the schema sch.
+func engineIn(t *testing.T, db *momo.DB, sch string, fsys fs.FS) *migrate.Engine {
+	t.Helper()
+	return migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithConfig(migrate.Config{Schemas: []string{sch}}))
 }
 
 // migrationFiles turns rendered statements into migration files, in order.
@@ -119,7 +146,7 @@ func roundTrip(t *testing.T, db *momo.DB, desired *schema.Schema) *schema.Schema
 }
 
 func TestPostgresObjects(t *testing.T) {
-	db := testopen.Postgres(t)
+	db := concurrentIndexDB(t)
 	desired := &schema.Schema{
 		Dialect:    "postgres",
 		Extensions: []schema.Extension{{Name: "vector"}},
@@ -158,7 +185,7 @@ func TestPostgresObjects(t *testing.T) {
 	if len(files) < 2 {
 		t.Fatalf("the CONCURRENTLY index must be split into its own migration file: %v", files)
 	}
-	e := engineOn(t, db, migratetest.FS(files))
+	e := engineIn(t, db, concurrentIndexSchema, migratetest.FS(files))
 	rep, err := e.Apply(context.Background(), migrate.ApplyOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -166,7 +193,7 @@ func TestPostgresObjects(t *testing.T) {
 	if len(rep.Applied) != len(files) {
 		t.Fatalf("applied %d of %d files: %+v", len(rep.Applied), len(files), rep)
 	}
-	got := inspectNow(t, db)
+	got := inspectIn(t, db, concurrentIndexSchema)
 	if !schema.Equal(got, desired) {
 		t.Fatalf("round trip has a diff:\n%s", migratetest.Diff(got, desired))
 	}
