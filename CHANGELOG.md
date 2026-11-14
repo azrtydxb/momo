@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.12.0](https://github.com/azrtydxb/momo/compare/v0.11.0...v0.12.0) (2026-11-14)
+
+
+### Features
+
+* **cli:** momo generate --from-db reads a SQLite database ([#141](https://github.com/azrtydxb/momo/issues/141)) ([9932cbf](https://github.com/azrtydxb/momo/commit/9932cbf95a66182c9e420a03626ea9cd9b7498d3))
+* **cli:** run momo migrate on SQLite, MySQL and MariaDB ([#139](https://github.com/azrtydxb/momo/issues/139)) ([32837f4](https://github.com/azrtydxb/momo/commit/32837f464f6d3fce60a84ee90aef58b984a53359))
+* **fromdb:** generate models from a MySQL or MariaDB database ([#134](https://github.com/azrtydxb/momo/issues/134)) ([367b3d6](https://github.com/azrtydxb/momo/commit/367b3d6f149c98f45bde3533566d33bd09ada7df))
+* ILike, NULLS ordering and aggregate Filter on every dialect ([#132](https://github.com/azrtydxb/momo/issues/132)) ([2913d4f](https://github.com/azrtydxb/momo/commit/2913d4f635ce3305fb45db1bb4a42b431d43c009))
+* **insert:** Explicit writes identity, serial and auto-increment values ([#138](https://github.com/azrtydxb/momo/issues/138)) ([c4bd145](https://github.com/azrtydxb/momo/commit/c4bd145426968b6eebb84fd8958623dbe497834a))
+* read generated keys back and upsert on a secondary key on MySQL ([#135](https://github.com/azrtydxb/momo/issues/135)) ([e8defaf](https://github.com/azrtydxb/momo/commit/e8defaf1894e140a16515db683d71972b62451c3))
+* **sqlfn:** Greatest, Least, Floor, Ceil; jsonop.TypeOf ([#137](https://github.com/azrtydxb/momo/issues/137)) ([c8101e9](https://github.com/azrtydxb/momo/commit/c8101e913846a0436c9c063bf9801be8d6857818))
+* SumInt, SumNumeric and AvgNumeric; Avg over any numeric column ([#140](https://github.com/azrtydxb/momo/issues/140)) ([efd2694](https://github.com/azrtydxb/momo/commit/efd26948089ea2af5df5b3dcb5495c075550ef5b))
+
+
+### Bug Fixes
+
+* **fromdb:** --check compares the model body, not only the header hash ([#130](https://github.com/azrtydxb/momo/issues/130)) ([a43e6cb](https://github.com/azrtydxb/momo/commit/a43e6cbcfe24f36b03433593408d8d22ae369af7))
+* jsonop.Contains and timeop intervals on MariaDB; MySQL server tests ([#142](https://github.com/azrtydxb/momo/issues/142)) ([c121dcf](https://github.com/azrtydxb/momo/commit/c121dcf7a25aaf16731361a32d22c2d54dfb51a1))
+
 ## [0.11.0](https://github.com/azrtydxb/momo/compare/v0.10.0...v0.11.0) (2026-11-13)
 
 _JSON null and SQL NULL are now kept apart, `updated_at` behaves the same on every write path, and `timeop` gains typed date arithmetic. It fixes three issues from the NovaCRM and Owl ports. Upgrading can need code changes where a JSON null was read as nil on PostgreSQL, or where a `DoUpdate` set `updated_at` explicitly; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.11.0/docs/upgrading.md). [Changes since 0.10.0](https://github.com/azrtydxb/momo/compare/v0.10.0...v0.11.0)._

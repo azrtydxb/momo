@@ -10,7 +10,7 @@ The mechanism is `momo migrate baseline`. It records migrations as applied
 without running them, after checking that the live database matches the
 snapshot of the version you name.
 
-## What Momo v0.11.0 does not do <!-- x-release-please-version -->
+## What Momo v0.12.0 does not do <!-- x-release-please-version -->
 
 There is no command that reads a database and writes the Go models for it. You
 write the models by hand to match the tables, as `models/models.go` does for
