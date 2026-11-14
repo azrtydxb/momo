@@ -1111,6 +1111,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#momo-migrate-runs-on-sqlite-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        momo migrate runs on SQLite, MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#ilike-on-sqlite-mysql-and-mariadb" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2048,6 +2059,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#momo-migrate-runs-on-sqlite-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        momo migrate runs on SQLite, MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#ilike-on-sqlite-mysql-and-mariadb" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2873,10 +2895,47 @@
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
 <h2 id="upgrading-to-0120">Upgrading to 0.12.0<a class="headerlink" href="#upgrading-to-0120" title="Permanent link">&para;</a></h2>
-<p>Nothing needs an edit. Three calls that returned <code>ErrUnsupported</code> on some
-dialects now return results, so code that relied on the error (a fallback
-branch, a test that expects the refusal) now takes the success path. Check the
-semantic differences below before you drop a workaround.</p>
+<p>No change is needed in your code. Two things can change what a command does,
+both below: a <code>momo.yaml</code> that lists several dialects, and a MySQL or MariaDB
+schema that the library generated earlier. Several calls that returned
+<code>ErrUnsupported</code> on some dialects now return results, so code that relied on
+the error (a fallback branch, a test that expects the refusal) now takes the
+success path. Check the semantic differences below before you drop a
+workaround.</p>
+<h3 id="momo-migrate-runs-on-sqlite-mysql-and-mariadb"><code>momo migrate</code> runs on SQLite, MySQL and MariaDB<a class="headerlink" href="#momo-migrate-runs-on-sqlite-mysql-and-mariadb" title="Permanent link">&para;</a></h3>
+<p>Before this release <code>momo migrate</code> ran the PostgreSQL dialect alone and exited 2
+for any other. It now runs every subcommand on SQLite (<code>--dialect sqlite</code>) and on MySQL and
+MariaDB (<code>--dialect mysql</code>; one dialect for both servers). A project with a
+single PostgreSQL dialect behaves as before. One thing does change: with
+<code>dialects: [sqlite, postgres]</code> in <code>momo.yaml</code>, <code>--dialect postgres</code> used to read
+the models for the first listed dialect (SQLite) and now reads them for the one
+you chose, so <code>diff</code> writes PostgreSQL column types. If you worked around the old
+behaviour by reordering <code>dialects</code>, you no longer need to; check the next
+<code>diff</code> of such a project. For the new dialects:</p>
+<ul>
+<li>SQLite uses the pure-Go driver, so the <code>momo</code> binary still needs no cgo. The
+  URL is a file path, a <code>file:</code> URI or <code>sqlite:///path.db</code>.</li>
+<li>MySQL and MariaDB take a <code>mysql://</code> or <code>mariadb://</code> URL, or a go-sql-driver
+  DSN, and the URL must name a database.</li>
+<li><code>momo generate</code> and <code>momo migrate diff</code> now map Go types to MySQL and
+  MariaDB column types (<code>gen/typemap</code>); before, every field failed with
+  <code>ErrUnsupported</code> there.</li>
+<li>DDL is not transactional on MySQL and MariaDB: a failed <code>apply</code> leaves the
+  statements that ran, and <code>status</code> shows the migration as <code>dirty</code> until
+  <code>resolve</code> settles it.</li>
+<li>On MySQL and MariaDB a string without <code>size:N</code> is <code>text</code>, which the servers
+  cannot use in a primary key, unique key or index (error 1170). The generator
+  refuses such a schema, naming the column and asking for <code>size:N</code>, before
+  anything is written. The same holds for a blob or json column in a key.</li>
+<li>A <code>types.Numeric</code> with a <code>precision</code> tag is <code>decimal(p,s)</code> on MySQL and
+  MariaDB; before, the library generated <code>text</code> for it. A schema that an earlier
+  release generated for these servers gets an <code>ALTER ... text</code> to
+  <code>decimal(p,s)</code> on the next <code>diff</code>, which rewrites the column and fails on a
+  value that is not a number. <code>decimal</code> cannot hold <code>NaN</code> or an infinity,
+  so a <code>types.Numeric</code> that carries one is refused when it is written. A precision without a scale means scale 0. The generator checks
+  that the precision is at most 65, the scale at most 30 and the scale not
+  above the precision. Without a <code>precision</code> tag the column stays <code>text</code>.</li>
+</ul>
 <h3 id="ilike-on-sqlite-mysql-and-mariadb"><code>ILike</code> on SQLite, MySQL and MariaDB<a class="headerlink" href="#ilike-on-sqlite-mysql-and-mariadb" title="Permanent link">&para;</a></h3>
 <p><code>momo.ILike</code> no longer fails on SQLite, MySQL and MariaDB. They render
 <code>LOWER(x) LIKE LOWER(?) ESCAPE '!'</code>; <code>momo.Not(momo.ILike(...))</code> is NOT ILIKE.

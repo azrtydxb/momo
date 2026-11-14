@@ -2149,8 +2149,7 @@ a later patch release of the same minor). The same typed builders that serve pgv
 render sqlite-vec's scalar functions, and the integration tests run them
 against a real SQLite database: <code>col_vector_sqlite_integration_test.go</code> in the root
 package and <code>TestSQLiteVectorParity</code> in <code>driver/sqlitedriver</code>. It needs cgo and
-does not build on Windows. The SQLite migration dialect (<code>migrate/sqlite</code>) is library only, and the
-generator refuses vector fields on SQLite, so you create the table with your
+does not build on Windows. The generator refuses vector fields on SQLite, so you create the table with your
 own DDL.</p>
 <p><strong>Columns.</strong> A vector is a plain <code>BLOB</code> column; sqlite-vec has no declared
 dimension, so the length is guarded by a <code>CHECK</code>. <code>momo.SQLiteVectorType</code> and

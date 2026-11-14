@@ -1502,8 +1502,8 @@ necessarily broken.</p>
 <p>A database is usable when a driver package for it exists under <code>driver/</code>:</p>
 <ul>
 <li>PostgreSQL: usable through <code>driver/pgxdriver</code> (vector builders: yes). Migrations: <code>migrate/postgres</code>, run by <code>momo migrate</code>.</li>
-<li>SQLite: usable through <code>driver/sqlitedriver</code> (needs cgo, not on Windows, vector builders: yes) and <code>driver/sqlitepure</code> (vector builders: no). Migrations: <code>migrate/sqlite</code>, library only (<code>momo migrate</code> does not select it).</li>
-<li>MySQL and MariaDB: usable through <code>driver/mysqldriver</code> (vector storage and builders depend on the server version). Migrations: <code>migrate/mysql</code>, library only (<code>momo migrate</code> does not select it).</li>
+<li>SQLite: usable through <code>driver/sqlitedriver</code> (needs cgo, not on Windows, vector builders: yes) and <code>driver/sqlitepure</code> (vector builders: no). Migrations: <code>migrate/sqlite</code>, run by <code>momo migrate</code>.</li>
+<li>MySQL and MariaDB: usable through <code>driver/mysqldriver</code> (vector storage and builders depend on the server version). Migrations: <code>migrate/mysql</code>, run by <code>momo migrate</code>.</li>
 </ul>
 <!-- /generated:status -->
 

@@ -1488,9 +1488,9 @@
 <h1 id="mysql-and-mariadb">MySQL and MariaDB<a class="headerlink" href="#mysql-and-mariadb" title="Permanent link">&para;</a></h1>
 <p>What works on MySQL and MariaDB today, and what does not. The driver is
 <code>driver/mysqldriver</code> (database/sql on <code>github.com/go-sql-driver/mysql</code>).
-The migration dialect <code>migrate/mysql</code> exists as a library; the <code>momo
-migrate</code> command does not run it (see <a href="#migrations">Migrations</a> and the
-generated status in <a href="../capabilities/">capabilities</a>).</p>
+The migration dialect <code>migrate/mysql</code> runs from the <code>momo migrate</code> command
+with <code>--dialect mysql</code> (see <a href="#migrations">Migrations</a> and the generated status
+in <a href="../capabilities/">capabilities</a>).</p>
 <h2 id="supported-servers">Supported servers<a class="headerlink" href="#supported-servers" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1777,9 +1777,16 @@ sparse and bit types return <code>ErrUnsupported</code> on MariaDB. Details and 
 locks with <code>GET_LOCK</code> and runs every migration, up and down, statement by
 statement, because DDL commits implicitly on these servers. Build the engine
 with <code>migrate.WithDialect</code> and the <code>mysqldriver</code> driver; the inspector, drift
-check and <code>-- momo:ddl</code> online DDL options work through it. The
-<code>momo migrate</code> command still builds only the PostgreSQL dialect, so it rejects
-MySQL and MariaDB. What the dialect reports and renders is in
+check and <code>-- momo:ddl</code> online DDL options work through it. The <code>momo migrate</code>
+command does the same for you: <code>--dialect mysql</code>, with a <code>mysql://</code> or
+<code>mariadb://</code> URL or a go-sql-driver DSN (one dialect for both servers; the
+server tells them apart). A string without <code>size:N</code> is <code>text</code>, and <code>text</code>,
+<code>blob</code> and <code>json</code> columns cannot be keyed: the generator refuses a model with
+one in a primary key, unique key, index or foreign key, naming the column, so a
+migration never fails half-way on error 1170. <code>types.Numeric</code> with a <code>precision</code>
+tag is <code>decimal(p,s)</code> (precision up to 65, scale up to 30, scale not above
+precision; no <code>NaN</code> or infinity), and a <code>vector.Vector</code> column is <code>vector(N)</code>,
+which needs MySQL 9.0 or MariaDB 11.7. What the dialect reports and renders is in
 <a href="../migrations/#9-mysql-and-mariadb">migrations.md</a>.</p>
 <h2 id="models-from-a-database">Models from a database<a class="headerlink" href="#models-from-a-database" title="Permanent link">&para;</a></h2>
 <p><code>momo generate --from-db</code> reads a MySQL 8.4, MySQL 9.7 or MariaDB 11.8

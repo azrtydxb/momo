@@ -1444,109 +1444,109 @@ has no array columns, so the generator rejects them there.</p>
 <td><code>int</code></td>
 <td>bigint</td>
 <td>INTEGER</td>
-<td>unsupported</td>
+<td>bigint</td>
 </tr>
 <tr>
 <td><code>int8</code></td>
 <td>smallint</td>
 <td>INTEGER</td>
-<td>unsupported</td>
+<td>tinyint</td>
 </tr>
 <tr>
 <td><code>int16</code></td>
 <td>smallint</td>
 <td>INTEGER</td>
-<td>unsupported</td>
+<td>smallint</td>
 </tr>
 <tr>
 <td><code>int32</code></td>
 <td>integer</td>
 <td>INTEGER</td>
-<td>unsupported</td>
+<td>int</td>
 </tr>
 <tr>
 <td><code>int64</code></td>
 <td>bigint</td>
 <td>INTEGER</td>
-<td>unsupported</td>
+<td>bigint</td>
 </tr>
 <tr>
 <td><code>float32</code></td>
 <td>real</td>
 <td>REAL</td>
-<td>unsupported</td>
+<td>float</td>
 </tr>
 <tr>
 <td><code>float64</code></td>
 <td>double precision</td>
 <td>REAL</td>
-<td>unsupported</td>
+<td>double</td>
 </tr>
 <tr>
 <td><code>bool</code></td>
 <td>boolean</td>
 <td>INTEGER</td>
-<td>unsupported</td>
+<td>tinyint(1)</td>
 </tr>
 <tr>
 <td><code>string</code></td>
 <td>text</td>
 <td>TEXT</td>
-<td>unsupported</td>
+<td>text</td>
 </tr>
 <tr>
 <td><code>string with size:N</code></td>
 <td>character varying(N)</td>
 <td>TEXT</td>
-<td>unsupported</td>
+<td>varchar(N)</td>
 </tr>
 <tr>
 <td><code>[]byte</code></td>
 <td>bytea</td>
 <td>BLOB</td>
-<td>unsupported</td>
+<td>blob</td>
 </tr>
 <tr>
 <td><code>time.Time</code></td>
 <td>timestamp with time zone</td>
 <td>TEXT</td>
-<td>unsupported</td>
+<td>datetime(6)</td>
 </tr>
 <tr>
 <td><code>types.UUID</code></td>
 <td>uuid</td>
 <td>TEXT</td>
-<td>unsupported</td>
+<td>char(36)</td>
 </tr>
 <tr>
 <td><code>uuid.UUID (github.com/google/uuid)</code></td>
 <td>uuid</td>
 <td>TEXT</td>
-<td>unsupported</td>
+<td>char(36)</td>
 </tr>
 <tr>
 <td><code>types.Date</code></td>
 <td>date</td>
 <td>TEXT</td>
-<td>unsupported</td>
+<td>text</td>
 </tr>
 <tr>
 <td><code>types.Numeric</code></td>
 <td>numeric</td>
 <td>TEXT</td>
-<td>unsupported</td>
+<td>text</td>
 </tr>
 <tr>
 <td><code>types.JSON[T]</code></td>
 <td>jsonb</td>
 <td>TEXT</td>
-<td>unsupported</td>
+<td>json</td>
 </tr>
 <tr>
 <td><code>vector.Vector</code></td>
 <td>vector(N)</td>
 <td>unsupported</td>
-<td>unsupported</td>
+<td>vector(N)</td>
 </tr>
 <tr>
 <td><code>vector.HalfVector</code></td>
@@ -1636,8 +1636,16 @@ has no array columns, so the generator rejects them there.</p>
 </table>
 <!-- /generated:typemap -->
 
-<p>The MySQL column is what <code>typemap.Map</code> returns for MySQL: the generator emits no
-MySQL models, so every Go type shows <code>unsupported</code> there until it does. Only an
+<p>The MySQL column is what <code>typemap.Map</code> returns for MySQL and MariaDB, which share
+it. Unsigned Go integers (<code>uint8</code>, <code>uint16</code>, <code>uint32</code>, <code>uint</code> and <code>uint64</code>) map to
+the unsigned column types, <code>int8</code> to <code>tinyint</code>, and <code>bool</code> to <code>tinyint(1)</code>.
+<code>types.Numeric</code> with a <code>precision</code> tag is <code>decimal(p,s)</code> (precision up to 65,
+scale up to 30, scale not above precision; a precision alone is scale 0, and
+<code>NaN</code> and infinity cannot be stored); without one it stays text, because a bare
+DECIMAL would round. A string without <code>size:N</code> is text, and the generator
+refuses text, blob and json in a primary key, unique key, index or foreign key
+on MySQL and MariaDB, naming the column and asking for <code>size:N</code>. <code>types.Date</code> stays text, as its codec
+stores it. <code>text</code> and <code>blob</code> hold 64 KiB, so use a <code>type</code> tag for more. Only an
 error that wraps <code>momo.ErrUnsupported</code> shows as <code>unsupported</code>; any other error
 from <code>typemap.Map</code> fails the generation of this table.</p>
 <p>The PostgreSQL type of <code>time.Time</code> can be changed for the whole project with the
