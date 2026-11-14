@@ -28,7 +28,7 @@ func seedTupleDocs(t *testing.T, db *momo.DB) {
 }
 
 func TestTupleRowAggregates(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		seedTupleDocs(t, db)
 		ctx := context.Background()
@@ -56,7 +56,7 @@ func TestTupleRowAggregates(t *testing.T) {
 }
 
 func TestTupleRowLeftJoinNullablePointers(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		seedTupleDocs(t, db)
 		left := momo.TableRef{Name: "documents", Alias: "l"}
@@ -87,7 +87,7 @@ func TestTupleRowLeftJoinNullablePointers(t *testing.T) {
 }
 
 func TestTupleRowSubqueryColumnAndCTE(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		seedTupleDocs(t, db)
 		ctx := context.Background()
@@ -132,7 +132,7 @@ func TestTupleRowSubqueryColumnAndCTE(t *testing.T) {
 // SUM over no rows is NULL; a pointer type parameter reads it as nil, and a
 // non-empty set as the value.
 func TestTupleRowNullableAggregate(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		seedTupleDocs(t, db)
 		ctx := context.Background()

@@ -16,7 +16,7 @@ import (
 )
 
 func TestResultHelpers(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := context.Background()
 		for i := 0; i < 7; i++ {
@@ -63,7 +63,7 @@ func TestResultHelpers(t *testing.T) {
 // once, and no row is skipped or repeated. OFFSET paging would repeat rows
 // after a delete or skip them; keyset paging on the primary key cannot.
 func TestBatchesUnderConcurrentInserts(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := context.Background()
 		for i := 0; i < 6; i++ {
