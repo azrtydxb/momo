@@ -42,7 +42,7 @@ func seedTitles(t *testing.T, db *momo.DB, titles ...string) {
 // Catches: Substr positions bound as parameters (PostgreSQL rejects the
 // ungrouped expression) and a wrong substring.
 func TestSubstrGroupBy(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := context.Background()
 		for _, title := range []string{"abcdef", "abcxyz", "zzz"} {
@@ -61,9 +61,13 @@ func TestSubstrGroupBy(t *testing.T) {
 
 func createNodes(t *testing.T, db *momo.DB) {
 	t.Helper()
+	keyType := "text" // a MySQL key column needs a length
+	if db.Dialect().Name == dialect.MySQL {
+		keyType = "varchar(64)"
+	}
 	for _, s := range []string{
 		"DROP TABLE IF EXISTS nodes",
-		"CREATE TABLE nodes (name text primary key, hostname text not null, hits bigint not null default 0)",
+		"CREATE TABLE nodes (name " + keyType + " primary key, hostname text not null, hits bigint not null default 0)",
 	} {
 		if _, err := db.Driver().Exec(context.Background(), s, nil); err != nil {
 			t.Fatalf("%s: %v", s, err)
@@ -88,7 +92,7 @@ func upsertNode(ctx context.Context, db *momo.DB, host string, hits int64) error
 // Catches: the CASE choosing the wrong branch (an empty hostname wiping the
 // stored one), and arithmetic overwriting instead of accumulating.
 func TestUpsertCaseAndArithmetic(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		createNodes(t, db)
 		ctx := context.Background()
 		check := func(host string, hits int64) {
@@ -124,7 +128,7 @@ func TestUpsertCaseAndArithmetic(t *testing.T) {
 // Catches: any of lower, upper, length, concat, CAST and COALESCE over
 // expressions rendering SQL the databases reject or computing the wrong value.
 func TestStringCastCoalesceHelpers(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := context.Background()
 		for _, s := range []string{
@@ -137,9 +141,14 @@ func TestStringCastCoalesceHelpers(t *testing.T) {
 		}
 		docs := momo.TableRef{Name: "documents"}
 
-		// lower, cast and sum grouped: both ABC rows fold into one.
+		// lower, cast and sum grouped: both ABC rows fold into one. The cast
+		// type is not portable: MySQL has no BIGINT target, it casts to SIGNED.
+		intType := "bigint"
+		if d == dialect.MySQL {
+			intType = "signed"
+		}
 		g, err := momo.Select[strCount](db).From(docs).
-			Columns(sqlfn.Lower(suite.DocTitle), sqlfn.Cast[int64](momo.Sum(suite.DocTenantID), "bigint")).
+			Columns(sqlfn.Lower(suite.DocTitle), sqlfn.Cast[int64](momo.Sum(suite.DocTenantID), intType)).
 			GroupBy(sqlfn.Lower(suite.DocTitle)).All(ctx)
 		if err != nil || len(g) != 1 || g[0].S != "abc" || g[0].N != 5 {
 			t.Fatalf("lower + cast(sum) = %+v, %v", g, err)
@@ -166,7 +175,7 @@ func TestStringCastCoalesceHelpers(t *testing.T) {
 // Catches: computed expressions that compile but render SQL the databases
 // reject in WHERE or ORDER BY, or order/filter on the wrong value.
 func TestComputedExpressionsInWhereAndOrderBy(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := context.Background()
 		seedTitles(t, db, "abcdef", "B", "abcxyz", "a")
@@ -203,8 +212,8 @@ func TestComputedExpressionsInWhereAndOrderBy(t *testing.T) {
 
 // Catches: CurrentSchema returning nothing on PostgreSQL.
 func TestCurrentSchemaExecutes(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
-		if d != dialect.Postgres {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		if d == dialect.SQLite {
 			t.Skip("current_schema() is PostgreSQL and MySQL only")
 		}
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
