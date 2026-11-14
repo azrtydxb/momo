@@ -245,7 +245,7 @@ func TestGenerateFromDBCheckBodyEqualsDatabase(t *testing.T) {
 	// The schema changes, and the model is edited by hand to match: the body
 	// is what a database with the change generates.
 	execAll(t, dsn, []string{`ALTER TABLE accounts ADD COLUMN nickname text`})
-	if code, out, errOut := fromDB(t, "--no-snapshot", "--out", "regenerated", "--pkg", "models"); code != 0 {
+	if code, out, errOut := fromDB(t, "--no-snapshot", "--out", "regenerated", "--package", "models"); code != 0 {
 		t.Fatalf("regenerate: exit %d\n%s%s", code, out, errOut)
 	}
 	regenerated, err := os.ReadFile(filepath.Join(root, "regenerated", "accounts_model.go")) //nolint:gosec // test path
