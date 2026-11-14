@@ -5,6 +5,7 @@ package momo
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"unicode"
 
@@ -687,9 +688,37 @@ type fn struct {
 	name string
 	args []Expr
 	star bool
+	// pgCast, when set, makes PostgreSQL write CAST(call AS pgCast) around the
+	// whole call (and its FILTER or OVER clause); other dialects are not
+	// affected. Aggregates use it to give the declared Go type a result type
+	// the driver scans (SumInt, Avg).
+	pgCast string
 }
 
-func (f fn) AppendSQL(b *Builder) {
+func (f fn) AppendSQL(b *Builder) { f.appendWrapped(b, nil) }
+
+// castable is a call that may need a CAST around itself plus the clauses that
+// follow it (FILTER, OVER). appendWrapped writes the call, then tail, inside
+// the cast.
+type castable interface {
+	appendWrapped(b *Builder, tail func(*Builder))
+}
+
+func (f fn) appendWrapped(b *Builder, tail func(*Builder)) {
+	wrap := f.pgCast != "" && b.d.Name == dialect.Postgres
+	if wrap {
+		b.WriteString("CAST(")
+	}
+	f.appendCall(b)
+	if tail != nil {
+		tail(b)
+	}
+	if wrap {
+		b.WriteString(" AS " + f.pgCast + ")")
+	}
+}
+
+func (f fn) appendCall(b *Builder) {
 	b.WriteString(f.name)
 	b.writeByte('(')
 	if f.star {
@@ -708,7 +737,9 @@ type typedFn[T any] struct{ fn }
 
 func (typedFn[T]) resultType() T { var z T; return z }
 
-// Number is the constraint of the numeric aggregates SUM.
+// Number is the constraint of Sum, which keeps the column's own type as its
+// result. For int16 and int32 columns use SumInt; for an exact result use
+// SumNumeric.
 type Number interface{ ~int64 | ~float64 }
 
 // Agg is a typed aggregate expression such as COUNT(*) or SUM(col). Besides
@@ -747,10 +778,19 @@ func CountDistinct(e Expr) Agg[int64] {
 // wrap it in Coalesce. Scanning NULL into a plain int64 returns an error.
 func Sum[T Number](e Expression[T]) Agg[T] { return newFnAgg[T](fn{name: "SUM", args: []Expr{e}}) }
 
-// Avg is AVG(expr) as float64. It is NULL over zero rows: scan it into *float64
-// (or sql.NullFloat64), or wrap it in Coalesce.
-func Avg(e Expression[float64]) Agg[float64] {
-	return newFnAgg[float64](fn{name: "AVG", args: []Expr{e}})
+// Avg is AVG(expr) as float64 over an integer, float or types.Numeric column.
+// It is NULL over zero rows: scan it into *float64 (or sql.NullFloat64), or
+// wrap it in Coalesce. PostgreSQL returns numeric for an integer or numeric
+// argument, so Momo writes CAST(AVG(x) AS double precision) there; a float
+// column is left as AVG(x). MySQL returns DECIMAL, which database/sql reads
+// into a float64, and SQLite returns a real. The result is a float and so not
+// exact; use AvgNumeric for an exact average.
+func Avg[T Averageable](e Expression[T]) Agg[float64] {
+	f := fn{name: "AVG", args: []Expr{e}}
+	if k := reflect.TypeFor[T]().Kind(); k != reflect.Float32 && k != reflect.Float64 {
+		f.pgCast = "double precision"
+	}
+	return newFnAgg[float64](f)
 }
 
 // Min is MIN(expr) (NULL over zero rows). T is any type the database can
