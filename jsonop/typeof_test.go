@@ -21,16 +21,17 @@ func TestTypeOfGolden(t *testing.T) {
 		d    dialect.Name
 		want string
 	}{
-		{"pg", dialect.Postgres, `SELECT jsonb_typeof("events"."after") FROM "documents"`},
+		{"pg", dialect.Postgres, `SELECT jsonb_typeof("events"."after") FROM "events"`},
 		{"sqlite", dialect.SQLite, `SELECT CASE json_type("events"."after") WHEN 'object' THEN 'object' WHEN 'array' THEN 'array'` +
 			` WHEN 'text' THEN 'string' WHEN 'integer' THEN 'number' WHEN 'real' THEN 'number'` +
-			` WHEN 'true' THEN 'boolean' WHEN 'false' THEN 'boolean' WHEN 'null' THEN 'null' END FROM "documents"`},
+			` WHEN 'true' THEN 'boolean' WHEN 'false' THEN 'boolean' WHEN 'null' THEN 'null' END FROM "events"`},
 		{"mysql", dialect.MySQL, "SELECT CASE JSON_TYPE(`events`.`after`) WHEN 'OBJECT' THEN 'object' WHEN 'ARRAY' THEN 'array'" +
 			" WHEN 'STRING' THEN 'string' WHEN 'INTEGER' THEN 'number' WHEN 'UNSIGNED INTEGER' THEN 'number'" +
 			" WHEN 'DOUBLE' THEN 'number' WHEN 'DECIMAL' THEN 'number'" +
-			" WHEN 'BOOLEAN' THEN 'boolean' WHEN 'NULL' THEN 'null' END FROM `documents`"},
+			" WHEN 'BOOLEAN' THEN 'boolean' WHEN 'NULL' THEN 'null' END FROM `events`"},
 	} {
-		got, err := exprtest.CompileColumns(c.d, jsonop.TypeOf(jsonDoc))
+		got, err := momo.Select[exprtest.Tally](exprtest.DB(c.d)).From(momo.TableRef{Name: "events"}).
+			Columns(jsonop.TypeOf(jsonDoc)).SQL()
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
