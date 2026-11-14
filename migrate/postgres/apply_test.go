@@ -44,23 +44,23 @@ func tableExistsIn(t *testing.T, db *momo.DB, schemaName, table string) bool {
 // transaction (PostgreSQL rejects it inside one), leave a valid index, and
 // record the version as applied in the history.
 func TestCreateIndexConcurrentlyApply(t *testing.T) {
-	db := testopen.Postgres(t)
+	db := concurrentIndexDB(t)
 	ctx := context.Background()
 	fsys := migratetest.WithSum(t, fstest.MapFS{
 		"20260101000000_a.up.sql":   {Data: []byte("CREATE TABLE d (id bigint PRIMARY KEY, title text);")},
 		"20260101000001_idx.up.sql": {Data: []byte("-- momo:no-transaction\nCREATE INDEX CONCURRENTLY d_title ON d (title);")},
 	})
-	e := engineOn(t, db, fsys)
+	e := engineIn(t, db, concurrentIndexSchema, fsys)
 	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	var valid bool
-	queryOne(t, db, `SELECT indisvalid FROM pg_index WHERE indexrelid = to_regclass(quote_ident('`+testdb.Schema(t)+`')||'.d_title')`, &valid)
+	queryOne(t, db, `SELECT indisvalid FROM pg_index WHERE indexrelid = to_regclass(quote_ident('`+concurrentIndexSchema+`')||'.d_title')`, &valid)
 	if !valid {
 		t.Fatal("concurrent index must be valid")
 	}
 	var state string
-	queryOne(t, db, `SELECT status FROM `+testdb.Schema(t)+`.momo_migrations WHERE version = '20260101000001'`, &state)
+	queryOne(t, db, `SELECT status FROM `+concurrentIndexSchema+`.momo_migrations WHERE version = '20260101000001'`, &state)
 	if state != "applied" {
 		t.Fatalf("history status = %q, want applied", state)
 	}
