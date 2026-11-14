@@ -40,9 +40,13 @@ import (
 // (PostgreSQL renders OVERRIDING SYSTEM VALUE), so the statement can hit an
 // existing row. A model whose identity is zero is inserted with a generated
 // identity. Mixing both in one Models call is refused with ErrValidation.
-// On MySQL and MariaDB the statement renders ON DUPLICATE KEY UPDATE, and a
-// conflict target that is not the table's only unique key fails with
-// ErrUnsupported; a dialect with neither form fails with ErrUnsupported.
+// On MySQL and MariaDB the statement renders ON DUPLICATE KEY UPDATE, which
+// cannot name a key, so the target must be a unique key of the table and no
+// other unique key may be able to conflict: another key is allowed only when it
+// is made of auto-increment columns the insert leaves out (an auto-increment
+// primary key next to UNIQUE(email), the key left zero). Any other target
+// fails with ErrUnsupported and the message names the reason; a dialect with
+// neither form fails with ErrUnsupported.
 func Upsert[T any, PT Modeler[T]](q Querier) InsertQuery[T] {
 	i := Insert[T, PT](q)
 	i.i.upsert = true

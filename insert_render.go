@@ -144,7 +144,11 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 			b.WriteString(" DEFAULT VALUES")
 		}
 	}
-	q.renderConflict(b)
+	written := make([]string, len(p.cols))
+	for i, ci := range p.cols {
+		written[i] = q.meta.Columns[ci].Name
+	}
+	q.renderConflict(b, written)
 	renderReturning(b, q.meta, q.i.returning, func(col string) error {
 		return q.verr(col, "Returning: column %q is not mapped by %s", col, q.meta.Table)
 	})
@@ -463,7 +467,9 @@ func renderWhere(b *Builder, preds []Predicate) {
 	And(preds...).AppendSQL(b)
 }
 
-func (q InsertQuery[T]) renderConflict(b *Builder) {
+// renderConflict writes the conflict clause. written names the columns the
+// statement writes, which MySQL's conflict-target rule needs.
+func (q InsertQuery[T]) renderConflict(b *Builder, written []string) {
 	if len(q.i.actionWhere) > 0 && q.i.conflict != conflictUpdate {
 		b.SetErr(q.verr("", "Where is only valid after DoUpdate (or on Upsert): there is no DO UPDATE to condition"))
 		return
@@ -472,7 +478,7 @@ func (q InsertQuery[T]) renderConflict(b *Builder) {
 		return
 	}
 	if b.Dialect().OnDuplicateKey {
-		q.renderMySQLConflict(b)
+		q.renderMySQLConflict(b, written)
 		return
 	}
 	if !b.Dialect().OnConflict {
