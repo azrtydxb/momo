@@ -70,6 +70,28 @@ passes, and a plain run rewrites only the header line. A file whose body
 differs is still stale or a conflict, and `momo generate` without `--from-db`
 is unchanged.
 
+### MySQL and MariaDB: graph writes, `FindOrCreate` and upsert targets
+
+Calls that returned `ErrUnsupported` on MySQL or MariaDB now work. No existing
+working code changes behaviour.
+
+- `momo.CreateGraph` works on MySQL and MariaDB. MariaDB reads the generated
+  keys with `INSERT ... RETURNING`. MySQL reads `LAST_INSERT_ID` after each
+  statement and inserts has-many and many-to-many children one row per
+  statement inside the graph's transaction, so every key is exact whatever
+  `innodb_autoinc_lock_mode` is. A bulk of children that mixes zero and explicit
+  keys is `ErrValidation` on MySQL.
+- `momo.FindOrCreate` works on MySQL and MariaDB. It runs in a transaction as a
+  plain insert and, on a unique violation, re-selects the row by key with a
+  shared-lock read, so a call that finds an existing row costs one failed
+  insert and one select.
+- An upsert on a unique key other than the primary key is accepted on MySQL and
+  MariaDB when every other unique key is made only of auto-increment columns
+  the insert leaves out: an auto-increment primary key next to `UNIQUE(email)`,
+  upserting on `email` with a zero identity. Every other case is still
+  `ErrUnsupported`, and the error now says which unique key is the problem.
+- A plain multi-row `Models` insert on MySQL still writes no keys back.
+
 ### `momo generate --from-db` reads MySQL and MariaDB
 
 Besides PostgreSQL, the command now inspects a MySQL 8.4, MySQL 9.7 or

@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"time"
 )
 
 // Graph writes are explicit and opt-in. CreateGraph writes a parent and the
@@ -15,7 +17,9 @@ import (
 //
 // Every row goes through the ordinary insert path (InsertQuery), so field
 // hooks, automatic timestamps, Go-side defaults and validation run exactly as
-// for a plain Insert, and generated columns are read back with RETURNING.
+// for a plain Insert, and generated columns are read back with RETURNING (on
+// MariaDB with INSERT ... RETURNING, on MySQL with LAST_INSERT_ID, see
+// CreateGraph).
 
 // Association is one relation listed for CreateGraph. It is produced only by
 // Relation.Include, so unlisted relations are never written.
@@ -165,14 +169,22 @@ func (r Relation[P, C]) bindChild(p *P, c *C, key []any) error {
 // keys and foreign keys already written into them; do not reuse them as if
 // they were unsaved.
 //
-// CreateGraph needs RETURNING to read generated keys back: a dialect without it
-// (MySQL) fails with ErrUnsupported before a transaction is opened.
+// Generated keys are read back with RETURNING on PostgreSQL and SQLite and with
+// INSERT ... RETURNING on MariaDB. MySQL has no RETURNING, so the keys come
+// from LAST_INSERT_ID, read after each statement: a has-many or many-to-many
+// bulk is inserted one row per statement inside the graph's transaction (a
+// savepoint on a Tx), because the keys of one multi-row INSERT are not
+// guaranteed consecutive under innodb_autoinc_lock_mode 2, the MySQL 8
+// default. Keys are never guessed. The statements share one clock read, so the
+// children get the same automatic timestamps as a bulk insert. On MySQL a bulk
+// whose children mix zero and explicit keys fails with ErrValidation, and a
+// generated key on a non-integer field fails with ErrUnsupported.
 func CreateGraph[P any, PP Modeler[P]](ctx context.Context, q Querier, p *P, includes ...Association[P]) error {
 	if p == nil {
 		return graphErr("", "CreateGraph(nil)")
 	}
-	if !q.Dialect().Returning {
-		return &Error{Kind: ErrUnsupported, Op: "create graph", Table: metaOf[P, PP]().Table, Err: errors.New("CreateGraph needs RETURNING to read generated keys back")}
+	if d := q.Dialect(); !d.Returning && !d.InsertReturning && !d.OnDuplicateKey {
+		return &Error{Kind: ErrUnsupported, Op: "create graph", Table: metaOf[P, PP]().Table, Err: errors.New("CreateGraph needs RETURNING or LAST_INSERT_ID to read generated keys back")}
 	}
 	fn := func(tx *Tx) error {
 		for _, inc := range includes {
@@ -196,19 +208,30 @@ func CreateGraph[P any, PP Modeler[P]](ctx context.Context, q Querier, p *P, inc
 // insertModel inserts m through the ordinary insert path and reads generated
 // columns back into it when the dialect has RETURNING.
 func insertModel[T any](ctx context.Context, q Querier, meta *Meta[T], m *T) error {
-	_, err := runInsert(ctx, q, InsertQuery[T]{q: q, meta: meta}.Model(m), m)
+	return insertModelAt(ctx, q, meta, m, time.Time{})
+}
+
+// insertModelAt is insertModel with the statement clock fixed to clock (the
+// zero time reads it per statement), so several one-row inserts of a graph
+// share the automatic timestamps of one bulk insert.
+func insertModelAt[T any](ctx context.Context, q Querier, meta *Meta[T], m *T, clock time.Time) error {
+	iq := InsertQuery[T]{q: q, meta: meta, clock: clock}.Model(m)
+	_, err := runInsert(ctx, q, iq, m)
 	return err
 }
 
 // insertModels inserts ms with the chunked bulk insert and reads generated
-// columns back into each element, in order. It needs RETURNING (CreateGraph
-// checks that before it opens a transaction).
+// columns back into each element, in order. It needs RETURNING, or on MySQL
+// LAST_INSERT_ID (CreateGraph checks that before it opens a transaction).
 func insertModels[T any](ctx context.Context, q Querier, meta *Meta[T], ms []T) error {
 	switch len(ms) {
 	case 0:
 		return nil
 	case 1:
 		return insertModel(ctx, q, meta, &ms[0])
+	}
+	if d := q.Dialect(); !d.Returning && !d.InsertReturning {
+		return insertModelsLastID(ctx, q, meta, ms)
 	}
 	rows, err := InsertQuery[T]{q: q, meta: meta}.Models(ms).ReturningAll().Rows(ctx)
 	if err != nil {
@@ -242,16 +265,64 @@ func insertModels[T any](ctx context.Context, q Querier, meta *Meta[T], ms []T) 
 	return nil
 }
 
+// insertModelsLastID is insertModels for MySQL, which has no RETURNING: it
+// reads the generated keys through LAST_INSERT_ID. A model without a generated
+// identity key, or whose key is generated Go-side, or whose rows all carry
+// explicit keys, is a plain bulk insert. Otherwise every key must be zero (a
+// mix fails with ErrValidation) and the rows are inserted one per statement,
+// each followed by its own LAST_INSERT_ID, so every key is exact whatever
+// innodb_autoinc_lock_mode is (with mode 2 the keys of one multi-row statement
+// are not guaranteed consecutive). The statements share one clock read, so the
+// rows get the same automatic timestamps as one bulk insert would give.
+func insertModelsLastID[T any](ctx context.Context, q Querier, meta *Meta[T], ms []T) error {
+	bulk := InsertQuery[T]{q: q, meta: meta}
+	id := meta.Identity
+	if id < 0 || id >= len(meta.Columns) || meta.Columns[id].Flags&FlagIdentity == 0 || bulk.isIDGenColumn(id) {
+		_, err := bulk.Models(ms).Exec(ctx)
+		return err
+	}
+	zero := 0
+	for i := range ms {
+		if reflect.ValueOf(meta.Value(&ms[i], id)).IsZero() {
+			zero++
+		}
+	}
+	switch zero {
+	case 0:
+		_, err := bulk.Models(ms).Exec(ctx) // explicit keys are written and kept
+		return err
+	case len(ms):
+	default:
+		return &Error{Kind: ErrValidation, Op: "insert", Table: meta.Table, Column: meta.Columns[id].Name,
+			Err: errors.New("models mix explicit and zero generated keys; MySQL cannot read the generated keys of such a batch back: split them into separate calls")}
+	}
+	clock := q.conn().now()
+	for i := range ms {
+		if err := insertModelAt(ctx, q, meta, &ms[i], clock); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // runInsert executes iq (which holds exactly the model m). With RETURNING it
 // scans the returned row into m and reports whether a row was inserted; an
 // ON CONFLICT DO NOTHING that hit a conflict returns no row, so it reports
-// false. A model with an identity column needs RETURNING to read it back.
+// false. A model with an identity column needs RETURNING to read it back
+// (INSERT ... RETURNING on MariaDB). MySQL has none: a plain insert reads the
+// key with LAST_INSERT_ID, and an insert with a conflict clause cannot.
 func runInsert[T any](ctx context.Context, q Querier, iq InsertQuery[T], m *T) (bool, error) {
-	if !q.Dialect().Returning {
-		if iq.meta.Identity >= 0 {
-			return false, newError(ErrUnsupported, "insert", iq.meta.Table, errors.New("identity read-back needs RETURNING"))
+	if d := q.Dialect(); !d.Returning && !d.InsertReturning {
+		if iq.meta.Identity >= 0 && (!d.OnDuplicateKey || iq.i.upsert || iq.i.conflict != conflictNone) {
+			return false, newError(ErrUnsupported, "insert", iq.meta.Table, errors.New("identity read-back needs RETURNING; MySQL reads it only for a plain insert (LAST_INSERT_ID), not for one with a conflict clause"))
+		}
+		if iq.meta.Identity >= 0 && iq.leavesKeyToServer() && !identityIsInteger(iq.meta) {
+			return false, newError(ErrUnsupported, "insert", iq.meta.Table, errors.New("the generated identity key is not an integer field, and MySQL reads it only as an integer (LAST_INSERT_ID)"))
 		}
 		res, err := iq.Exec(ctx)
+		if err == nil && iq.meta.Identity >= 0 && iq.leavesKeyToServer() && res.InsertID == 0 {
+			return false, newError(ErrUnsupported, "insert", iq.meta.Table, errors.New("the driver did not report the generated key (it must implement InsertIDExecer)"))
+		}
 		return res.RowsAffected > 0, err
 	}
 	rows, err := iq.ReturningAll().Rows(ctx)
@@ -305,8 +376,28 @@ func runInsert[T any](ctx context.Context, q Querier, iq InsertQuery[T], m *T) (
 // Under READ COMMITTED the conflicting insert waits for a concurrent
 // transaction and the re-select then sees its row. Under REPEATABLE READ or
 // SERIALIZABLE the re-select can miss a row committed after the snapshot and
-// returns ErrNotFound. A dialect without ON CONFLICT or RETURNING (MySQL)
-// returns ErrUnsupported before any statement runs.
+// returns ErrNotFound.
+//
+// MySQL and MariaDB have no ON CONFLICT DO NOTHING that reports whether a row
+// was inserted: with a no-op ON DUPLICATE KEY UPDATE the driver's
+// clientFoundRows makes an inserted row and an untouched existing row both
+// report one affected row (and MariaDB's RETURNING returns the row either
+// way), so created could not be told. FindOrCreate therefore runs in a
+// transaction (a savepoint on a Tx) as a plain INSERT, which on MariaDB reads
+// the generated key with INSERT ... RETURNING and on MySQL with LAST_INSERT_ID;
+// when the insert fails with a unique violation, it re-selects the row by key
+// with a shared-lock read (FOR SHARE, LOCK IN SHARE MODE on MariaDB), which
+// reads the latest committed row at any isolation level, so the REPEATABLE
+// READ miss above does not occur. Shared locks do not conflict with each
+// other, so callers that lost the same race do not block one another there; if
+// the first inserter rolls back instead of committing, the waiting callers can
+// still deadlock (MySQL error 1213, ErrSerialization) and one retries. On a
+// caller's Tx the savepoint release does not free the locks: InnoDB keeps the
+// locks taken after a savepoint until the outer transaction ends. The cost is
+// one extra round trip (the failed insert, then the select) when the row
+// exists. A unique violation on another key than key still fails with
+// ErrUniqueViolation. A DB pinned with OnConn cannot open the transaction and
+// fails with ErrUnsupported.
 func FindOrCreate[T any, PT Modeler[T]](ctx context.Context, q Querier, key []ColumnRef, m *T) (created bool, err error) {
 	meta := metaOf[T, PT]()
 	if m == nil {
@@ -323,7 +414,11 @@ func FindOrCreate[T any, PT Modeler[T]](ctx context.Context, q Querier, key []Co
 		}
 		preds[i] = binOp{k, " = ", argExpr{v: meta.Value(m, ci), flags: meta.Columns[ci].Flags}}
 	}
-	if d := q.Dialect(); !d.OnConflict || !d.Returning {
+	d := q.Dialect()
+	if d.OnDuplicateKey && !d.OnConflict {
+		return findOrCreateMySQL[T, PT](ctx, q, meta, preds, m)
+	}
+	if !d.OnConflict || !d.Returning {
 		return false, newError(ErrUnsupported, "find or create", meta.Table, errors.New("FindOrCreate needs ON CONFLICT and RETURNING"))
 	}
 	iq := InsertQuery[T]{q: q, meta: meta}.Model(m).OnConflict(key...).DoNothing()
@@ -348,6 +443,46 @@ func FindOrCreate[T any, PT Modeler[T]](ctx context.Context, q Querier, key []Co
 	}
 	*m = row
 	return false, nil
+}
+
+// findOrCreateMySQL is FindOrCreate for MySQL and MariaDB (see FindOrCreate):
+// a plain insert in an atomic scope, then, on a unique violation, a locking
+// select by key. preds select the row by key from m.
+func findOrCreateMySQL[T any, PT Modeler[T]](ctx context.Context, q Querier, meta *Meta[T], preds []Predicate, m *T) (created bool, err error) {
+	err = runAtomic(ctx, q, "find or create", meta.Table, func(sq Querier) error {
+		var ierr error
+		created, ierr = runInsert(ctx, sq, InsertQuery[T]{q: sq, meta: meta}.Model(m), m)
+		if ierr == nil {
+			return nil
+		}
+		created = false
+		if !errors.Is(ierr, ErrUniqueViolation) {
+			return ierr
+		}
+		row, serr := Select[T, PT](sq).Where(preds...).ForShare().One(ctx)
+		switch {
+		case serr == nil:
+			*m = row
+			return nil
+		case !errors.Is(serr, ErrNotFound):
+			return serr
+		}
+		if meta.SoftDelete >= 0 {
+			n, cerr := Select[T, PT](sq).WithDeleted().Where(preds...).Count(ctx)
+			if cerr != nil {
+				return cerr
+			}
+			if n > 0 {
+				return &Error{Kind: ErrUniqueViolation, Op: "find or create", Table: meta.Table,
+					Err: errors.New("the key is held by a soft-deleted row; FindOrCreate does not return or restore deleted rows")}
+			}
+		}
+		return ierr // the violation was on another unique key than the one FindOrCreate was given
+	})
+	if err != nil {
+		return false, err
+	}
+	return created, nil
 }
 
 // UpsertByPK inserts m, or updates the row with the same primary key:

@@ -1460,6 +1460,14 @@ res, err := momo.Insert[models.Meter](q).
   the type of a bound `Value` there.
 - MySQL has no `ON CONFLICT` (`ErrUnsupported`) but a plain `FromSelect` works; a FROM-less select with a
   `WHERE` renders `FROM DUAL`.
+- MySQL and MariaDB upsert with `ON DUPLICATE KEY UPDATE`, which cannot name a key,
+  so the conflict target must be a unique key and no other unique key may be able
+  to conflict. The one relaxation: every other unique key is made only of
+  auto-increment columns the insert leaves out, e.g. an auto-increment primary
+  key plus `UNIQUE(email)`, upserting on `email` with a zero identity. Anything
+  else (the primary key as target next to another unique key, a second ordinary
+  unique key, an explicit `InsertQuery.Values` key, a model without a schema) is
+  `ErrUnsupported` and the message says which key is the problem.
 
 - Upsert never overwrites pk, version, soft-delete or created_at columns, and does
   not advance or check the version (no optimistic-lock detection).
@@ -1942,15 +1950,26 @@ Rules and limits:
   children inserted then linked; hooks, timestamps and defaults run. On a `*Tx` it
   runs in a savepoint. Nil parent, a model as its own child, or a NULL key that
   must be copied: `ErrValidation`. Has-many and many-to-many children go in as
-  chunked bulk inserts (1000 children = one statement). A dialect without
-  `RETURNING` gives `ErrUnsupported` before a transaction opens. DON'T list a
+  chunked bulk inserts (1000 children = one statement). Keys are read back with
+  `RETURNING` (MariaDB: `INSERT ... RETURNING`); MySQL has none and reads
+  `LAST_INSERT_ID` after each statement, so its children go in one row per
+  statement inside the graph's transaction (never guessed consecutive keys:
+  `innodb_autoinc_lock_mode` 2, the MySQL 8 default, does not guarantee them);
+  children that mix zero and explicit keys are `ErrValidation` there and a
+  non-integer generated key is `ErrUnsupported`. A dialect with neither
+  `RETURNING` nor `LAST_INSERT_ID` gives `ErrUnsupported` before a transaction
+  opens. DON'T list a
   many-to-many relation whose children are already stored: they are inserted
   again and fail with `ErrUniqueViolation`; use `Link` for existing rows.
 - `FindOrCreate` needs a UNIQUE constraint on exactly the key columns. It
   overwrites your struct with the stored row when it exists; a soft-deleted
   row is not found, it fails with `ErrUniqueViolation`. Under REPEATABLE READ/SERIALIZABLE the re-select can return
   `ErrNotFound`: retry the transaction. Empty key or unmapped column:
-  `ErrValidation`.
+  `ErrValidation`. On MySQL and MariaDB it runs in a transaction as a plain
+  insert and, when that hits a unique violation, a shared-lock select by key
+  (a failed insert plus a select when the row exists; a no-op
+  `ON DUPLICATE KEY UPDATE` cannot tell created from found under
+  `clientFoundRows`).
 - Tag-declared relations: `belongs_to` needs a single-column primary key on its target (the referencing model may have a composite key containing the fk column); `has_one`/`has_many` need one on the parent; `many2many` on both.
 - A pipelined load buffers a whole level's child rows (about twice the memory of
   sequential). An unscoped load of a huge has-many is expensive: scope it.

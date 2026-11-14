@@ -70,15 +70,19 @@ func (b *Builder) writeExcluded(col string) {
 	}
 }
 
-// checkMySQLConflictTarget returns ErrUnsupported unless target is the only
-// unique key of the table, the primary key included. MySQL's
+// checkMySQLConflictTarget returns ErrUnsupported unless target is a unique
+// key of the table and no other unique key can conflict. MySQL's
 // ON DUPLICATE KEY UPDATE fires for a conflict on any unique key and cannot
 // name one, so with a second unique key the statement would also update the
-// row that conflicts on the key the caller did not name. With no schema (a
-// hand-written Meta) the unique keys are unknown: only a target equal to pk is
-// accepted, and the caller owns the claim that the table has no other unique
-// key.
-func checkMySQLConflictTarget(ts *schema.Table, target []string, pk []string) error {
+// row that conflicts on the key the caller did not name. A second key is
+// harmless when it consists only of columns in unsupplied: auto-increment
+// columns the insert leaves to the database. The server hands such a column a
+// fresh value, so the key cannot match an existing row and the statement acts
+// on the target alone (an auto-increment primary key next to UNIQUE(email),
+// with the key omitted). With no schema (a hand-written Meta) the unique keys
+// are unknown: only a target equal to pk is accepted, and the caller owns the
+// claim that the table has no other unique key.
+func checkMySQLConflictTarget(ts *schema.Table, target []string, pk []string, unsupplied []string) error {
 	if len(target) == 0 {
 		return nil
 	}
@@ -101,14 +105,59 @@ func checkMySQLConflictTarget(ts *schema.Table, target []string, pk []string) er
 		}
 		cols := make([]string, 0, len(ix.Parts))
 		for _, p := range ix.Parts {
-			cols = append(cols, p.Column)
+			cols = append(cols, p.Column) // an expression key has no column: it never counts as unsupplied
 		}
 		uniques = append(uniques, cols)
 	}
-	if len(uniques) == 1 && sameStrings(target, uniques[0]) {
+	matched := false
+	var reachable [][]string
+	for _, u := range uniques {
+		switch {
+		case !matched && sameStrings(target, u):
+			matched = true
+		case onlyColumns(u, unsupplied):
+			// cannot conflict: every column takes a fresh auto-increment value
+		default:
+			reachable = append(reachable, u)
+		}
+	}
+	switch {
+	case !matched:
+		return mysqlTargetError(target, fmt.Sprintf("it is not a unique key of the table (the unique keys are %v)", uniques))
+	case len(reachable) > 0:
+		return mysqlTargetError(target, fmt.Sprintf("the table also has the unique key %v, which this insert can conflict on and ON DUPLICATE KEY UPDATE cannot tell apart; the target is accepted when every other unique key is made only of auto-increment columns the insert leaves to the database", reachable[0]))
+	}
+	return nil
+}
+
+// onlyColumns reports whether cols is not empty and every column is in set.
+func onlyColumns(cols, set []string) bool {
+	if len(cols) == 0 {
+		return false
+	}
+	for _, c := range cols {
+		if !slices.Contains(set, c) {
+			return false
+		}
+	}
+	return true
+}
+
+// unsuppliedIdentity returns the names of the auto-increment columns the
+// INSERT leaves to the database: the identity column when it is absent from
+// written, the column list this statement really writes (the resolved model
+// columns, the Values columns or the FromSelect target columns). A Go-side
+// generated id counts as supplied.
+func (q InsertQuery[T]) unsuppliedIdentity(written []string) []string {
+	id := q.meta.Identity
+	if id < 0 || id >= len(q.meta.Columns) || q.meta.Columns[id].Flags&FlagIdentity == 0 || q.isIDGenColumn(id) {
 		return nil
 	}
-	return mysqlTargetError(target, fmt.Sprintf("the table has %d unique keys and the target must be the only one", len(uniques)))
+	name := q.meta.Columns[id].Name
+	if slices.Contains(written, name) {
+		return nil
+	}
+	return []string{name}
 }
 
 func mysqlTargetError(target []string, why string) error {
@@ -118,7 +167,7 @@ func mysqlTargetError(target []string, why string) error {
 
 // renderMySQLConflict renders the conflict clause of an INSERT for the MySQL
 // dialect as ON DUPLICATE KEY UPDATE.
-func (q InsertQuery[T]) renderMySQLConflict(b *Builder) {
+func (q InsertQuery[T]) renderMySQLConflict(b *Builder, written []string) {
 	if len(q.i.targetWhere) > 0 || len(q.i.actionWhere) > 0 {
 		b.unsupported("a WHERE on a conflict clause (MySQL ON DUPLICATE KEY UPDATE has no conflict condition)")
 		return
@@ -130,7 +179,7 @@ func (q InsertQuery[T]) renderMySQLConflict(b *Builder) {
 		}
 	}
 	pk := q.pkNames()
-	if err := checkMySQLConflictTarget(q.meta.TableSchema, q.i.target, pk); err != nil {
+	if err := checkMySQLConflictTarget(q.meta.TableSchema, q.i.target, pk, q.unsuppliedIdentity(written)); err != nil {
 		b.SetErr(err)
 		return
 	}
@@ -179,8 +228,15 @@ func (q InsertQuery[T]) appendValueTo(b *Builder, a Assignment) { q.appendValue(
 // write it back: a single Model insert on MySQL or MariaDB without a conflict
 // clause, whose identity column the statement leaves to the server.
 func (q InsertQuery[T]) wantsGeneratedKey() bool {
+	return len(q.back) == 1 && q.back[0] != nil && len(q.models) == 1 && q.leavesKeyToServer()
+}
+
+// leavesKeyToServer reports whether the statement is a plain INSERT on MySQL
+// or MariaDB whose identity column the server generates (no conflict clause,
+// no Go-side id, not named in Explicit).
+func (q InsertQuery[T]) leavesKeyToServer() bool {
 	id := q.meta.Identity
-	return len(q.back) == 1 && q.back[0] != nil && len(q.models) == 1 && q.q != nil && q.q.Dialect().OnDuplicateKey &&
+	return q.q != nil && q.q.Dialect().OnDuplicateKey &&
 		!q.i.upsert && q.i.conflict == conflictNone && !q.explicitCol(id) && id >= 0 && id < len(q.meta.Columns) &&
 		q.meta.Ptr != nil && q.meta.Columns[id].Flags&FlagIdentity != 0 && !q.isIDGenColumn(id)
 }
@@ -198,12 +254,12 @@ func (q InsertQuery[T]) isIDGenColumn(ci int) bool {
 }
 
 // assignGeneratedKey stores id in the identity field of the model passed to
-// Model. Field types other than the integer kinds are left alone. Only the
-// single Model path writes a key back: a multi-row insert has no reliable ids
-// (they depend on innodb_autoinc_lock_mode), so it neither returns nor writes
-// them. MariaDB callers who need them use Returning, which renders
-// INSERT ... RETURNING; MySQL has no equivalent and Returning is
-// ErrUnsupported there.
+// Model (see identityIsInteger for the field kinds). A multi-row insert through
+// Exec returns and writes back no keys, because the ids of a multi-row
+// statement depend on innodb_autoinc_lock_mode; CreateGraph inserts one row per
+// statement on MySQL for that reason. MariaDB callers who need keys use
+// Returning, which renders INSERT ... RETURNING; MySQL has no equivalent and
+// Returning is ErrUnsupported there.
 func (q InsertQuery[T]) assignGeneratedKey(id int64) {
 	p := q.meta.Ptr(q.back[0], q.meta.Identity)
 	if p == nil {
@@ -220,6 +276,26 @@ func (q InsertQuery[T]) assignGeneratedKey(id int64) {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		ev.SetUint(uint64(id)) // #nosec G115 -- an auto-increment key is positive
 	}
+}
+
+// identityIsInteger reports whether the identity field has an integer kind,
+// the only kind assignGeneratedKey can store a LAST_INSERT_ID in.
+func identityIsInteger[T any](meta *Meta[T]) bool {
+	var z T
+	p := meta.Ptr(&z, meta.Identity)
+	if p == nil {
+		return false
+	}
+	rv := reflect.ValueOf(p)
+	if rv.Kind() != reflect.Pointer || rv.IsNil() {
+		return false
+	}
+	switch rv.Elem().Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return true
+	}
+	return false
 }
 
 // resolveMySQLIdentity makes a multi-row model insert on MySQL write the
