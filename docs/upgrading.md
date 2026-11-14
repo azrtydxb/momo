@@ -70,6 +70,33 @@ passes, and a plain run rewrites only the header line. A file whose body
 differs is still stale or a conflict, and `momo generate` without `--from-db`
 is unchanged.
 
+### Aggregates over int16, int32 and `types.Numeric` columns
+
+`momo.Sum` still takes only an `int64` or `float64` column. New functions cover
+the rest, so wrapping the column in `sqlfn.Cast[int64]` with the type `bigint`
+is no longer needed:
+
+- `momo.SumInt(col)` sums an int16, int32 or int64 column and returns an
+  `Agg[int64]` on every dialect. PostgreSQL returns numeric for `SUM` of a
+  bigint, so Momo writes `CAST(SUM(x) AS bigint)` there; a sum past int64 is an
+  error on every dialect.
+- `momo.SumNumeric(col)` and `momo.AvgNumeric(col)` return an exact
+  `types.Numeric` over an integer or `types.Numeric` column. SQLite cannot be
+  exact over a TEXT `types.Numeric` column, so `SumNumeric` over one and every
+  `AvgNumeric` fail with `ErrUnsupported` there. MySQL and MariaDB cast a
+  `types.Numeric` column to `DECIMAL(65,30)`, so the result has 30 decimal
+  places.
+- `momo.Avg` now takes an integer, float or `types.Numeric` column and still
+  returns `float64`. The signature is generic (`Avg[T Averageable]`); a call
+  such as `momo.Avg(col)` compiles unchanged, but code that names `momo.Avg` as a
+  function value without type arguments needs `momo.Avg[float64]`. PostgreSQL
+  gets `CAST(AVG(x) AS double precision)` for a non-float column.
+
+```text
+total, err := momo.Select[momo.Row1[*int64]](db).From(order.Table).
+	Columns(momo.SumInt(order.Cents)).One(ctx) // Cents is an int32 column
+```
+
 ## Upgrading to 0.11.0
 
 Two changes can need an edit in your code: an explicit `updated_at` in
