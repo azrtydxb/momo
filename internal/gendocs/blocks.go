@@ -94,6 +94,14 @@ func statusBlock(root string) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
+// nativeOnly labels the capability flags that mean native syntax, not
+// availability: MySQL and SQLite emulate ILike, and MySQL emulates
+// NullsOrdering, so the feature works where the flag says no.
+var nativeOnly = map[string]string{
+	"ILike":         "(native ILIKE; emulated elsewhere)",
+	"NullsOrdering": "(native NULLS FIRST or LAST; emulated on MySQL)",
+}
+
 // capabilitiesBlock is the dialect status table: usable, driver packages,
 // migration support, MaxParams and every boolean capability of dialect.Dialect
 // plus the vector capabilities, one column per dialect.
@@ -147,7 +155,11 @@ func capabilitiesBlock(root string) (string, error) {
 		if sf.Type.Kind() != reflect.Bool {
 			continue
 		}
-		rows = append(rows, row(code(sf.Name), func(f family) string {
+		label := code(sf.Name)
+		if note, ok := nativeOnly[sf.Name]; ok {
+			label += " " + note
+		}
+		rows = append(rows, row(label, func(f family) string {
 			return yesNo(reflect.ValueOf(*f.D).Field(i).Bool())
 		}))
 	}

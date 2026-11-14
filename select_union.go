@@ -96,6 +96,13 @@ func (u UnionQuery[T]) render(b *Builder) {
 				b.SetErr(newError(ErrValidation, "build", "", errors.New("an outer ORDER BY on a union may name result columns only, built with ColumnOf and an empty source")))
 				return
 			}
+			if o.Nulls != NullsDefault && !b.d.NullsOrdering {
+				// The emulation sorts by an (expr IS NULL) expression, which a
+				// union's outer ORDER BY cannot hold; refuse instead of sending
+				// SQL the server may reject.
+				b.Unsupported("NULLS FIRST/LAST in the outer ORDER BY of a union")
+				return
+			}
 			if i > 0 {
 				b.WriteString(", ")
 			}

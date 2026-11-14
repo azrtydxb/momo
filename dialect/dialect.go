@@ -55,7 +55,7 @@ type Dialect struct {
 	OnConflict       bool // INSERT ... ON CONFLICT
 	OnDuplicateKey   bool // INSERT ... ON DUPLICATE KEY UPDATE
 	Locking          bool // SELECT ... FOR UPDATE / FOR SHARE / SKIP LOCKED / NOWAIT
-	NullsOrdering    bool // ORDER BY ... NULLS FIRST|LAST (SQLite >= 3.30)
+	NullsOrdering    bool // native ORDER BY ... NULLS FIRST|LAST (SQLite >= 3.30); MySQL emulates it with an IS NULL sort key
 	DefaultInUpdate  bool // UPDATE ... SET col = DEFAULT
 	DefaultInValues  bool // INSERT ... VALUES (DEFAULT)
 	RecursiveCTE     bool
@@ -63,7 +63,7 @@ type Dialect struct {
 	Savepoints       bool
 	IsolationLevels  bool // BEGIN with an isolation level
 	TransactionalDDL bool // DDL can be rolled back
-	ILike            bool
+	ILike            bool // native ILIKE; SQLite and MySQL render LOWER(x) LIKE LOWER(?)
 	Merge            bool // MERGE statement
 	WindowFunctions  bool
 

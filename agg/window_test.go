@@ -72,7 +72,9 @@ func TestAggExprOverErrors(t *testing.T) {
 		{"within group", build(pg, agg.PercentileCont(0.5).WithinGroup(suite.DocID.Asc()).Over(part)), momo.ErrValidation},
 		{"order by inside the call", build(pg, agg.String(suite.DocTitle, ",").OrderBy(suite.DocID.Asc()).Over(part)), momo.ErrValidation},
 		{"filter without predicate", build(pg, agg.String(suite.DocTitle, ",").Filter(nil).Over(part)), momo.ErrValidation},
-		{"filter on mysql", build(my, agg.String(suite.DocTitle, ",").Filter(suite.DocTitle.Eq("x")).Over(part)), momo.ErrUnsupported},
+		{"json array filter on mysql", build(my, agg.JSONB[int64](suite.DocID).Filter(suite.DocTitle.Eq("x")).Over(part)), momo.ErrUnsupported},
+		{"unknown generic filter on mysql", build(my, agg.Func[int64]("json_arrayagg", suite.DocID).Filter(suite.DocTitle.Eq("x")).Over(part)), momo.ErrUnsupported},
+		{"filter without predicate on mysql", build(my, agg.String(suite.DocTitle, ",").Filter(nil).Over(part)), momo.ErrValidation},
 	}
 	for _, c := range cases {
 		if !errors.Is(c.err, c.want) {

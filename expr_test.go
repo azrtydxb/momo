@@ -3,7 +3,6 @@
 package momo_test
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -32,10 +31,23 @@ func TestOrderAppendOrder(t *testing.T) {
 		}
 	}
 
-	// MySQL has no NULLS FIRST/LAST: the build fails instead of emitting it.
-	my := momo.NewBuilder(dialect.For(dialect.MySQL))
-	title.Asc().NullsLast().AppendOrder(my)
-	if !errors.Is(my.Err(), momo.ErrUnsupported) {
-		t.Errorf("mysql nulls last: err = %v; want ErrUnsupported", my.Err())
+	// MySQL has no NULLS FIRST/LAST: the order gains an IS NULL sort key.
+	myCases := []struct {
+		name string
+		o    momo.Order
+		want string
+	}{
+		{"asc nulls last", title.Asc().NullsLast(), "(`docs`.`title` IS NULL) ASC, `docs`.`title` ASC"},
+		{"desc nulls first", title.Desc().NullsFirst(), "(`docs`.`title` IS NULL) DESC, `docs`.`title` DESC"},
+		{"asc nulls first", title.Asc().NullsFirst(), "(`docs`.`title` IS NULL) DESC, `docs`.`title` ASC"},
+		{"desc nulls last", title.Desc().NullsLast(), "(`docs`.`title` IS NULL) ASC, `docs`.`title` DESC"},
+		{"default nulls", title.Desc(), "`docs`.`title` DESC"},
+	}
+	for _, c := range myCases {
+		my := momo.NewBuilder(dialect.For(dialect.MySQL))
+		c.o.AppendOrder(my)
+		if my.Err() != nil || my.String() != c.want {
+			t.Errorf("mysql %s: got %q, %v; want %q", c.name, my.String(), my.Err(), c.want)
+		}
 	}
 }

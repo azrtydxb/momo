@@ -265,32 +265,57 @@ func (o Order) NullsFirst() Order { o.Nulls = NullsFirst; return o }
 // NullsLast returns o with explicit NULLS LAST.
 func (o Order) NullsLast() Order { o.Nulls = NullsLast; return o }
 
-// AppendOrder renders the item as "expr ASC|DESC [NULLS FIRST|LAST]", failing
-// the build with ErrUnsupported where the dialect has no NULLS ordering.
-// Code outside this package that renders an ORDER BY inside its own
-// expression (an ordered aggregate) calls it. AppendOrder is an extension
-// point; see Ops.
+// AppendOrder renders the item as "expr ASC|DESC [NULLS FIRST|LAST]". Where
+// the dialect has no NULLS clause (MySQL and MariaDB) an explicit NullsFirst
+// or NullsLast renders as "(expr IS NULL) DESC|ASC, expr ASC|DESC", which
+// orders exactly as PostgreSQL does. The expression is rendered twice, so any
+// argument it binds appears twice in the statement, in order. Code outside
+// this package that renders an ORDER BY inside its own expression (an ordered
+// aggregate) calls it. AppendOrder is an extension point; see Ops.
 func (o Order) AppendOrder(b *Builder) { o.appendSQL(b) }
 
 func (o Order) appendSQL(b *Builder) {
-	o.Expr.AppendSQL(b)
+	dir := " ASC"
 	if o.Desc {
-		b.WriteString(" DESC")
-	} else {
-		b.WriteString(" ASC")
+		dir = " DESC"
 	}
-	switch o.Nulls {
-	case NullsFirst, NullsLast:
-		if !b.d.NullsOrdering {
-			b.unsupported("NULLS FIRST/LAST")
-			return
-		}
+	if o.Nulls != NullsDefault && !b.d.NullsOrdering {
+		// (e IS NULL) is false for a value and true for NULL, so DESC puts the
+		// NULLs first and ASC puts them last.
+		b.WriteString("(")
+		appendNullOperand(b, o.Expr)
+		b.WriteString(" IS NULL)")
 		if o.Nulls == NullsFirst {
-			b.WriteString(" NULLS FIRST")
+			b.WriteString(" DESC, ")
 		} else {
-			b.WriteString(" NULLS LAST")
+			b.WriteString(" ASC, ")
 		}
+		o.Expr.AppendSQL(b)
+		b.WriteString(dir)
+		return
 	}
+	o.Expr.AppendSQL(b)
+	b.WriteString(dir)
+	switch o.Nulls {
+	case NullsFirst:
+		b.WriteString(" NULLS FIRST")
+	case NullsLast:
+		b.WriteString(" NULLS LAST")
+	}
+}
+
+// appendNullOperand renders e as the operand of IS NULL: a column or an
+// already parenthesised expression as it is, anything else in parentheses, so
+// an operator in e cannot bind looser than IS.
+func appendNullOperand(b *Builder, e Expr) {
+	_, col := e.(interface{ ColumnName() string })
+	if _, paren := e.(parenExpr); col || paren {
+		e.AppendSQL(b)
+		return
+	}
+	b.WriteString("(")
+	e.AppendSQL(b)
+	b.WriteString(")")
 }
 
 // Asc orders by an arbitrary expression ascending.
@@ -306,8 +331,9 @@ type PredicateOrder struct{ p Predicate }
 // ORDER BY (p). A false row sorts before a true row, so (col IS NULL) ASC puts
 // NULLs last on every dialect and (col IS NULL) DESC puts them first. The
 // arguments p binds keep their place among the other arguments. Limits:
-//   - NullsFirst and NullsLast on the result of Asc or Desc are ErrUnsupported
-//     on MySQL and MariaDB, which momo does not emulate.
+//   - NullsFirst and NullsLast on the result of Asc or Desc work on every
+//     dialect; MySQL and MariaDB render them as an extra IS NULL sort key (see
+//     Order.AppendOrder).
 //   - After (keyset pagination) over a predicate key is ErrValidation, and so
 //     is a predicate in the outer OrderBy of a SelectUnion, which allows
 //     unqualified result columns only.
@@ -657,10 +683,26 @@ func (like) resultType() bool { return false }
 // EscapeLike.
 const likeEscape = ` ESCAPE '!'`
 
-// ILike is PostgreSQL's case-insensitive LIKE. On SQLite, whose LIKE is
-// already ASCII case-insensitive by default, it is ErrUnsupported to avoid
-// implying Unicode case folding SQLite does not perform. Like Like, it always
-// carries ESCAPE '!' to match EscapeLike.
+// ILike is a case-insensitive LIKE. Like Like, it always carries ESCAPE '!'
+// to match EscapeLike. Use momo.Not(momo.ILike(...)) for NOT ILIKE.
+//
+// PostgreSQL renders its native ILIKE. SQLite, MySQL and MariaDB have no ILIKE
+// and render LOWER(x) LIKE LOWER(?) instead. The emulation is not identical to
+// PostgreSQL:
+//   - SQLite: LOWER and LIKE fold ASCII letters only, so a non-ASCII letter
+//     compares case-sensitively ("Ä" does not match "ä"), where PostgreSQL
+//     folds it (given a UTF-8 database whose locale folds that letter).
+//   - MySQL and MariaDB: LOWER folds Unicode letters by the character set,
+//     but the LIKE comparison follows the collation of the column. Under the
+//     default "_ai_ci" collations (MySQL's utf8mb4_0900_ai_ci) the comparison
+//     is also accent-insensitive ("a" matches "ä"), which PostgreSQL ILIKE is
+//     not; under a "_bin" or case-sensitive collation the LOWER on both sides
+//     still makes the match case-insensitive. Momo does not force a collation.
+//   - An index on x is not used, as the column is wrapped in LOWER; create an
+//     expression index on LOWER(x) if the query needs one.
+//   - On MySQL and MariaDB x must be a character column. On a BINARY,
+//     VARBINARY or BLOB column LOWER does nothing and LIKE is case-sensitive,
+//     so ILike matches case-sensitively there. Momo does not add a CONVERT.
 func ILike(e Expression[string], pattern string) Predicate { return ilike{e, pattern, flagsOf(e)} }
 
 type ilike struct {
@@ -671,7 +713,12 @@ type ilike struct {
 
 func (x ilike) AppendSQL(b *Builder) {
 	if !b.d.ILike {
-		b.unsupported("ILIKE")
+		// No native ILIKE: LOWER(x) LIKE LOWER(?). See ILike for the semantics.
+		b.WriteString("LOWER(")
+		fl := b.renderSens(x.e, x.flags)
+		b.WriteString(") LIKE LOWER(")
+		b.argFor(fl, x.p)
+		b.WriteString(")" + likeEscape)
 		return
 	}
 	fl := b.renderSens(x.e, x.flags)
@@ -684,22 +731,47 @@ func (ilike) resultType() bool { return false }
 // ------------------------------------------------------------ functions
 
 type fn struct {
-	name string
-	args []Expr
-	star bool
+	name     string
+	args     []Expr
+	star     bool
+	distinct bool // COUNT(DISTINCT e)
 }
 
-func (f fn) AppendSQL(b *Builder) {
+func (f fn) AppendSQL(b *Builder) { f.appendFiltered(b, nil) }
+
+// appendFiltered writes the call. A non-nil where is the FILTER predicate of
+// a dialect without a FILTER clause: each argument becomes CASE WHEN where
+// THEN arg END, and COUNT(*) becomes COUNT(CASE WHEN where THEN 1 END). That
+// is exact for the aggregates that skip NULLs, which are all the Agg ones.
+func (f fn) appendFiltered(b *Builder, where Predicate) {
 	b.WriteString(f.name)
 	b.writeByte('(')
+	if f.distinct {
+		b.WriteString("DISTINCT ")
+	}
+	caseWhen := func(render func()) {
+		b.WriteString("CASE WHEN ")
+		where.AppendSQL(b)
+		b.WriteString(" THEN ")
+		render()
+		b.WriteString(" END")
+	}
 	if f.star {
-		b.writeByte('*')
+		if where != nil {
+			caseWhen(func() { b.WriteString("1") })
+		} else {
+			b.writeByte('*')
+		}
 	}
 	for i, a := range f.args {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		a.AppendSQL(b)
+		if where != nil {
+			caseWhen(func() { a.AppendSQL(b) })
+		} else {
+			a.AppendSQL(b)
+		}
 	}
 	b.writeByte(')')
 }
@@ -739,7 +811,7 @@ func CountOf(e Expr) Agg[int64] { return newFnAgg[int64](fn{name: "COUNT", args:
 
 // CountDistinct is COUNT(DISTINCT expr).
 func CountDistinct(e Expr) Agg[int64] {
-	return newFnAgg[int64](fn{name: "COUNT", args: []Expr{SQL("DISTINCT ?", e)}})
+	return newFnAgg[int64](fn{name: "COUNT", args: []Expr{e}, distinct: true})
 }
 
 // Sum is SUM(expr). The result is NULL over zero rows, so scan it into a
