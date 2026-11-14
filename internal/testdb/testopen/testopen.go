@@ -28,16 +28,31 @@ const connectTimeout = 30 * time.Second
 // would exhaust a CI pool exhausts this one first.
 const maxTestConns = 3
 
-// opener opens a fresh database for one dialect.
+// opener opens a fresh database for one server. name is the dialect handed to
+// the test body; sub is the subtest name, which is the dialect name except for
+// the MySQL family, where it names the server.
 type opener struct {
 	name dialect.Name
+	sub  string
 	open func(*testing.T, ...momo.Option) *momo.DB
 }
 
 // openers is the build-time list of dialects. Each driver milestone appends its
 // entry: M1 registers PostgreSQL; M2 registers SQLite; M3 registers MySQL84,
 // MySQL97 and MariaDB. The list is not mutable at runtime.
-var openers = []opener{{dialect.Postgres, Postgres}, {dialect.SQLite, SQLite}}
+var openers = []opener{
+	{dialect.Postgres, string(dialect.Postgres), Postgres},
+	{dialect.SQLite, string(dialect.SQLite), SQLite},
+}
+
+// openersWithMySQL is openers plus the three MySQL-family servers CI runs:
+// MySQL 8.4, MySQL 9.7 and MariaDB 11.8. All three report dialect.MySQL; the
+// subtest name tells them apart.
+var openersWithMySQL = append(append([]opener(nil), openers...),
+	opener{dialect.MySQL, "mysql84", MySQL84},
+	opener{dialect.MySQL, "mysql97", MySQL97},
+	opener{dialect.MySQL, "mariadb118", MariaDB},
+)
 
 // Postgres opens a fresh *momo.DB on testdb.PostgresURL(t) through pgxdriver.
 // opts are passed to momo.New, so options such as momo.WithHook and
@@ -111,8 +126,37 @@ func SQLite(t *testing.T, opts ...momo.Option) *momo.DB {
 func Each(t *testing.T, fn func(t *testing.T, db *momo.DB, d dialect.Name), opts ...momo.Option) {
 	t.Helper()
 	for _, o := range openers {
-		t.Run(string(o.name), func(t *testing.T) {
+		t.Run(o.sub, func(t *testing.T) {
 			fn(t, o.open(t, opts...), o.name)
+		})
+	}
+}
+
+// EachWithMySQL is Each for a test that is meant to run on the MySQL family
+// too: it adds the subtests mysql84, mysql97 and mariadb118, each with
+// dialect.MySQL, after postgres and sqlite. Tell the servers apart with
+// db.Dialect().Flavor. A server whose URL is unset is skipped, and failed when
+// MOMO_REQUIRE_INTEGRATION=1 requires it (the integration-mysql CI jobs set
+// MOMO_INTEGRATION_DIALECTS to the one server each runs). Each stays
+// PostgreSQL and SQLite only, so a test opts in one at a time.
+func EachWithMySQL(t *testing.T, fn func(t *testing.T, db *momo.DB, d dialect.Name), opts ...momo.Option) {
+	t.Helper()
+	for _, o := range openersWithMySQL {
+		t.Run(o.sub, func(t *testing.T) {
+			fn(t, o.open(t, opts...), o.name)
+		})
+	}
+}
+
+// EachMySQL runs fn on the MySQL family only: the subtests mysql84, mysql97
+// and mariadb118, each with a fresh database. Use it for a test whose SQL is
+// MySQL-specific, such as a table written with MySQL types. Skip and
+// MOMO_REQUIRE_INTEGRATION behave as for EachWithMySQL.
+func EachMySQL(t *testing.T, fn func(t *testing.T, db *momo.DB), opts ...momo.Option) {
+	t.Helper()
+	for _, o := range openersWithMySQL[len(openers):] {
+		t.Run(o.sub, func(t *testing.T) {
+			fn(t, o.open(t, opts...))
 		})
 	}
 }
