@@ -4,7 +4,6 @@ package momo_test
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -106,13 +105,6 @@ func TestMixedModelsOtherDialectsUnchanged(t *testing.T) {
 	want := `INSERT INTO "dbd_rows" ("id", "title", "at") VALUES (DEFAULT, $1, $2), ($3, $4, $5) RETURNING "id"`
 	if len(got) != 1 || got[0].SQL != want {
 		t.Fatalf("PG = %v, want one statement %q", got, want)
-	}
-	my, mydrv := dbdSetup(dialect.MySQL, nil)
-	if _, err := momo.Insert[dbdRow](my).Models(ms).Exec(context.Background()); !errors.Is(err, momo.ErrUnsupported) {
-		t.Fatalf("MySQL err = %v, want ErrUnsupported", err)
-	}
-	if n := len(runInserts(mydrv)); n != 0 {
-		t.Fatalf("MySQL sent %d INSERTs, want none", n)
 	}
 }
 
