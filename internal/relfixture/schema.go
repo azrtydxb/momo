@@ -32,6 +32,23 @@ var ddl = []string{
 	`CREATE TABLE stores (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL, region_code TEXT, name TEXT NOT NULL, FOREIGN KEY (tenant_id, region_code) REFERENCES regions(tenant_id, code))`,
 }
 
+// ddlMySQL is ddl for the MySQL family: a TEXT column cannot be part of a key
+// without a length, so the key columns are VARCHAR(64), and the foreign keys
+// are table constraints, because MySQL parses and ignores an inline
+// REFERENCES clause.
+var ddlMySQL = []string{
+	`CREATE TABLE authors (id BIGINT PRIMARY KEY, name TEXT NOT NULL)`,
+	`CREATE TABLE documents (id BIGINT PRIMARY KEY, author_id BIGINT, title TEXT NOT NULL, FOREIGN KEY (author_id) REFERENCES authors(id))`,
+	`CREATE TABLE comments (id BIGINT PRIMARY KEY, document_id BIGINT NOT NULL, body TEXT NOT NULL, approved BOOLEAN NOT NULL, FOREIGN KEY (document_id) REFERENCES documents(id))`,
+	`CREATE TABLE notes (id BIGINT PRIMARY KEY, document_id BIGINT NOT NULL, body TEXT NOT NULL, deleted BOOLEAN NOT NULL DEFAULT FALSE, FOREIGN KEY (document_id) REFERENCES documents(id))`,
+	`CREATE TABLE tags (id BIGINT PRIMARY KEY, name TEXT NOT NULL)`,
+	`CREATE TABLE taggings (document_id BIGINT NOT NULL, tag_id BIGINT NOT NULL, position BIGINT NOT NULL DEFAULT 0, PRIMARY KEY (document_id, tag_id))`,
+	`CREATE TABLE images (id BIGINT PRIMARY KEY, owner_type VARCHAR(64) NOT NULL, owner_id BIGINT NOT NULL, url TEXT NOT NULL)`,
+	`CREATE TABLE employees (id BIGINT PRIMARY KEY, manager_id BIGINT, name TEXT NOT NULL, FOREIGN KEY (manager_id) REFERENCES employees(id))`,
+	`CREATE TABLE regions (tenant_id BIGINT NOT NULL, code VARCHAR(64) NOT NULL, name TEXT NOT NULL, PRIMARY KEY (tenant_id, code))`,
+	`CREATE TABLE stores (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL, region_code VARCHAR(64), name TEXT NOT NULL, FOREIGN KEY (tenant_id, region_code) REFERENCES regions(tenant_id, code))`,
+}
+
 // seed rows, in dependency order.
 var seed = []struct {
 	sql  string
@@ -66,10 +83,15 @@ var seed = []struct {
 	{`INSERT INTO stores (id, tenant_id, region_code, name) VALUES (?, ?, ?, ?)`, []any{int64(4), int64(2), "EU", "Other"}},
 }
 
-// CreateSchema applies the fixture DDL. The database must be empty.
+// CreateSchema applies the fixture DDL (ddlMySQL on the MySQL family). The
+// database must be empty.
 func CreateSchema(t testing.TB, db *momo.DB) {
 	t.Helper()
-	for _, s := range ddl {
+	stmts := ddl
+	if db.Dialect().Name == dialect.MySQL {
+		stmts = ddlMySQL
+	}
+	for _, s := range stmts {
 		if _, err := momo.Exec(context.Background(), db, s); err != nil {
 			t.Fatalf("ddl %q: %v", s, err)
 		}
@@ -129,6 +151,18 @@ func Each(t *testing.T, fn func(t *testing.T, db *momo.DB, h *Hook)) {
 	t.Helper()
 	h := &Hook{}
 	testopen.Each(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
+		CreateSchema(t, db)
+		h.After, h.Events = nil, nil
+		fn(t, db, h)
+	}, momo.WithHook(h))
+}
+
+// EachWithMySQL is Each plus MySQL 8.4, MySQL 9.7 and MariaDB 11.8
+// (testopen.EachWithMySQL), for the tests that opt in to the MySQL family.
+func EachWithMySQL(t *testing.T, fn func(t *testing.T, db *momo.DB, h *Hook)) {
+	t.Helper()
+	h := &Hook{}
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
 		CreateSchema(t, db)
 		h.After, h.Events = nil, nil
 		fn(t, db, h)
