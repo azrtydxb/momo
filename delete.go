@@ -70,9 +70,19 @@ func (d DeleteQuery[T]) WithRecursive(name string, q Subquery, cols ...string) D
 //
 // PostgreSQL renders DELETE ... USING. MySQL and MariaDB render the
 // multi-table form DELETE t FROM t, src WHERE .... SQLite has no such form and
-// fails with ErrUnsupported (use a subquery in Where). Soft-deleted rows of
+// renders DELETE FROM t WHERE EXISTS (SELECT 1 FROM src WHERE ...): a target
+// row is deleted when at least one joined source row satisfies Where, which is
+// the USING meaning and needs no key, so it holds for a composite key and a
+// table without one. SQLite's RETURNING reads the deleted table only, so a
+// Returning column of a source fails with ErrUnsupported there. Soft-deleted rows of
 // src are not filtered: add that predicate to Where. Interceptors apply to the
 // target table only, not to src.
+//
+// A source named like the target is refused with ErrValidation on every
+// dialect: alias it (TableRef.As) to join the table to itself. Qualify every
+// column in a raw Where fragment and in interceptor predicates: on SQLite an
+// unqualified column that the target and a source share binds to the source
+// inside the subquery, where PostgreSQL reports it as ambiguous.
 //
 // With a Using source the unfiltered-mutation guard is stricter: at least one
 // Where predicate must reference a column of the target table, otherwise the
@@ -148,6 +158,12 @@ func (d DeleteQuery[T]) plan() ([]Predicate, error) {
 			pks = append(pks, updPKEq{d.meta.Table, d.meta.Columns[i].Name, d.meta.Value(d.model, i), d.meta.Columns[i].Flags})
 		}
 		where = append(pks, where...)
+	}
+	if tq := d.meta.Table; slices.Contains(sourceQualifiers(d.using), tq) {
+		// Both would bind to the same name: PostgreSQL reports "table name
+		// specified more than once", and the SQLite subquery would resolve
+		// every reference to the inner table and delete rows it should keep.
+		return nil, d.fail(ErrValidation, fmt.Errorf("Using source %q has the target's name: alias it (TableRef.As) to join the table to itself", tq))
 	}
 	if !hasEffectiveFilter(where) && !d.allRows {
 		return nil, d.fail(ErrUnfilteredMutation, nil)
@@ -227,10 +243,9 @@ func (d DeleteQuery[T]) render(b *Builder) {
 		b.SetErr(err)
 		return
 	}
-	if len(d.using) > 0 && b.d.Name == dialect.SQLite {
-		b.unsupported("DELETE ... USING")
-		return
-	}
+	// SQLite has no DELETE ... USING: the sources move into an EXISTS
+	// subquery that the target row must satisfy.
+	exists := len(d.using) > 0 && b.d.Name == dialect.SQLite
 	target := TableRef{Name: d.meta.Table, Schema: d.meta.Schema}
 	names := append(cteNames(d.with), target.Qualifier())
 	names = append(names, sourceQualifiers(d.using)...)
@@ -252,7 +267,7 @@ func (d DeleteQuery[T]) render(b *Builder) {
 		}
 		b.WriteString("FROM ")
 		target.appendFrom(b)
-		if len(d.using) > 0 {
+		if len(d.using) > 0 && !exists {
 			if mysql {
 				b.WriteString(", ")
 			} else {
@@ -260,7 +275,15 @@ func (d DeleteQuery[T]) render(b *Builder) {
 			}
 			appendSources(b, d.using)
 		}
-		if len(where) > 0 {
+		if exists {
+			b.WriteString(" WHERE EXISTS (SELECT 1 FROM ")
+			appendSources(b, d.using)
+			if len(where) > 0 {
+				b.WriteString(" WHERE ")
+				appendAnd(b, where)
+			}
+			b.writeByte(')')
+		} else if len(where) > 0 {
 			b.WriteString(" WHERE ")
 			appendAnd(b, where)
 		}

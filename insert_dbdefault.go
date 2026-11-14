@@ -123,7 +123,7 @@ func (q InsertQuery[T]) dbDefaultDecision(ci int) (drop bool, err error) {
 	case q.i.unnest:
 		why = "Unnest cannot put DEFAULT in a row"
 	case q.q != nil && !q.q.Dialect().DefaultInValues:
-		why = string(q.q.Dialect().Name) + " cannot put DEFAULT in a multi-row VALUES list"
+		why = string(q.q.Dialect().Name) + " cannot put DEFAULT in a multi-row VALUES list (SQL renders one statement; Exec and Rows split such rows into several)"
 	}
 	if why != "" {
 		return false, &Error{Kind: ErrUnsupported, Op: "insert", Table: q.meta.Table, Column: name,

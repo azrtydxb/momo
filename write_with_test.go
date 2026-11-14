@@ -74,8 +74,68 @@ func TestDeleteUsingGoldenSQL(t *testing.T) {
 	if want := "DELETE `del_notes` FROM `del_notes`, `src` WHERE `del_notes`.`id` = `src`.`id`"; err != nil || c.SQL != want {
 		t.Errorf("mysql: got %q %v, want %q", c.SQL, err, want)
 	}
-	if _, err := build(dialect.SQLite).SQL(); !errors.Is(err, momo.ErrUnsupported) {
-		t.Errorf("sqlite err = %v, want ErrUnsupported", err)
+	c, err = build(dialect.SQLite).SQL()
+	if want := `DELETE FROM "del_notes" WHERE EXISTS (SELECT 1 FROM "src" WHERE "del_notes"."id" = "src"."id")`; err != nil || c.SQL != want {
+		t.Errorf("sqlite: got %q %v, want %q", c.SQL, err, want)
+	}
+}
+
+// Catches: the SQLite USING emulation keying on a single column (wrong for a
+// composite key), binding arguments out of order across the subquery and the
+// outer predicates, and dropping the sources when AllRows leaves no WHERE.
+func TestDeleteUsingSQLiteEmulationSQL(t *testing.T) {
+	db := withDB(dialect.SQLite)
+	pairSrc := momo.TableRef{Name: "src"}
+	c, err := momo.Delete[delPair](db).Using(pairSrc).
+		Where(momo.ColumnOf[int64]("del_pairs", "a").EqExpr(momo.ColumnOf[int64]("src", "a")),
+			momo.ColumnOf[int64]("del_pairs", "b").EqExpr(momo.ColumnOf[int64]("src", "b")),
+			momo.ColumnOf[string]("src", "tag").Eq("x")).SQL()
+	want := `DELETE FROM "del_pairs" WHERE EXISTS (SELECT 1 FROM "src" WHERE ("del_pairs"."a" = "src"."a") AND ("del_pairs"."b" = "src"."b") AND ("src"."tag" = ?))`
+	if err != nil || c.SQL != want || len(c.Args) != 1 || c.Args[0] != "x" {
+		t.Errorf("composite: got %q %v %v, want %q", c.SQL, c.Args, err, want)
+	}
+	c, err = momo.Delete[delNote](db).Using(withSrc).AllRows().SQL()
+	if want := `DELETE FROM "del_notes" WHERE EXISTS (SELECT 1 FROM "src")`; err != nil || c.SQL != want {
+		t.Errorf("all rows: got %q %v, want %q", c.SQL, err, want)
+	}
+}
+
+// Catches: a Using source with the target's own name reaching SQLite, where
+// every reference in the EXISTS subquery would bind to the inner table and
+// the delete could remove rows it should keep. Refused on every dialect, as
+// PostgreSQL does ("table name specified more than once").
+func TestDeleteUsingTargetNameRefused(t *testing.T) {
+	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
+		for name, src := range map[string]momo.TableSource{
+			"table": momo.TableRef{Name: "del_pairs"},
+			"cte":   momo.CTE("del_pairs"),
+		} {
+			_, err := momo.Delete[delPair](withDB(d)).Using(src).
+				Where(momo.ColumnOf[int64]("del_pairs", "a").Eq(1)).SQL()
+			if !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "alias it") {
+				t.Errorf("%s %s: err = %v, want ErrValidation telling to alias", d, name, err)
+			}
+		}
+	}
+}
+
+// Catches: an aliased self-join losing its alias on some dialect, or the SQLite
+// subquery binding the target's columns to the inner table.
+func TestDeleteUsingAliasedSelfJoinSQL(t *testing.T) {
+	u := momo.TableRef{Name: "del_pairs"}.As("u")
+	pa := momo.ColumnOf[int64]("del_pairs", "a")
+	pb := momo.ColumnOf[int64]("del_pairs", "b")
+	ua := momo.ColumnOf[int64]("u", "a")
+	ub := momo.ColumnOf[int64]("u", "b")
+	for d, want := range map[dialect.Name]string{
+		dialect.Postgres: `DELETE FROM "del_pairs" USING "del_pairs" AS "u" WHERE ("del_pairs"."a" = "u"."b") AND ("del_pairs"."b" = "u"."a") AND ("u"."a" = $1)`,
+		dialect.SQLite:   `DELETE FROM "del_pairs" WHERE EXISTS (SELECT 1 FROM "del_pairs" AS "u" WHERE ("del_pairs"."a" = "u"."b") AND ("del_pairs"."b" = "u"."a") AND ("u"."a" = ?))`,
+		dialect.MySQL:    "DELETE `del_pairs` FROM `del_pairs`, `del_pairs` AS `u` WHERE (`del_pairs`.`a` = `u`.`b`) AND (`del_pairs`.`b` = `u`.`a`) AND (`u`.`a` = ?)",
+	} {
+		c, err := momo.Delete[delPair](withDB(d)).Using(u).Where(pa.EqExpr(ub), pb.EqExpr(ua), ua.Eq(1)).SQL()
+		if err != nil || c.SQL != want {
+			t.Errorf("%s: got %q %v, want %q", d, c.SQL, err, want)
+		}
 	}
 }
 

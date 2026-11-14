@@ -1170,9 +1170,9 @@ The models of a SQLite database keep what a rebuild from the models needs:
   column whose constant default is true or non-zero becomes a pointer, as on
   PostgreSQL; a computed default (`CURRENT_TIMESTAMP`, `datetime('now')`) is
   tagged without the option. SQLite reads the value back with `RETURNING`. A
-  bulk insert whose rows mix zero and set values of a `dbdefault` column returns
-  `ErrUnsupported` on SQLite, which has no per-row `DEFAULT` in a multi-row
-  `VALUES` list; insert such rows separately.
+  bulk insert whose rows mix zero and set values of a `dbdefault` column is
+  split by `Exec` into one statement per run of consecutive rows that agree, as
+  SQLite has no per-row `DEFAULT` in a multi-row `VALUES` list.
 - A unique constraint is `c.Unique`, a unique index is a `unique` tag or
   `c.Index(...).Unique()`, and partial and expression indexes keep their
   `WHERE` text and expressions (`c.Index(...).Where(...)`, `c.IndexExpr`).

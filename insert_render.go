@@ -293,7 +293,8 @@ func (q InsertQuery[T]) writeAssignRows(b *Builder, p insertPlan[T]) {
 // appearance, automatic timestamps included) and each row's assignment per
 // column. On a dialect without DEFAULT inside VALUES, a column that is
 // default in every row leaves the list, and a column that is default in some
-// rows only fails with ErrUnsupported.
+// rows only fails with ErrUnsupported; Exec and Rows never reach that case,
+// because plan has split such rows into runs (defaultRuns).
 func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time, fp fieldPlan[T]) ([]int, []map[int]Assignment, error) {
 	src := q.i.rows
 	if !q.i.hasRows {
@@ -376,7 +377,7 @@ func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time, fp fieldPla
 			continue // omitting the column applies the default
 		case defaults > 0:
 			return nil, nil, &Error{Kind: ErrUnsupported, Op: "insert", Table: q.meta.Table, Column: q.meta.Columns[ci].Name,
-				Err: fmt.Errorf("a per-row DEFAULT in a multi-row VALUES list is not supported by %s", d.Name)}
+				Err: fmt.Errorf("a per-row DEFAULT in a multi-row VALUES list is not supported by %s in one statement (SQL renders one); Exec and Rows split such rows into several statements", d.Name)}
 		}
 		cols = append(cols, ci)
 	}
