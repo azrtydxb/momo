@@ -36,6 +36,12 @@
 // a JSON boolean reads as 1 or 0 instead of true or false, and MySQL returns
 // the text null for a JSON null.
 //
+// Type names. TypeOf gives the JSON type of a value as one of the six names of
+// PostgreSQL's jsonb_typeof (object, array, string, number, boolean, null) on
+// every dialect; SQLite's json_type and MySQL's JSON_TYPE names are mapped. It
+// is the one function here with integration tests on MySQL 8.4, MySQL 9.7 and
+// MariaDB 11.8.
+//
 // Path elements. Text and HasKey take one object key, always an object member
 // even when it is numeric. In Path, an element made only of digits addresses
 // an array index on SQLite and MySQL, and an array index or an object key on

@@ -2,7 +2,8 @@
 
 // Package sqlfn holds the typed scalar SQL functions and operators: Substr,
 // Lower, Upper, Length, CurrentSchema, Case, the arithmetic helpers Add, Sub,
-// Mul and Div, NullIf, CurrentDate, Infinity, CoalesceExpr, Cast and Concat.
+// Mul and Div, NullIf, CurrentDate, Infinity, CoalesceExpr, Greatest and
+// Least, Floor and Ceil, Cast and Concat.
 // Each is a value expression with the comparison and ordering methods of a
 // column (Eq, Lt, In, Asc, ...), and each can be named in a select list with
 // As.

@@ -70,6 +70,33 @@ passes, and a plain run rewrites only the header line. A file whose body
 differs is still stale or a conflict, and `momo generate` without `--from-db`
 is unchanged.
 
+### `sqlfn.Greatest`, `sqlfn.Least`, `sqlfn.Floor`, `sqlfn.Ceil` and `jsonop.TypeOf`
+
+No change is needed; these are new functions. They replace the raw SQL or the
+untyped `momo.Func` calls that a per-row setting read from JSON needed
+(`GREATEST(1, CASE WHEN jsonb_typeof(v) = 'number' THEN floor(...) ELSE ... END)`):
+
+```text
+years := sqlfn.Greatest[float64](momo.Lit(1.0),
+    sqlfn.Case[float64]().WhenExpr(jsonop.TypeOf(v).Eq("number"), floored).Else(fallback))
+```
+
+- `sqlfn.Greatest` and `sqlfn.Least` ignore NULL arguments and are NULL only when
+  every argument is NULL, on every dialect. That is PostgreSQL's rule; MySQL,
+  MariaDB and SQLite return NULL for any NULL argument, so Momo rewrites each
+  argument `x` to `COALESCE(x, the other arguments)` there. The rewrite renders
+  every argument once per argument, so keep the list short. `types.Numeric` is
+  PostgreSQL only and fails with `momo.ErrUnsupported` elsewhere, as the
+  `sqlfn` arithmetic does.
+- `sqlfn.Floor` and `sqlfn.Ceil` take a float or a `types.Numeric` and return
+  the same type (an integer needs a `sqlfn.Cast` first, because PostgreSQL's
+  `floor` of an integer is `double precision`). SQLite is rendered with
+  `CAST` rather than `floor()`, which the mattn driver lacks without its
+  `sqlite_math_functions` build tag. `types.Numeric` is PostgreSQL only.
+- `jsonop.TypeOf` is `jsonb_typeof`. SQLite's `json_type` and MySQL and
+  MariaDB's `JSON_TYPE` are mapped to the same six names: `object`, `array`,
+  `string`, `number`, `boolean` and `null`. A SQL NULL column gives SQL NULL.
+
 ## Upgrading to 0.11.0
 
 Two changes can need an edit in your code: an explicit `updated_at` in
