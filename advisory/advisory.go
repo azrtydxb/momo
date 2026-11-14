@@ -27,7 +27,19 @@
 // hashtext; pass Hash64 to use the 64-bit hashtextextended(key, seed), the form
 // applications that already call it need to keep their keys.
 //
-// Other dialects than PostgreSQL fail with momo.ErrUnsupported.
+// MySQL and MariaDB take the session-scoped exclusive locks (Lock, TryLock,
+// Unlock and their String forms) with GET_LOCK, GET_LOCK(name, 0) and
+// RELEASE_LOCK on a pinned connection, exactly as on PostgreSQL. The key maps
+// to a lock name scoped to the current database, as a PostgreSQL advisory lock
+// is (GET_LOCK names are otherwise global to the server): "momo:advisory:",
+// 8 hex digits of sha256(DATABASE()) ("nodb" without a default database), a
+// colon, then the decimal int64 key or "s:" plus 32 hex digits of the sha256
+// of a text key (Hash64 has no effect there). The transaction-scoped and the shared functions fail with
+// momo.ErrUnsupported on MySQL and MariaDB: GET_LOCK locks belong to the
+// session, are not released by a commit or rollback, and have no shared mode,
+// so emulating them would silently hold a session lock.
+//
+// Other dialects fail with momo.ErrUnsupported.
 package advisory
 
 import (
@@ -126,7 +138,7 @@ func check(tx *momo.Tx) error {
 		return &momo.Error{Kind: momo.ErrValidation, Op: "advisory lock", Err: errors.New("a transaction-level advisory lock needs a transaction; pass the *momo.Tx from Begin or DB.Tx")}
 	}
 	if tx.Dialect().Name != dialect.Postgres {
-		return &momo.Error{Kind: momo.ErrUnsupported, Op: "advisory lock", Err: errors.New("transaction-scoped advisory locks need PostgreSQL")}
+		return &momo.Error{Kind: momo.ErrUnsupported, Op: "advisory lock", Err: errors.New("transaction-scoped advisory locks need PostgreSQL: on MySQL and MariaDB GET_LOCK locks belong to the session and a commit does not release them; use the session functions on a pinned connection")}
 	}
 	return nil
 }
@@ -149,12 +161,20 @@ func try(ctx context.Context, q momo.Querier, fn string, key any, opts []Option)
 	return got[0], nil
 }
 
-func checkSession(db *momo.DB) error {
+// checkSession validates a handle for a session-scoped lock. The exclusive
+// session locks run on PostgreSQL and on MySQL and MariaDB; the shared ones
+// (shared true) have no MySQL counterpart and run on PostgreSQL alone.
+func checkSession(db *momo.DB, shared bool) error {
 	if db == nil {
 		return &momo.Error{Kind: momo.ErrValidation, Op: "advisory lock", Err: errors.New("a session-level advisory lock needs a pinned connection; pass db.OnConn(pc)")}
 	}
-	if db.Dialect().Name != dialect.Postgres {
-		return &momo.Error{Kind: momo.ErrUnsupported, Op: "advisory lock", Err: errors.New("session-scoped advisory locks need PostgreSQL")}
+	switch name := db.Dialect().Name; {
+	case name == dialect.Postgres:
+	case name == dialect.MySQL && !shared:
+	case name == dialect.MySQL:
+		return &momo.Error{Kind: momo.ErrUnsupported, Op: "advisory lock", Err: errors.New("shared advisory locks need PostgreSQL: GET_LOCK has no shared mode")}
+	default:
+		return &momo.Error{Kind: momo.ErrUnsupported, Op: "advisory lock", Err: errors.New("session-scoped advisory locks need PostgreSQL, MySQL or MariaDB")}
 	}
 	if !db.IsPinned() {
 		return &momo.Error{Kind: momo.ErrValidation, Op: "advisory lock", Err: errors.New("a session-level advisory lock needs a pinned connection: a pooled *momo.DB may run the lock and the unlock on different connections; pass db.OnConn(pc)")}
@@ -166,55 +186,86 @@ func checkSession(db *momo.DB) error {
 // the pinned connection behind db and waits until it is granted. The lock is
 // held until Unlock or until the connection closes; it is not released by a
 // commit. db must come from DB.OnConn.
+//
+// A key the same session already holds is granted at once and counted, so it
+// needs one Unlock per Lock, as on PostgreSQL.
+//
+// On MySQL and MariaDB it runs GET_LOCK on a name scoped to the current
+// database (see the package comment), in one-second waits until the lock is
+// granted or ctx ends. A NULL result from the server is an error. After Lock
+// returns an error, call Discard on the pinned connection instead of Release: a
+// GET_LOCK that the server granted while the call was being abandoned may still
+// be attached to the connection, and Discard closes it, which frees the lock.
 func Lock(ctx context.Context, db *momo.DB, key int64) error {
-	if err := checkSession(db); err != nil {
+	if err := checkSession(db, false); err != nil {
 		return err
+	}
+	if isMySQL(db) {
+		return mysqlLock(ctx, db, key)
 	}
 	return lock(ctx, db, "pg_advisory_lock", key, nil)
 }
 
-// LockString is Lock with a text key, hashed on the server; see
-// XactLockString for the hash and Hash64 for the 64-bit form.
+// LockString is Lock with a text key. PostgreSQL hashes it on the server; see
+// XactLockString for the hash and Hash64 for the 64-bit form. MySQL and MariaDB
+// hash it on the client into a lock name and ignore Hash64.
 func LockString(ctx context.Context, db *momo.DB, key string, opts ...Option) error {
-	if err := checkSession(db); err != nil {
+	if err := checkSession(db, false); err != nil {
 		return err
+	}
+	if isMySQL(db) {
+		return mysqlLock(ctx, db, key)
 	}
 	return lock(ctx, db, "pg_advisory_lock", key, opts)
 }
 
 // TryLock is the non-blocking form of Lock (pg_try_advisory_lock): it reports
 // whether the lock was granted. A true result holds the lock until Unlock or
-// until the connection closes.
+// until the connection closes. A key the same session already holds is granted
+// at once and counted, as on PostgreSQL. On MySQL and MariaDB it is
+// GET_LOCK(name, 0).
 func TryLock(ctx context.Context, db *momo.DB, key int64) (bool, error) {
-	if err := checkSession(db); err != nil {
+	if err := checkSession(db, false); err != nil {
 		return false, err
+	}
+	if isMySQL(db) {
+		return mysqlTry(ctx, db, key)
 	}
 	return try(ctx, db, "pg_try_advisory_lock", key, nil)
 }
 
-// TryLockString is TryLock with a text key, hashed on the server.
+// TryLockString is TryLock with a text key, hashed as LockString hashes it.
 func TryLockString(ctx context.Context, db *momo.DB, key string, opts ...Option) (bool, error) {
-	if err := checkSession(db); err != nil {
+	if err := checkSession(db, false); err != nil {
 		return false, err
+	}
+	if isMySQL(db) {
+		return mysqlTry(ctx, db, key)
 	}
 	return try(ctx, db, "pg_try_advisory_lock", key, opts)
 }
 
 // Unlock releases one hold of the session-scoped lock for key
-// (pg_advisory_unlock) and reports whether the session held it. Locks are
-// counted: a key locked twice needs two unlocks.
+// (pg_advisory_unlock, RELEASE_LOCK on MySQL and MariaDB) and reports whether
+// the session held it. Locks are counted: a key locked twice needs two unlocks.
 func Unlock(ctx context.Context, db *momo.DB, key int64) (bool, error) {
-	if err := checkSession(db); err != nil {
+	if err := checkSession(db, false); err != nil {
 		return false, err
+	}
+	if isMySQL(db) {
+		return mysqlUnlock(ctx, db, key)
 	}
 	return try(ctx, db, "pg_advisory_unlock", key, nil)
 }
 
-// UnlockString is Unlock for a text key. Pass the same Hash64 option the lock
-// used, or the unlock targets a different key.
+// UnlockString is Unlock for a text key. On PostgreSQL pass the same Hash64
+// option the lock used, or the unlock targets a different key.
 func UnlockString(ctx context.Context, db *momo.DB, key string, opts ...Option) (bool, error) {
-	if err := checkSession(db); err != nil {
+	if err := checkSession(db, false); err != nil {
 		return false, err
+	}
+	if isMySQL(db) {
+		return mysqlUnlock(ctx, db, key)
 	}
 	return try(ctx, db, "pg_advisory_unlock", key, opts)
 }
@@ -272,7 +323,7 @@ func TryXactLockSharedString(ctx context.Context, tx *momo.Tx, key string, opts 
 // closes. db must come from DB.OnConn. See XactLockShared for how it meets the
 // exclusive lock.
 func LockShared(ctx context.Context, db *momo.DB, key int64) error {
-	if err := checkSession(db); err != nil {
+	if err := checkSession(db, true); err != nil {
 		return err
 	}
 	return lock(ctx, db, "pg_advisory_lock_shared", key, nil)
@@ -281,7 +332,7 @@ func LockShared(ctx context.Context, db *momo.DB, key int64) error {
 // LockSharedString is LockShared with a text key, hashed on the server; see
 // XactLockString for the hash and Hash64 for the 64-bit form.
 func LockSharedString(ctx context.Context, db *momo.DB, key string, opts ...Option) error {
-	if err := checkSession(db); err != nil {
+	if err := checkSession(db, true); err != nil {
 		return err
 	}
 	return lock(ctx, db, "pg_advisory_lock_shared", key, opts)
@@ -290,7 +341,7 @@ func LockSharedString(ctx context.Context, db *momo.DB, key string, opts ...Opti
 // TryLockShared is the non-blocking form of LockShared
 // (pg_try_advisory_lock_shared): it reports whether the lock was granted.
 func TryLockShared(ctx context.Context, db *momo.DB, key int64) (bool, error) {
-	if err := checkSession(db); err != nil {
+	if err := checkSession(db, true); err != nil {
 		return false, err
 	}
 	return try(ctx, db, "pg_try_advisory_lock_shared", key, nil)
@@ -298,7 +349,7 @@ func TryLockShared(ctx context.Context, db *momo.DB, key int64) (bool, error) {
 
 // TryLockSharedString is TryLockShared with a hashed text key.
 func TryLockSharedString(ctx context.Context, db *momo.DB, key string, opts ...Option) (bool, error) {
-	if err := checkSession(db); err != nil {
+	if err := checkSession(db, true); err != nil {
 		return false, err
 	}
 	return try(ctx, db, "pg_try_advisory_lock_shared", key, opts)
@@ -309,7 +360,7 @@ func TryLockSharedString(ctx context.Context, db *momo.DB, key string, opts ...O
 // does not release a shared lock, and UnlockShared does not release an
 // exclusive one: they are counted apart.
 func UnlockShared(ctx context.Context, db *momo.DB, key int64) (bool, error) {
-	if err := checkSession(db); err != nil {
+	if err := checkSession(db, true); err != nil {
 		return false, err
 	}
 	return try(ctx, db, "pg_advisory_unlock_shared", key, nil)
@@ -318,7 +369,7 @@ func UnlockShared(ctx context.Context, db *momo.DB, key int64) (bool, error) {
 // UnlockSharedString is UnlockShared for a text key. Pass the same Hash64
 // option the lock used.
 func UnlockSharedString(ctx context.Context, db *momo.DB, key string, opts ...Option) (bool, error) {
-	if err := checkSession(db); err != nil {
+	if err := checkSession(db, true); err != nil {
 		return false, err
 	}
 	return try(ctx, db, "pg_advisory_unlock_shared", key, opts)
