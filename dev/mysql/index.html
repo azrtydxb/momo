@@ -631,6 +631,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-runs-on-a-real-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What runs on a real server
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#connecting" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1356,6 +1367,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-runs-on-a-real-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What runs on a real server
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#connecting" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1520,6 +1542,52 @@ in <a href="../capabilities/">capabilities</a>).</p>
 </table>
 <p>No innovation releases are supported. CI runs the shared suites against all
 three servers (the <code>integration-mysql</code> job), on every push.</p>
+<h2 id="what-runs-on-a-real-server">What runs on a real server<a class="headerlink" href="#what-runs-on-a-real-server" title="Permanent link">&para;</a></h2>
+<p>The <code>integration-mysql</code> CI job starts one server per row of the table above and
+runs the whole integration suite against it with <code>MOMO_REQUIRE_INTEGRATION=1</code>,
+so a server that is missing fails the job instead of skipping the tests.
+Tests that use <code>testopen.EachWithMySQL</code> or <code>testopen.EachMySQL</code> run on all
+three servers; the plain <code>testopen.Each</code> opens PostgreSQL and SQLite only.</p>
+<p>Run on MySQL 8.4, MySQL 9.7 and MariaDB 11.8:</p>
+<ul>
+<li>the shared suites: transactions, errors, joins, aggregates, subqueries and
+  CTEs, RETURNING, raw SQL, locking, hints, keyset pagination, writes, soft
+  delete, optimistic lock, upserts and timestamps;</li>
+<li><code>jsonop.Text</code>, <code>jsonop.Path</code>, <code>jsonop.Root</code>, <code>jsonop.Contains</code>,
+  <code>jsonop.HasKey</code> and <code>jsonop.DeleteKey</code>, with the build error of
+  <code>jsonop.Concat</code> and <code>jsonop.Set</code>;</li>
+<li>window functions (ranking, <code>Lag</code>, <code>Lead</code>, <code>FirstValue</code>, <code>LastValue</code>, <code>Rows</code>
+  and <code>Range</code> frames), the build error for a <code>Groups</code> frame, the aggregate
+  <code>FILTER</code> clause (rewritten to <code>CASE WHEN</code>, with and without <code>Over</code> and in
+  <code>HAVING</code>), and <code>LoadPerParentLimit</code>;</li>
+<li>keyset pagination over string, descending and mixed keys, <code>Batches</code>, and
+  <code>SelectQuery.Each</code> and <code>SelectQuery.Iter</code>, including an early stop, a query
+  while the cursor is open, a canceled context and a stream inside a <code>Tx</code>;</li>
+<li>typed predicates, row-value comparison, projections, select-list aliases,
+  the <code>sqlfn</code> string, CASE, cast and arithmetic helpers, <code>sqlfn.CurrentDate</code>,
+  the <code>agg</code> aggregates and bulk-insert chunking with <code>WithMaxParams</code>;</li>
+<li>every <code>timeop</code> extract field, truncation unit and interval, <code>timeop.Now</code>,
+  <code>timeop.EpochSeconds</code> and the typed date arithmetic.</li>
+</ul>
+<p><code>LATERAL</code> runs on MySQL 8.4 and 9.7, and on MariaDB it is <code>ErrUnsupported</code>.
+<code>CreateGraph</code> and <code>FindOrCreate</code> work on all three (see below), and a test
+checks the stored keys and the found and created cases on each server.
+<code>SelectQuery.Explain</code>, the aggregate <code>FILTER</code> clause on <code>agg.JSONB</code>,
+<code>agg.Array</code>, an ordered or distinct <code>agg.JSONB</code>, <code>unnest</code> and <code>generate_series</code> sources and <code>DISTINCT ON</code> are <code>ErrUnsupported</code>;
+the tests check the error on each server.</p>
+<p>Differences the tests pin down:</p>
+<ul>
+<li>a JSON null member extracts as the text <code>null</code>, not as SQL NULL, because
+  <code>JSON_UNQUOTE</code> turns it into text;</li>
+<li><code>sqlfn.Cast</code> writes the type name as given, and MySQL and MariaDB cast to
+  <code>SIGNED</code>, not <code>bigint</code>;</li>
+<li><code>momo.MapRows</code> returns text columns as <code>[]byte</code>, the driver's own type;</li>
+<li>an aggregate over <code>JSON_ARRAYAGG</code> has no defined member order.</li>
+</ul>
+<p>Not run on MySQL or MariaDB: the one-million-row heap bound of streaming
+(its seed SQL is PostgreSQL and SQLite only), and the CreateGraph behaviour
+tests of the shared suite whose SQL is written for PostgreSQL alone. The graph writes
+have their own tests in <code>driver/mysqldriver</code> and <code>rel_mysql_integration_test.go</code>.</p>
 <h2 id="connecting">Connecting<a class="headerlink" href="#connecting" title="Permanent link">&para;</a></h2>
 <p>Open the pool with <code>mysqldriver.Open(dsn, flavor)</code>, or build the DSN with
 <code>mysqldriver.ConfigureDSN</code> and pass the <code>*sql.DB</code> to <code>mysqldriver.New</code>. The

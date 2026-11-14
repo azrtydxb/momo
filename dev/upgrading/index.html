@@ -1232,6 +1232,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#mariadb-fixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MariaDB fixes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#momo-generate-from-db-reads-sqlite" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2213,6 +2224,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#mariadb-fixes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MariaDB fixes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#momo-generate-from-db-reads-sqlite" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3160,6 +3182,17 @@ yourself afterwards; MySQL, MariaDB and SQLite move past a larger explicit
 value on their own. With <code>Upsert</code> or <code>OnConflict</code> the explicit column is
 written by the INSERT only: a serial or identity column that is not the
 conflict key is never updated on conflict. See issue #127.</p>
+<h3 id="mariadb-fixes">MariaDB fixes<a class="headerlink" href="#mariadb-fixes" title="Permanent link">&para;</a></h3>
+<p>Two calls that did not work on MariaDB now do.</p>
+<ul>
+<li><code>jsonop.Contains</code> on MariaDB sent <code>JSON_CONTAINS(col, CAST(? AS JSON))</code>,
+  which MariaDB rejects (error 1064). It now passes the candidate as JSON text,
+  <code>JSON_CONTAINS(col, ?)</code>. MySQL keeps the <code>CAST</code>, which it needs.</li>
+<li><code>timeop.AddInterval</code> and <code>timeop.SubInterval</code> over a bound time
+  (<code>momo.Value(t)</code>) on MariaDB returned a value that could not be read as a
+  time. The bound operand is now <code>CAST(? AS DATETIME(6))</code> on MySQL and MariaDB,
+  so the call returns a <code>DATETIME</code>. Column operands render as before.</li>
+</ul>
 <h3 id="momo-generate-from-db-reads-sqlite"><code>momo generate --from-db</code> reads SQLite<a class="headerlink" href="#momo-generate-from-db-reads-sqlite" title="Permanent link">&para;</a></h3>
 <p>No change is needed. <code>momo generate --from-db</code> now also reads a SQLite
 database: set <code>dialects: [sqlite]</code> in <code>momo.yaml</code> and pass the file (a path, a
