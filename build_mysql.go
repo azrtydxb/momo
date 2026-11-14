@@ -179,7 +179,7 @@ func (q InsertQuery[T]) renderMySQLConflict(b *Builder, written []string) {
 		}
 	}
 	pk := q.pkNames()
-	if err := checkMySQLConflictTarget(q.meta.TableSchema, q.i.target, pk, q.unsuppliedIdentity(written)); err != nil {
+	if err := checkMySQLConflictTarget(q.meta.TableSchema, q.i.target, pk, q.unsuppliedIdentity(written)); err != nil && len(q.i.explicit) == 0 {
 		b.SetErr(err)
 		return
 	}
