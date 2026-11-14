@@ -168,7 +168,7 @@ func TestSumIntOverflowIntegration(t *testing.T) {
 		got64, err64 := aggScalar[int64](db, "agg_big", momo.SumInt(abC), all)
 		if err64 == nil {
 			t.Errorf("SumInt past int64 = %v, want an error", got64)
-		} else if d == dialect.MySQL && !strings.Contains(err64.Error(), "RED-PLACEHOLDER") {
+		} else if d == dialect.MySQL && !strings.Contains(err64.Error(), "mysql: cannot convert the column value to the destination type") {
 			t.Errorf("SumInt overflow error text = %q", err64.Error())
 		}
 		got, err := aggScalar[types.Numeric](db, "agg_big", momo.SumNumeric(abC), all)
