@@ -862,3 +862,45 @@ Decision (2026-11-14, integrator): as above.
   support.
 
 Decision (2026-11-14, integrator): as above.
+
+## Parity: DELETE ... USING and per-row DEFAULT on SQLite (2026-11-14, integrator)
+
+- **DELETE ... USING:** SQLite renders `DeleteQuery.Using` as
+  `DELETE FROM t WHERE EXISTS (SELECT 1 FROM src1, src2 WHERE <where>)`; before
+  it failed with `ErrUnsupported` (`delete.go`, `render`). EXISTS, not
+  `pk IN (SELECT pk ...)`: it needs no key, so a composite key (row-value `IN`
+  would need every column in the target's primary key list), a table without a
+  primary key and a `WITHOUT ROWID` table all work with one rule; a target row
+  is deleted once however many source rows match, the meaning of USING on
+  PostgreSQL; the `Where` predicates, which may reference target and sources,
+  move into the subquery unchanged and correlate to the outer target. SQLite
+  `RETURNING` reads the deleted table only, so `Returning` target columns work
+  and a source column stays `ErrUnsupported`, as for `UpdateQuery.From`. The
+  unfiltered-mutation guards ran before and are unchanged. An `AllRows`
+  statement with no `Where` renders `EXISTS (SELECT 1 FROM src)`, which deletes
+  every row when the source is not empty, as USING does.
+- **DEFAULT in VALUES:** momo wrote `DEFAULT` in `Models` rows (a zero
+  `dbdefault` field next to rows that set it) and in `ValuesRows` (a column
+  omitted or `SetDefault` in some rows); SQLite refused both with
+  `ErrUnsupported` (`dbDefaultDecision`, `valueRows`). PostgreSQL and MySQL
+  still write `DEFAULT` inline in one statement, unchanged (`DefaultInValues`).
+  On SQLite `plan` now splits the rows into runs of consecutive rows with the
+  same set of default columns (`defaultRuns`), each an ordinary statement in
+  which a column default in every row leaves the column list, run through the
+  existing chunk path: one atomic scope (transaction or savepoint), the rows of
+  all runs in `Rows`, one shared clock read, read-back per run.
+- **Why runs and not groups:** grouping all rows by column set would reorder
+  them, and with RETURNING or generated keys the order the caller gave is the
+  order they read back. Consecutive runs keep it; the cost is one statement per
+  change of pattern (the worst case alternates, N statements). Fallbacks
+  considered and rejected: writing the column's default expression (momo does
+  not know it) and inserting NULL (changes semantics).
+- **Not changed:** `SQL()` renders one statement and still fails with
+  `ErrUnsupported` on SQLite for a mix, as do `Unnest` and `Copy`. A WITH
+  clause that would repeat across runs is `ErrValidation`, as for chunks.
+- **Docs:** `docs/capabilities.md` rows and the ai-guide and migrations notes.
+  The generated capabilities block lists dialect flags, and `DefaultInValues`
+  stays false on SQLite because the dialect still has no DEFAULT keyword in
+  VALUES, so no generated row changes.
+
+Decision (2026-11-14, integrator): as above.

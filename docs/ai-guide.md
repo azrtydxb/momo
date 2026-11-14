@@ -571,9 +571,13 @@ type Event struct {
   passed (the slice element for `Models`) once the statement has committed. A
   non-zero value is written as given. A pointer to a zero value counts as set.
 - `Models` with a mix of zero and set rows writes `DEFAULT` for the zero rows
-  (PostgreSQL). SQLite cannot put `DEFAULT` in a multi-row VALUES list, and
-  `Unnest` and `Copy` have no per-row default, so they fail with `ErrUnsupported`
-  for such a mix: insert the rows separately or give every row a value. A
+  (PostgreSQL). SQLite cannot put `DEFAULT` in a multi-row VALUES
+  list, so `Exec` and `Rows` split the rows into runs of consecutive rows that
+  agree on which columns are unset and insert each run as its own statement, in
+  order, in one transaction (`SQL` fails with `ErrUnsupported`, as it renders a
+  single statement). `Unnest` and `Copy` have no per-row default, so they fail
+  with `ErrUnsupported` for such a mix: insert the rows separately or give every
+  row a value. A
   column that is zero in every row simply leaves the column list. `Copy` has
   no `RETURNING` to read the value back, so it refuses a zero dbdefault column
   with `ErrUnsupported`: set a value, or use `Models`.
@@ -1530,8 +1534,9 @@ Joined and CTE-prefixed writes:
   model's columns, join it to the target in `Where`, and assign from it with `col.SetExpr(srcCol)`.
   The soft-delete filter and interceptors do not apply to `src`: add that predicate to `Where`.
   MySQL and MariaDB render the multi-table forms (`UPDATE t, src SET t.col = ...`,
-  `DELETE t FROM t, src WHERE ...`); SQLite has `UPDATE ... FROM` (3.33 or later) but no
-  `DELETE ... USING` (`ErrUnsupported`).
+  `DELETE t FROM t, src WHERE ...`); SQLite has `UPDATE ... FROM` (3.33 or later) and renders
+  `Using` as `DELETE FROM t WHERE EXISTS (SELECT 1 FROM src WHERE ...)`, so `Returning` lists
+  columns of the target only there (a source column is `ErrUnsupported`).
 - With `From` or `Using` the unfiltered-mutation guard is stricter: at least one `Where` predicate
   must reference a column of the target table, otherwise the statement joins every target row to
   the source and fails with `ErrUnfilteredMutation` unless `AllRows()` confirms it. A condition

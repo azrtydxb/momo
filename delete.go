@@ -70,7 +70,11 @@ func (d DeleteQuery[T]) WithRecursive(name string, q Subquery, cols ...string) D
 //
 // PostgreSQL renders DELETE ... USING. MySQL and MariaDB render the
 // multi-table form DELETE t FROM t, src WHERE .... SQLite has no such form and
-// fails with ErrUnsupported (use a subquery in Where). Soft-deleted rows of
+// renders DELETE FROM t WHERE EXISTS (SELECT 1 FROM src WHERE ...): a target
+// row is deleted when at least one joined source row satisfies Where, which is
+// the USING meaning and needs no key, so it holds for a composite key and a
+// table without one. SQLite's RETURNING reads the deleted table only, so a
+// Returning column of a source fails with ErrUnsupported there. Soft-deleted rows of
 // src are not filtered: add that predicate to Where. Interceptors apply to the
 // target table only, not to src.
 //
@@ -227,10 +231,9 @@ func (d DeleteQuery[T]) render(b *Builder) {
 		b.SetErr(err)
 		return
 	}
-	if len(d.using) > 0 && b.d.Name == dialect.SQLite {
-		b.unsupported("DELETE ... USING")
-		return
-	}
+	// SQLite has no DELETE ... USING: the sources move into an EXISTS
+	// subquery that the target row must satisfy.
+	exists := len(d.using) > 0 && b.d.Name == dialect.SQLite
 	target := TableRef{Name: d.meta.Table, Schema: d.meta.Schema}
 	names := append(cteNames(d.with), target.Qualifier())
 	names = append(names, sourceQualifiers(d.using)...)
@@ -252,7 +255,7 @@ func (d DeleteQuery[T]) render(b *Builder) {
 		}
 		b.WriteString("FROM ")
 		target.appendFrom(b)
-		if len(d.using) > 0 {
+		if len(d.using) > 0 && !exists {
 			if mysql {
 				b.WriteString(", ")
 			} else {
@@ -260,7 +263,15 @@ func (d DeleteQuery[T]) render(b *Builder) {
 			}
 			appendSources(b, d.using)
 		}
-		if len(where) > 0 {
+		if exists {
+			b.WriteString(" WHERE EXISTS (SELECT 1 FROM ")
+			appendSources(b, d.using)
+			if len(where) > 0 {
+				b.WriteString(" WHERE ")
+				appendAnd(b, where)
+			}
+			b.writeByte(')')
+		} else if len(where) > 0 {
 			b.WriteString(" WHERE ")
 			appendAnd(b, where)
 		}

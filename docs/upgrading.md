@@ -5,6 +5,38 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.13.0
+
+No edit is needed in your code. Two calls that returned `ErrUnsupported` on
+SQLite now run, so code that relied on the error (a fallback branch, a test
+that expects the refusal) now takes the success path.
+
+### `DELETE ... USING` runs on SQLite
+
+`DeleteQuery.Using` on SQLite renders
+`DELETE FROM t WHERE EXISTS (SELECT 1 FROM src WHERE ...)`, because SQLite has
+no `USING`. A target row is deleted once if at least one source row satisfies
+`Where`, which is what `USING` means on PostgreSQL, and it works with a
+composite primary key and a table without one. SQLite's `RETURNING` reads the
+deleted table only, so `Returning` accepts columns of the target; a column of a
+`Using` source is still `ErrUnsupported` there. A workaround that put a
+subquery in `Where` keeps working.
+
+### Mixed `DEFAULT` rows in a multi-row insert run on SQLite
+
+`Models` with a `dbdefault` field that is zero in some rows and set in others,
+and `ValuesRows` with a column that is omitted or `SetDefault` in some rows and
+given in others, failed with `ErrUnsupported` on SQLite, which cannot put
+`DEFAULT` in a `VALUES` list. `Exec` and `Rows` now split the rows into runs of
+consecutive rows that leave the same columns to the database default and insert
+each run as its own statement, in order, inside one transaction (a savepoint
+inside a `Tx`). The stored defaults are read back into the models as before,
+and `Rows` returns the rows in the order you gave. An insert that alternates
+between patterns costs one statement per change. `SQL` renders one statement,
+so it still fails with `ErrUnsupported` for such a mix, as do `Unnest` and
+`Copy`; a `WITH` clause on a split insert is `ErrValidation`. PostgreSQL and
+MySQL are unchanged and still write `DEFAULT` inline.
+
 ## Upgrading to 0.12.0
 
 Two changes can need an edit. `momo.Avg` is now generic, so code that uses it

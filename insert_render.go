@@ -293,7 +293,8 @@ func (q InsertQuery[T]) writeAssignRows(b *Builder, p insertPlan[T]) {
 // appearance, automatic timestamps included) and each row's assignment per
 // column. On a dialect without DEFAULT inside VALUES, a column that is
 // default in every row leaves the list, and a column that is default in some
-// rows only fails with ErrUnsupported.
+// rows only fails with ErrUnsupported; Exec and Rows never reach that case,
+// because plan has split such rows into runs (defaultRuns).
 func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time, fp fieldPlan[T]) ([]int, []map[int]Assignment, error) {
 	src := q.i.rows
 	if !q.i.hasRows {
