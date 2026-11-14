@@ -2051,6 +2051,10 @@ diagnostic and nothing is written for that package.</p>
 <td>table name; always set it. Also <code>schema:&lt;name&gt;</code>.</td>
 </tr>
 <tr>
+<td><code>autoincrement</code>, <code>without_rowid</code>, <code>strict</code> (on <code>momo.Model</code>)</td>
+<td>SQLite table options: <code>AUTOINCREMENT</code> on the one-column <code>INTEGER</code> key, <code>WITHOUT ROWID</code>, <code>STRICT</code>; refused on other dialects, on a field, and for <code>autoincrement</code> on another key. <code>--from-db</code> writes them and <code>CREATE TABLE</code> carries them; changing one later needs a custom migration, and removing one from a model is not detected</td>
+</tr>
+<tr>
 <td><code>pk</code></td>
 <td>primary key; several <code>pk</code> fields make a composite key, declared in field order unless <code>Config.PrimaryKey</code> lists the fields in another order (a tag <code>belongs_to</code> target needs a single-column key)</td>
 </tr>
@@ -2440,7 +2444,7 @@ value. Tag the field <code>dbdefault</code> to leave it to the database instead:
 <li><code>dbdefault</code> cannot be combined with <code>identity</code>, <code>serial</code>, <code>idgen</code>,
   <code>read_only</code>, <code>version</code>, <code>soft_delete</code>, <code>created_at</code> or <code>updated_at</code>; the
   generator reports it. It adds no database default (use <code>default:</code>), and
-  <code>momo generate --from-db</code> writes it for NOT NULL PostgreSQL columns whose
+  <code>momo generate --from-db</code> writes it for NOT NULL PostgreSQL and SQLite columns whose
   default is computed (a function call, <code>CURRENT_TIMESTAMP</code>, or a <code>nextval</code>
   sequence on a column that is not identity or serial); with
   <code>introspect.dbdefault: all</code> it writes it for every NOT NULL column that has a
@@ -2448,7 +2452,7 @@ value. Tag the field <code>dbdefault</code> to leave it to the database instead:
   column whose constant default is <code>true</code> or non-zero becomes a pointer field, so an
   explicit <code>false</code> or <code>0</code> is written. A hand-written model can
   put <code>dbdefault</code> on any NOT NULL column that has a database default. It never
-  writes it for other dialects: plain MySQL cannot read the value back.</li>
+  writes it for MySQL, which cannot read the value back.</li>
 </ul>
 <h3 id="model-hooks">Model hooks<a class="headerlink" href="#model-hooks" title="Permanent link">&para;</a></h3>
 <p>Give a model a method named <code>BeforeInsert</code>, <code>BeforeUpdate</code>, <code>BeforeDelete</code> or

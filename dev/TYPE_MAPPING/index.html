@@ -535,6 +535,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#reading-a-sqlite-database-with-from-db" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading a SQLite database with --from-db
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#null-handling" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1356,6 +1367,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#reading-a-sqlite-database-with-from-db" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading a SQLite database with --from-db
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#null-handling" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1857,6 +1879,34 @@ agentconversation.Cost.SetExpr(sqlfn.Add(agentconversation.Cost, cost))
   infinities), or as a string to avoid binary floating point. Values beyond
   <code>float64</code> precision round-trip exactly, and <code>numeric</code> also accepts <code>NaN</code>.</li>
 </ul>
+<h2 id="reading-a-sqlite-database-with-from-db">Reading a SQLite database with --from-db<a class="headerlink" href="#reading-a-sqlite-database-with-from-db" title="Permanent link">&para;</a></h2>
+<p><code>momo generate --from-db</code> on a SQLite database maps a declared column type to a
+Go type by the type affinity rules of SQLite, the inverse of the SQLite column
+of the generated mappings above. It adds a <code>type:</code> tag with the declared type
+whenever the Go type's own SQLite column differs, so the models build the column
+back as it was.</p>
+<ul>
+<li>A name with <code>INT</code> (<code>INTEGER</code>, <code>BIGINT</code>) is <code>int64</code>.</li>
+<li>A name with <code>CHAR</code>, <code>CLOB</code> or <code>TEXT</code> is <code>string</code>.</li>
+<li>A name with <code>BLOB</code> is <code>[]byte</code>.</li>
+<li>A name with <code>REAL</code>, <code>FLOA</code> or <code>DOUB</code> is <code>float64</code>.</li>
+<li><code>BOOLEAN</code> is <code>bool</code>; <code>DATETIME</code> and <code>TIMESTAMP</code> are <code>time.Time</code>; <code>DATE</code> is
+  <code>types.Date</code>; <code>NUMERIC</code> is <code>float64</code>, with a report note.</li>
+</ul>
+<p>The <code>type:</code> tag carries the declared type unless the Go type's own SQLite
+column already spells it that way (<code>INTEGER</code>, <code>TEXT</code>, <code>BLOB</code>, <code>REAL</code>).</p>
+<p><code>NUMERIC</code> is mapped, with a note, because a bare <code>NUMERIC</code> column converts
+well-formed text to an integer or a real and <code>float64</code> reads either; a
+<code>DECIMAL(10,2)</code> column is not, because its declared precision says the values
+are exact decimals that <code>float64</code> would round, so a rule must choose
+<code>types.Numeric</code> or a decimal type. <code>BOOLEAN</code>, <code>DATETIME</code>, <code>TIMESTAMP</code> and <code>DATE</code>
+columns get a report note too: SQLite keeps what was written, so a value other
+than 0 or 1, a unix-timestamp integer or text that is not a date fails to scan
+into <code>bool</code>, <code>time.Time</code> or <code>types.Date</code>.</p>
+<p>Any other declared type has NUMERIC affinity, which holds integers, floats and
+text alike, so it has no single Go type: <code>DECIMAL(10,2)</code>, a <code>json</code> column and a column
+with no declared type are errors until an <code>introspect.types</code> or
+<code>introspect.columns</code> rule names the Go type. The column text is never guessed.</p>
 <h2 id="null-handling">Null handling<a class="headerlink" href="#null-handling" title="Permanent link">&para;</a></h2>
 <p>A column that can be NULL needs a Go type that can hold NULL: a pointer
 (<code>*int64</code>), a <code>sql.Null*</code> wrapper, or a type whose <code>Scan</code> accepts nil.

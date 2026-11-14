@@ -1014,6 +1014,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#a-sqlite-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A SQLite database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-introspect-section" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2060,6 +2071,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#a-sqlite-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A SQLite database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-introspect-section" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2924,12 +2946,16 @@ and foreign keys are enforced again afterwards (<code>TestSQLiteRebuildFKStillEn
 <li><code>sqlite.Rebuild</code> and <code>sqlite.Capture</code> rebuild from a live connection
   (captured views and triggers are recreated verbatim); the engine path rebuilds
   from the snapshot instead.</li>
-<li>A model cannot declare <code>WITHOUT ROWID</code>, <code>STRICT</code> or <code>AUTOINCREMENT</code>, so a
-  table that has one in the database and not in the model is not a difference:
-  <code>diff</code> and <code>AutoMigrate</code> leave it alone and a rebuild writes it back
-  (<code>TestSQLiteAutoMigrateWithStrictTable</code>). Asking for one the table lacks is
-  refused by <code>diff</code> (write a custom migration). <code>schema.Table</code> carries <code>Strict</code>
-  and <code>Autoincrement</code>; inspection reads them. A rebuild of an <code>AUTOINCREMENT</code>
+<li>A model declares <code>WITHOUT ROWID</code>, <code>STRICT</code> and <code>AUTOINCREMENT</code> with the
+  <code>without_rowid</code>, <code>strict</code> and <code>autoincrement</code> options of its <code>momo.Model</code> tag;
+  <code>momo generate --from-db</code> writes them from an existing database, and
+  <code>CREATE TABLE</code> carries them. They are one-way after that. Changing them on an
+  existing table needs a custom migration: asking for one the table lacks is
+  refused by <code>diff</code>. Removing one from a model is not detected: a table that
+  has one in the database and not in the model is not a difference, <code>diff</code> and
+  <code>AutoMigrate</code> leave it alone and a rebuild writes it back
+  (<code>TestSQLiteAutoMigrateWithStrictTable</code>). <code>schema.Table</code> carries <code>Strict</code> and
+  <code>Autoincrement</code>; inspection reads them. A rebuild of an <code>AUTOINCREMENT</code>
   table copies its <code>sqlite_sequence</code> value to the new table, so ids of deleted
   rows are not handed out again (<code>TestSQLiteStrictAutoincrementRoundTrip</code>).
   An <code>INTEGER PRIMARY KEY DESC</code> is not a rowid alias and is not reported as an
@@ -3402,10 +3428,11 @@ SQL files by version, so it runs once, under the same lock, with a history row
   and <code>drift</code>.</p>
 <h2 id="7-adopting-an-existing-database">7. Adopting an existing database<a class="headerlink" href="#7-adopting-an-existing-database" title="Permanent link">&para;</a></h2>
 <p>Worked example: <code>examples/adopt-existing-schema</code>.</p>
-<p><code>momo generate --from-db</code> reads a live PostgreSQL, MySQL or MariaDB database
-and writes the models and the init snapshot, so nothing has to be written by
-hand first. The MySQL family has its own rules, listed in
-<a href="../mysql/#models-from-a-database">MySQL and MariaDB</a>.</p>
+<p><code>momo generate --from-db</code> reads a live PostgreSQL, MySQL, MariaDB or SQLite
+database (the dialect of <code>momo.yaml</code>) and writes the models and the init
+snapshot, so nothing has to be written by hand first. The MySQL family has its
+own rules, listed in <a href="../mysql/#models-from-a-database">MySQL and MariaDB</a>;
+SQLite's are in <a href="#a-sqlite-database">a SQLite database</a>.</p>
 <ol>
 <li>Run <code>momo generate --from-db DATABASE_URL</code>. The value is a database URL, <code>-</code>
    to read the URL from standard input, or the name of an environment variable
@@ -3468,6 +3495,68 @@ the expression.
 A VIRTUAL one also gets the <code>virtual</code> tag option (or <code>c.GeneratedVirtual(&amp;m.Field,
 "&lt;expr&gt;")</code> when the expression has a comma), so the model declares the kind the
 database has.</p>
+<h3 id="a-sqlite-database">A SQLite database<a class="headerlink" href="#a-sqlite-database" title="Permanent link">&para;</a></h3>
+<p>With <code>dialects: [sqlite]</code> in <code>momo.yaml</code>, <code>--from-db</code> takes the database file:
+a path, a <code>sqlite:</code> or <code>file:</code> URL, or the name of an environment variable that
+holds one. The file must exist; <code>:memory:</code> and <code>mode=memory</code> are refused, as
+they are empty. The CLI opens it with the pure-Go driver <code>driver/sqlitepure</code>,
+so no cgo is needed, and read-only: <code>--from-db</code> and <code>--from-db --check</code> never
+write the file, keep its journal mode and do not convert a rollback-journal
+database to WAL (<code>sqlitepure.Config.ReadOnly</code>: no WAL pragma, <code>mode=ro</code> and
+<code>PRAGMA query_only</code>). A database that is already in WAL mode still needs its
+<code>-shm</code> and <code>-wal</code> files, or a directory SQLite can create them in; for one in a
+directory you cannot write, inspect a copy. <code>--schema</code> is refused: SQLite has
+one namespace per database file. The other <code>momo migrate</code> commands open the
+file read-write and set WAL mode, as every momo SQLite connection does. The same <code>momo migrate</code> commands (<code>diff</code>,
+<code>apply</code>, <code>baseline</code>, <code>drift</code> and the rest) run on SQLite with <code>--url</code> or
+<code>migrate.url_env</code> pointing at the file.</p>
+<p>The models of a SQLite database keep what a rebuild from the models needs:</p>
+<ul>
+<li>Each declared column type maps by the SQLite affinity rules: a name with
+  <code>INT</code> is <code>int64</code>, with <code>CHAR</code>, <code>CLOB</code> or <code>TEXT</code> is <code>string</code>, with <code>BLOB</code> is
+  <code>[]byte</code>, with <code>REAL</code>, <code>FLOA</code> or <code>DOUB</code> is <code>float64</code>; <code>BOOLEAN</code> is <code>bool</code>,
+  <code>DATETIME</code> and <code>TIMESTAMP</code> are <code>time.Time</code> and <code>DATE</code> is <code>types.Date</code>. The
+  declared spelling is kept with a <code>type:</code> tag whenever the Go type alone would
+  give another (<code>type:VARCHAR(200)</code>, <code>type:BOOLEAN</code>). A type with NUMERIC
+  affinity that is not one of those (<code>DECIMAL(10,2)</code>, a <code>json</code> column) or no declared type
+  is an error until an <code>introspect.types</code> or <code>introspect.columns</code> rule names a
+  Go type; see <a href="../TYPE_MAPPING/#reading-a-sqlite-database-with---from-db">TYPE_MAPPING.md</a>.
+  A <code>BOOLEAN</code>, <code>DATETIME</code>, <code>TIMESTAMP</code> or <code>DATE</code> column gets a report note:
+  SQLite stores whatever was written, and a value that is not 0 or 1, a unix
+  integer or text that is not a date fails to scan into the Go type.</li>
+<li>An <code>INTEGER PRIMARY KEY</code> is the rowid alias: the field is tagged <code>pk,identity</code>
+  and the column is NOT NULL, which SQLite does not report for it. A primary key
+  column of another kind that allows NULL (SQLite permits that on a rowid table)
+  is written NOT NULL with a warning, and the baseline reports the column.</li>
+<li><code>AUTOINCREMENT</code>, <code>WITHOUT ROWID</code> and <code>STRICT</code> are the <code>autoincrement</code>,
+  <code>without_rowid</code> and <code>strict</code> options of the <code>momo.Model</code> tag, valid on SQLite
+  only. They are read by <code>--from-db</code> and written by <code>CREATE TABLE</code>. Changing
+  them on an existing table needs a custom migration, and removing one from a
+  model is not detected (see the SQLite rebuild notes above).</li>
+<li>A <code>CHECK (col IN ('a', 'b'))</code> on a TEXT column is an enum column
+  (<code>enum:&lt;table&gt;_&lt;column&gt;</code> plus a <code>c.Enum</code> call), which SQLite builds back as the
+  same CHECK. Other checks are <code>c.Check</code> calls with the constraint name SQLite
+  holds, or <code>&lt;table&gt;_check</code> for an unnamed one.</li>
+<li>Defaults are written as SQLite reports them. With <code>introspect.dbdefault: all</code>
+  a NOT NULL column with a default gets <code>dbdefault</code>, and a <code>bool</code> or number
+  column whose constant default is true or non-zero becomes a pointer, as on
+  PostgreSQL; a computed default (<code>CURRENT_TIMESTAMP</code>, <code>datetime('now')</code>) is
+  tagged without the option. SQLite reads the value back with <code>RETURNING</code>. A
+  bulk insert whose rows mix zero and set values of a <code>dbdefault</code> column returns
+  <code>ErrUnsupported</code> on SQLite, which has no per-row <code>DEFAULT</code> in a multi-row
+  <code>VALUES</code> list; insert such rows separately.</li>
+<li>A unique constraint is <code>c.Unique</code>, a unique index is a <code>unique</code> tag or
+  <code>c.Index(...).Unique()</code>, and partial and expression indexes keep their
+  <code>WHERE</code> text and expressions (<code>c.Index(...).Where(...)</code>, <code>c.IndexExpr</code>).</li>
+<li>Foreign keys become <code>belongs_to</code> fields (and with <code>introspect.inverse</code> the
+  <code>has_many</code> or <code>has_one</code> on the other side), with their <code>on_delete</code> and
+  <code>on_update</code> actions; STORED and VIRTUAL generated columns become <code>read_only</code>
+  fields with <code>generated</code> and, for VIRTUAL, <code>virtual</code>; views and triggers are
+  declared with <code>c.View</code> and <code>c.Trigger</code>.</li>
+</ul>
+<p>SQLite has no schemas, extensions, native enums, functions, policies or row-level
+security, so none is read or written. A shadow table of a virtual table, the
+<code>sqlite_</code> tables and the two momo bookkeeping tables are never modeled.</p>
 <h3 id="the-introspect-section">The introspect section<a class="headerlink" href="#the-introspect-section" title="Permanent link">&para;</a></h3>
 <p><code>momo.yaml</code> holds what the database cannot say, and it is applied again on every
 run:</p>
@@ -3548,7 +3637,7 @@ time (<code>EXECUTE</code> with a name put together from pieces) cannot be follo
 function only that code reaches is not written and a fresh database built from
 the models lacks it. <code>functions: all</code> writes every function on the first model,
 as releases before 0.7.0 did, and is the workaround.</p>
-<p><code>dbdefault: all</code> tags every NOT NULL PostgreSQL column that has a default with
+<p><code>dbdefault: all</code> tags every NOT NULL PostgreSQL or SQLite column that has a default with
 <code>dbdefault</code>, constant defaults such as <code>DEFAULT 1</code> included (by default only
 computed defaults are tagged), so <code>InsertQuery.Model</code> leaves an unset field to the
 database default. A nullable column is never tagged. A <code>bool</code> or number column
