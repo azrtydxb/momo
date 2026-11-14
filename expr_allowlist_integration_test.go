@@ -17,7 +17,7 @@ func TestEscapeLike(t *testing.T) {
 	if got := momo.EscapeLike(`50%_off!`); got != `50!%!_off!!` {
 		t.Fatalf("EscapeLike = %q", got)
 	}
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := t.Context()
 		for _, title := range []string{"50%_off", "50 off", "50!off"} {

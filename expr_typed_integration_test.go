@@ -17,7 +17,7 @@ import (
 // Catches: an aliased aggregate that the outer query cannot read by name,
 // from a FROM subquery or from a CTE without positional column names.
 func TestAliasedAggregateReferencedByName(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := context.Background()
 		seedTenants(t, db, 1, 2, 2, 3)

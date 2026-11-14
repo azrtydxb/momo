@@ -27,7 +27,7 @@ func seedTitles(t *testing.T, db *momo.DB, titles ...string) {
 // Catches: Func[T] rendering a call the database rejects or binding its
 // arguments wrongly.
 func TestFuncExecutes(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
 		ctx := context.Background()
 		seedTitles(t, db, "x", "y", "z")
