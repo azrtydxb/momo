@@ -272,13 +272,16 @@ func TestGenerateSQLiteInverse(t *testing.T) {
 	)
 }
 
-// Catches: the dialect gate rejecting SQLite, or accepting a dialect with no
-// inspector.
+// Catches: the dialect gate rejecting SQLite or MySQL, or accepting a dialect
+// with no inspector.
 func TestGenerateDialectGate(t *testing.T) {
 	if _, err := Generate(&schema.Schema{}, Options{Package: "models", Dialect: dialect.SQLite}); err != nil {
 		t.Errorf("sqlite: %v", err)
 	}
-	if _, err := Generate(&schema.Schema{}, Options{Package: "models", Dialect: dialect.MySQL}); err == nil {
-		t.Error("mysql has no inspector here and must be refused")
+	if _, err := Generate(&schema.Schema{}, Options{Package: "models", Dialect: dialect.MySQL}); err != nil {
+		t.Errorf("mysql: %v", err)
+	}
+	if _, err := Generate(&schema.Schema{}, Options{Package: "models", Dialect: dialect.Name("oracle")}); err == nil {
+		t.Error("a dialect with no inspector must be refused")
 	}
 }
