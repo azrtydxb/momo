@@ -55,7 +55,7 @@ id INTEGER PRIMARY KEY CHECK (id = 1),
 holder TEXT NOT NULL,
 acquired_at TEXT NOT NULL
 )`, nil); cerr != nil {
-			return nil, nil, fmt.Errorf("migrate/sqlite: create the lock table: %w", cerr)
+			return nil, holder, lockFailure("create the lock table", cerr)
 		}
 		err = insert()
 	}
@@ -70,7 +70,7 @@ acquired_at TEXT NOT NULL
 		return nil, holder, fmt.Errorf("%w: held by %s", migrate.ErrLocked, text)
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("migrate/sqlite: acquire the migration lock: %w", err)
+		return nil, holder, lockFailure("acquire the migration lock", err)
 	}
 	unlock = func() error {
 		uctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), unlockTimeout)
@@ -85,6 +85,18 @@ acquired_at TEXT NOT NULL
 		return nil
 	}
 	return unlock, holder, nil
+}
+
+// lockFailure wraps a failed lock statement. A busy database (another
+// connection holds the write lock, for a long migration transaction say, for
+// longer than the driver's busy timeout) is migrate.ErrLocked, so that the
+// engine keeps retrying until its lock wait is over, as for a held lock row,
+// instead of failing at once; any other error is a plain failure.
+func lockFailure(what string, err error) error {
+	if errors.Is(err, momo.ErrBusy) {
+		return fmt.Errorf("%w: the database is busy, another connection holds its write lock (%s)", migrate.ErrLocked, what)
+	}
+	return fmt.Errorf("migrate/sqlite: %s: %w", what, err)
 }
 
 // lockHolder returns the holder text of the lock row, or "" when there is none.

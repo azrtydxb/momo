@@ -37,24 +37,24 @@ has no array columns, so the generator rejects them there.
 
 | Go type                                | PostgreSQL               | SQLite      | MySQL       |
 | -------------------------------------- | ------------------------ | ----------- | ----------- |
-| `int`                                  | bigint                   | INTEGER     | unsupported |
-| `int8`                                 | smallint                 | INTEGER     | unsupported |
-| `int16`                                | smallint                 | INTEGER     | unsupported |
-| `int32`                                | integer                  | INTEGER     | unsupported |
-| `int64`                                | bigint                   | INTEGER     | unsupported |
-| `float32`                              | real                     | REAL        | unsupported |
-| `float64`                              | double precision         | REAL        | unsupported |
-| `bool`                                 | boolean                  | INTEGER     | unsupported |
-| `string`                               | text                     | TEXT        | unsupported |
-| `string with size:N`                   | character varying(N)     | TEXT        | unsupported |
-| `[]byte`                               | bytea                    | BLOB        | unsupported |
-| `time.Time`                            | timestamp with time zone | TEXT        | unsupported |
-| `types.UUID`                           | uuid                     | TEXT        | unsupported |
-| `uuid.UUID (github.com/google/uuid)`   | uuid                     | TEXT        | unsupported |
-| `types.Date`                           | date                     | TEXT        | unsupported |
-| `types.Numeric`                        | numeric                  | TEXT        | unsupported |
-| `types.JSON[T]`                        | jsonb                    | TEXT        | unsupported |
-| `vector.Vector`                        | vector(N)                | unsupported | unsupported |
+| `int`                                  | bigint                   | INTEGER     | bigint      |
+| `int8`                                 | smallint                 | INTEGER     | tinyint     |
+| `int16`                                | smallint                 | INTEGER     | smallint    |
+| `int32`                                | integer                  | INTEGER     | int         |
+| `int64`                                | bigint                   | INTEGER     | bigint      |
+| `float32`                              | real                     | REAL        | float       |
+| `float64`                              | double precision         | REAL        | double      |
+| `bool`                                 | boolean                  | INTEGER     | tinyint(1)  |
+| `string`                               | text                     | TEXT        | text        |
+| `string with size:N`                   | character varying(N)     | TEXT        | varchar(N)  |
+| `[]byte`                               | bytea                    | BLOB        | blob        |
+| `time.Time`                            | timestamp with time zone | TEXT        | datetime(6) |
+| `types.UUID`                           | uuid                     | TEXT        | char(36)    |
+| `uuid.UUID (github.com/google/uuid)`   | uuid                     | TEXT        | char(36)    |
+| `types.Date`                           | date                     | TEXT        | text        |
+| `types.Numeric`                        | numeric                  | TEXT        | text        |
+| `types.JSON[T]`                        | jsonb                    | TEXT        | json        |
+| `vector.Vector`                        | vector(N)                | unsupported | vector(N)   |
 | `vector.HalfVector`                    | halfvec(N)               | unsupported | unsupported |
 | `vector.SparseVector`                  | sparsevec(N)             | unsupported | unsupported |
 | `vector.Bits`                          | bit(N)                   | unsupported | unsupported |
@@ -72,8 +72,16 @@ has no array columns, so the generator rejects them there.
 
 <!-- /generated:typemap -->
 
-The MySQL column is what `typemap.Map` returns for MySQL: the generator emits no
-MySQL models, so every Go type shows `unsupported` there until it does. Only an
+The MySQL column is what `typemap.Map` returns for MySQL and MariaDB, which share
+it. Unsigned Go integers (`uint8`, `uint16`, `uint32`, `uint` and `uint64`) map to
+the unsigned column types, `int8` to `tinyint`, and `bool` to `tinyint(1)`.
+`types.Numeric` with a `precision` tag is `decimal(p,s)` (precision up to 65,
+scale up to 30, scale not above precision; a precision alone is scale 0, and
+`NaN` and infinity cannot be stored); without one it stays text, because a bare
+DECIMAL would round. A string without `size:N` is text, and the generator
+refuses text, blob and json in a primary key, unique key, index or foreign key
+on MySQL and MariaDB, naming the column and asking for `size:N`. `types.Date` stays text, as its codec
+stores it. `text` and `blob` hold 64 KiB, so use a `type` tag for more. Only an
 error that wraps `momo.ErrUnsupported` shows as `unsupported`; any other error
 from `typemap.Map` fails the generation of this table.
 

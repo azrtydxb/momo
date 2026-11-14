@@ -126,7 +126,10 @@ func TestGeneratorTypeMapUnsupported(t *testing.T) {
 		{"chan int", dialect.SQLite, tags.Tags{}},
 		{"mypkg.Custom", dialect.Postgres, tags.Tags{}},
 		{"", dialect.Postgres, tags.Tags{}},
-		{"int64", dialect.MySQL, tags.Tags{}},
+		{"uint64", dialect.Postgres, tags.Tags{}},
+		{"vector.Vector", dialect.MySQL, tags.Tags{}}, // MySQL needs a dimension
+		{"vector.HalfVector", dialect.MySQL, tags.Tags{Dim: 3}},
+		{"[]string", dialect.MySQL, tags.Tags{}},
 		{"vector.SparseVector", dialect.Postgres, tags.Tags{}}, // missing dim tag
 		{"vector.Bits", dialect.Postgres, tags.Tags{}},         // missing dim tag
 		{"vector.Vector", dialect.SQLite, tags.Tags{Dim: 3}},
@@ -143,6 +146,50 @@ func TestGeneratorTypeMapUnsupported(t *testing.T) {
 		}
 		if c.goType != "" && !strings.Contains(err.Error(), c.goType) {
 			t.Errorf("error %q does not name the Go type %q", err, c.goType)
+		}
+	}
+}
+
+// Catches: MySQL and MariaDB having no generator mapping, which made
+// `momo migrate diff` fail on every field, and a mapping that drifts from the
+// type names the migrate/mysql inspector reports (a spurious drift after apply).
+func TestGeneratorTypeMapMySQL(t *testing.T) {
+	cases := []struct {
+		goType string
+		tg     tags.Tags
+		want   string
+	}{
+		{"int", tags.Tags{}, "bigint"},
+		{"int8", tags.Tags{}, "tinyint"},
+		{"int16", tags.Tags{}, "smallint"},
+		{"int32", tags.Tags{}, "int"},
+		{"int64", tags.Tags{}, "bigint"},
+		{"uint8", tags.Tags{}, "tinyint unsigned"},
+		{"uint16", tags.Tags{}, "smallint unsigned"},
+		{"uint32", tags.Tags{}, "int unsigned"},
+		{"uint", tags.Tags{}, "bigint unsigned"},
+		{"uint64", tags.Tags{}, "bigint unsigned"},
+		{"float32", tags.Tags{}, "float"},
+		{"float64", tags.Tags{}, "double"},
+		{"bool", tags.Tags{}, "tinyint(1)"},
+		{"sql.NullBool", tags.Tags{}, "tinyint(1)"},
+		{"*string", tags.Tags{}, "text"},
+		{"string", tags.Tags{Size: 40}, "varchar(40)"},
+		{"[]byte", tags.Tags{}, "blob"},
+		{"time.Time", tags.Tags{}, "datetime(6)"},
+		{"types.UUID", tags.Tags{}, "char(36)"},
+		{"uuid.UUID", tags.Tags{}, "char(36)"},
+		{"types.Date", tags.Tags{}, "text"},
+		{"types.Numeric", tags.Tags{}, "text"},
+		{"types.Numeric", tags.Tags{Precision: 12, Scale: 2}, "decimal(12,2)"},
+		{"types.Numeric", tags.Tags{Precision: 12}, "decimal(12)"},
+		{"types.JSON[map[string]int]", tags.Tags{}, "json"},
+		{"vector.Vector", tags.Tags{Dim: 3}, "vector(3)"},
+	}
+	for _, c := range cases {
+		got, err := Map(c.goType, dialect.MySQL, c.tg)
+		if err != nil || got != c.want {
+			t.Errorf("Map(%s, mysql) = %q, %v; want %q", c.goType, got, err, c.want)
 		}
 	}
 }

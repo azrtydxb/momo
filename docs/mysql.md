@@ -2,9 +2,9 @@
 
 What works on MySQL and MariaDB today, and what does not. The driver is
 `driver/mysqldriver` (database/sql on `github.com/go-sql-driver/mysql`).
-The migration dialect `migrate/mysql` exists as a library; the `momo
-migrate` command does not run it (see [Migrations](#migrations) and the
-generated status in [capabilities](capabilities.md)).
+The migration dialect `migrate/mysql` runs from the `momo migrate` command
+with `--dialect mysql` (see [Migrations](#migrations) and the generated status
+in [capabilities](capabilities.md)).
 
 ## Supported servers
 
@@ -226,9 +226,16 @@ The library dialect `migrate/mysql` inspects `information_schema`, renders DDL,
 locks with `GET_LOCK` and runs every migration, up and down, statement by
 statement, because DDL commits implicitly on these servers. Build the engine
 with `migrate.WithDialect` and the `mysqldriver` driver; the inspector, drift
-check and `-- momo:ddl` online DDL options work through it. The
-`momo migrate` command still builds only the PostgreSQL dialect, so it rejects
-MySQL and MariaDB. What the dialect reports and renders is in
+check and `-- momo:ddl` online DDL options work through it. The `momo migrate`
+command does the same for you: `--dialect mysql`, with a `mysql://` or
+`mariadb://` URL or a go-sql-driver DSN (one dialect for both servers; the
+server tells them apart). A string without `size:N` is `text`, and `text`,
+`blob` and `json` columns cannot be keyed: the generator refuses a model with
+one in a primary key, unique key, index or foreign key, naming the column, so a
+migration never fails half-way on error 1170. `types.Numeric` with a `precision`
+tag is `decimal(p,s)` (precision up to 65, scale up to 30, scale not above
+precision; no `NaN` or infinity), and a `vector.Vector` column is `vector(N)`,
+which needs MySQL 9.0 or MariaDB 11.7. What the dialect reports and renders is in
 [migrations.md](migrations.md#9-mysql-and-mariadb).
 
 ## Models from a database

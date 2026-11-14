@@ -708,6 +708,9 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 			}
 		}
 		normalizeIndexes(d, t.Columns, t.Indexes)
+		if d == dialect.MySQL {
+			foldMySQLUniques(t)
+		}
 		if d == dialect.SQLite {
 			normalizeSQLiteIdentity(t)
 		}
@@ -732,6 +735,43 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 	}
 	c.Sort()
 	return &c, nil
+}
+
+// foldMySQLUniques gives a unique key of MySQL and MariaDB one spelling. The
+// servers keep a UNIQUE constraint and a unique index as the same object, and
+// inspection reports it as a Unique when every key part is a plain ascending
+// column. A model that declares such a key as a unique Index (the generator's
+// unique tag does) would otherwise differ from what the server reports, so it
+// is folded into a Unique here. A unique index with an expression, a descending
+// or prefixed part, a predicate or an access method stays an Index. It is
+// idempotent.
+func foldMySQLUniques(t *Table) {
+	kept := t.Indexes[:0:0]
+	for _, ix := range t.Indexes {
+		cols, ok := plainUniqueColumns(ix)
+		if !ok {
+			kept = append(kept, ix)
+			continue
+		}
+		t.Uniques = append(t.Uniques, Unique{Name: ix.Name, Columns: cols})
+	}
+	t.Indexes = kept
+}
+
+// plainUniqueColumns returns the columns of a unique index whose every part is
+// a plain ascending column, and false for any other index.
+func plainUniqueColumns(ix Index) ([]string, bool) {
+	if !ix.Unique || ix.Where != "" || len(ix.With) > 0 || len(ix.Parts) == 0 || (ix.Method != "" && ix.Method != "btree") {
+		return nil, false
+	}
+	cols := make([]string, len(ix.Parts))
+	for i, p := range ix.Parts {
+		if p.Column == "" || p.Expr != "" || p.Desc || p.Nulls != "" || p.OpClass != "" || strings.Contains(p.Column, "(") {
+			return nil, false
+		}
+		cols[i] = p.Column
+	}
+	return cols, true
 }
 
 // normalizeSQLiteIdentity gives SQLite's one kind of generated key a single
