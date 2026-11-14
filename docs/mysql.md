@@ -258,6 +258,44 @@ level is `ErrUnsupported`. `ForNoKeyUpdate` and `ForKeyShare` are PostgreSQL
 only and return `ErrUnsupported` here. `timeop.ClockTimestamp` renders
 `SYSDATE(6)`; `timeop.StatementTimestamp` is `ErrUnsupported`.
 
+### Advisory locks
+
+The `advisory` session functions `advisory.Lock`, `advisory.TryLock`,
+`advisory.Unlock` and their text-key forms (`advisory.LockString` and the others) run on MySQL and MariaDB with
+`GET_LOCK`, `GET_LOCK(name, 0)` and `RELEASE_LOCK`. A `GET_LOCK` lock belongs to
+the connection, so pass a `*momo.DB` from `db.OnConn(pc)` over a pinned
+connection (`pc` from `momo.Pinner`), exactly as on PostgreSQL, and unlock
+before you release the pinned connection to the pool. A pooled `*momo.DB` is
+`ErrValidation`.
+
+- Key mapping: the lock name is `momo:advisory:<db>:<key>`. `GET_LOCK` names are
+  global to the server, while a PostgreSQL advisory lock belongs to one
+  database, so the name carries the current database as on PostgreSQL: `<db>` is
+  the first 8 hex digits of `sha256(DATABASE())`, or `nodb` on a connection with
+  no default database, read by the server on each call (a `USE` statement moves
+  the connection to another lock space). `<key>` is the decimal `int64` key (for
+  example `-42`) or `s:` plus the first 32 hex digits of the sha256 of a text key.
+  The longest name is 57 characters, under the 64 that `GET_LOCK` allows.
+  `advisory.Hash64` has no effect, and a text key locks a different thing here
+  than on PostgreSQL.
+- `advisory.TryLock` is `GET_LOCK(name, 0)`: `false` when another session holds
+  the lock. A NULL result from the server is an error (`ErrBusy`). A key the same
+  session already holds is granted at once and counted.
+- `advisory.Lock` waits in one-second `GET_LOCK` calls until the lock is
+  granted or the context ends, because a negative timeout waits forever on MySQL
+  and returns NULL on MariaDB. A canceled context returns an `ErrCanceled` error
+  that wraps the context error. After any `advisory.Lock` error, `Discard` the
+  pinned connection (`momo.Discarder`) instead of releasing it: a lock the
+  server granted while the call was being abandoned may still be attached to the
+  connection, and closing it frees the lock.
+- `advisory.Unlock` is `RELEASE_LOCK`: `true` when this session held the lock,
+  `false` for a lock another session holds or nobody holds. Locks are counted, so
+  a key locked twice needs two unlocks.
+- The transaction-scoped functions (`advisory.XactLock` and the rest) and the
+  shared functions (`advisory.LockShared` and the rest) are `ErrUnsupported`.
+  A `GET_LOCK` lock is not released by a commit or rollback and has no shared
+  mode, so emulating them would silently hold a session lock.
+
 ## Errors
 
 Server errors map by number: 1062 unique, 1451 and 1452 (and 1216, 1217)

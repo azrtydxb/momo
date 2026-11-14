@@ -1089,7 +1089,12 @@ and friends. They need a handle whose statements stay on one connection:
 `ErrValidation`, because the lock and the unlock could reach different
 connections. The lock lasts until `advisory.Unlock` or until the connection closes, so
 unlock before `pc.Release()` (or `Discard` the connection if the unlock fails).
-`db.IsPinned()` reports whether a handle is pinned.
+`db.IsPinned()` reports whether a handle is pinned. On MySQL and MariaDB the same
+session functions take `GET_LOCK`, `GET_LOCK(name, 0)` and `RELEASE_LOCK` under the
+name `momo:advisory:<db>:<key>`, scoped to the current database as on PostgreSQL (`<db>` is 8 hex
+digits of `sha256(DATABASE())`; a text key is `s:` plus 32 hex digits of its sha256, and
+`advisory.Hash64` has no effect); the transaction-scoped and shared functions are
+`ErrUnsupported` there. After an `advisory.Lock` error `Discard` the pinned connection.
 
 Shared advisory locks (the reader half of a reader/writer pair on one key):
 `advisory.XactLockShared`, `advisory.TryXactLockShared`, `advisory.LockShared`,

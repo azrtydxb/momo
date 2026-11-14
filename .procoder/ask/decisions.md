@@ -996,4 +996,39 @@ Decision (2026-11-14, integrator): as above.
   unit tests; `testopen.EachMySQL` asserts the returned rows on mariadb118 and
   the refusal, with the rows left in place, on mysql84 and mysql97.
 
+## Parity: advisory session locks on MySQL and MariaDB (2026-11-14, integrator)
+
+- **API:** the existing `advisory` session functions (`Lock`, `TryLock`,
+  `Unlock` and their `String` forms) now run on MySQL and MariaDB with
+  `GET_LOCK`, `GET_LOCK(name, 0)` and `RELEASE_LOCK`. No new function: callers
+  pass the same pinned `db.OnConn(pc)` handle as on PostgreSQL, which keeps the
+  lock and its release on one connection. A pooled `*DB` stays `ErrValidation`.
+- **Key mapping:** the lock name is `momo:advisory:<db>:<key>`. `GET_LOCK` names
+  are global to the server and PostgreSQL advisory locks belong to one database,
+  so the name is scoped to the current database like `migrate/mysql` does: `<db>`
+  is 8 hex digits of `sha256(DATABASE())` (`nodb` when there is no default
+  database), computed by the server inside the statement on each call. `<key>`
+  is the decimal `int64` or `s:` plus 32 hex digits of the text key's sha256; at
+  most 57 characters against the 64 `GET_LOCK` allows. The key mapping is fixed
+  by the client, so every process agrees. `Hash64` has no effect.
+- **Errors:** a NULL result is a `*momo.Error` (op `advisory lock`, `ErrBusy`), no
+  row is `ErrNotFound`, and a context that ends during `Lock` is `ErrCanceled`
+  wrapping the context error. After a `Lock` error the caller `Discard`s the
+  pinned connection, because a granted lock may still be attached to it.
+- **Blocking wait:** `Lock` repeats `GET_LOCK(name, 1)` until granted or the
+  context ends, because a negative timeout waits forever on MySQL and returns
+  NULL on MariaDB. A NULL result is an error everywhere.
+- **Refused, not emulated:** the transaction-scoped functions and the shared
+  functions stay `ErrUnsupported` on MySQL and MariaDB. momo has no
+  commit or rollback hook for a `Tx` to release a `GET_LOCK` lock, and
+  `GET_LOCK` has no shared mode; emulating either would silently hold a session
+  lock past the transaction.
+- **Verification:** unit tests on the fake driver for the statements, the key
+  mapping, the NULL and 0 results and the refusals; integration tests with
+  `testopen.EachMySQL` (MySQL 8.4, MySQL 9.7, MariaDB 11.8) for contention,
+  try-lock while held, release, counted holds and the blocking wait.
+- **Migration engine:** `migrate/mysql` keeps its own `GET_LOCK` code, which
+  maps engine keys and reports the holder for `migrate.ErrLocked`; it is not
+  routed through the public package.
+
 Decision (2026-11-14, integrator): as above.
