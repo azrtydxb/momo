@@ -119,6 +119,8 @@ func (q InsertQuery[T]) copyShape(ms []T) error {
 		return q.verr("", "Copy: no rows")
 	case len(q.models) > 0 || i.hasValues || i.hasRows || i.sel != nil:
 		return q.verr("", "Copy takes its rows as an argument and cannot be combined with Model, Models, Values, ValuesRows or FromSelect")
+	case len(i.explicit) > 0:
+		return q.verr("", "Copy cannot be combined with Explicit")
 	case i.conflict != conflictNone || i.upsert || i.returning.active():
 		return q.verr("", "Copy cannot be combined with OnConflict, Upsert or Returning")
 	}

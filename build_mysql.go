@@ -181,7 +181,7 @@ func (q InsertQuery[T]) appendValueTo(b *Builder, a Assignment) { q.appendValue(
 func (q InsertQuery[T]) wantsGeneratedKey() bool {
 	id := q.meta.Identity
 	return len(q.back) == 1 && q.back[0] != nil && len(q.models) == 1 && q.q != nil && q.q.Dialect().OnDuplicateKey &&
-		!q.i.upsert && q.i.conflict == conflictNone && id >= 0 && id < len(q.meta.Columns) &&
+		!q.i.upsert && q.i.conflict == conflictNone && !q.explicitCol(id) && id >= 0 && id < len(q.meta.Columns) &&
 		q.meta.Ptr != nil && q.meta.Columns[id].Flags&FlagIdentity != 0 && !q.isIDGenColumn(id)
 }
 
