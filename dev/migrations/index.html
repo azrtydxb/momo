@@ -3374,8 +3374,10 @@ SQL files by version, so it runs once, under the same lock, with a history row
   and <code>drift</code>.</p>
 <h2 id="7-adopting-an-existing-database">7. Adopting an existing database<a class="headerlink" href="#7-adopting-an-existing-database" title="Permanent link">&para;</a></h2>
 <p>Worked example: <code>examples/adopt-existing-schema</code>.</p>
-<p><code>momo generate --from-db</code> reads a live PostgreSQL database and writes the
-models and the init snapshot, so nothing has to be written by hand first.</p>
+<p><code>momo generate --from-db</code> reads a live PostgreSQL, MySQL or MariaDB database
+and writes the models and the init snapshot, so nothing has to be written by
+hand first. The MySQL family has its own rules, listed in
+<a href="../mysql/#models-from-a-database">MySQL and MariaDB</a>.</p>
 <ol>
 <li>Run <code>momo generate --from-db DATABASE_URL</code>. The value is a database URL, <code>-</code>
    to read the URL from standard input, or the name of an environment variable

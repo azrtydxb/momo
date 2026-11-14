@@ -278,7 +278,7 @@ A database is usable when a driver package for it exists under `driver/`:
 - PostgreSQL is the reference database. Check the dialect columns of docs/capabilities.md before relying on a feature on another database. Keep `dialects:` at `[postgres]` for generated migrations. `momo migrate` exits 2 for a dialect it does not link; library migrations go through `migrate.NewEngine`.
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - `diff` writes forward migrations only. `momo migrate rollback [--group]` runs a hand-written `.down.sql`, `momo migrate lint` reports risky operations, and `momo migrate rebase --onto <dir>` regenerates a branch's migrations on a target's.
-- `momo generate --from-db DATABASE_URL` turns a live PostgreSQL database into models and an init snapshot (see [migrations](migrations.md#7-adopting-an-existing-database)). Other databases: write models by hand.
+- `momo generate --from-db DATABASE_URL` turns a live PostgreSQL, MySQL or MariaDB database into models and an init snapshot (see [migrations](migrations.md#7-adopting-an-existing-database) and [MySQL and MariaDB](mysql.md#models-from-a-database)). SQLite: write models by hand.
 - Reciprocal-rank-fusion hybrid search is `momo.HybridSearch` (PostgreSQL only,
   see [vectors.md](vectors.md#hybrid-search)). Full-text search
   (`types.TSVector`, `fts.Match`, `fts.RankCD`, `fts.Headline`, the
@@ -2927,6 +2927,18 @@ A column that can be NULL needs a Go type that can hold NULL: a pointer
 Scanning NULL into a plain `int64` or into a codec from the `types` package is
 an error, never a silent zero value.
 
+## Models from a MySQL database
+
+`momo generate --from-db` on MySQL and MariaDB writes the exact column type in
+a `type:` tag, so the generator's own MySQL column is not needed for a model it
+wrote. The Go type chosen for each MySQL type is in
+[MySQL and MariaDB](mysql.md#models-from-a-database): unsigned integers are
+`uint8` to `uint64`, `tinyint(1)` is `bool`, `decimal` is `types.Numeric`,
+and `enum` and `set` are `string`. `tinyint(1)` is `bool`, and MySQL lets that
+column hold any value from -128 to 127: a stored value other than 0 or 1 fails
+to scan the whole row. Every such column gets a note in the report; map
+`tinyint(1)` to `int8` with an `introspect.types` rule if it holds other values.
+
 
 # Source: projections.md
 
@@ -4714,6 +4726,111 @@ check and `-- momo:ddl` online DDL options work through it. The
 MySQL and MariaDB. What the dialect reports and renders is in
 [migrations.md](migrations.md#9-mysql-and-mariadb).
 
+## Models from a database
+
+`momo generate --from-db` reads a MySQL 8.4, MySQL 9.7 or MariaDB 11.8
+database and writes the models and the init snapshot, as it does for
+PostgreSQL. Set `dialects: [mysql]` in `momo.yaml` (MariaDB is the same
+dialect; the flavor is read from the server). The command reuses the
+`migrate/mysql` inspector, so what `momo migrate drift` sees is what the models
+declare.
+
+The value of `--from-db` is `-` for standard input, the name of an environment
+variable that holds the connection, or the connection itself, in one of these
+forms:
+
+```text
+user:pass@tcp(host:3306)/app          a go-sql-driver DSN
+tcp(host:3306)/app                    the same without credentials
+user:pass@unix(/run/mysqld.sock)/app  a unix socket (DSN only)
+mysql://user:pass@host:3306/app       a URL, also mariadb://
+```
+
+The DSN must name the database. A URL may carry only `tls`, `timeout`,
+`readTimeout`, `writeTimeout`, `charset`, `collation`, `maxAllowedPacket` and
+`allowNativePasswords`; any other parameter is refused, because the server
+would take it as a session variable. Use a DSN for sockets and every other
+driver option. A DSN or URL for a remote host with no `tls=` setting prints a
+warning, and the password, in either form, is redacted from every message.
+
+## What a rebuilt database matches
+
+A database rebuilt from the generated models (diff the models against an empty
+database and apply) has the same schema as far as `schema.Equal` compares it:
+columns, types, defaults, generated columns, keys, indexes, checks and foreign
+keys. The `integration-mysql` jobs check that on all three servers with a
+schema built from raw DDL. It is not byte for byte. These are known losses; the
+ones the command can see are reported, the others are not:
+
+```text
+ON UPDATE CURRENT_TIMESTAMP   reported as a warning; the rebuilt column does not change on UPDATE
+INVISIBLE columns             reported as a warning (MySQL); the rebuilt column is visible
+prefix indexes, name(10)      reported as a warning; left out of the models and the snapshot
+prefix PRIMARY KEY            an error: nothing is written
+table charset and collation   not read; a column collation is read only where it differs from the table's
+ENGINE, ROW_FORMAT, table comment, AUTO_INCREMENT counter, partitions   not read
+triggers, views, stored routines                                         not read
+```
+
+Type mapping (the column type is always written as a `type:` tag, because the
+generator has no MySQL type table, except `varchar(N)`, which becomes `size:N`):
+
+```text
+tinyint(1)                    bool (a pointer when nullable)
+tinyint, smallint, mediumint  int8, int16, int32 (uint8, uint16, uint32 when unsigned)
+int, bigint                   int32, int64 (uint32, uint64 when unsigned)
+float, double                 float32, float64
+decimal(p,s)                  types.Numeric
+char, varchar, *text          string
+binary, varbinary, *blob, bit []byte
+date                          types.Date
+datetime, timestamp           time.Time
+time                          string (the driver returns TIME as text)
+year                          int16
+json                          types.JSON[json.RawMessage]
+enum, set                     string
+```
+
+- **tinyint(1) is a Go bool.** MySQL stores any value from -128 to 127 in it,
+  and a stored value other than 0 or 1 (a 2 written by another program) fails
+  to scan, for the whole row. Every `tinyint(1)` column gets a note in the
+  report. If the column holds other values, add an `introspect.types` rule that
+  maps `tinyint(1)` to `int8`.
+- **enum and set** are Go strings. The exact column type, values included, is
+  written in the `type:` tag, so the database keeps the value list and a
+  rebuilt database matches. No check constraint is added and the values are not
+  checked in Go. The tag grammar reads a comma inside parentheses as part of
+  the option and skips a quoted value there, so `type:decimal(10,2)` and
+  `type:enum('a,b','it''s')` are one option each.
+- **AUTO_INCREMENT** keys get the `identity` tag.
+- **Defaults:** every default is written (`default:`). A NOT NULL `bool` or
+  number column whose constant default is `true` or non-zero is handled by
+  flavor, because only MariaDB has `INSERT ... RETURNING`. On MariaDB the field
+  gets `dbdefault` and a pointer type, so nil takes the default and an explicit
+  `false` or `0` is written. On MySQL 8.4 and 9.7 an insert that leaves a
+  `dbdefault` field nil is refused (nothing reads the stored value back), so the
+  field stays plain and the report has a note: a zero value is written instead
+  of the column default. A computed default such as `CURRENT_TIMESTAMP` gets no
+  `dbdefault` on either.
+- **Generated columns** become `read_only` fields with `generated:` (and
+  `virtual` for VIRTUAL).
+- **Constraints:** unique keys, plain, composite and `DESC` indexes, check
+  constraints and foreign keys are written as on PostgreSQL. A foreign key to a
+  primary key is a `belongs_to` field with `fk_name`, because MySQL names an
+  unnamed key `<table>_ibfk_<n>`; `introspect.inverse` adds `has_many` and
+  `has_one`. A foreign key to a unique column that is not the primary key is a
+  `c.ForeignKey(...)` statement in `MomoConfig`, with no relation field.
+- **Left out with a warning**, so the models and the snapshot agree and the
+  baseline reports them: prefix indexes, foreign keys to a table with no model,
+  and every object that PostgreSQL alone has (schemas, extensions, enum types,
+  functions, triggers, row-level security, partitions), which MySQL does not
+  have.
+- **No Go mapping** (geometry, `vector`): an error, and nothing is written; add
+  an `introspect.types` or `introspect.columns` rule.
+- MariaDB stores `json` as `longtext` with a `json_valid` check; the inspector
+  folds that back into `json`. MariaDB reports a literal default quoted and
+  MySQL does not; both are written as the SQL literal.
+
 
 # Source: migrations.md
 
@@ -5734,8 +5851,10 @@ engine, err := migrate.NewEngine(drv, dir, migrate.WithDialect(pg), migrate.With
 
 Worked example: `examples/adopt-existing-schema`.
 
-`momo generate --from-db` reads a live PostgreSQL database and writes the
-models and the init snapshot, so nothing has to be written by hand first.
+`momo generate --from-db` reads a live PostgreSQL, MySQL or MariaDB database
+and writes the models and the init snapshot, so nothing has to be written by
+hand first. The MySQL family has its own rules, listed in
+[MySQL and MariaDB](mysql.md#models-from-a-database).
 
 1. Run `momo generate --from-db DATABASE_URL`. The value is a database URL, `-`
    to read the URL from standard input, or the name of an environment variable
@@ -8403,7 +8522,7 @@ session advisory lock.
 
 | Item                          | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `momo generate`               | yes; flags `-c momo.yaml`, `--check` (exit 1 when generated files are stale); `--from-db` writes models and the init snapshot from a PostgreSQL database                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `momo generate`               | yes; flags `-c momo.yaml`, `--check` (exit 1 when generated files are stale); `--from-db` writes models and the init snapshot from a PostgreSQL, MySQL or MariaDB database                                                                                                                                                                                                                                                                                                                                                                                           |
 | Generated output              | typed column descriptors, `Meta`, relation descriptors, permission-typed columns (`read_only`, `create_only`, `immutable`), vector columns                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Custom generator plugins      | Built-in: `graphql`, `grpc`, `openapi` and `viz`, enabled and configured in the `plugins:` section of `momo.yaml`; your own plugins come from a binary built with `cli.Main(plugins...)`, or from `gen.Emit`                                                                                                                                                                                                                                                                                                                                                         |
 | Ecosystem generators          | GraphQL (gqlgen), gRPC (protoc with a field-number lock) and OpenAPI 3.1 (optional `net/http` handlers) servers over the typed API; filters go through the generated `ColumnByName` allowlist and pages use keyset cursors                                                                                                                                                                                                                                                                                                                                           |
@@ -8874,6 +8993,23 @@ old body. Now a file whose body equals the regenerated body is current: `--check
 passes, and a plain run rewrites only the header line. A file whose body
 differs is still stale or a conflict, and `momo generate` without `--from-db`
 is unchanged.
+
+### `momo generate --from-db` reads MySQL and MariaDB
+
+Besides PostgreSQL, the command now inspects a MySQL 8.4, MySQL 9.7 or
+MariaDB 11.8 database when `momo.yaml` sets `dialects: [mysql]`. A project that
+sets `dialects: [postgres]` or sets none behaves as before. See
+[MySQL and MariaDB](mysql.md#models-from-a-database).
+
+### A comma inside parentheses in a tag option
+
+The tag parser now keeps a comma that sits inside balanced parentheses in one
+option, so `type:decimal(10,2)` is read as one option, and inside parentheses it
+skips a single-quoted value, so `type:enum('a)b','c')` is one option too.
+Before, the comma split it in two and the second half was an error or a stray
+option. A tag with no parentheses, and one whose parentheses or quotes do not
+balance, is split at every comma as before. A tag that held a comma inside
+parentheses now reads as one option; check any such tag.
 
 ## Upgrading to 0.11.0
 
@@ -11921,16 +12057,16 @@ deterministic). `gen.Plugin` is the extension interface. Generated Go files
 start with `// Code generated by momo (format 1). DO NOT EDIT.`; the header
 carries the format number and no release version.
 
-| Package                                 | Purpose                                                       |
-| --------------------------------------- | ------------------------------------------------------------- |
-| `gen/config`                            | `momo.yaml` parsing, shared with the CLI                      |
-| `gen/fromdb`                            | models from a PostgreSQL database (`momo generate --from-db`) |
-| `gen/viz`                               | Mermaid and DOT diagrams (`momo viz`), also a `gen.Plugin`    |
-| `gen/apiquery`                          | cursor, limit and filter helpers for generated APIs           |
-| `gen/graphql`                           | GraphQL SDL, gqlgen glue and config, a `gen.Plugin`           |
-| `gen/grpc`                              | `.proto`, lock and gRPC servers, a `gen.Plugin`               |
-| `gen/openapi`                           | OpenAPI 3.1 document and handlers, a `gen.Plugin`             |
-| `gen/naming`, `gen/tags`, `gen/typemap` | naming presets, tag parsing, Go type to SQL type              |
+| Package                                 | Purpose                                                                         |
+| --------------------------------------- | ------------------------------------------------------------------------------- |
+| `gen/config`                            | `momo.yaml` parsing, shared with the CLI                                        |
+| `gen/fromdb`                            | models from a PostgreSQL, MySQL or MariaDB database (`momo generate --from-db`) |
+| `gen/viz`                               | Mermaid and DOT diagrams (`momo viz`), also a `gen.Plugin`                      |
+| `gen/apiquery`                          | cursor, limit and filter helpers for generated APIs                             |
+| `gen/graphql`                           | GraphQL SDL, gqlgen glue and config, a `gen.Plugin`                             |
+| `gen/grpc`                              | `.proto`, lock and gRPC servers, a `gen.Plugin`                                 |
+| `gen/openapi`                           | OpenAPI 3.1 document and handlers, a `gen.Plugin`                               |
+| `gen/naming`, `gen/tags`, `gen/typemap` | naming presets, tag parsing, Go type to SQL type                                |
 
 ### Other packages
 

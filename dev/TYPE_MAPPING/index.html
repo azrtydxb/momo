@@ -545,6 +545,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#models-from-a-mysql-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Models from a MySQL database
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1355,6 +1366,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#models-from-a-mysql-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Models from a MySQL database
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1832,6 +1854,16 @@ agentconversation.Cost.SetExpr(sqlfn.Add(agentconversation.Cost, cost))
 (<code>*int64</code>), a <code>sql.Null*</code> wrapper, or a type whose <code>Scan</code> accepts nil.
 Scanning NULL into a plain <code>int64</code> or into a codec from the <code>types</code> package is
 an error, never a silent zero value.</p>
+<h2 id="models-from-a-mysql-database">Models from a MySQL database<a class="headerlink" href="#models-from-a-mysql-database" title="Permanent link">&para;</a></h2>
+<p><code>momo generate --from-db</code> on MySQL and MariaDB writes the exact column type in
+a <code>type:</code> tag, so the generator's own MySQL column is not needed for a model it
+wrote. The Go type chosen for each MySQL type is in
+<a href="../mysql/#models-from-a-database">MySQL and MariaDB</a>: unsigned integers are
+<code>uint8</code> to <code>uint64</code>, <code>tinyint(1)</code> is <code>bool</code>, <code>decimal</code> is <code>types.Numeric</code>,
+and <code>enum</code> and <code>set</code> are <code>string</code>. <code>tinyint(1)</code> is <code>bool</code>, and MySQL lets that
+column hold any value from -128 to 127: a stored value other than 0 or 1 fails
+to scan the whole row. Every such column gets a note in the report; map
+<code>tinyint(1)</code> to <code>int8</code> with an <code>introspect.types</code> rule if it holds other values.</p>
 
 
 

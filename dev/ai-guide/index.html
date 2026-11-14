@@ -1804,7 +1804,7 @@ DON'T, the call either fails, silently does the wrong thing, or is a known bug.<
 <li>PostgreSQL is the reference database. Check the dialect columns of docs/capabilities.md before relying on a feature on another database. Keep <code>dialects:</code> at <code>[postgres]</code> for generated migrations. <code>momo migrate</code> exits 2 for a dialect it does not link; library migrations go through <code>migrate.NewEngine</code>.</li>
 <li>Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.</li>
 <li><code>diff</code> writes forward migrations only. <code>momo migrate rollback [--group]</code> runs a hand-written <code>.down.sql</code>, <code>momo migrate lint</code> reports risky operations, and <code>momo migrate rebase --onto &lt;dir&gt;</code> regenerates a branch's migrations on a target's.</li>
-<li><code>momo generate --from-db DATABASE_URL</code> turns a live PostgreSQL database into models and an init snapshot (see <a href="../migrations/#7-adopting-an-existing-database">migrations</a>). Other databases: write models by hand.</li>
+<li><code>momo generate --from-db DATABASE_URL</code> turns a live PostgreSQL, MySQL or MariaDB database into models and an init snapshot (see <a href="../migrations/#7-adopting-an-existing-database">migrations</a> and <a href="../mysql/#models-from-a-database">MySQL and MariaDB</a>). SQLite: write models by hand.</li>
 <li>Reciprocal-rank-fusion hybrid search is <code>momo.HybridSearch</code> (PostgreSQL only,
   see <a href="../vectors/#hybrid-search">vectors.md</a>). Full-text search
   (<code>types.TSVector</code>, <code>fts.Match</code>, <code>fts.RankCD</code>, <code>fts.Headline</code>, the
