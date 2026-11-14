@@ -34,8 +34,9 @@ Run on MySQL 8.4, MySQL 9.7 and MariaDB 11.8:
   `jsonop.HasKey` and `jsonop.DeleteKey`, with the build error of
   `jsonop.Concat` and `jsonop.Set`;
 - window functions (ranking, `Lag`, `Lead`, `FirstValue`, `LastValue`, `Rows`
-  and `Range` frames), the build errors for a `Groups` frame and for the
-  aggregate `FILTER` clause, and `LoadPerParentLimit`;
+  and `Range` frames), the build error for a `Groups` frame, the aggregate
+  `FILTER` clause (rewritten to `CASE WHEN`, with and without `Over` and in
+  `HAVING`), and `LoadPerParentLimit`;
 - keyset pagination over string, descending and mixed keys, `Batches`, and
   `SelectQuery.Each` and `SelectQuery.Iter`, including an early stop, a query
   while the cursor is open, a canceled context and a stream inside a `Tx`;
@@ -47,8 +48,8 @@ Run on MySQL 8.4, MySQL 9.7 and MariaDB 11.8:
 
 `LATERAL` runs on MySQL 8.4 and 9.7, and on MariaDB it is `ErrUnsupported`.
 `CreateGraph` and `FindOrCreate` are `ErrUnsupported` on all three, as are
-`SelectQuery.Explain`, the aggregate `FILTER` clause, `agg.Array`, an ordered
-or distinct `agg.JSONB`, `unnest` and `generate_series` sources and
+`SelectQuery.Explain`, the aggregate `FILTER` clause on `agg.JSONB`, `agg.Array`,
+an ordered or distinct `agg.JSONB`, `unnest` and `generate_series` sources and
 `DISTINCT ON`; the tests check the error on each server.
 
 Differences the tests pin down:
