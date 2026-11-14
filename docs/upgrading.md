@@ -25,6 +25,9 @@ PostgreSQL is unchanged. The results are not identical to PostgreSQL:
   `_ai_ci` collations are accent-insensitive (`a` matches `ä`), which
   PostgreSQL `ILIKE` is not.
 - An index on the column is not used, because the column is inside `LOWER`.
+- On MySQL and MariaDB the column must be a character type. On `BINARY`,
+  `VARBINARY` and `BLOB` columns `LOWER` does nothing and `LIKE` is
+  case-sensitive, so the match is case-sensitive there. Momo adds no `CONVERT`.
 
 The capability flags `dialect.Dialect.ILike` and `dialect.Dialect.NullsOrdering`
 keep meaning native syntax: they stay false on MySQL (and `ILike` on SQLite)
@@ -38,7 +41,10 @@ An explicit NULLS placement, on a column, an `Order` from `momo.Asc` or
 as PostgreSQL. The expression is rendered twice, so a value it binds appears
 twice among the arguments, in order. `After` over a nullable key was and is
 `ErrUnsupported`. The outer `OrderBy` of a `SelectUnion` with a NULLS term is
-`ErrUnsupported` on MySQL and MariaDB. If you wrote `OrderByPredicate` as a
+`ErrUnsupported` on MySQL and MariaDB, and so is a window with a `Range` frame
+that has an offset and one `OrderBy` item with a NULLS term: the emulation adds
+a second sort key and the server needs exactly one (error 3587). Drop the NULLS
+term or use a `Rows` frame. If you wrote `OrderByPredicate` as a
 workaround, it still works and you can switch to `NullsLast`.
 
 ### Aggregate `Filter` on MySQL and MariaDB
@@ -49,7 +55,8 @@ aggregates that skip NULLs: `Sum`, `Avg`, `Min`, `Max`, `CountOf`,
 `CountDistinct`, `agg.String`, and `agg.Func` over `count`, `sum`, `avg`,
 `min`, `max` and the `std` and `var` family, also with `Over`. A call that
 keeps NULLs (`agg.JSONB`, any other `agg.Func`) is still `ErrUnsupported` there,
-with a message that says why. `Builder.AppendFilter` itself still fails on
+with a message that says why; so is `agg.Func` over a raw `*` (use
+`momo.CountAll().Filter(p)`). `Builder.AppendFilter` itself still fails on
 MySQL: a custom aggregate rewrites its own arguments.
 
 ## Upgrading to 0.11.0

@@ -200,6 +200,12 @@ func (s spec) checkEmulatedFilter(b *momo.Builder) bool {
 		b.Unsupported("aggregate FILTER on a call with no argument")
 		return false
 	}
+	for _, a := range s.args {
+		if renderOne(b, a) == "*" {
+			b.Unsupported("aggregate FILTER on " + s.name + "(*) (the CASE WHEN rewrite cannot wrap *; use momo.CountAll().Filter(p) for COUNT(*))")
+			return false
+		}
+	}
 	return true
 }
 

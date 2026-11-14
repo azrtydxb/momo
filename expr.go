@@ -700,6 +700,9 @@ const likeEscape = ` ESCAPE '!'`
 //     still makes the match case-insensitive. Momo does not force a collation.
 //   - An index on x is not used, as the column is wrapped in LOWER; create an
 //     expression index on LOWER(x) if the query needs one.
+//   - On MySQL and MariaDB x must be a character column. On a BINARY,
+//     VARBINARY or BLOB column LOWER does nothing and LIKE is case-sensitive,
+//     so ILike matches case-sensitively there. Momo does not add a CONVERT.
 func ILike(e Expression[string], pattern string) Predicate { return ilike{e, pattern, flagsOf(e)} }
 
 type ilike struct {

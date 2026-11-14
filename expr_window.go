@@ -211,6 +211,9 @@ func (w WindowSpec) validate(d *dialect.Dialect) error {
 		if len(w.order) != 1 {
 			return bad("a RANGE window frame with an offset needs exactly one ORDER BY item")
 		}
+		if o := w.order[0]; o.Nulls != NullsDefault && !d.NullsOrdering {
+			return &Error{Kind: ErrUnsupported, Op: "build", Err: fmt.Errorf("a RANGE window frame with an offset cannot order by an explicit NULLS FIRST or NULLS LAST on %s: the NULLS term is emulated with a second sort key, and the server needs exactly one (error 3587); drop the NULLS term or use a ROWS frame", d.Name)}
+		}
 	}
 	return nil
 }

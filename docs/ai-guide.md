@@ -980,7 +980,10 @@ differ from PostgreSQL on non-ASCII text. SQLite folds ASCII letters only, so
 `LOWER`, but the comparison follows the column collation, and the default
 `_ai_ci` collations are also accent-insensitive (`a` matches `ä`), which
 PostgreSQL `ILIKE` is not. Momo forces no collation. The `LOWER` around the
-column means an index on the column is not used. `momo.Not(momo.ILike(...))`
+column means an index on the column is not used. On MySQL and MariaDB the
+column must be a character type: on `BINARY`, `VARBINARY` and `BLOB` columns
+`LOWER` does nothing and `LIKE` is case-sensitive, so `ILike` matches
+case-sensitively there (momo adds no `CONVERT`). `momo.Not(momo.ILike(...))`
 is NOT ILIKE.
 
 A backslash is not an escape character. Without an ESCAPE clause PostgreSQL
@@ -1030,7 +1033,8 @@ every aggregate that skips NULLs: `Sum`, `Avg`, `Min`, `Max`, `CountOf`,
 aggregate that keeps NULLs (`agg.JSONB`, which is JSON_ARRAYAGG there, or any
 other `agg.Func`) is `ErrUnsupported` on MySQL and MariaDB with a message that
 names the reason, because the rewrite would add a NULL element per
-filtered-out row; filter in `Where` or a subquery.
+filtered-out row; filter in `Where` or a subquery. `agg.Func` over a raw `*`
+with `Filter` is `ErrUnsupported` there too; use `momo.CountAll().Filter(p)`.
 
 Advisory locks (PostgreSQL, inside a transaction), in the package
 `github.com/azrtydxb/momo/advisory`: `advisory.XactLock(ctx, tx, key)` waits
@@ -1082,14 +1086,17 @@ mismatch. Otherwise group by position or alias in an outer query. Keyset paginat
 an alias is not valid in WHERE or inside a window ORDER BY; order by the
 expression itself there.
 
-`NullsFirst` and `NullsLast` on any `Order` work on every dialect. MySQL and
+`NullsFirst` and `NullsLast` on any `Order` work on every dialect, with the exceptions below. MySQL and
 MariaDB have no NULLS clause, so momo renders `(e IS NULL) DESC, e ASC` for
 `NullsFirst` and `(e IS NULL) ASC, e ASC` for `NullsLast`, which orders exactly
 as PostgreSQL does. The expression `e` is rendered twice, so a value it binds
 appears twice among the arguments, in order. `After` over a nullable key is
 `ErrUnsupported` on every dialect, so an emulated NULLS term never meets a
 cursor over NULLs. The outer `OrderBy` of a `SelectUnion` with `NullsFirst` or
-`NullsLast` is `ErrUnsupported` on MySQL and MariaDB. A `Distinct` select that
+`NullsLast` is `ErrUnsupported` on MySQL and MariaDB. So is a window whose frame
+is `Range` with an offset (`Preceding(n)` or `Following(n)`) and whose single
+`OrderBy` item has a NULLS term: the emulation adds a second sort key and those
+servers need exactly one (error 3587). Drop the NULLS term or use `Rows`. A `Distinct` select that
 orders by an emulated expression missing from its select list can be rejected by
 MySQL (error 3065, with `ONLY_FULL_GROUP_BY`).
 

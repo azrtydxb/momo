@@ -94,19 +94,25 @@ equivalent instead of returning `ErrUnsupported`.
   matches `ä`, which PostgreSQL `ILIKE` does not. Momo does not force a
   collation, because the accent-insensitive `_ai_` family is the thing it must
   not add. Because `LOWER` wraps the column, an index on the column is not
-  used.
+  used. The column must be a character type: on `BINARY`, `VARBINARY` and `BLOB`
+  columns `LOWER` does nothing and `LIKE` is case-sensitive, so the match is
+  case-sensitive there (momo adds no `CONVERT`).
 - **NULLS FIRST and NULLS LAST.** `NullsFirst` renders
   `(e IS NULL) DESC, e ASC|DESC` and `NullsLast` renders
   `(e IS NULL) ASC, e ASC|DESC`, which orders exactly as PostgreSQL. `e` is
   rendered twice, so values it binds appear twice among the arguments, in
   order. `After` over a nullable key stays `ErrUnsupported`, and the outer
-  `OrderBy` of a union with a NULLS term is `ErrUnsupported`.
+  `OrderBy` of a union with a NULLS term is `ErrUnsupported`, and so is a window
+  with a `Range` frame that has an offset and a single `OrderBy` item with a
+  NULLS term (the emulation adds a second sort key, and the server rejects that
+  with error 3587).
 - **Aggregate FILTER.** `agg(x) FILTER (WHERE p)` renders
   `agg(CASE WHEN p THEN x END)`, and `COUNT(*) FILTER (WHERE p)` renders
   `COUNT(CASE WHEN p THEN 1 END)`. It is exact for `Sum`, `Avg`, `Min`, `Max`,
   `CountOf`, `CountDistinct` and `agg.String`, and works with `Over`. A call
   that keeps NULLs (`agg.JSONB`, any `agg.Func` outside `count`, `sum`, `avg`,
-  `min`, `max` and the `std` and `var` family) stays `ErrUnsupported`.
+  `min`, `max` and the `std` and `var` family, or one over a raw `*`) stays
+  `ErrUnsupported`; use `momo.CountAll().Filter(p)` for `COUNT(*)`.
 
 ## Writes
 
