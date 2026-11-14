@@ -17,7 +17,7 @@ Every test that needs a database lives in a file that starts with the `//go:buil
 
 Fuzz targets are listed in `FUZZ_TARGETS` in the Makefile and `make test-fuzz` runs each one for `FUZZTIME`, an execution count. `TestFuzzTargetsListed` fails when a `Fuzz` function is missing from the list.
 
-Dialect coverage is expressed as subtests from `testopen.Each`, one per dialect built into this version; integration tests have no name suffix. `make test-integration-<dialect>` sets that dialect's URL variables and runs the whole suite.
+Dialect coverage is expressed as subtests from `testopen.Each`, one per dialect built into this version; integration tests have no name suffix. `testopen.Each` opens PostgreSQL and SQLite only. A test that also runs on MySQL 8.4, MySQL 9.7 and MariaDB 11.8 calls `testopen.EachWithMySQL` (subtests `mysql84`, `mysql97` and `mariadb118`), and a test written in MySQL SQL calls `testopen.EachMySQL`; a server whose URL is unset is skipped, and fails the run under `MOMO_REQUIRE_INTEGRATION=1` when the job requires it. `make test-integration-<dialect>` sets that dialect's URL variables and runs the whole suite.
 
 ## Documentation pages and Go code blocks
 

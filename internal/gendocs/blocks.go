@@ -204,7 +204,8 @@ var features = []feature{
 		PG:   "yes",
 		SQLite: "`jsonop.Text`, `jsonop.Path`, `jsonop.Root`, `jsonop.DeleteKey`, `jsonop.HasKey` and `jsonop.TypeOf` run on both SQLite drivers; a JSON boolean extracts as `1` or `0`; " +
 			"`jsonop.Contains`, `jsonop.Concat` and `jsonop.Set` are `ErrUnsupported`",
-		MySQL: "SQL is golden-tested only, except `jsonop.TypeOf`, which has integration tests on MySQL 8.4, MySQL 9.7 and MariaDB 11.8",
+		MySQL: "`jsonop.Text`, `jsonop.Path`, `jsonop.Root`, `jsonop.Contains`, `jsonop.HasKey`, `jsonop.DeleteKey` and `jsonop.TypeOf` run on MySQL 8.4, MySQL 9.7 and MariaDB 11.8; " +
+			"a JSON boolean extracts as `true` or `false` and a JSON null member as the text `null`; `jsonop.Concat` and `jsonop.Set` are `ErrUnsupported`",
 	},
 	{
 		Name: "Date and time expressions",
@@ -219,8 +220,9 @@ var features = []feature{
 			"(Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); `timeop.Now` is millisecond text; `timeop.AtTimeZone` is PostgreSQL only; " +
 			"`timeop.IntervalMillisecond` and `timeop.IntervalMicrosecond` keep milliseconds; `timeop.EpochSeconds` of `timeop.Sub` runs through `julianday` (about 0.1 ms), `timeop.Age` is PostgreSQL only; " +
 			"`timeop.AddDays`, `timeop.AddDaysExpr` and `timeop.DaysBetween` read a `types.Date` stored as `YYYY-MM-DD` text (`date()` and `julianday`), and a bound infinite date fails the build with `ErrValidation`",
-		MySQL: "SQL is golden-tested only, except `timeop.AddDays`, `timeop.AddDaysExpr` and `timeop.DaysBetween`, which have integration tests on MySQL 8.4, MySQL 9.7 and MariaDB 11.8; " +
-			"`timeop.AtTimeZone` is PostgreSQL only; a bound infinite `types.Date` fails the build with `ErrValidation`",
+		MySQL: "every `timeop.ExtractField`, `timeop.TruncUnit`, interval (including milliseconds and microseconds), `timeop.Now`, `timeop.EpochSeconds` of `timeop.Sub`, `timeop.AddDays`, " +
+			"`timeop.AddDaysExpr` and `timeop.DaysBetween` run on MySQL 8.4, MySQL 9.7 and MariaDB 11.8; month arithmetic clamps to the last day of the month; " +
+			"`timeop.AtTimeZone` is PostgreSQL only; `timeop.Age` and `timeop.StatementTimestamp` are `ErrUnsupported` (golden-tested); a bound infinite `types.Date` fails the build with `ErrValidation`",
 	},
 }
 
