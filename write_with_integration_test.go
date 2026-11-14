@@ -169,6 +169,32 @@ func TestDeleteUsingCompositeKeyIntegration(t *testing.T) {
 	})
 }
 
+// Catches: the SQLite emulation binding the target's columns to the aliased
+// copy of the same table, which would delete every row instead of the two whose
+// mirrored pair starts with 1: (1,1) mirrors itself and (2,1) mirrors (1,2).
+func TestDeleteUsingAliasedSelfJoinIntegration(t *testing.T) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		createPairsWithSrc(t, db)
+		ctx := context.Background()
+		pa := momo.NewColumn[int64]("del_pairs", "a", momo.FlagPK)
+		pb := momo.NewColumn[int64]("del_pairs", "b", momo.FlagPK)
+		ua := momo.ColumnOf[int64]("u", "a")
+		ub := momo.ColumnOf[int64]("u", "b")
+		res, err := momo.Delete[delPair](db).Using(momo.TableRef{Name: "del_pairs"}.As("u")).
+			Where(pa.EqExpr(ub), pb.EqExpr(ua), ua.Eq(1)).Exec(ctx)
+		if err != nil || res.RowsAffected != 2 {
+			t.Fatalf("self-join delete: %+v %v, want 2 rows", res, err)
+		}
+		left, err := momo.Select[delPair](db).OrderBy(pa.Asc(), pb.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := []delPair{{1, 2}, {2, 2}}; !slices.Equal(left, want) {
+			t.Fatalf("rows left = %+v, want %+v", left, want)
+		}
+	})
+}
+
 // Catches: a WITH clause on UPDATE and DELETE that is dropped or whose CTE
 // the statement cannot read.
 func TestDMLWithIntegration(t *testing.T) {

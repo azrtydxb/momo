@@ -20,7 +20,13 @@ no `USING`. A target row is deleted once if at least one source row satisfies
 composite primary key and a table without one. SQLite's `RETURNING` reads the
 deleted table only, so `Returning` accepts columns of the target; a column of a
 `Using` source is still `ErrUnsupported` there. A workaround that put a
-subquery in `Where` keeps working.
+subquery in `Where` keeps working. Two rules apply on every dialect. A `Using`
+source with the target's own name is now `ErrValidation` (PostgreSQL already
+refused it; on SQLite it would have bound every column to the inner table):
+alias it with `TableRef.As` to join a table to itself. And qualify every column
+in a raw `Where` fragment and in interceptor predicates: on SQLite an
+unqualified column that the target and a source share binds to the source,
+where PostgreSQL reports it as ambiguous.
 
 ### Mixed `DEFAULT` rows in a multi-row insert run on SQLite
 
@@ -34,8 +40,13 @@ inside a `Tx`). The stored defaults are read back into the models as before,
 and `Rows` returns the rows in the order you gave. An insert that alternates
 between patterns costs one statement per change. `SQL` renders one statement,
 so it still fails with `ErrUnsupported` for such a mix, as do `Unnest` and
-`Copy`; a `WITH` clause on a split insert is `ErrValidation`. PostgreSQL and
-MySQL are unchanged and still write `DEFAULT` inline.
+`Copy`; a `WITH` clause on a split insert is `ErrValidation`, and a split
+insert on a connection pinned with `OnConn`, which cannot open the transaction,
+fails with `ErrUnsupported` before any statement runs. Other dialects are
+unchanged. PostgreSQL and MariaDB still write `DEFAULT` inline in one statement
+for `Models`. MySQL has no `RETURNING`, so `Models` with a zero `dbdefault`
+field still fails there with `ErrUnsupported`, as before. `ValuesRows` writes
+`DEFAULT` inline on PostgreSQL, MySQL and MariaDB.
 
 ## Upgrading to 0.12.0
 

@@ -78,6 +78,12 @@ func (d DeleteQuery[T]) WithRecursive(name string, q Subquery, cols ...string) D
 // src are not filtered: add that predicate to Where. Interceptors apply to the
 // target table only, not to src.
 //
+// A source named like the target is refused with ErrValidation on every
+// dialect: alias it (TableRef.As) to join the table to itself. Qualify every
+// column in a raw Where fragment and in interceptor predicates: on SQLite an
+// unqualified column that the target and a source share binds to the source
+// inside the subquery, where PostgreSQL reports it as ambiguous.
+//
 // With a Using source the unfiltered-mutation guard is stricter: at least one
 // Where predicate must reference a column of the target table, otherwise the
 // statement joins every target row to src and fails with ErrUnfilteredMutation
@@ -152,6 +158,12 @@ func (d DeleteQuery[T]) plan() ([]Predicate, error) {
 			pks = append(pks, updPKEq{d.meta.Table, d.meta.Columns[i].Name, d.meta.Value(d.model, i), d.meta.Columns[i].Flags})
 		}
 		where = append(pks, where...)
+	}
+	if tq := d.meta.Table; slices.Contains(sourceQualifiers(d.using), tq) {
+		// Both would bind to the same name: PostgreSQL reports "table name
+		// specified more than once", and the SQLite subquery would resolve
+		// every reference to the inner table and delete rows it should keep.
+		return nil, d.fail(ErrValidation, fmt.Errorf("Using source %q has the target's name: alias it (TableRef.As) to join the table to itself", tq))
 	}
 	if !hasEffectiveFilter(where) && !d.allRows {
 		return nil, d.fail(ErrUnfilteredMutation, nil)

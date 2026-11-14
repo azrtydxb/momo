@@ -4,9 +4,11 @@ package momo_test
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
@@ -93,8 +95,7 @@ func TestSQLiteMixedModelsKeepRowOrder(t *testing.T) {
 }
 
 // Catches: PostgreSQL losing its single statement with DEFAULT inline (the
-// split is for dialects that cannot put DEFAULT in VALUES) and MySQL being
-// split instead of refusing what it cannot read back.
+// split is for dialects that cannot put DEFAULT in VALUES).
 func TestMixedModelsOtherDialectsUnchanged(t *testing.T) {
 	ms := []dbdRow{{Title: "a", At: dbdStamp}, {ID: "kept", Title: "b", At: dbdStamp}}
 	db, drv := dbdSetup(dialect.Postgres, [][]any{{"g1"}, {"kept"}})
@@ -105,6 +106,83 @@ func TestMixedModelsOtherDialectsUnchanged(t *testing.T) {
 	want := `INSERT INTO "dbd_rows" ("id", "title", "at") VALUES (DEFAULT, $1, $2), ($3, $4, $5) RETURNING "id"`
 	if len(got) != 1 || got[0].SQL != want {
 		t.Fatalf("PG = %v, want one statement %q", got, want)
+	}
+}
+
+// Catches: MySQL being split like SQLite: it takes DEFAULT inline in ValuesRows,
+// so a mixed insert stays one statement.
+func TestMixedValuesRowsMySQLStaysOneStatement(t *testing.T) {
+	db, drv := dbdSetup(dialect.MySQL, nil)
+	_, err := momo.Insert[suite.StatusDocument](db).ValuesRows(
+		[]momo.Assignment{suite.DocTenantID.Set(1), suite.DocTitle.Set("n1"), suite.DocStatus.SetDefault()},
+		[]momo.Assignment{suite.DocTenantID.Set(1), suite.DocTitle.Set("n2"), suite.DocStatus.Set("y")},
+	).Exec(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := runInserts(drv)
+	want := "INSERT INTO `documents` (`tenant_id`, `title`, `status`) VALUES (?, ?, DEFAULT), (?, ?, ?)"
+	if len(got) != 1 || got[0].SQL != want {
+		t.Fatalf("MySQL = %v, want one statement %q", got, want)
+	}
+}
+
+// dbdClockRow has a database-generated key and an automatic created-at.
+type dbdClockRow struct {
+	ID      string
+	Title   string
+	Created time.Time
+}
+
+var dbdClockRowMeta = momo.Meta[dbdClockRow]{
+	Table: "dbd_clock_rows",
+	Columns: []momo.ColumnMeta{
+		{Name: "id", Flags: momo.FlagPK | momo.FlagHasDefault | momo.FlagDBDefault},
+		{Name: "title"},
+		{Name: "created_at", Flags: momo.FlagCreatedAt},
+	},
+	Ptr:      func(m *dbdClockRow, i int) any { return [...]any{&m.ID, &m.Title, &m.Created}[i] },
+	Value:    func(m *dbdClockRow, i int) any { return [...]any{m.ID, m.Title, m.Created}[i] },
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: 2, UpdatedAt: -1,
+	PK: []int{0},
+}
+
+func (*dbdClockRow) MomoMeta() *momo.Meta[dbdClockRow] { return &dbdClockRowMeta }
+
+// Catches: the clock being read once per run of a Models insert, so rows of one
+// insert get different automatic timestamps. The clock here advances on every
+// read.
+func TestSQLiteMixedModelsShareOneTimestamp(t *testing.T) {
+	reads := 0
+	clock := func() time.Time {
+		reads++
+		return time.Date(2026, 1, 1, 0, 0, reads, 0, time.UTC)
+	}
+	db, drv := dbdSetup(dialect.SQLite, nil, momo.WithClock(clock))
+	ms := []dbdClockRow{{ID: "x", Title: "a"}, {Title: "b"}}
+	if _, err := momo.Insert[dbdClockRow](db).Models(ms).Exec(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := runInserts(drv)
+	if len(got) != 2 {
+		t.Fatalf("got %d INSERTs, want 2: %v", len(got), got)
+	}
+	if a, b := got[0].Args[len(got[0].Args)-1], got[1].Args[len(got[1].Args)-1]; a != b {
+		t.Fatalf("created_at differs between runs: %v vs %v", a, b)
+	}
+}
+
+// Catches: a WITH clause repeated in every run of a split insert, which would
+// run a data-modifying CTE more than once.
+func TestSQLiteMixedModelsRefuseWith(t *testing.T) {
+	db, drv := dbdSetup(dialect.SQLite, nil)
+	ms := []dbdRow{{ID: "x", Title: "a", At: dbdStamp}, {Title: "b", At: dbdStamp}}
+	_, err := momo.Insert[dbdRow](db).With("s", momo.SelectExprs(momo.Value(1))).Models(ms).Exec(context.Background())
+	if !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "repeat") {
+		t.Fatalf("err = %v, want ErrValidation about the repeated WITH", err)
+	}
+	if n := len(runInserts(drv)); n != 0 {
+		t.Fatalf("%d INSERTs reached the driver, want none", n)
 	}
 }
 

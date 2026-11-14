@@ -878,17 +878,32 @@ Decision (2026-11-14, integrator): as above.
   and a source column stays `ErrUnsupported`, as for `UpdateQuery.From`. The
   unfiltered-mutation guards ran before and are unchanged. An `AllRows`
   statement with no `Where` renders `EXISTS (SELECT 1 FROM src)`, which deletes
-  every row when the source is not empty, as USING does.
+  every row when the source is not empty, as USING does. Review fix: a `Using`
+  source named like the target (unaliased) is `ErrValidation` on every
+  dialect. In the SQLite subquery every reference would bind to the inner
+  table and the delete could remove the whole table; PostgreSQL already
+  refuses it, so refusing everywhere keeps the dialects consistent, and an
+  aliased self-join (`TableRef.As`) is the supported spelling. A raw `Where`
+  fragment or interceptor predicate must qualify its columns: an unqualified
+  column both tables have binds to the source on SQLite and is ambiguous on
+  PostgreSQL (documented on `Using`).
 - **DEFAULT in VALUES:** momo wrote `DEFAULT` in `Models` rows (a zero
   `dbdefault` field next to rows that set it) and in `ValuesRows` (a column
   omitted or `SetDefault` in some rows); SQLite refused both with
-  `ErrUnsupported` (`dbDefaultDecision`, `valueRows`). PostgreSQL and MySQL
-  still write `DEFAULT` inline in one statement, unchanged (`DefaultInValues`).
+  `ErrUnsupported` (`dbDefaultDecision`, `valueRows`). Other dialects are
+  unchanged (`DefaultInValues`): `ValuesRows` writes `DEFAULT` inline on
+  PostgreSQL, MySQL and MariaDB; `Models` does on PostgreSQL and MariaDB, while
+  MySQL has no `RETURNING`, so `dbDefaultDecision` still refuses a zero
+  `dbdefault` field there with `ErrUnsupported`.
   On SQLite `plan` now splits the rows into runs of consecutive rows with the
   same set of default columns (`defaultRuns`), each an ordinary statement in
   which a column default in every row leaves the column list, run through the
   existing chunk path: one atomic scope (transaction or savepoint), the rows of
-  all runs in `Rows`, one shared clock read, read-back per run.
+  all runs in `Rows`, one shared clock read, read-back per run. A pinned
+  `OnConn` handle cannot open the transaction, so a split insert there fails
+  with `ErrUnsupported` before any statement runs. Atomicity is tested with a
+  unique violation in the third run on a pooled DB and, on SQLite, inside a
+  `Tx` (savepoint), and with `Rows` closed early.
 - **Why runs and not groups:** grouping all rows by column set would reorder
   them, and with RETURNING or generated keys the order the caller gave is the
   order they read back. Consecutive runs keep it; the cost is one statement per

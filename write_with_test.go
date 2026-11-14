@@ -100,6 +100,45 @@ func TestDeleteUsingSQLiteEmulationSQL(t *testing.T) {
 	}
 }
 
+// Catches: a Using source with the target's own name reaching SQLite, where
+// every reference in the EXISTS subquery would bind to the inner table and
+// the delete could remove rows it should keep. Refused on every dialect, as
+// PostgreSQL does ("table name specified more than once").
+func TestDeleteUsingTargetNameRefused(t *testing.T) {
+	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
+		for name, src := range map[string]momo.TableSource{
+			"table": momo.TableRef{Name: "del_pairs"},
+			"cte":   momo.CTE("del_pairs"),
+		} {
+			_, err := momo.Delete[delPair](withDB(d)).Using(src).
+				Where(momo.ColumnOf[int64]("del_pairs", "a").Eq(1)).SQL()
+			if !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "alias it") {
+				t.Errorf("%s %s: err = %v, want ErrValidation telling to alias", d, name, err)
+			}
+		}
+	}
+}
+
+// Catches: an aliased self-join losing its alias on some dialect, or the SQLite
+// subquery binding the target's columns to the inner table.
+func TestDeleteUsingAliasedSelfJoinSQL(t *testing.T) {
+	u := momo.TableRef{Name: "del_pairs"}.As("u")
+	pa := momo.ColumnOf[int64]("del_pairs", "a")
+	pb := momo.ColumnOf[int64]("del_pairs", "b")
+	ua := momo.ColumnOf[int64]("u", "a")
+	ub := momo.ColumnOf[int64]("u", "b")
+	for d, want := range map[dialect.Name]string{
+		dialect.Postgres: `DELETE FROM "del_pairs" USING "del_pairs" AS "u" WHERE ("del_pairs"."a" = "u"."b") AND ("del_pairs"."b" = "u"."a") AND ("u"."a" = $1)`,
+		dialect.SQLite:   `DELETE FROM "del_pairs" WHERE EXISTS (SELECT 1 FROM "del_pairs" AS "u" WHERE ("del_pairs"."a" = "u"."b") AND ("del_pairs"."b" = "u"."a") AND ("u"."a" = ?))`,
+		dialect.MySQL:    "DELETE `del_pairs` FROM `del_pairs`, `del_pairs` AS `u` WHERE (`del_pairs`.`a` = `u`.`b`) AND (`del_pairs`.`b` = `u`.`a`) AND (`u`.`a` = ?)",
+	} {
+		c, err := momo.Delete[delPair](withDB(d)).Using(u).Where(pa.EqExpr(ub), pb.EqExpr(ua), ua.Eq(1)).SQL()
+		if err != nil || c.SQL != want {
+			t.Errorf("%s: got %q %v, want %q", d, c.SQL, err, want)
+		}
+	}
+}
+
 // Catches: INSERT ... WITH ordering, a MySQL WITH before INSERT reaching the
 // server, and the CTE scope not covering the FromSelect select.
 func TestInsertWith(t *testing.T) {
