@@ -6,6 +6,7 @@ package momo_test
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 
@@ -191,5 +192,84 @@ func TestInsertExplicitIdentityAlwaysPostgres(t *testing.T) {
 	slices.Sort(ids)
 	if len(ids) != 40002 || !slices.Contains(ids, 41) || !slices.Contains(ids, 1000) || !slices.Contains(ids, 40999) || slices.Contains(ids, 99999) {
 		t.Fatalf("%d ids stored, want 40002 with 41, 1000 and 40999 kept and 99999 replaced by a generated id", len(ids))
+	}
+}
+
+// Catches: a zero Explicit value that MySQL or MariaDB replace with a
+// generated value without a word (the server treats 0 as "generate"), or a
+// refusal on PostgreSQL and SQLite, where the 0 must be stored as written.
+func TestInsertExplicitZeroValueOnEveryServer(t *testing.T) {
+	for _, s := range explicitServers {
+		t.Run(s.name, func(t *testing.T) {
+			db := s.open(t)
+			ctx := context.Background()
+			explicitExec(t, db, s.keyed)
+
+			z := explByDefault{Body: "zero"}
+			_, err := momo.Insert[explByDefault](db).Model(&z).Explicit(explDID).Exec(ctx)
+			got, qerr := momo.Query[explByDefault](ctx, db, "SELECT id, body FROM default_rows")
+			if qerr != nil {
+				t.Fatal(qerr)
+			}
+			if s.name != "postgres" && s.name != "sqlite" {
+				if !errors.Is(err, momo.ErrValidation) {
+					t.Fatalf("error = %v, want ErrValidation on %s", err, s.name)
+				}
+				if len(got) != 0 {
+					t.Fatalf("%d rows stored after the refusal, want 0", len(got))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("zero Explicit on %s: %v", s.name, err)
+			}
+			if len(got) != 1 || got[0].ID != 0 {
+				t.Fatalf("rows = %+v, want one row with id 0", got)
+			}
+		})
+	}
+}
+
+// Catches: Explicit moving the PostgreSQL sequence, or a later default insert
+// taking a number derived from the explicit values: the sequence stays
+// untouched, so the next generated value is the sequence's own next one.
+func TestInsertExplicitLeavesPostgresSequenceUntouched(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	explicitExec(t, db, "CREATE TABLE receipts (id text PRIMARY KEY, seq serial NOT NULL, note text NOT NULL)")
+
+	one := explReceipt{ID: "one", Seq: 1000, Note: "x"}
+	if _, err := momo.Insert[explReceipt](db).Model(&one).Explicit(explRSeq).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	many := []explReceipt{{ID: "m1", Seq: 2001, Note: "a"}, {ID: "m2", Seq: 2002, Note: "b"}}
+	if _, err := momo.Insert[explReceipt](db).Models(many).Explicit(explRSeq).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	gen := explReceipt{ID: "gen", Seq: 77, Note: "g"}
+	if _, err := momo.Insert[explReceipt](db).Model(&gen).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := receiptSeqs(t, db)["gen"]; got != 1 {
+		t.Fatalf("generated seq = %d, want 1 (the sequence's next value, untouched by the explicit inserts)", got)
+	}
+}
+
+// Catches: the Unnest strategy losing the explicit column or its values on
+// PostgreSQL: three rows with chosen seq values must read back unchanged.
+func TestInsertExplicitUnnestPostgres(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	explicitExec(t, db, "CREATE TABLE receipts (id text PRIMARY KEY, seq serial NOT NULL, note text NOT NULL)")
+
+	rows := []explReceipt{{ID: "a", Seq: 501, Note: "a"}, {ID: "b", Seq: 502, Note: "b"}, {ID: "c", Seq: 503, Note: "c"}}
+	if _, err := momo.Insert[explReceipt](db).Models(rows).Explicit(explRSeq).Unnest().Exec(ctx); err != nil {
+		t.Fatalf("unnest with Explicit: %v", err)
+	}
+	got := receiptSeqs(t, db)
+	for id, want := range map[string]int64{"a": 501, "b": 502, "c": 503} {
+		if got[id] != want {
+			t.Errorf("receipt %s seq = %d, want %d (all: %v)", id, got[id], want, got)
+		}
 	}
 }

@@ -265,3 +265,136 @@ func TestInsertWithoutExplicitStillRefusesIdentityValues(t *testing.T) {
 		t.Fatalf("error = %v, want ErrValidation", err)
 	}
 }
+
+// mysqlSmallLimit is a MySQL fake driver that allows only a few bind
+// parameters, so a bulk insert splits into several statements.
+type mysqlSmallLimit struct {
+	*fakedriver.Driver
+	d *dialect.Dialect
+}
+
+func (s mysqlSmallLimit) Dialect() *dialect.Dialect { return s.d }
+
+func newMySQLSmallLimit(max int) mysqlSmallLimit {
+	d := *dialect.For(dialect.MySQL)
+	d.MaxParams = max
+	return mysqlSmallLimit{Driver: fakedriver.New(dialect.MySQL), d: &d}
+}
+
+// Catches: a zero Explicit value that MySQL would silently replace with a
+// generated value reaching the server on Model, Models, Values or ValuesRows,
+// and the same zero value being refused on PostgreSQL or SQLite, where it is
+// stored as 0.
+func TestInsertExplicitZeroPerDialect(t *testing.T) {
+	zero := explByDefault{Body: "z"}
+	zeros := []explByDefault{{ID: 1, Body: "a"}, {Body: "z"}}
+	builders := map[string]func(db *momo.DB) momo.InsertQuery[explByDefault]{
+		"Model": func(db *momo.DB) momo.InsertQuery[explByDefault] {
+			return momo.Insert[explByDefault](db).Model(&zero).Explicit(explDID)
+		},
+		"Models": func(db *momo.DB) momo.InsertQuery[explByDefault] {
+			return momo.Insert[explByDefault](db).Models(zeros).Explicit(explDID)
+		},
+		"Values": func(db *momo.DB) momo.InsertQuery[explByDefault] {
+			return momo.Insert[explByDefault](db).Values(explDID.Set(int64(0))).Explicit(explDID)
+		},
+		"ValuesRows": func(db *momo.DB) momo.InsertQuery[explByDefault] {
+			return momo.Insert[explByDefault](db).Explicit(explDID).ValuesRows(
+				[]momo.Assignment{explDID.Set(int64(1))}, []momo.Assignment{explDID.Set(int64(0))})
+		},
+	}
+	for name, build := range builders {
+		t.Run("mysql "+name, func(t *testing.T) {
+			drv := fakedriver.New(dialect.MySQL)
+			if _, err := build(momo.New(drv)).Exec(t.Context()); !errors.Is(err, momo.ErrValidation) {
+				t.Fatalf("Exec error = %v, want ErrValidation", err)
+			}
+			if _, err := build(momo.New(drv)).SQL(); !errors.Is(err, momo.ErrValidation) {
+				t.Fatalf("SQL error = %v, want ErrValidation", err)
+			}
+			if n := len(drv.Calls()); n != 0 {
+				t.Fatalf("%d statements reached the driver, want 0", n)
+			}
+		})
+		for _, dn := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
+			t.Run(string(dn)+" "+name, func(t *testing.T) {
+				drv := fakedriver.New(dn)
+				if _, err := build(momo.New(drv)).Exec(t.Context()); err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, c := range drv.Calls() {
+					for _, a := range c.Args {
+						if a == int64(0) {
+							found = true
+						}
+					}
+				}
+				if !found {
+					t.Fatalf("calls = %+v, want a bound 0", drv.Calls())
+				}
+			})
+		}
+	}
+	// A non-key AUTO_INCREMENT column is refused the same way.
+	r := explReceipt{ID: "a", Note: "n"}
+	if _, err := momo.Insert[explReceipt](momo.New(fakedriver.New(dialect.MySQL))).Model(&r).Explicit(explRSeq).SQL(); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("non-key zero seq error = %v, want ErrValidation", err)
+	}
+}
+
+// Catches: the zero check running per chunk, so that earlier chunks are
+// already sent when a later row holds the zero value.
+func TestInsertExplicitZeroRefusedBeforeFirstChunk(t *testing.T) {
+	drv := newMySQLSmallLimit(4) // two columns per row: two rows per statement
+	rows := []explByDefault{{ID: 1, Body: "a"}, {ID: 2, Body: "b"}, {ID: 3, Body: "c"}, {Body: "zero"}}
+	_, err := momo.Insert[explByDefault](momo.New(drv)).Models(rows).Explicit(explDID).Exec(t.Context())
+	if !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("error = %v, want ErrValidation", err)
+	}
+	if n := len(drv.Calls()); n != 0 {
+		t.Fatalf("%d statements were sent before the refusal, want 0", n)
+	}
+	// Control: the same rows without the zero are chunked and sent.
+	if _, err := momo.Insert[explByDefault](momo.New(drv)).Models(rows[:3]).Explicit(explDID).Exec(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(drv.Calls()); n != 2 {
+		t.Fatalf("control sent %d statements, want 2", n)
+	}
+}
+
+// Catches: Explicit accepting a ColumnRef of another table, which would be
+// matched by name against the wrong model.
+func TestInsertExplicitForeignTableColumn(t *testing.T) {
+	other := momo.NewColumn[int64]("other_table", "seq", momo.FlagIdentity)
+	r := explReceipt{ID: "a", Seq: 7}
+	q := momo.Insert[explReceipt](momo.New(fakedriver.New(dialect.Postgres))).Model(&r).Explicit(other)
+	if _, err := q.SQL(); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("SQL error = %v, want ErrValidation", err)
+	}
+	if _, err := q.Exec(t.Context()); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("Exec error = %v, want ErrValidation", err)
+	}
+}
+
+// Catches: a column named in both Explicit and Omit being written, or one of
+// the two winning silently.
+func TestInsertExplicitWithOmitSameColumn(t *testing.T) {
+	r := explReceipt{ID: "a", Seq: 7}
+	drv := fakedriver.New(dialect.Postgres)
+	q := momo.Insert[explReceipt](momo.New(drv)).Model(&r).Omit(explRSeq).Explicit(explRSeq)
+	if _, err := q.SQL(); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("SQL error = %v, want ErrValidation", err)
+	}
+	if _, err := q.Exec(t.Context()); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("Exec error = %v, want ErrValidation", err)
+	}
+	if n := len(drv.Calls()); n != 0 {
+		t.Fatalf("%d statements sent, want 0", n)
+	}
+	// Omit of a different column stays fine.
+	if _, err := momo.Insert[explReceipt](momo.New(drv)).Model(&r).Omit(explRNote).Explicit(explRSeq).SQL(); err != nil {
+		t.Fatalf("Omit of another column: %v", err)
+	}
+}
