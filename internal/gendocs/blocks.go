@@ -199,6 +199,14 @@ type feature struct {
 
 var features = []feature{
 	{
+		Name:   "Advisory session locks",
+		API:    []string{"advisory.Lock", "advisory.LockString", "advisory.TryLock", "advisory.TryLockString", "advisory.Unlock", "advisory.UnlockString"},
+		PG:     "yes: `pg_advisory_lock`, `pg_try_advisory_lock` and `pg_advisory_unlock` on a pinned connection (`db.OnConn`); the shared and the transaction-scoped forms are also `yes`",
+		SQLite: "`ErrUnsupported`",
+		MySQL: "`GET_LOCK`, `GET_LOCK(name, 0)` and `RELEASE_LOCK` on a pinned connection (`db.OnConn`) on MySQL 8.4, MySQL 9.7 and MariaDB 11.8; the lock name is `momo:advisory:<db>:<key>`, scoped to the current database as on PostgreSQL, with an `int64` key in decimal and a text key as `s:` plus 32 hex digits of its sha256, and `advisory.Hash64` has no effect; " +
+			"the transaction-scoped and the shared forms are `ErrUnsupported`, because a `GET_LOCK` lock belongs to the session, a commit does not release it and there is no shared mode",
+	},
+	{
 		Name: "JSON operators on `types.JSON[T]`",
 		API:  []string{"jsonop.Text", "jsonop.Path", "jsonop.Root", "jsonop.Contains", "jsonop.HasKey", "jsonop.DeleteKey", "jsonop.Concat", "jsonop.Set", "jsonop.TypeOf"},
 		PG:   "yes",

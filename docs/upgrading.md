@@ -9,9 +9,10 @@ later releases can break more.
 
 No edit is needed in your code. Several calls that returned `ErrUnsupported` on
 some dialects now return results (`DistinctOn` on SQLite, MySQL and MariaDB,
-`DELETE ... USING` and mixed `DEFAULT` rows in a multi-row insert on SQLite), so
-code that relied on the error (a fallback branch, a test that expects the
-refusal) now takes the success path.
+`DELETE ... USING` and mixed `DEFAULT` rows in a multi-row insert on SQLite, and
+the `advisory` session functions on MySQL and MariaDB), so code that relied on
+the error (a fallback branch, a test that expects the refusal) now takes the
+success path.
 
 ### `DELETE ... USING` runs on SQLite
 
@@ -94,6 +95,33 @@ What to check:
   join that selects two columns of the same name works on MySQL too.
 - An `As` alias is checked as everywhere else: an empty, malformed or
   over-long alias is `ErrValidation` on every dialect.
+
+### Advisory session locks on MySQL and MariaDB
+
+The `advisory` session functions (`advisory.Lock`, `advisory.TryLock`,
+`advisory.Unlock` and their text-key forms such as `advisory.LockString`) used
+to return `ErrUnsupported` on MySQL and MariaDB. They now run `GET_LOCK`, `GET_LOCK(name, 0)` and `RELEASE_LOCK` on
+a pinned connection (`db.OnConn(pc)`), as they do on PostgreSQL with
+`pg_advisory_lock`. Take the pinned `*momo.DB` from `momo.Pinner`, lock and
+unlock on it, and unlock before you release the connection to the pool; a pooled
+`*momo.DB` is `ErrValidation`. What differs from PostgreSQL:
+
+- The lock name is `momo:advisory:<db>:<key>` and is scoped to the current
+  database, as a PostgreSQL advisory lock is (`GET_LOCK` names are otherwise
+  global to the server): `<db>` is 8 hex digits of `sha256(DATABASE())`, or
+  `nodb` without a default database. An `int64` key is `<key>` in decimal, and a
+  text key is `s:` plus 32 hex digits of its sha256. `advisory.Hash64` has no
+  effect, and a text key is a different lock than the one PostgreSQL takes for
+  the same string.
+- `advisory.Lock` waits in one-second `GET_LOCK` calls until the lock is granted
+  or the context ends. After it returns an error, `Discard` the pinned
+  connection instead of releasing it, because a granted lock may still be
+  attached to it.
+- The transaction-scoped functions (`advisory.XactLock` and the rest) and the
+  shared functions (`advisory.LockShared` and the rest) stay `ErrUnsupported`: a
+  `GET_LOCK` lock is not released by a commit or rollback and has no shared mode.
+
+See [MySQL](mysql.md#advisory-locks) for the details.
 
 ## Upgrading to 0.12.0
 
