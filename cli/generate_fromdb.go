@@ -49,8 +49,13 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 	if l.dialectName, err = l.chooseDialect(); err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
-	if l.dialectName != string(dialect.Postgres) && l.dialectName != string(dialect.MySQL) {
-		return l.errf(exitUsage, "--from-db reads PostgreSQL, MySQL and MariaDB databases only, not %s", l.dialectName)
+	switch dialect.Name(l.dialectName) {
+	case dialect.Postgres, dialect.MySQL, dialect.SQLite:
+	default:
+		return l.errf(exitUsage, "--from-db reads PostgreSQL, MySQL, MariaDB and SQLite databases only, not %s", l.dialectName)
+	}
+	if a.schemas != "" && l.dialectName != string(dialect.Postgres) {
+		return l.errf(exitUsage, "--schema applies to PostgreSQL only: %s has one namespace per database", l.dialectName)
 	}
 	if a.schemas != "" {
 		l.file.Migrate.Schemas = strings.Split(a.schemas, ",")
@@ -77,6 +82,11 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 	dsn, err := l.fromDBURL(a.src)
 	if err != nil {
 		return l.errf(exitUsage, "%v", err)
+	}
+	if l.dialectName == string(dialect.SQLite) {
+		if dsn, err = requireSQLiteFile(dsn); err != nil {
+			return l.errf(exitUsage, "%v", err)
+		}
 	}
 	// introspect.skip tables get no model, so inspection skips them before
 	// reading them: one the schema model cannot represent must not fail the run.
@@ -221,8 +231,13 @@ func packageNameFor(dir string) string {
 
 // fromDBURL resolves --from-db: "-" reads the URL from standard input, a
 // value that looks like a URL or a key=value string is the connection string
-// itself, and anything else names an environment variable.
+// itself, and anything else names an environment variable. For SQLite a path,
+// a sqlite: or file: URL or an existing file is the database itself.
 func (l *cli) fromDBURL(src string) (string, error) {
+	// A SQLite database is a path or a sqlite: or file: URL; it holds no secret.
+	if l.dialectName == string(dialect.SQLite) && src != "-" && looksLikeSQLiteSource(src) {
+		return src, nil
+	}
 	switch {
 	case src == "-":
 		if f, ok := migrateStdin.(*os.File); ok {

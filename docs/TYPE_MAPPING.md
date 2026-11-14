@@ -266,6 +266,38 @@ except `NaN`, which SQLite does not have (see Floats).
   infinities), or as a string to avoid binary floating point. Values beyond
   `float64` precision round-trip exactly, and `numeric` also accepts `NaN`.
 
+## Reading a SQLite database with --from-db
+
+`momo generate --from-db` on a SQLite database maps a declared column type to a
+Go type by the type affinity rules of SQLite, the inverse of the SQLite column
+of the generated mappings above. It adds a `type:` tag with the declared type
+whenever the Go type's own SQLite column differs, so the models build the column
+back as it was.
+
+- A name with `INT` (`INTEGER`, `BIGINT`) is `int64`.
+- A name with `CHAR`, `CLOB` or `TEXT` is `string`.
+- A name with `BLOB` is `[]byte`.
+- A name with `REAL`, `FLOA` or `DOUB` is `float64`.
+- `BOOLEAN` is `bool`; `DATETIME` and `TIMESTAMP` are `time.Time`; `DATE` is
+  `types.Date`; `NUMERIC` is `float64`, with a report note.
+
+The `type:` tag carries the declared type unless the Go type's own SQLite
+column already spells it that way (`INTEGER`, `TEXT`, `BLOB`, `REAL`).
+
+`NUMERIC` is mapped, with a note, because a bare `NUMERIC` column converts
+well-formed text to an integer or a real and `float64` reads either; a
+`DECIMAL(10,2)` column is not, because its declared precision says the values
+are exact decimals that `float64` would round, so a rule must choose
+`types.Numeric` or a decimal type. `BOOLEAN`, `DATETIME`, `TIMESTAMP` and `DATE`
+columns get a report note too: SQLite keeps what was written, so a value other
+than 0 or 1, a unix-timestamp integer or text that is not a date fails to scan
+into `bool`, `time.Time` or `types.Date`.
+
+Any other declared type has NUMERIC affinity, which holds integers, floats and
+text alike, so it has no single Go type: `DECIMAL(10,2)`, a `json` column and a column
+with no declared type are errors until an `introspect.types` or
+`introspect.columns` rule names the Go type. The column text is never guessed.
+
 ## Null handling
 
 A column that can be NULL needs a Go type that can hold NULL: a pointer

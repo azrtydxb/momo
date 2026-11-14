@@ -93,16 +93,45 @@ var postgresVectors = map[string]string{
 	"bit":       "vector.Bits",
 }
 
-// sqliteTypes maps the SQLite storage classes and common affinities.
+// sqliteTypes maps the SQLite storage classes and the common declared type
+// names whose affinity alone would pick the wrong Go type. A declared type not
+// listed here is mapped by its affinity: see sqliteAffinity.
 var sqliteTypes = map[string]GoType{
 	"INTEGER":   {Expr: "int64"},
 	"REAL":      {Expr: "float64"},
 	"TEXT":      {Expr: "string"},
 	"BLOB":      {Expr: "[]byte", Nilable: true},
 	"NUMERIC":   {Expr: "float64", Note: "numeric-as-float64: SQLite NUMERIC is carried as float64"},
-	"BOOLEAN":   {Expr: "bool"},
-	"DATETIME":  {Expr: "time.Time", Import: "time"},
-	"TIMESTAMP": {Expr: "time.Time", Import: "time"},
+	"BOOLEAN":   {Expr: "bool", Note: "BOOLEAN is read as bool: a stored value other than 0 or 1 (the text 'true') fails to scan"},
+	"DATETIME":  {Expr: "time.Time", Import: "time", Note: "DATETIME is read as time.Time: a unix-timestamp integer instead of date text fails to scan"},
+	"TIMESTAMP": {Expr: "time.Time", Import: "time", Note: "TIMESTAMP is read as time.Time: a unix-timestamp integer instead of date text fails to scan"},
+	"DATE":      {Expr: "types.Date", Import: importTypes, Note: "DATE is read as types.Date: it must hold YYYY-MM-DD text"},
+}
+
+// sqliteAffinity maps a declared SQLite type name to the Go type of its
+// column affinity, by the rules of https://www.sqlite.org/datatype3.html: a
+// name with INT is INTEGER, with CHAR, CLOB or TEXT is TEXT, with BLOB is BLOB,
+// with REAL, FLOA or DOUB is REAL. A name that matches none has NUMERIC
+// affinity, which stores integers, floats and text alike, so it has no one Go
+// type and is left unmapped (an introspect.types rule decides), as is a column
+// with no declared type. The declared spelling is kept: a column whose model
+// type maps to another spelling gets a type tag, so the declared type survives
+// the round trip.
+func sqliteAffinity(s string) (GoType, bool) {
+	base, _, _ := splitType(s)
+	switch {
+	case base == "":
+		return GoType{}, false
+	case strings.Contains(base, "INT"):
+		return sqliteTypes["INTEGER"], true
+	case strings.Contains(base, "CHAR"), strings.Contains(base, "CLOB"), strings.Contains(base, "TEXT"):
+		return sqliteTypes["TEXT"], true
+	case strings.Contains(base, "BLOB"):
+		return sqliteTypes["BLOB"], true
+	case strings.Contains(base, "REAL"), strings.Contains(base, "FLOA"), strings.Contains(base, "DOUB"):
+		return sqliteTypes["REAL"], true
+	}
+	return GoType{}, false
 }
 
 // MapType returns the Go type for a normalized SQL type (schema.NormalizeType
@@ -121,6 +150,9 @@ func MapType(d dialect.Name, sqlType string) (GoType, error) {
 		}
 	case dialect.SQLite:
 		if g, ok := sqliteTypes[s]; ok {
+			return g, nil
+		}
+		if g, ok := sqliteAffinity(s); ok {
 			return g, nil
 		}
 	}

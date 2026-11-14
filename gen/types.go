@@ -105,6 +105,9 @@ type Model struct {
 	// IsView is set for a model that embeds momo.View: it maps a database
 	// view and Meta.View makes every write builder refuse it.
 	IsView bool
+	// Autoincrement, WithoutRowID and Strict are the SQLite table options
+	// read from the momo.Model marker tag.
+	Autoincrement, WithoutRowID, Strict bool
 
 	named *types.Named
 }

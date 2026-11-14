@@ -197,6 +197,7 @@ func (b *schemaBuilder) addModel(m *Model) {
 	b.names = map[string]string{}
 	b.applyIndexTags(m, &t)
 	b.applyCompanion(m, &t)
+	b.applyTableOptions(m, &t)
 	if m.IsView {
 		// The companion's views, functions and policies are merged above; the
 		// table is not part of the schema, only the emitter reads it.
@@ -207,6 +208,50 @@ func (b *schemaBuilder) addModel(m *Model) {
 	b.index[m] = len(b.s.Tables)
 	b.s.Tables = append(b.s.Tables, t)
 	b.dialectCheck()
+}
+
+// applyTableOptions copies the SQLite table options of the momo.Model marker
+// (autoincrement, without_rowid, strict) to t. They exist on SQLite only, so a
+// model that names one while a configured dialect is another is a diagnostic;
+// the rules about which table may be AUTOINCREMENT are the renderer's.
+func (b *schemaBuilder) applyTableOptions(m *Model, t *schema.Table) {
+	if !m.Autoincrement && !m.WithoutRowID && !m.Strict {
+		return
+	}
+	for _, d := range append(slices.Clone(b.dialects), b.primary) {
+		if d != dialect.SQLite {
+			b.diag(m.Pos, fmt.Sprintf("model %s: autoincrement, without_rowid and strict are SQLite table options and are not supported on %s", m.GoName, d))
+			return
+		}
+	}
+	if m.Autoincrement {
+		var col *schema.Column
+		if len(t.PrimaryKey) == 1 {
+			col = colByName(t, t.PrimaryKey[0])
+		}
+		switch {
+		case m.WithoutRowID:
+			b.diag(m.Pos, fmt.Sprintf("model %s: autoincrement needs a rowid table, so it cannot be combined with without_rowid", m.GoName))
+		case col == nil:
+			b.diag(m.Pos, fmt.Sprintf("model %s: autoincrement needs a primary key of exactly one column, not %d", m.GoName, len(t.PrimaryKey)))
+		case schema.NormalizeType(dialect.SQLite, col.Type) != "INTEGER":
+			b.diag(m.Pos, fmt.Sprintf("model %s: autoincrement needs an INTEGER primary key, but %s is %s", m.GoName, col.Name, col.Type))
+		}
+	}
+	if m.WithoutRowID && len(t.PrimaryKey) == 0 {
+		b.diag(m.Pos, fmt.Sprintf("model %s: without_rowid needs a primary key", m.GoName))
+	}
+	t.Autoincrement, t.WithoutRowID, t.Strict = m.Autoincrement, m.WithoutRowID, m.Strict
+}
+
+// colByName returns the column of t with the given name, or nil.
+func colByName(t *schema.Table, name string) *schema.Column {
+	for i := range t.Columns {
+		if t.Columns[i].Name == name {
+			return &t.Columns[i]
+		}
+	}
+	return nil
 }
 
 // applyColumnTags maps the column-level tags of f to a schema column.

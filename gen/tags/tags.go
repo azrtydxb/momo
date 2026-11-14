@@ -52,6 +52,12 @@ type Tags struct {
 	// DBDefault is the dbdefault option: a Model insert leaves the column to
 	// the database default while the field holds its zero value.
 	DBDefault bool
+
+	// Autoincrement, WithoutRowID and Strict are the SQLite table options of
+	// the momo.Model marker: the INTEGER PRIMARY KEY is declared AUTOINCREMENT,
+	// the table is WITHOUT ROWID, the table is STRICT. They mean nothing on a
+	// field.
+	Autoincrement, WithoutRowID, Strict bool
 }
 
 // Parse parses a raw tag value. An empty tag yields the zero Tags and no
@@ -216,6 +222,12 @@ func (t *Tags) set(key, val string, hasVal bool) string {
 		return bare(&t.Serial)
 	case "dbdefault":
 		return bare(&t.DBDefault)
+	case "autoincrement":
+		return bare(&t.Autoincrement)
+	case "without_rowid":
+		return bare(&t.WithoutRowID)
+	case "strict":
+		return bare(&t.Strict)
 	case "version":
 		return bare(&t.Version)
 	case "notnull":

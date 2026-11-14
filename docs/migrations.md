@@ -575,12 +575,16 @@ Limits of the rebuild:
 - `sqlite.Rebuild` and `sqlite.Capture` rebuild from a live connection
   (captured views and triggers are recreated verbatim); the engine path rebuilds
   from the snapshot instead.
-- A model cannot declare `WITHOUT ROWID`, `STRICT` or `AUTOINCREMENT`, so a
-  table that has one in the database and not in the model is not a difference:
-  `diff` and `AutoMigrate` leave it alone and a rebuild writes it back
-  (`TestSQLiteAutoMigrateWithStrictTable`). Asking for one the table lacks is
-  refused by `diff` (write a custom migration). `schema.Table` carries `Strict`
-  and `Autoincrement`; inspection reads them. A rebuild of an `AUTOINCREMENT`
+- A model declares `WITHOUT ROWID`, `STRICT` and `AUTOINCREMENT` with the
+  `without_rowid`, `strict` and `autoincrement` options of its `momo.Model` tag;
+  `momo generate --from-db` writes them from an existing database, and
+  `CREATE TABLE` carries them. They are one-way after that. Changing them on an
+  existing table needs a custom migration: asking for one the table lacks is
+  refused by `diff`. Removing one from a model is not detected: a table that
+  has one in the database and not in the model is not a difference, `diff` and
+  `AutoMigrate` leave it alone and a rebuild writes it back
+  (`TestSQLiteAutoMigrateWithStrictTable`). `schema.Table` carries `Strict` and
+  `Autoincrement`; inspection reads them. A rebuild of an `AUTOINCREMENT`
   table copies its `sqlite_sequence` value to the new table, so ids of deleted
   rows are not handed out again (`TestSQLiteStrictAutoincrementRoundTrip`).
   An `INTEGER PRIMARY KEY DESC` is not a rowid alias and is not reported as an
@@ -1047,10 +1051,11 @@ engine, err := migrate.NewEngine(drv, dir, migrate.WithDialect(pg), migrate.With
 
 Worked example: `examples/adopt-existing-schema`.
 
-`momo generate --from-db` reads a live PostgreSQL, MySQL or MariaDB database
-and writes the models and the init snapshot, so nothing has to be written by
-hand first. The MySQL family has its own rules, listed in
-[MySQL and MariaDB](mysql.md#models-from-a-database).
+`momo generate --from-db` reads a live PostgreSQL, MySQL, MariaDB or SQLite
+database (the dialect of `momo.yaml`) and writes the models and the init
+snapshot, so nothing has to be written by hand first. The MySQL family has its
+own rules, listed in [MySQL and MariaDB](mysql.md#models-from-a-database);
+SQLite's are in [a SQLite database](#a-sqlite-database).
 
 1. Run `momo generate --from-db DATABASE_URL`. The value is a database URL, `-`
    to read the URL from standard input, or the name of an environment variable
@@ -1115,6 +1120,71 @@ the expression.
 A VIRTUAL one also gets the `virtual` tag option (or `c.GeneratedVirtual(&m.Field,
 "<expr>")` when the expression has a comma), so the model declares the kind the
 database has.
+
+### A SQLite database
+
+With `dialects: [sqlite]` in `momo.yaml`, `--from-db` takes the database file:
+a path, a `sqlite:` or `file:` URL, or the name of an environment variable that
+holds one. The file must exist; `:memory:` and `mode=memory` are refused, as
+they are empty. The CLI opens it with the pure-Go driver `driver/sqlitepure`,
+so no cgo is needed, and read-only: `--from-db` and `--from-db --check` never
+write the file, keep its journal mode and do not convert a rollback-journal
+database to WAL (`sqlitepure.Config.ReadOnly`: no WAL pragma, `mode=ro` and
+`PRAGMA query_only`). A database that is already in WAL mode still needs its
+`-shm` and `-wal` files, or a directory SQLite can create them in; for one in a
+directory you cannot write, inspect a copy. `--schema` is refused: SQLite has
+one namespace per database file. The other `momo migrate` commands open the
+file read-write and set WAL mode, as every momo SQLite connection does. The same `momo migrate` commands (`diff`,
+`apply`, `baseline`, `drift` and the rest) run on SQLite with `--url` or
+`migrate.url_env` pointing at the file.
+
+The models of a SQLite database keep what a rebuild from the models needs:
+
+- Each declared column type maps by the SQLite affinity rules: a name with
+  `INT` is `int64`, with `CHAR`, `CLOB` or `TEXT` is `string`, with `BLOB` is
+  `[]byte`, with `REAL`, `FLOA` or `DOUB` is `float64`; `BOOLEAN` is `bool`,
+  `DATETIME` and `TIMESTAMP` are `time.Time` and `DATE` is `types.Date`. The
+  declared spelling is kept with a `type:` tag whenever the Go type alone would
+  give another (`type:VARCHAR(200)`, `type:BOOLEAN`). A type with NUMERIC
+  affinity that is not one of those (`DECIMAL(10,2)`, a `json` column) or no declared type
+  is an error until an `introspect.types` or `introspect.columns` rule names a
+  Go type; see [TYPE_MAPPING.md](TYPE_MAPPING.md#reading-a-sqlite-database-with---from-db).
+  A `BOOLEAN`, `DATETIME`, `TIMESTAMP` or `DATE` column gets a report note:
+  SQLite stores whatever was written, and a value that is not 0 or 1, a unix
+  integer or text that is not a date fails to scan into the Go type.
+- An `INTEGER PRIMARY KEY` is the rowid alias: the field is tagged `pk,identity`
+  and the column is NOT NULL, which SQLite does not report for it. A primary key
+  column of another kind that allows NULL (SQLite permits that on a rowid table)
+  is written NOT NULL with a warning, and the baseline reports the column.
+- `AUTOINCREMENT`, `WITHOUT ROWID` and `STRICT` are the `autoincrement`,
+  `without_rowid` and `strict` options of the `momo.Model` tag, valid on SQLite
+  only. They are read by `--from-db` and written by `CREATE TABLE`. Changing
+  them on an existing table needs a custom migration, and removing one from a
+  model is not detected (see the SQLite rebuild notes above).
+- A `CHECK (col IN ('a', 'b'))` on a TEXT column is an enum column
+  (`enum:<table>_<column>` plus a `c.Enum` call), which SQLite builds back as the
+  same CHECK. Other checks are `c.Check` calls with the constraint name SQLite
+  holds, or `<table>_check` for an unnamed one.
+- Defaults are written as SQLite reports them. With `introspect.dbdefault: all`
+  a NOT NULL column with a default gets `dbdefault`, and a `bool` or number
+  column whose constant default is true or non-zero becomes a pointer, as on
+  PostgreSQL; a computed default (`CURRENT_TIMESTAMP`, `datetime('now')`) is
+  tagged without the option. SQLite reads the value back with `RETURNING`. A
+  bulk insert whose rows mix zero and set values of a `dbdefault` column returns
+  `ErrUnsupported` on SQLite, which has no per-row `DEFAULT` in a multi-row
+  `VALUES` list; insert such rows separately.
+- A unique constraint is `c.Unique`, a unique index is a `unique` tag or
+  `c.Index(...).Unique()`, and partial and expression indexes keep their
+  `WHERE` text and expressions (`c.Index(...).Where(...)`, `c.IndexExpr`).
+- Foreign keys become `belongs_to` fields (and with `introspect.inverse` the
+  `has_many` or `has_one` on the other side), with their `on_delete` and
+  `on_update` actions; STORED and VIRTUAL generated columns become `read_only`
+  fields with `generated` and, for VIRTUAL, `virtual`; views and triggers are
+  declared with `c.View` and `c.Trigger`.
+
+SQLite has no schemas, extensions, native enums, functions, policies or row-level
+security, so none is read or written. A shadow table of a virtual table, the
+`sqlite_` tables and the two momo bookkeeping tables are never modeled.
 
 ### The introspect section
 
@@ -1206,7 +1276,7 @@ function only that code reaches is not written and a fresh database built from
 the models lacks it. `functions: all` writes every function on the first model,
 as releases before 0.7.0 did, and is the workaround.
 
-`dbdefault: all` tags every NOT NULL PostgreSQL column that has a default with
+`dbdefault: all` tags every NOT NULL PostgreSQL or SQLite column that has a default with
 `dbdefault`, constant defaults such as `DEFAULT 1` included (by default only
 computed defaults are tagged), so `InsertQuery.Model` leaves an unset field to the
 database default. A nullable column is never tagged. A `bool` or number column

@@ -139,8 +139,12 @@ func (l *cli) wanted(table string) bool {
 }
 
 // openFromDBEngine opens the engine --from-db inspects through: the MySQL
-// family here, every other dialect through openEngineAt.
+// family here, SQLite read-only through openSQLiteFromDB, PostgreSQL through
+// openEngineAt.
 func (l *cli) openFromDBEngine(ctx context.Context, dsn string) (*migrate.Engine, func(), int) {
+	if l.dialectName == string(dialect.SQLite) {
+		return l.openSQLiteFromDB(dsn)
+	}
 	if l.dialectName != string(dialect.MySQL) {
 		return l.openEngineAt(ctx, dsn)
 	}
