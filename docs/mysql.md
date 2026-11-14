@@ -64,7 +64,7 @@ Differences the tests pin down:
 
 Not run on MySQL or MariaDB: the one-million-row heap bound of streaming
 (its seed SQL is PostgreSQL and SQLite only), and the CreateGraph behaviour
-tests of the shared suite that rely on PostgreSQL-only SQL. The graph writes
+tests of the shared suite whose SQL is written for PostgreSQL alone. The graph writes
 have their own tests in `driver/mysqldriver` and `rel_mysql_integration_test.go`.
 
 ## Connecting
