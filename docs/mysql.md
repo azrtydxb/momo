@@ -47,10 +47,11 @@ Run on MySQL 8.4, MySQL 9.7 and MariaDB 11.8:
   `timeop.EpochSeconds` and the typed date arithmetic.
 
 `LATERAL` runs on MySQL 8.4 and 9.7, and on MariaDB it is `ErrUnsupported`.
-`CreateGraph` and `FindOrCreate` are `ErrUnsupported` on all three, as are
-`SelectQuery.Explain`, the aggregate `FILTER` clause on `agg.JSONB`, `agg.Array`,
-an ordered or distinct `agg.JSONB`, `unnest` and `generate_series` sources and
-`DISTINCT ON`; the tests check the error on each server.
+`CreateGraph` and `FindOrCreate` work on all three (see below), and a test
+checks the stored keys and the found and created cases on each server.
+`SelectQuery.Explain`, the aggregate `FILTER` clause on `agg.JSONB`,
+`agg.Array`, an ordered or distinct `agg.JSONB`, `unnest` and `generate_series` sources and `DISTINCT ON` are `ErrUnsupported`;
+the tests check the error on each server.
 
 Differences the tests pin down:
 
@@ -62,8 +63,9 @@ Differences the tests pin down:
 - an aggregate over `JSON_ARRAYAGG` has no defined member order.
 
 Not run on MySQL or MariaDB: the one-million-row heap bound of streaming
-(its seed SQL is PostgreSQL and SQLite only), and the CreateGraph tests, which
-need `RETURNING`.
+(its seed SQL is PostgreSQL and SQLite only), and the CreateGraph behaviour
+tests of the shared suite that rely on PostgreSQL-only SQL. The graph writes
+have their own tests in `driver/mysqldriver` and `rel_mysql_integration_test.go`.
 
 ## Connecting
 
