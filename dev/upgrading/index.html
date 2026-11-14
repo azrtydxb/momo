@@ -1099,6 +1099,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0130" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.13.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.13.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#distincton-on-sqlite-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DistinctOn on SQLite, MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0120" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2091,6 +2119,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0130" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.13.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.13.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#distincton-on-sqlite-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DistinctOn on SQLite, MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0120" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2982,6 +3038,53 @@
 <a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
+<h2 id="upgrading-to-0130">Upgrading to 0.13.0<a class="headerlink" href="#upgrading-to-0130" title="Permanent link">&para;</a></h2>
+<p>No edit is needed in your code. One call that returned <code>ErrUnsupported</code> on some
+dialects now returns rows, so code that relied on the error (a fallback branch,
+a test that expects the refusal) now takes the success path.</p>
+<h3 id="distincton-on-sqlite-mysql-and-mariadb"><code>DistinctOn</code> on SQLite, MySQL and MariaDB<a class="headerlink" href="#distincton-on-sqlite-mysql-and-mariadb" title="Permanent link">&para;</a></h3>
+<p><code>SelectQuery.DistinctOn</code> returned <code>ErrUnsupported</code> on SQLite, MySQL and
+MariaDB. It now runs on all of them, emulated with a window function, and
+keeps the first row of each group of the leading <code>OrderBy</code> keys, the
+tie-breakers after them deciding which row is first, and all rows with a NULL
+key forming one group, as PostgreSQL's <code>DISTINCT ON</code> does when the <code>OrderBy</code> is
+total (see the NULLS point below). A derived table
+numbers the rows of each group with <code>ROW_NUMBER()</code> and the outer query keeps
+number 1. It needs SQLite 3.25, MySQL 8.0 or MariaDB 10.2, the versions that
+have window functions. PostgreSQL is unchanged.</p>
+<p>What to check:</p>
+<ul>
+<li>The <code>OrderBy</code> rule is the same on every dialect: the leading items must be the
+  <code>DistinctOn</code> expressions, in any order, and an <code>OrderBy</code> is required
+  (<code>ErrValidation</code> otherwise). A query that built on PostgreSQL builds on the
+  others.</li>
+<li>The helper column never reaches your scan or a raw read of the statement. Each
+  result column keeps the name of its column or its <code>As</code> alias; a bare function
+  in the select list has no such name there, so alias it with <code>As</code>.</li>
+<li>An <code>OrderBy</code> on a column that is not in the select list works. An <code>OrderBy</code>
+  on an <code>As</code> alias is allowed when the alias is in the select list.</li>
+<li><code>Count</code> and <code>Exists</code> count the groups, as on PostgreSQL. <code>Where</code>, joins,
+  <code>GroupBy</code>, <code>Having</code> and keyset <code>After</code> filter before the dedupe; <code>Limit</code> and
+  <code>Offset</code> apply after it.</li>
+<li>A row lock (<code>ForUpdate</code>, <code>ForShare</code>) with <code>DistinctOn</code> is <code>ErrUnsupported</code> on
+  these dialects, because the rows are read in a derived table and the lock
+  would not cover the rows returned. PostgreSQL refuses the combination with
+  <code>ErrValidation</code>.</li>
+<li>Servers place NULLs differently by default (PostgreSQL last in an ascending
+  order and first in a descending one, the others the reverse). For an
+  <code>OrderBy</code> item on a nullable model column or <code>NullColumn</code> with no NULLS term,
+  momo writes PostgreSQL's placement out, so the same row wins on every
+  dialect. It cannot know that a <code>ColumnOf</code> column or an expression is
+  nullable: give those an explicit <code>NullsFirst</code> or <code>NullsLast</code>, or the tiebreak
+  can pick a different row than PostgreSQL does.</li>
+<li>A subquery or CTE that reads an unaliased select-list expression by the name
+  PostgreSQL gives it must alias it with <code>As</code>: on the emulated dialects that
+  column is <code>momo_cN</code>. Columns and <code>As</code> aliases keep their names.</li>
+<li><code>Count</code> and <code>Exists</code> count the groups without repeating the select list, so a
+  join that selects two columns of the same name works on MySQL too.</li>
+<li>An <code>As</code> alias is checked as everywhere else: an empty, malformed or
+  over-long alias is <code>ErrValidation</code> on every dialect.</li>
+</ul>
 <h2 id="upgrading-to-0120">Upgrading to 0.12.0<a class="headerlink" href="#upgrading-to-0120" title="Permanent link">&para;</a></h2>
 <p>Two changes can need an edit. <code>momo.Avg</code> is now generic, so code that uses it
 as an uninstantiated function value must write <code>momo.Avg[float64]</code> (see

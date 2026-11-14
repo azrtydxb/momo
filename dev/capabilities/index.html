@@ -2217,8 +2217,8 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <tr>
 <td><code>DISTINCT ON</code></td>
 <td>yes</td>
-<td><code>ErrUnsupported</code></td>
-<td><code>SelectQuery.DistinctOn</code>; the leading ORDER BY items must be the DISTINCT ON expressions in any order, and an OrderBy is required, otherwise <code>ErrValidation</code> at build time</td>
+<td>emulated with <code>ROW_NUMBER() OVER (PARTITION BY keys ORDER BY order)</code> in a derived table; a nullable ORDER BY item with no NULLS term gets the PostgreSQL placement, but a <code>ColumnOf</code> or expression item needs an explicit <code>NullsFirst</code> or <code>NullsLast</code>; a row lock is <code>ErrUnsupported</code></td>
+<td><code>SelectQuery.DistinctOn</code>; the leading ORDER BY items must be the DISTINCT ON expressions in any order, and an OrderBy is required, otherwise <code>ErrValidation</code>, on every dialect. Alias an expression that a subquery or CTE reads by name: the emulation names a result column after its column or <code>As</code> alias, else <code>momo_cN</code></td>
 </tr>
 <tr>
 <td>Set-returning FROM sources</td>

@@ -1573,8 +1573,14 @@ three servers; the plain <code>testopen.Each</code> opens PostgreSQL and SQLite 
 <code>CreateGraph</code> and <code>FindOrCreate</code> work on all three (see below), and a test
 checks the stored keys and the found and created cases on each server.
 <code>SelectQuery.Explain</code>, the aggregate <code>FILTER</code> clause on <code>agg.JSONB</code>,
-<code>agg.Array</code>, an ordered or distinct <code>agg.JSONB</code>, <code>unnest</code> and <code>generate_series</code> sources and <code>DISTINCT ON</code> are <code>ErrUnsupported</code>;
-the tests check the error on each server.</p>
+<code>agg.Array</code>, an ordered or distinct <code>agg.JSONB</code>, <code>unnest</code> and <code>generate_series</code> sources are <code>ErrUnsupported</code>;
+the tests check the error on each server. <code>DistinctOn</code> is emulated with
+<code>ROW_NUMBER() OVER (PARTITION BY ...)</code> in a derived table. A nullable model or
+<code>NullColumn</code> <code>OrderBy</code> item with no NULLS term gets PostgreSQL's placement
+(ASC last, DESC first), so the rows match; give a <code>ColumnOf</code> or expression item
+an explicit <code>NullsFirst</code> or <code>NullsLast</code>. A subquery or CTE that reads an
+unaliased expression by its PostgreSQL name must alias it, because it is
+<code>momo_cN</code> here. Combined with a row lock it is <code>ErrUnsupported</code>.</p>
 <p>Differences the tests pin down:</p>
 <ul>
 <li>a JSON null member extracts as the text <code>null</code>, not as SQL NULL, because
