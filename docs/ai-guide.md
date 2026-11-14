@@ -1290,8 +1290,8 @@ return rows2.Err()
   _, err := momo.Insert[models.Receipt](q).Model(&r).Explicit(receipt.Seq).Exec(ctx)
   ```
 
-  `Explicit` takes the columns to write with the struct value (or the `Values` / `ValuesRows`
-  assignment), also for `Models`, chunked bulk inserts, `Unnest`, `Upsert` and `OnConflict`.
+  `Explicit` takes the columns to write with the struct value (or the `momo.InsertQuery.Values` /
+  `momo.InsertQuery.ValuesRows` assignment), also for `Models`, chunked bulk inserts, `Unnest`, `Upsert` and `OnConflict`.
   PostgreSQL renders `OVERRIDING SYSTEM VALUE` for a `GENERATED ALWAYS AS IDENTITY` column
   only; serial and `BY DEFAULT` need no clause, and MySQL, MariaDB and SQLite write an ordinary
   column. A zero value is written as-is (the caller opted in). A column that is not
