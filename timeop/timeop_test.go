@@ -216,3 +216,35 @@ func TestTimeExprComposition(t *testing.T) {
 		t.Errorf("extract over date_trunc: %v", err)
 	}
 }
+
+// Catches: a bound timestamp reaching DATE_ADD or DATE_SUB without the cast
+// that types it on MariaDB, for a literal and a bound interval count, on both
+// MySQL-family flavors.
+func TestBoundTimeIntervalGoldenPerMySQLFlavor(t *testing.T) {
+	at := time.Unix(0, 0).UTC()
+	bound := timeop.IntervalExpr(momo.Value(int64(3)), timeop.IntervalWeek)
+	for _, f := range []dialect.Flavor{dialect.FlavorMySQL, dialect.FlavorMariaDB} {
+		for _, c := range []struct {
+			e    momo.Expr
+			want string
+			args []any
+		}{
+			{timeop.SubInterval(momo.Value(at), timeop.IntervalOf(2, timeop.IntervalDay)), "DATE_SUB(CAST(? AS DATETIME(6)), INTERVAL 2 DAY)", []any{at}},
+			{timeop.AddInterval(momo.Value(at), timeop.IntervalOf(2, timeop.IntervalDay)), "DATE_ADD(CAST(? AS DATETIME(6)), INTERVAL 2 DAY)", []any{at}},
+			{timeop.AddInterval(momo.Value(at), bound), "DATE_ADD(CAST(? AS DATETIME(6)), INTERVAL ? WEEK)", []any{at, int64(3)}},
+			{timeop.SubInterval(momo.Value(at), bound), "DATE_SUB(CAST(? AS DATETIME(6)), INTERVAL ? WEEK)", []any{at, int64(3)}},
+		} {
+			got, err := momo.Select[exprtest.Tally](exprtest.DBFlavor(f)).From(momo.TableRef{Name: "documents"}).Columns(c.e).SQL()
+			if err != nil {
+				t.Errorf("%s %s: %v", f, c.want, err)
+				continue
+			}
+			if want := "SELECT " + c.want + " FROM `documents`"; got.SQL != want {
+				t.Errorf("%s:\n got %s\nwant %s", f, got.SQL, want)
+			}
+			if !reflect.DeepEqual(got.Args, c.args) {
+				t.Errorf("%s %s: args = %v, want %v", f, c.want, got.Args, c.args)
+			}
+		}
+	}
+}
