@@ -1677,13 +1677,44 @@ equivalent instead of returning <code>ErrUnsupported</code>.</p>
 <li>A single <code>Model</code> insert reads <code>LAST_INSERT_ID</code> and writes it into the
   identity field of the model. A key generated on the Go side (an id
   generator) always wins; <code>LAST_INSERT_ID</code> is read only for a key the database
-  generates. A multi-row insert returns and writes back no keys, because the
-  ids of a multi-row statement depend on <code>innodb_autoinc_lock_mode</code>. On MariaDB,
-  ask for them with <code>Returning</code>; on MySQL that is <code>ErrUnsupported</code>. The
-  <code>LAST_INSERT_ID</code> write-back does not apply to an upsert or to any insert with
-  a conflict clause (<code>wantsGeneratedKey</code> in the core is false for them), because
-  the statement may update an existing row and <code>LAST_INSERT_ID</code> then does not
-  name the row's key; read the row back with a query.</li>
+  generates. A plain multi-row <code>Models</code> insert through <code>Exec</code> returns and
+  writes back no keys, because the ids of a multi-row statement depend on
+  <code>innodb_autoinc_lock_mode</code>. On MariaDB, ask for them with <code>Returning</code>; on
+  MySQL that is <code>ErrUnsupported</code>. The <code>LAST_INSERT_ID</code> write-back does not
+  apply to an upsert or to any insert with a conflict clause
+  (<code>wantsGeneratedKey</code> in the core is false for them), because the statement
+  may update an existing row and <code>LAST_INSERT_ID</code> then does not name the row's
+  key; read the row back with a query.</li>
+<li><code>momo.CreateGraph</code> reads every generated key back on both servers. MariaDB
+  uses <code>INSERT ... RETURNING</code> (<code>InsertReturning</code>), also for the children of a
+  has-many or many-to-many relation, in one multi-row statement. MySQL has no
+  <code>RETURNING</code>, so it reads <code>LAST_INSERT_ID</code> after each statement and inserts
+  the children one row per statement inside the graph's transaction (a
+  savepoint on a <code>Tx</code>). The keys of one multi-row <code>INSERT</code> are consecutive only
+  when <code>innodb_autoinc_lock_mode</code> is 0 or 1; MySQL 8 and 9 default to 2, where
+  concurrent inserts can interleave, so momo never infers keys from a
+  multi-row statement and an <code>ON DUPLICATE KEY UPDATE</code> statement is never used
+  to read keys. The rows share one statement clock, so they get the same
+  automatic timestamps as a bulk insert. Children that mix zero and explicit
+  keys in one bulk insert fail with <code>ErrValidation</code> on MySQL, and a generated
+  key on a non-integer field is <code>ErrUnsupported</code>. CI runs this on MySQL 8.4 and
+  9.7 (mode 2) and MariaDB 11.8.</li>
+<li><code>momo.FindOrCreate</code> works on both servers inside a transaction (a savepoint
+  on a <code>Tx</code>): a plain <code>INSERT</code> (with <code>RETURNING</code> on MariaDB, <code>LAST_INSERT_ID</code>
+  on MySQL), and when it fails with a unique violation, a shared-lock select
+  by key (<code>FOR SHARE</code>, <code>LOCK IN SHARE MODE</code> on MariaDB) that returns the stored
+  row, so the Go-side key still wins for a new row. A no-op
+  <code>ON DUPLICATE KEY UPDATE</code> cannot be used: with <code>clientFoundRows</code> an inserted
+  row and an untouched existing row both report one affected row, and MariaDB's
+  <code>RETURNING</code> returns the row either way, so <code>created</code> could not be told. The
+  price is one failed <code>INSERT</code> plus one <code>SELECT</code> when the row exists, and the
+  failed insert uses up an auto-increment value. Shared locks do not conflict
+  with each other, but if the first inserter rolls back instead of committing,
+  the waiting callers can deadlock (error 1213, <code>ErrSerialization</code>) and one
+  retries. On a caller's <code>Tx</code>, InnoDB keeps the locks taken after a savepoint
+  until the outer transaction ends. A unique violation on another
+  key than the one given is still <code>ErrUniqueViolation</code>; a <code>DB</code> pinned with
+  <code>OnConn</code> is <code>ErrUnsupported</code> (it cannot open the transaction).</li>
 <li>Upserts render as <code>INSERT ... VALUES ... AS momo_new ON DUPLICATE KEY UPDATE</code>
   on MySQL and with <code>VALUES(col)</code> on MariaDB. A <code>FromSelect</code> upsert has no row
   alias on either: MySQL and MariaDB both render <code>VALUES(col)</code> there. The
@@ -1692,9 +1723,20 @@ equivalent instead of returning <code>ErrUnsupported</code>.</p>
   assignment of a key column. A <code>Where</code> on a conflict clause is
   <code>ErrUnsupported</code>.</li>
 <li><code>ON DUPLICATE KEY UPDATE</code> fires for a conflict on any unique key and cannot
-  name one. Momo therefore accepts a conflict target only when it is the only
-  unique key of the table, the primary key included; otherwise the call is
-  <code>ErrUnsupported</code>. Without a schema (a hand-written model) only a primary-key
+  name one. Momo therefore accepts a conflict target only when it is a unique
+  key of the table and no other unique key can conflict. A second key is safe
+  when it is made only of auto-increment columns the insert leaves to the
+  database: the server gives such a column a fresh value, so the key cannot
+  match an existing row. The case this allows is an auto-increment primary key
+  next to <code>UNIQUE(email)</code>, upserting on <code>email</code> with the primary key left out
+  (judged from the columns the statement writes: the identity is not in the
+  model columns, the <code>InsertQuery.Values</code> assignments or the <code>FromSelect</code>
+  target list, and no Go-side id generator fills it). In every other case the call is <code>ErrUnsupported</code> and the message
+  names the reason: a second unique key the insert can reach (an ordinary
+  column, an expression, a composite key with an ordinary column, or the
+  primary key written explicitly), or a target that is not a unique key. The
+  unique keys come from the model's schema (its <code>pk</code> and <code>unique</code> tags and
+  unique indexes); without a schema (a hand-written model) only a primary-key
   target is accepted.</li>
 <li>With <code>clientFoundRows</code>, an upsert reports 1 for an inserted row, 2 for an
   existing row that changed, and 1 for an existing row set to its current

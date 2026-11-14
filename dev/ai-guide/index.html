@@ -3172,9 +3172,17 @@ yourself. A keyset order that is not total skips or repeats rows. Example:
   PostgreSQL, <code>?</code> on SQLite/MySQL). For the constant in <code>EXISTS (SELECT 1 ...)</code> use
   <code>momo.TypedSQL</code> with the SQL text <code>1</code>, as in the example: PostgreSQL cannot infer
   the type of a bound <code>Value</code> there.</li>
+<li>MySQL has no <code>ON CONFLICT</code> (<code>ErrUnsupported</code>) but a plain <code>FromSelect</code> works; a FROM-less select with a
+  <code>WHERE</code> renders <code>FROM DUAL</code>.</li>
 <li>
-<p>MySQL has no <code>ON CONFLICT</code> (<code>ErrUnsupported</code>) but a plain <code>FromSelect</code> works; a FROM-less select with a
-  <code>WHERE</code> renders <code>FROM DUAL</code>.</p>
+<p>MySQL and MariaDB upsert with <code>ON DUPLICATE KEY UPDATE</code>, which cannot name a key,
+  so the conflict target must be a unique key and no other unique key may be able
+  to conflict. The one relaxation: every other unique key is made only of
+  auto-increment columns the insert leaves out, e.g. an auto-increment primary
+  key plus <code>UNIQUE(email)</code>, upserting on <code>email</code> with a zero identity. Anything
+  else (the primary key as target next to another unique key, a second ordinary
+  unique key, an explicit <code>InsertQuery.Values</code> key, a model without a schema) is
+  <code>ErrUnsupported</code> and the message says which key is the problem.</p>
 </li>
 <li>
 <p>Upsert never overwrites pk, version, soft-delete or created_at columns, and does
@@ -3689,15 +3697,26 @@ are immutable and concurrency-safe.</p>
   children inserted then linked; hooks, timestamps and defaults run. On a <code>*Tx</code> it
   runs in a savepoint. Nil parent, a model as its own child, or a NULL key that
   must be copied: <code>ErrValidation</code>. Has-many and many-to-many children go in as
-  chunked bulk inserts (1000 children = one statement). A dialect without
-  <code>RETURNING</code> gives <code>ErrUnsupported</code> before a transaction opens. DON'T list a
+  chunked bulk inserts (1000 children = one statement). Keys are read back with
+  <code>RETURNING</code> (MariaDB: <code>INSERT ... RETURNING</code>); MySQL has none and reads
+  <code>LAST_INSERT_ID</code> after each statement, so its children go in one row per
+  statement inside the graph's transaction (never guessed consecutive keys:
+  <code>innodb_autoinc_lock_mode</code> 2, the MySQL 8 default, does not guarantee them);
+  children that mix zero and explicit keys are <code>ErrValidation</code> there and a
+  non-integer generated key is <code>ErrUnsupported</code>. A dialect with neither
+  <code>RETURNING</code> nor <code>LAST_INSERT_ID</code> gives <code>ErrUnsupported</code> before a transaction
+  opens. DON'T list a
   many-to-many relation whose children are already stored: they are inserted
   again and fail with <code>ErrUniqueViolation</code>; use <code>Link</code> for existing rows.</li>
 <li><code>FindOrCreate</code> needs a UNIQUE constraint on exactly the key columns. It
   overwrites your struct with the stored row when it exists; a soft-deleted
   row is not found, it fails with <code>ErrUniqueViolation</code>. Under REPEATABLE READ/SERIALIZABLE the re-select can return
   <code>ErrNotFound</code>: retry the transaction. Empty key or unmapped column:
-  <code>ErrValidation</code>.</li>
+  <code>ErrValidation</code>. On MySQL and MariaDB it runs in a transaction as a plain
+  insert and, when that hits a unique violation, a shared-lock select by key
+  (a failed insert plus a select when the row exists; a no-op
+  <code>ON DUPLICATE KEY UPDATE</code> cannot tell created from found under
+  <code>clientFoundRows</code>).</li>
 <li>Tag-declared relations: <code>belongs_to</code> needs a single-column primary key on its target (the referencing model may have a composite key containing the fk column); <code>has_one</code>/<code>has_many</code> need one on the parent; <code>many2many</code> on both.</li>
 <li>A pipelined load buffers a whole level's child rows (about twice the memory of
   sequential). An unscoped load of a huge has-many is expensive: scope it.</li>

@@ -2310,7 +2310,7 @@ one transaction. List relations with <code>Relation.Include()</code>:</p>
 <li>Listed belongs-to children are inserted first and their key is copied into
   the parent. Listed has-one and has-many children are inserted after the
   parent, with the parent's key (read back with <code>RETURNING</code> when it is
-  generated) copied into each child, and the discriminator set for a
+  generated; MySQL uses <code>LAST_INSERT_ID</code>, see below) copied into each child, and the discriminator set for a
   polymorphic relation. Many-to-many children are inserted and then linked
   through the join table. Relations are processed in the order listed.</li>
 <li>The graph is one level deep. Children's own relations are not followed, so a
@@ -2328,7 +2328,15 @@ one transaction. List relations with <code>Relation.Include()</code>:</p>
   order. If the database returns fewer or more rows than were inserted (a
   <code>BEFORE INSERT</code> trigger that skips a row, say), the graph fails with
   <code>ErrValidation</code> and is undone instead of leaving children without keys.</li>
-<li>A dialect without <code>RETURNING</code> (MySQL) returns <code>ErrUnsupported</code> before a
+<li>MariaDB reads the keys with <code>INSERT ... RETURNING</code>. MySQL has no <code>RETURNING</code>
+  and reads <code>LAST_INSERT_ID</code> after each statement: a bulk of children is
+  inserted one row per statement inside the graph's transaction, because the
+  keys of one multi-row statement are not guaranteed consecutive under
+  <code>innodb_autoinc_lock_mode</code> 2, the MySQL 8 default. Keys are never guessed.
+  The rows share one clock, so their automatic timestamps are equal. A bulk of
+  children that mixes zero and explicit keys is <code>ErrValidation</code> on MySQL, and a
+  generated key on a non-integer field is <code>ErrUnsupported</code>. A dialect with
+  neither <code>RETURNING</code> nor <code>LAST_INSERT_ID</code> returns <code>ErrUnsupported</code> before a
   transaction is opened.</li>
 <li>On a <code>*DB</code> the graph runs in a new transaction. On a <code>*Tx</code> it runs in a
   savepoint, so a failure undoes the whole graph and leaves your transaction
@@ -2350,8 +2358,18 @@ inserted it.</p>
   <code>INSERT ... ON CONFLICT (key) DO NOTHING</code>, so the constraint decides the
   winner and concurrent callers never create duplicates; the losers re-select
   the winner's row. Without a constraint on exactly those columns the database
-  rejects the statement. Dialects without <code>ON CONFLICT</code> or <code>RETURNING</code> return
-  <code>ErrUnsupported</code> before any statement runs.</li>
+  rejects the statement. Dialects with neither <code>ON CONFLICT</code> nor
+  <code>ON DUPLICATE KEY</code> return <code>ErrUnsupported</code> before any statement runs.</li>
+<li><strong>MySQL and MariaDB</strong> have no <code>DO NOTHING</code> that reports whether a row was
+  inserted (with <code>clientFoundRows</code> a no-op <code>ON DUPLICATE KEY UPDATE</code> reports one
+  affected row for an inserted and for an untouched existing row alike), so
+  <code>FindOrCreate</code> runs in a transaction (a savepoint on a <code>*Tx</code>) as a plain
+  <code>INSERT</code>; when that fails with a unique violation it re-selects the row by key
+  with a shared-lock read (<code>FOR SHARE</code>, <code>LOCK IN SHARE MODE</code> on MariaDB), which
+  sees the latest committed row at any isolation level. That is one failed
+  insert plus one select when the row exists. A violation on another unique key
+  is still <code>ErrUniqueViolation</code>. A <code>*DB</code> pinned with <code>OnConn</code> is
+  <code>ErrUnsupported</code>.</li>
 <li>When the row exists, all mapped columns of the model are overwritten by the
   stored values, and its relation fields are reset.</li>
 <li>A soft-deleted row is not "found". <code>FindOrCreate</code> never returns or restores a
@@ -2524,12 +2542,12 @@ The <code>Op</code> field names the operation.</p>
 <tr>
 <td><code>CreateGraph</code></td>
 <td><code>ErrValidation</code></td>
-<td>nil parent, a model listed as its own child, a NULL key that must be copied</td>
+<td>nil parent, a model listed as its own child, a NULL key that must be copied; on MySQL, children that mix zero and explicit keys</td>
 </tr>
 <tr>
 <td></td>
 <td><code>ErrUnsupported</code></td>
-<td><code>*Tx</code> on a dialect without savepoints; identity read-back on a dialect without <code>RETURNING</code></td>
+<td><code>*Tx</code> on a dialect without savepoints; identity read-back on a dialect with neither <code>RETURNING</code> nor <code>LAST_INSERT_ID</code></td>
 </tr>
 <tr>
 <td><code>FindOrCreate</code></td>
@@ -2549,7 +2567,7 @@ The <code>Op</code> field names the operation.</p>
 <tr>
 <td></td>
 <td><code>ErrUnsupported</code></td>
-<td>dialect without <code>ON CONFLICT</code> or <code>RETURNING</code></td>
+<td>dialect with neither <code>ON CONFLICT</code> nor <code>ON DUPLICATE KEY</code>; a <code>*DB</code> pinned with <code>OnConn</code> on MySQL and MariaDB</td>
 </tr>
 <tr>
 <td><code>UpsertByPK</code></td>

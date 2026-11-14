@@ -632,7 +632,7 @@ err := momo.CreateGraph(ctx, db, &doc,
 - Listed belongs-to children are inserted first and their key is copied into
   the parent. Listed has-one and has-many children are inserted after the
   parent, with the parent's key (read back with `RETURNING` when it is
-  generated) copied into each child, and the discriminator set for a
+  generated; MySQL uses `LAST_INSERT_ID`, see below) copied into each child, and the discriminator set for a
   polymorphic relation. Many-to-many children are inserted and then linked
   through the join table. Relations are processed in the order listed.
 - The graph is one level deep. Children's own relations are not followed, so a
@@ -650,7 +650,15 @@ err := momo.CreateGraph(ctx, db, &doc,
   order. If the database returns fewer or more rows than were inserted (a
   `BEFORE INSERT` trigger that skips a row, say), the graph fails with
   `ErrValidation` and is undone instead of leaving children without keys.
-- A dialect without `RETURNING` (MySQL) returns `ErrUnsupported` before a
+- MariaDB reads the keys with `INSERT ... RETURNING`. MySQL has no `RETURNING`
+  and reads `LAST_INSERT_ID` after each statement: a bulk of children is
+  inserted one row per statement inside the graph's transaction, because the
+  keys of one multi-row statement are not guaranteed consecutive under
+  `innodb_autoinc_lock_mode` 2, the MySQL 8 default. Keys are never guessed.
+  The rows share one clock, so their automatic timestamps are equal. A bulk of
+  children that mixes zero and explicit keys is `ErrValidation` on MySQL, and a
+  generated key on a non-integer field is `ErrUnsupported`. A dialect with
+  neither `RETURNING` nor `LAST_INSERT_ID` returns `ErrUnsupported` before a
   transaction is opened.
 - On a `*DB` the graph runs in a new transaction. On a `*Tx` it runs in a
   savepoint, so a failure undoes the whole graph and leaves your transaction
@@ -675,8 +683,18 @@ inserted it.
   `INSERT ... ON CONFLICT (key) DO NOTHING`, so the constraint decides the
   winner and concurrent callers never create duplicates; the losers re-select
   the winner's row. Without a constraint on exactly those columns the database
-  rejects the statement. Dialects without `ON CONFLICT` or `RETURNING` return
-  `ErrUnsupported` before any statement runs.
+  rejects the statement. Dialects with neither `ON CONFLICT` nor
+  `ON DUPLICATE KEY` return `ErrUnsupported` before any statement runs.
+- **MySQL and MariaDB** have no `DO NOTHING` that reports whether a row was
+  inserted (with `clientFoundRows` a no-op `ON DUPLICATE KEY UPDATE` reports one
+  affected row for an inserted and for an untouched existing row alike), so
+  `FindOrCreate` runs in a transaction (a savepoint on a `*Tx`) as a plain
+  `INSERT`; when that fails with a unique violation it re-selects the row by key
+  with a shared-lock read (`FOR SHARE`, `LOCK IN SHARE MODE` on MariaDB), which
+  sees the latest committed row at any isolation level. That is one failed
+  insert plus one select when the row exists. A violation on another unique key
+  is still `ErrUniqueViolation`. A `*DB` pinned with `OnConn` is
+  `ErrUnsupported`.
 - When the row exists, all mapped columns of the model are overwritten by the
   stored values, and its relation fields are reset.
 - A soft-deleted row is not "found". `FindOrCreate` never returns or restores a
@@ -775,12 +793,12 @@ The `Op` field names the operation.
 |                                      | `ErrNotNullViolation` | has-one or has-many `Unlink` or `Replace` on a NOT NULL foreign key                                                              |
 |                                      | `ErrUniqueViolation`  | has-one `Link` that would break a unique foreign key on the child                                                                |
 |                                      | `ErrTxDone`           | the `*Tx` passed in is already committed or rolled back                                                                          |
-| `CreateGraph`                        | `ErrValidation`       | nil parent, a model listed as its own child, a NULL key that must be copied                                                      |
-|                                      | `ErrUnsupported`      | `*Tx` on a dialect without savepoints; identity read-back on a dialect without `RETURNING`                                       |
+| `CreateGraph`                        | `ErrValidation`       | nil parent, a model listed as its own child, a NULL key that must be copied; on MySQL, children that mix zero and explicit keys  |
+|                                      | `ErrUnsupported`      | `*Tx` on a dialect without savepoints; identity read-back on a dialect with neither `RETURNING` nor `LAST_INSERT_ID`             |
 | `FindOrCreate`                       | `ErrValidation`       | nil model, empty key, unmapped key column                                                                                        |
 |                                      | `ErrNotFound`         | re-select misses the winner's row under REPEATABLE READ or SERIALIZABLE                                                          |
 |                                      | `ErrUniqueViolation`  | the key is held by a soft-deleted row                                                                                            |
-|                                      | `ErrUnsupported`      | dialect without `ON CONFLICT` or `RETURNING`                                                                                     |
+|                                      | `ErrUnsupported`      | dialect with neither `ON CONFLICT` nor `ON DUPLICATE KEY`; a `*DB` pinned with `OnConn` on MySQL and MariaDB                     |
 | `UpsertByPK`                         | `ErrValidation`       | nil model                                                                                                                        |
 
 Database errors (unique, foreign key, check, not-null violations, serialization

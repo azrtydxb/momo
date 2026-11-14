@@ -1155,6 +1155,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#mysql-and-mariadb-graph-writes-findorcreate-and-upsert-targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MySQL and MariaDB: graph writes, FindOrCreate and upsert targets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#momo-generate-from-db-reads-mysql-and-mariadb" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2070,6 +2081,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#mysql-and-mariadb-graph-writes-findorcreate-and-upsert-targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MySQL and MariaDB: graph writes, FindOrCreate and upsert targets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#momo-generate-from-db-reads-mysql-and-mariadb" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2883,6 +2905,27 @@ old body. Now a file whose body equals the regenerated body is current: <code>--
 passes, and a plain run rewrites only the header line. A file whose body
 differs is still stale or a conflict, and <code>momo generate</code> without <code>--from-db</code>
 is unchanged.</p>
+<h3 id="mysql-and-mariadb-graph-writes-findorcreate-and-upsert-targets">MySQL and MariaDB: graph writes, <code>FindOrCreate</code> and upsert targets<a class="headerlink" href="#mysql-and-mariadb-graph-writes-findorcreate-and-upsert-targets" title="Permanent link">&para;</a></h3>
+<p>Calls that returned <code>ErrUnsupported</code> on MySQL or MariaDB now work. No existing
+working code changes behaviour.</p>
+<ul>
+<li><code>momo.CreateGraph</code> works on MySQL and MariaDB. MariaDB reads the generated
+  keys with <code>INSERT ... RETURNING</code>. MySQL reads <code>LAST_INSERT_ID</code> after each
+  statement and inserts has-many and many-to-many children one row per
+  statement inside the graph's transaction, so every key is exact whatever
+  <code>innodb_autoinc_lock_mode</code> is. A bulk of children that mixes zero and explicit
+  keys is <code>ErrValidation</code> on MySQL.</li>
+<li><code>momo.FindOrCreate</code> works on MySQL and MariaDB. It runs in a transaction as a
+  plain insert and, on a unique violation, re-selects the row by key with a
+  shared-lock read, so a call that finds an existing row costs one failed
+  insert and one select.</li>
+<li>An upsert on a unique key other than the primary key is accepted on MySQL and
+  MariaDB when every other unique key is made only of auto-increment columns
+  the insert leaves out: an auto-increment primary key next to <code>UNIQUE(email)</code>,
+  upserting on <code>email</code> with a zero identity. Every other case is still
+  <code>ErrUnsupported</code>, and the error now says which unique key is the problem.</li>
+<li>A plain multi-row <code>Models</code> insert on MySQL still writes no keys back.</li>
+</ul>
 <h3 id="momo-generate-from-db-reads-mysql-and-mariadb"><code>momo generate --from-db</code> reads MySQL and MariaDB<a class="headerlink" href="#momo-generate-from-db-reads-mysql-and-mariadb" title="Permanent link">&para;</a></h3>
 <p>Besides PostgreSQL, the command now inspects a MySQL 8.4, MySQL 9.7 or
 MariaDB 11.8 database when <code>momo.yaml</code> sets <code>dialects: [mysql]</code>. A project that

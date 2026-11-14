@@ -2007,7 +2007,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td><code>RETURNING</code></td>
 <td>yes (<code>Returning: true</code>)</td>
 <td>MySQL: no; MariaDB: <code>INSERT ... RETURNING</code> only (<code>InsertReturning</code>)</td>
-<td><code>.Returning(cols...)</code>, <code>.ReturningAll()</code> on insert, update, delete; read with <code>.Rows(ctx)</code>, or one row with <code>.One(ctx)</code> (<code>ErrNotFound</code> when none came back, <code>ErrTooManyRows</code> for several; every column without a list; <code>ErrUnsupported</code> where <code>RETURNING</code> is; a multi-row <code>Models</code> insert is <code>ErrValidation</code>; MariaDB has no update or delete form in momo). Identity read-back in <code>CreateGraph</code> needs it.</td>
+<td><code>.Returning(cols...)</code>, <code>.ReturningAll()</code> on insert, update, delete; read with <code>.Rows(ctx)</code>, or one row with <code>.One(ctx)</code> (<code>ErrNotFound</code> when none came back, <code>ErrTooManyRows</code> for several; every column without a list; <code>ErrUnsupported</code> where <code>RETURNING</code> is; a multi-row <code>Models</code> insert is <code>ErrValidation</code>; MariaDB has no update or delete form in momo). Identity read-back in <code>CreateGraph</code> uses it, and MySQL, which has none, reads <code>LAST_INSERT_ID</code> instead (see <a href="../mysql/">mysql.md</a>).</td>
 </tr>
 <tr>
 <td><code>INSERT ... SELECT</code></td>
@@ -2018,14 +2018,14 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <tr>
 <td>Upsert / <code>ON CONFLICT</code></td>
 <td>yes (<code>OnConflict: true</code>)</td>
-<td>MySQL and MariaDB: <code>ON DUPLICATE KEY UPDATE</code> through the same calls, with the conflict target limited to the only unique key of the table (otherwise <code>ErrUnsupported</code>); see <a href="../mysql/">mysql.md</a></td>
+<td>MySQL and MariaDB: <code>ON DUPLICATE KEY UPDATE</code> through the same calls, with the conflict target a unique key and no other unique key able to conflict (an auto-increment key left out of the insert does not count; otherwise <code>ErrUnsupported</code>); see <a href="../mysql/">mysql.md</a></td>
 <td><code>Upsert[T]</code> (target = primary key) or <code>InsertQuery[T].OnConflict(cols...).DoNothing()</code> / <code>.DoUpdate(assigns...)</code> with <code>SetExcluded</code>. Upsert neither advances nor checks the version column. <code>OnConflict(...).Where(preds)</code> (partial-index target) and <code>.DoUpdate(...).Where(preds)</code> (conditional update, <code>col.Excluded()</code>): PostgreSQL yes; SQLite: bool, integer, finite float and string values in the target predicate render inline so they match the index expression (golden-tested and run against a real SQLite partial unique index written as <code>WHERE live = 1</code>; the values show up in logs and traces; write index literals as Momo renders them, integers as <code>2</code> and floats in plain decimal with <code>.0</code> for whole numbers for magnitudes from 1e-6 up to 1e21 and exponent form (<code>1e-07</code>, <code>1e+21</code>) outside that range, otherwise use <code>momo.SQL</code>), any other value or <code>Excluded()</code> there is <code>ErrValidation</code>; MySQL <code>ErrUnsupported</code>.</td>
 </tr>
 <tr>
 <td>Graph writes</td>
 <td>yes</td>
-<td>SQLite: yes, covered by the integration tests that run on SQLite; MySQL: not covered by a MySQL integration test yet</td>
-<td><code>CreateGraph</code>, <code>FindOrCreate</code> (needs <code>ON CONFLICT</code>), <code>UpsertByPK</code></td>
+<td>SQLite: yes, covered by the integration tests that run on SQLite; MySQL 8.4, MySQL 9.7 and MariaDB 11.8: covered by the <code>integration-mysql</code> tests (MySQL reads keys with <code>LAST_INSERT_ID</code>, MariaDB with <code>INSERT ... RETURNING</code>)</td>
+<td><code>CreateGraph</code>, <code>FindOrCreate</code> (<code>ON CONFLICT</code>; on MySQL and MariaDB a transaction with a plain insert and a shared-lock select), <code>UpsertByPK</code></td>
 </tr>
 <tr>
 <td><code>Merge</code>, <code>BulkUpdate</code>, <code>Truncate</code></td>
@@ -2794,11 +2794,11 @@ runs concurrent tenants through PgBouncer and checks no scope leaks.</p>
 </tr>
 <tr>
 <td><code>Upsert</code>, <code>OnConflict</code>, <code>FindOrCreate</code></td>
-<td><code>Upsert</code>, <code>OnConflict</code>: a dialect with neither <code>ON CONFLICT</code> nor <code>ON DUPLICATE KEY</code>; on MySQL also a target that is not the only unique key, and a <code>Where</code> on the conflict clause. <code>FindOrCreate</code>: a dialect without <code>ON CONFLICT</code> and <code>RETURNING</code>, which is MySQL and MariaDB</td>
+<td><code>Upsert</code>, <code>OnConflict</code>: a dialect with neither <code>ON CONFLICT</code> nor <code>ON DUPLICATE KEY</code>; on MySQL also a target that is not a unique key or that leaves another unique key able to conflict, and a <code>Where</code> on the conflict clause. <code>FindOrCreate</code>: a dialect with neither <code>ON CONFLICT</code> nor <code>ON DUPLICATE KEY</code>; a <code>*DB</code> pinned with <code>OnConn</code> on MySQL and MariaDB</td>
 </tr>
 <tr>
 <td><code>CreateGraph</code></td>
-<td><code>*Tx</code> on a dialect without savepoints; dialect without <code>RETURNING</code> (rejected before the transaction opens)</td>
+<td><code>*Tx</code> on a dialect without savepoints; dialect with neither <code>RETURNING</code> nor <code>LAST_INSERT_ID</code> (rejected before the transaction opens); a generated key on a non-integer field on MySQL</td>
 </tr>
 <tr>
 <td><code>ForUpdate</code>, <code>ForShare</code></td>

@@ -1669,6 +1669,14 @@ res, err := momo.Insert[models.Meter](q).
   the type of a bound `Value` there.
 - MySQL has no `ON CONFLICT` (`ErrUnsupported`) but a plain `FromSelect` works; a FROM-less select with a
   `WHERE` renders `FROM DUAL`.
+- MySQL and MariaDB upsert with `ON DUPLICATE KEY UPDATE`, which cannot name a key,
+  so the conflict target must be a unique key and no other unique key may be able
+  to conflict. The one relaxation: every other unique key is made only of
+  auto-increment columns the insert leaves out, e.g. an auto-increment primary
+  key plus `UNIQUE(email)`, upserting on `email` with a zero identity. Anything
+  else (the primary key as target next to another unique key, a second ordinary
+  unique key, an explicit `InsertQuery.Values` key, a model without a schema) is
+  `ErrUnsupported` and the message says which key is the problem.
 
 - Upsert never overwrites pk, version, soft-delete or created_at columns, and does
   not advance or check the version (no optimistic-lock detection).
@@ -2151,15 +2159,26 @@ Rules and limits:
   children inserted then linked; hooks, timestamps and defaults run. On a `*Tx` it
   runs in a savepoint. Nil parent, a model as its own child, or a NULL key that
   must be copied: `ErrValidation`. Has-many and many-to-many children go in as
-  chunked bulk inserts (1000 children = one statement). A dialect without
-  `RETURNING` gives `ErrUnsupported` before a transaction opens. DON'T list a
+  chunked bulk inserts (1000 children = one statement). Keys are read back with
+  `RETURNING` (MariaDB: `INSERT ... RETURNING`); MySQL has none and reads
+  `LAST_INSERT_ID` after each statement, so its children go in one row per
+  statement inside the graph's transaction (never guessed consecutive keys:
+  `innodb_autoinc_lock_mode` 2, the MySQL 8 default, does not guarantee them);
+  children that mix zero and explicit keys are `ErrValidation` there and a
+  non-integer generated key is `ErrUnsupported`. A dialect with neither
+  `RETURNING` nor `LAST_INSERT_ID` gives `ErrUnsupported` before a transaction
+  opens. DON'T list a
   many-to-many relation whose children are already stored: they are inserted
   again and fail with `ErrUniqueViolation`; use `Link` for existing rows.
 - `FindOrCreate` needs a UNIQUE constraint on exactly the key columns. It
   overwrites your struct with the stored row when it exists; a soft-deleted
   row is not found, it fails with `ErrUniqueViolation`. Under REPEATABLE READ/SERIALIZABLE the re-select can return
   `ErrNotFound`: retry the transaction. Empty key or unmapped column:
-  `ErrValidation`.
+  `ErrValidation`. On MySQL and MariaDB it runs in a transaction as a plain
+  insert and, when that hits a unique violation, a shared-lock select by key
+  (a failed insert plus a select when the row exists; a no-op
+  `ON DUPLICATE KEY UPDATE` cannot tell created from found under
+  `clientFoundRows`).
 - Tag-declared relations: `belongs_to` needs a single-column primary key on its target (the referencing model may have a composite key containing the fk column); `has_one`/`has_many` need one on the parent; `many2many` on both.
 - A pipelined load buffers a whole level's child rows (about twice the memory of
   sequential). An unscoped load of a huge has-many is expensive: scope it.
@@ -3674,7 +3693,7 @@ err := momo.CreateGraph(ctx, db, &doc,
 - Listed belongs-to children are inserted first and their key is copied into
   the parent. Listed has-one and has-many children are inserted after the
   parent, with the parent's key (read back with `RETURNING` when it is
-  generated) copied into each child, and the discriminator set for a
+  generated; MySQL uses `LAST_INSERT_ID`, see below) copied into each child, and the discriminator set for a
   polymorphic relation. Many-to-many children are inserted and then linked
   through the join table. Relations are processed in the order listed.
 - The graph is one level deep. Children's own relations are not followed, so a
@@ -3692,7 +3711,15 @@ err := momo.CreateGraph(ctx, db, &doc,
   order. If the database returns fewer or more rows than were inserted (a
   `BEFORE INSERT` trigger that skips a row, say), the graph fails with
   `ErrValidation` and is undone instead of leaving children without keys.
-- A dialect without `RETURNING` (MySQL) returns `ErrUnsupported` before a
+- MariaDB reads the keys with `INSERT ... RETURNING`. MySQL has no `RETURNING`
+  and reads `LAST_INSERT_ID` after each statement: a bulk of children is
+  inserted one row per statement inside the graph's transaction, because the
+  keys of one multi-row statement are not guaranteed consecutive under
+  `innodb_autoinc_lock_mode` 2, the MySQL 8 default. Keys are never guessed.
+  The rows share one clock, so their automatic timestamps are equal. A bulk of
+  children that mixes zero and explicit keys is `ErrValidation` on MySQL, and a
+  generated key on a non-integer field is `ErrUnsupported`. A dialect with
+  neither `RETURNING` nor `LAST_INSERT_ID` returns `ErrUnsupported` before a
   transaction is opened.
 - On a `*DB` the graph runs in a new transaction. On a `*Tx` it runs in a
   savepoint, so a failure undoes the whole graph and leaves your transaction
@@ -3717,8 +3744,18 @@ inserted it.
   `INSERT ... ON CONFLICT (key) DO NOTHING`, so the constraint decides the
   winner and concurrent callers never create duplicates; the losers re-select
   the winner's row. Without a constraint on exactly those columns the database
-  rejects the statement. Dialects without `ON CONFLICT` or `RETURNING` return
-  `ErrUnsupported` before any statement runs.
+  rejects the statement. Dialects with neither `ON CONFLICT` nor
+  `ON DUPLICATE KEY` return `ErrUnsupported` before any statement runs.
+- **MySQL and MariaDB** have no `DO NOTHING` that reports whether a row was
+  inserted (with `clientFoundRows` a no-op `ON DUPLICATE KEY UPDATE` reports one
+  affected row for an inserted and for an untouched existing row alike), so
+  `FindOrCreate` runs in a transaction (a savepoint on a `*Tx`) as a plain
+  `INSERT`; when that fails with a unique violation it re-selects the row by key
+  with a shared-lock read (`FOR SHARE`, `LOCK IN SHARE MODE` on MariaDB), which
+  sees the latest committed row at any isolation level. That is one failed
+  insert plus one select when the row exists. A violation on another unique key
+  is still `ErrUniqueViolation`. A `*DB` pinned with `OnConn` is
+  `ErrUnsupported`.
 - When the row exists, all mapped columns of the model are overwritten by the
   stored values, and its relation fields are reset.
 - A soft-deleted row is not "found". `FindOrCreate` never returns or restores a
@@ -3817,12 +3854,12 @@ The `Op` field names the operation.
 |                                      | `ErrNotNullViolation` | has-one or has-many `Unlink` or `Replace` on a NOT NULL foreign key                                                              |
 |                                      | `ErrUniqueViolation`  | has-one `Link` that would break a unique foreign key on the child                                                                |
 |                                      | `ErrTxDone`           | the `*Tx` passed in is already committed or rolled back                                                                          |
-| `CreateGraph`                        | `ErrValidation`       | nil parent, a model listed as its own child, a NULL key that must be copied                                                      |
-|                                      | `ErrUnsupported`      | `*Tx` on a dialect without savepoints; identity read-back on a dialect without `RETURNING`                                       |
+| `CreateGraph`                        | `ErrValidation`       | nil parent, a model listed as its own child, a NULL key that must be copied; on MySQL, children that mix zero and explicit keys  |
+|                                      | `ErrUnsupported`      | `*Tx` on a dialect without savepoints; identity read-back on a dialect with neither `RETURNING` nor `LAST_INSERT_ID`             |
 | `FindOrCreate`                       | `ErrValidation`       | nil model, empty key, unmapped key column                                                                                        |
 |                                      | `ErrNotFound`         | re-select misses the winner's row under REPEATABLE READ or SERIALIZABLE                                                          |
 |                                      | `ErrUniqueViolation`  | the key is held by a soft-deleted row                                                                                            |
-|                                      | `ErrUnsupported`      | dialect without `ON CONFLICT` or `RETURNING`                                                                                     |
+|                                      | `ErrUnsupported`      | dialect with neither `ON CONFLICT` nor `ON DUPLICATE KEY`; a `*DB` pinned with `OnConn` on MySQL and MariaDB                     |
 | `UpsertByPK`                         | `ErrValidation`       | nil model                                                                                                                        |
 
 Database errors (unique, foreign key, check, not-null violations, serialization
@@ -4656,13 +4693,44 @@ equivalent instead of returning `ErrUnsupported`.
 - A single `Model` insert reads `LAST_INSERT_ID` and writes it into the
   identity field of the model. A key generated on the Go side (an id
   generator) always wins; `LAST_INSERT_ID` is read only for a key the database
-  generates. A multi-row insert returns and writes back no keys, because the
-  ids of a multi-row statement depend on `innodb_autoinc_lock_mode`. On MariaDB,
-  ask for them with `Returning`; on MySQL that is `ErrUnsupported`. The
-  `LAST_INSERT_ID` write-back does not apply to an upsert or to any insert with
-  a conflict clause (`wantsGeneratedKey` in the core is false for them), because
-  the statement may update an existing row and `LAST_INSERT_ID` then does not
-  name the row's key; read the row back with a query.
+  generates. A plain multi-row `Models` insert through `Exec` returns and
+  writes back no keys, because the ids of a multi-row statement depend on
+  `innodb_autoinc_lock_mode`. On MariaDB, ask for them with `Returning`; on
+  MySQL that is `ErrUnsupported`. The `LAST_INSERT_ID` write-back does not
+  apply to an upsert or to any insert with a conflict clause
+  (`wantsGeneratedKey` in the core is false for them), because the statement
+  may update an existing row and `LAST_INSERT_ID` then does not name the row's
+  key; read the row back with a query.
+- `momo.CreateGraph` reads every generated key back on both servers. MariaDB
+  uses `INSERT ... RETURNING` (`InsertReturning`), also for the children of a
+  has-many or many-to-many relation, in one multi-row statement. MySQL has no
+  `RETURNING`, so it reads `LAST_INSERT_ID` after each statement and inserts
+  the children one row per statement inside the graph's transaction (a
+  savepoint on a `Tx`). The keys of one multi-row `INSERT` are consecutive only
+  when `innodb_autoinc_lock_mode` is 0 or 1; MySQL 8 and 9 default to 2, where
+  concurrent inserts can interleave, so momo never infers keys from a
+  multi-row statement and an `ON DUPLICATE KEY UPDATE` statement is never used
+  to read keys. The rows share one statement clock, so they get the same
+  automatic timestamps as a bulk insert. Children that mix zero and explicit
+  keys in one bulk insert fail with `ErrValidation` on MySQL, and a generated
+  key on a non-integer field is `ErrUnsupported`. CI runs this on MySQL 8.4 and
+  9.7 (mode 2) and MariaDB 11.8.
+- `momo.FindOrCreate` works on both servers inside a transaction (a savepoint
+  on a `Tx`): a plain `INSERT` (with `RETURNING` on MariaDB, `LAST_INSERT_ID`
+  on MySQL), and when it fails with a unique violation, a shared-lock select
+  by key (`FOR SHARE`, `LOCK IN SHARE MODE` on MariaDB) that returns the stored
+  row, so the Go-side key still wins for a new row. A no-op
+  `ON DUPLICATE KEY UPDATE` cannot be used: with `clientFoundRows` an inserted
+  row and an untouched existing row both report one affected row, and MariaDB's
+  `RETURNING` returns the row either way, so `created` could not be told. The
+  price is one failed `INSERT` plus one `SELECT` when the row exists, and the
+  failed insert uses up an auto-increment value. Shared locks do not conflict
+  with each other, but if the first inserter rolls back instead of committing,
+  the waiting callers can deadlock (error 1213, `ErrSerialization`) and one
+  retries. On a caller's `Tx`, InnoDB keeps the locks taken after a savepoint
+  until the outer transaction ends. A unique violation on another
+  key than the one given is still `ErrUniqueViolation`; a `DB` pinned with
+  `OnConn` is `ErrUnsupported` (it cannot open the transaction).
 - Upserts render as `INSERT ... VALUES ... AS momo_new ON DUPLICATE KEY UPDATE`
   on MySQL and with `VALUES(col)` on MariaDB. A `FromSelect` upsert has no row
   alias on either: MySQL and MariaDB both render `VALUES(col)` there. The
@@ -4671,9 +4739,20 @@ equivalent instead of returning `ErrUnsupported`.
   assignment of a key column. A `Where` on a conflict clause is
   `ErrUnsupported`.
 - `ON DUPLICATE KEY UPDATE` fires for a conflict on any unique key and cannot
-  name one. Momo therefore accepts a conflict target only when it is the only
-  unique key of the table, the primary key included; otherwise the call is
-  `ErrUnsupported`. Without a schema (a hand-written model) only a primary-key
+  name one. Momo therefore accepts a conflict target only when it is a unique
+  key of the table and no other unique key can conflict. A second key is safe
+  when it is made only of auto-increment columns the insert leaves to the
+  database: the server gives such a column a fresh value, so the key cannot
+  match an existing row. The case this allows is an auto-increment primary key
+  next to `UNIQUE(email)`, upserting on `email` with the primary key left out
+  (judged from the columns the statement writes: the identity is not in the
+  model columns, the `InsertQuery.Values` assignments or the `FromSelect`
+  target list, and no Go-side id generator fills it). In every other case the call is `ErrUnsupported` and the message
+  names the reason: a second unique key the insert can reach (an ordinary
+  column, an expression, a composite key with an ordinary column, or the
+  primary key written explicitly), or a target that is not a unique key. The
+  unique keys come from the model's schema (its `pk` and `unique` tags and
+  unique indexes); without a schema (a hand-written model) only a primary-key
   target is accepted.
 - With `clientFoundRows`, an upsert reports 1 for an inserted row, 2 for an
   existing row that changed, and 1 for an existing row set to its current
@@ -8397,10 +8476,10 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 
 | Feature                                    | PostgreSQL                                                                                                                                                                                                                                    | SQLite / MySQL                                                                                                                                                                                                                                                             | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RETURNING`                                | yes (`Returning: true`)                                                                                                                                                                                                                       | MySQL: no; MariaDB: `INSERT ... RETURNING` only (`InsertReturning`)                                                                                                                                                                                                        | `.Returning(cols...)`, `.ReturningAll()` on insert, update, delete; read with `.Rows(ctx)`, or one row with `.One(ctx)` (`ErrNotFound` when none came back, `ErrTooManyRows` for several; every column without a list; `ErrUnsupported` where `RETURNING` is; a multi-row `Models` insert is `ErrValidation`; MariaDB has no update or delete form in momo). Identity read-back in `CreateGraph` needs it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `RETURNING`                                | yes (`Returning: true`)                                                                                                                                                                                                                       | MySQL: no; MariaDB: `INSERT ... RETURNING` only (`InsertReturning`)                                                                                                                                                                                                        | `.Returning(cols...)`, `.ReturningAll()` on insert, update, delete; read with `.Rows(ctx)`, or one row with `.One(ctx)` (`ErrNotFound` when none came back, `ErrTooManyRows` for several; every column without a list; `ErrUnsupported` where `RETURNING` is; a multi-row `Models` insert is `ErrValidation`; MariaDB has no update or delete form in momo). Identity read-back in `CreateGraph` uses it, and MySQL, which has none, reads `LAST_INSERT_ID` instead (see [mysql.md](mysql.md)).                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `INSERT ... SELECT`                        | yes: `InsertQuery[T].FromSelect` with `SelectExprs` (FROM-less or one source, with `Where`, joins, `GroupBy`, `Having`, `OrderBy`) or `Select[T]` as the source; composes with `OnConflict`, `Returning`, `Upsert[T]`                         | SQLite yes (`WHERE true` is added to a `SelectExprs` or `Select[T]` source with FROM and no WHERE before `ON CONFLICT`); MySQL plain insert only (no `ON CONFLICT`; FROM-less with WHERE renders `FROM DUAL`)                                                              | Target columns are explicit typed columns of T; a select-list count mismatch is `ErrValidation`. No model hooks, automatic timestamps, Go-side defaults or validators are applied: list those columns yourself. The soft-delete filter on a `SelectExprs` source needs a `TableRef` that carries the soft-delete marker.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Upsert / `ON CONFLICT`                     | yes (`OnConflict: true`)                                                                                                                                                                                                                      | MySQL and MariaDB: `ON DUPLICATE KEY UPDATE` through the same calls, with the conflict target limited to the only unique key of the table (otherwise `ErrUnsupported`); see [mysql.md](mysql.md)                                                                           | `Upsert[T]` (target = primary key) or `InsertQuery[T].OnConflict(cols...).DoNothing()` / `.DoUpdate(assigns...)` with `SetExcluded`. Upsert neither advances nor checks the version column. `OnConflict(...).Where(preds)` (partial-index target) and `.DoUpdate(...).Where(preds)` (conditional update, `col.Excluded()`): PostgreSQL yes; SQLite: bool, integer, finite float and string values in the target predicate render inline so they match the index expression (golden-tested and run against a real SQLite partial unique index written as `WHERE live = 1`; the values show up in logs and traces; write index literals as Momo renders them, integers as `2` and floats in plain decimal with `.0` for whole numbers for magnitudes from 1e-6 up to 1e21 and exponent form (`1e-07`, `1e+21`) outside that range, otherwise use `momo.SQL`), any other value or `Excluded()` there is `ErrValidation`; MySQL `ErrUnsupported`. |
-| Graph writes                               | yes                                                                                                                                                                                                                                           | SQLite: yes, covered by the integration tests that run on SQLite; MySQL: not covered by a MySQL integration test yet                                                                                                                                                       | `CreateGraph`, `FindOrCreate` (needs `ON CONFLICT`), `UpsertByPK`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Upsert / `ON CONFLICT`                     | yes (`OnConflict: true`)                                                                                                                                                                                                                      | MySQL and MariaDB: `ON DUPLICATE KEY UPDATE` through the same calls, with the conflict target a unique key and no other unique key able to conflict (an auto-increment key left out of the insert does not count; otherwise `ErrUnsupported`); see [mysql.md](mysql.md)    | `Upsert[T]` (target = primary key) or `InsertQuery[T].OnConflict(cols...).DoNothing()` / `.DoUpdate(assigns...)` with `SetExcluded`. Upsert neither advances nor checks the version column. `OnConflict(...).Where(preds)` (partial-index target) and `.DoUpdate(...).Where(preds)` (conditional update, `col.Excluded()`): PostgreSQL yes; SQLite: bool, integer, finite float and string values in the target predicate render inline so they match the index expression (golden-tested and run against a real SQLite partial unique index written as `WHERE live = 1`; the values show up in logs and traces; write index literals as Momo renders them, integers as `2` and floats in plain decimal with `.0` for whole numbers for magnitudes from 1e-6 up to 1e21 and exponent form (`1e-07`, `1e+21`) outside that range, otherwise use `momo.SQL`), any other value or `Excluded()` there is `ErrValidation`; MySQL `ErrUnsupported`. |
+| Graph writes                               | yes                                                                                                                                                                                                                                           | SQLite: yes, covered by the integration tests that run on SQLite; MySQL 8.4, MySQL 9.7 and MariaDB 11.8: covered by the `integration-mysql` tests (MySQL reads keys with `LAST_INSERT_ID`, MariaDB with `INSERT ... RETURNING`)                                            | `CreateGraph`, `FindOrCreate` (`ON CONFLICT`; on MySQL and MariaDB a transaction with a plain insert and a shared-lock select), `UpsertByPK`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `Merge`, `BulkUpdate`, `Truncate`          | yes: `Merge` is PostgreSQL 15 or later and `.Returning` needs 17 or later (`ErrUnsupported` on an older server or a driver without `ServerVersioner`); `BulkUpdate` updates only the listed keys (PostgreSQL); `Truncate` is `TRUNCATE TABLE` | `Merge` and `BulkUpdate`: `ErrUnsupported`. `Truncate`: SQLite runs `DELETE FROM` and resets the autoincrement counter; MySQL runs `TRUNCATE TABLE` (refused inside a transaction)                                                                                         | `Merge` returns `ErrValidation` when an interceptor adds predicates (deny the kind instead). `Truncate` runs interceptors with the kind `truncate`, has no `RESTART IDENTITY` or `CASCADE`, and is refused inside a MySQL transaction. `Merge` does not run field validators on the inserted values                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Bulk `COPY`                                | yes: `InsertQuery[T].Copy` (after `Omit`, with the models as its argument) on the pgx driver; also `momo.CopierOf(querier)` for the driver call                                                                                               | SQLite and MySQL: `Copy` returns `ErrUnsupported` (neither `sqlitedriver` nor `mysqldriver` has a `Copier`)                                                                                                                                                                | `Copy` runs the insert interceptors (deny only) and `BeforeInsert` over a copy of the models; it skips `OnConflict`, `Returning` and chunking, and it counts as a write for `NewUnitOfWork`. On a `*DB` with `WithImplicitTx` it runs in its own transaction; on a pinned handle with `WithTxSetup` it fails closed. Not available through `FromSQLDB`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Batch (several statements, one round trip) | driver level: `momo.BatcherOf(querier)`; relation loading uses it automatically                                                                                                                                                               | SQLite: no (`sqlitedriver` has no `Batcher`); MySQL: no (`mysqldriver` has no `Batcher`)                                                                                                                                                                                   | not available through `FromSQLDB`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -8646,29 +8725,29 @@ runs concurrent tenants through PgBouncer and checks no scope leaks.
 All match `errors.Is(err, momo.ErrUnsupported)`. Build-time errors surface from
 `SQL()` or at first execution.
 
-| Call                                                          | When                                                                                                                                                                                                                                                                                                                       |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `momo migrate` on SQLite or MySQL                             | The CLI builds only the PostgreSQL dialect, so `momo migrate` exits 2 on both (use the library dialects `migrate/sqlite` and `migrate/mysql`)                                                                                                                                                                              |
-| `Upsert`, `OnConflict`, `FindOrCreate`                        | `Upsert`, `OnConflict`: a dialect with neither `ON CONFLICT` nor `ON DUPLICATE KEY`; on MySQL also a target that is not the only unique key, and a `Where` on the conflict clause. `FindOrCreate`: a dialect without `ON CONFLICT` and `RETURNING`, which is MySQL and MariaDB                                             |
-| `CreateGraph`                                                 | `*Tx` on a dialect without savepoints; dialect without `RETURNING` (rejected before the transaction opens)                                                                                                                                                                                                                 |
-| `ForUpdate`, `ForShare`                                       | dialect without row locks (SQLite metadata)                                                                                                                                                                                                                                                                                |
-| `IndexedBy`                                                   | PostgreSQL and MySQL                                                                                                                                                                                                                                                                                                       |
-| `After`                                                       | a nullable `OrderBy` key                                                                                                                                                                                                                                                                                                   |
-| `SetDefault`, multi-row insert with default in some rows      | dialect without `DEFAULT` support for that shape                                                                                                                                                                                                                                                                           |
-| `db.Begin`, `db.Tx`, `Replace`, `CreateGraph`, chunked insert | `*DB` pinned with `OnConn` (Op "begin"; chunked insert: Op "insert"); unknown `Querier`; isolation level outside the four standard ones                                                                                                                                                                                    |
-| `Tx.Savepoint`                                                | dialect without savepoints (Op "savepoint")                                                                                                                                                                                                                                                                                |
-| `Each`, `Iter`                                                | the query has `Preload`                                                                                                                                                                                                                                                                                                    |
-| `Joined()`                                                    | not belongs-to, child key not unique, `GroupBy`, `Having`, row locks, `Each`, `Iter`, or combined with `Load`, `LoadAll`, `Scope`, `Then`                                                                                                                                                                                  |
-| `LoadPerParentLimit`                                          | belongs-to or has-one relation                                                                                                                                                                                                                                                                                             |
-| `Link`, `Unlink`, `Replace`, `Count`                          | belongs-to relation                                                                                                                                                                                                                                                                                                        |
-| Vector builders                                               | metric the dialect lacks (inner product and Jaccard on SQLite), or the driver reports `Vectors: false`                                                                                                                                                                                                                     |
-| `vecsearch.Apply`, `vecsearch.With`                           | pgvector missing or older than 0.8.0 when an iterative, `max_scan_tuples`, `scan_mem_multiplier` or `max_probes` field is set; any non-`ExactSearch` field on SQLite; transaction-scoped settings on a non-PostgreSQL dialect                                                                                              |
-| `SelectQuery.Explain`                                         | MySQL and MariaDB                                                                                                                                                                                                                                                                                                          |
-| Migration inspect or apply                                    | missing extension (for example `vector`): the error names it; unsupported object on inspect                                                                                                                                                                                                                                |
-| `pgxdriver.WithExecMode`                                      | simple protocol or any unlisted mode: every query returns it                                                                                                                                                                                                                                                               |
-| `pgxdriver.FromSQLDB`                                         | nil `db`, or a `db` not backed by the pgx stdlib driver (every Query, Exec, Begin and Pin then fails). A valid `FromSQLDB` driver can Pin, but the pinned connection has no Batch or COPY                                                                                                                                  |
-| Generator type mapping                                        | Go type with no SQL mapping on the dialect (`gen/typemap`)                                                                                                                                                                                                                                                                 |
-| Batch, `COPY`                                                 | a pinned connection without a batch or COPY path (Op "batch", "copy"); `WithExecMode` differing from the connection's default exec mode makes the pgx batch fail (Op "batch"). Relation loading falls back to sequential on its own in both cases; a `FromSQLDB` pinned connection has no `Batcher` and loads sequentially |
+| Call                                                          | When                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `momo migrate` on SQLite or MySQL                             | The CLI builds only the PostgreSQL dialect, so `momo migrate` exits 2 on both (use the library dialects `migrate/sqlite` and `migrate/mysql`)                                                                                                                                                                                                                 |
+| `Upsert`, `OnConflict`, `FindOrCreate`                        | `Upsert`, `OnConflict`: a dialect with neither `ON CONFLICT` nor `ON DUPLICATE KEY`; on MySQL also a target that is not a unique key or that leaves another unique key able to conflict, and a `Where` on the conflict clause. `FindOrCreate`: a dialect with neither `ON CONFLICT` nor `ON DUPLICATE KEY`; a `*DB` pinned with `OnConn` on MySQL and MariaDB |
+| `CreateGraph`                                                 | `*Tx` on a dialect without savepoints; dialect with neither `RETURNING` nor `LAST_INSERT_ID` (rejected before the transaction opens); a generated key on a non-integer field on MySQL                                                                                                                                                                         |
+| `ForUpdate`, `ForShare`                                       | dialect without row locks (SQLite metadata)                                                                                                                                                                                                                                                                                                                   |
+| `IndexedBy`                                                   | PostgreSQL and MySQL                                                                                                                                                                                                                                                                                                                                          |
+| `After`                                                       | a nullable `OrderBy` key                                                                                                                                                                                                                                                                                                                                      |
+| `SetDefault`, multi-row insert with default in some rows      | dialect without `DEFAULT` support for that shape                                                                                                                                                                                                                                                                                                              |
+| `db.Begin`, `db.Tx`, `Replace`, `CreateGraph`, chunked insert | `*DB` pinned with `OnConn` (Op "begin"; chunked insert: Op "insert"); unknown `Querier`; isolation level outside the four standard ones                                                                                                                                                                                                                       |
+| `Tx.Savepoint`                                                | dialect without savepoints (Op "savepoint")                                                                                                                                                                                                                                                                                                                   |
+| `Each`, `Iter`                                                | the query has `Preload`                                                                                                                                                                                                                                                                                                                                       |
+| `Joined()`                                                    | not belongs-to, child key not unique, `GroupBy`, `Having`, row locks, `Each`, `Iter`, or combined with `Load`, `LoadAll`, `Scope`, `Then`                                                                                                                                                                                                                     |
+| `LoadPerParentLimit`                                          | belongs-to or has-one relation                                                                                                                                                                                                                                                                                                                                |
+| `Link`, `Unlink`, `Replace`, `Count`                          | belongs-to relation                                                                                                                                                                                                                                                                                                                                           |
+| Vector builders                                               | metric the dialect lacks (inner product and Jaccard on SQLite), or the driver reports `Vectors: false`                                                                                                                                                                                                                                                        |
+| `vecsearch.Apply`, `vecsearch.With`                           | pgvector missing or older than 0.8.0 when an iterative, `max_scan_tuples`, `scan_mem_multiplier` or `max_probes` field is set; any non-`ExactSearch` field on SQLite; transaction-scoped settings on a non-PostgreSQL dialect                                                                                                                                 |
+| `SelectQuery.Explain`                                         | MySQL and MariaDB                                                                                                                                                                                                                                                                                                                                             |
+| Migration inspect or apply                                    | missing extension (for example `vector`): the error names it; unsupported object on inspect                                                                                                                                                                                                                                                                   |
+| `pgxdriver.WithExecMode`                                      | simple protocol or any unlisted mode: every query returns it                                                                                                                                                                                                                                                                                                  |
+| `pgxdriver.FromSQLDB`                                         | nil `db`, or a `db` not backed by the pgx stdlib driver (every Query, Exec, Begin and Pin then fails). A valid `FromSQLDB` driver can Pin, but the pinned connection has no Batch or COPY                                                                                                                                                                     |
+| Generator type mapping                                        | Go type with no SQL mapping on the dialect (`gen/typemap`)                                                                                                                                                                                                                                                                                                    |
+| Batch, `COPY`                                                 | a pinned connection without a batch or COPY path (Op "batch", "copy"); `WithExecMode` differing from the connection's default exec mode makes the pgx batch fail (Op "batch"). Relation loading falls back to sequential on its own in both cases; a `FromSQLDB` pinned connection has no `Batcher` and loads sequentially                                    |
 
 
 # Source: PERFORMANCE.md
@@ -8993,6 +9072,28 @@ old body. Now a file whose body equals the regenerated body is current: `--check
 passes, and a plain run rewrites only the header line. A file whose body
 differs is still stale or a conflict, and `momo generate` without `--from-db`
 is unchanged.
+
+### MySQL and MariaDB: graph writes, `FindOrCreate` and upsert targets
+
+Calls that returned `ErrUnsupported` on MySQL or MariaDB now work. No existing
+working code changes behaviour.
+
+- `momo.CreateGraph` works on MySQL and MariaDB. MariaDB reads the generated
+  keys with `INSERT ... RETURNING`. MySQL reads `LAST_INSERT_ID` after each
+  statement and inserts has-many and many-to-many children one row per
+  statement inside the graph's transaction, so every key is exact whatever
+  `innodb_autoinc_lock_mode` is. A bulk of children that mixes zero and explicit
+  keys is `ErrValidation` on MySQL.
+- `momo.FindOrCreate` works on MySQL and MariaDB. It runs in a transaction as a
+  plain insert and, on a unique violation, re-selects the row by key with a
+  shared-lock read, so a call that finds an existing row costs one failed
+  insert and one select.
+- An upsert on a unique key other than the primary key is accepted on MySQL and
+  MariaDB when every other unique key is made only of auto-increment columns
+  the insert leaves out: an auto-increment primary key next to `UNIQUE(email)`,
+  upserting on `email` with a zero identity. Every other case is still
+  `ErrUnsupported`, and the error now says which unique key is the problem.
+- A plain multi-row `Models` insert on MySQL still writes no keys back.
 
 ### `momo generate --from-db` reads MySQL and MariaDB
 
@@ -11074,7 +11175,7 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.SelectQuery.First`               | method | First applies LIMIT 1 and returns the first row, or ErrNotFound.                                                                                                                                                                                                                  |
 | `momo.SelectQuery.ForKeyShare`         | method | ForKeyShare adds FOR KEY SHARE (PostgreSQL only): the weakest row lock, which only blocks changes to the key columns and deletes.                                                                                                                                                 |
 | `momo.SelectQuery.ForNoKeyUpdate`      | method | ForNoKeyUpdate adds FOR NO KEY UPDATE (PostgreSQL only): a write lock that does not block foreign-key inserts and FOR KEY SHARE locks on the same row, so it suits a row update that leaves the key columns alone.                                                                |
-| `momo.SelectQuery.ForShare`            | method | ForShare adds FOR SHARE (PostgreSQL).                                                                                                                                                                                                                                             |
+| `momo.SelectQuery.ForShare`            | method | ForShare adds FOR SHARE (PostgreSQL and MySQL; MariaDB renders LOCK IN SHARE MODE).                                                                                                                                                                                               |
 | `momo.SelectQuery.ForUpdate`           | method | ForUpdate adds FOR UPDATE (PostgreSQL).                                                                                                                                                                                                                                           |
 | `momo.SelectQuery.From`                | method | From replaces the FROM source (a table, aliased table, CTE or subquery).                                                                                                                                                                                                          |
 | `momo.SelectQuery.GroupBy`             | method | GroupBy sets GROUP BY expressions.                                                                                                                                                                                                                                                |
