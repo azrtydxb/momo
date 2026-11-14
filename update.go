@@ -345,8 +345,8 @@ func (u UpdateQuery[T]) compileSQL() (Compiled, error) {
 		return Compiled{}, noQuerier("update", u.meta.Table)
 	}
 	if u.bulk != nil {
-		if len(u.from) > 0 || len(u.with) > 0 {
-			return Compiled{}, u.fail(ErrValidation, errors.New("BulkUpdate cannot be combined with With or From"))
+		if err := u.bulkGuard(); err != nil {
+			return Compiled{}, err
 		}
 		return u.bulkSQL()
 	}
@@ -474,6 +474,9 @@ func (u UpdateQuery[T]) Exec(ctx context.Context) (Result, error) {
 	}
 	if err := u.beforeWrite(ctx); err != nil {
 		return Result{}, err
+	}
+	if u.bulk != nil {
+		return u.execBulk(ctx)
 	}
 	c, err := u.compileSQL()
 	if err != nil {

@@ -427,7 +427,7 @@ func (m MergeQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 
 // bulkSpec is the row list of BulkUpdate.
 type bulkSpec struct {
-	key  ColumnRef
+	keys []ColumnRef
 	cols []ColumnRef
 	rows [][]any
 }
@@ -438,27 +438,54 @@ type bulkSpec struct {
 //
 //	BulkUpdate[Document](db, DocID, []ColumnRef{DocTitle}, [][]any{{int64(2), "new"}})
 //
-// It renders UPDATE t SET c = v.c FROM (one SELECT per row, joined by
-// UNION ALL) AS v WHERE t.key = v.key with every value bound, so a row whose
-// key is not in the table changes nothing. The rows take their column types
-// from the table. A key
-// listed twice applies one of its rows. The statement also maintains the
-// updated-at and version columns, runs the OnUpdate defaults and the field
-// validators over each row, and honours Where for extra conditions; Set and
-// Model cannot be combined with it. PostgreSQL only (dialect.Merge gates
-// both): other dialects fail with ErrUnsupported. A statement over the
-// bind-parameter limit fails with ErrLimitExceeded: BulkUpdate does not chunk,
-// so split a larger list across calls (in a transaction if it must be atomic).
+// It is one statement with every value bound, so a row whose key is not in the
+// table changes nothing. PostgreSQL and SQLite render UPDATE t SET c = v.c
+// FROM (one SELECT per row, joined by UNION ALL) AS v WHERE t.key = v.key;
+// MySQL and MariaDB render UPDATE t JOIN (...) AS v ON t.key = v.key SET
+// t.c = v.c. The rows take their column types from the table. A NULL value
+// sets the column to NULL; a NULL key matches no row. A key listed twice
+// applies one of its rows (which one is not defined, and across chunks the
+// later chunk applies last), so list each key once. The statement also
+// maintains the updated-at and version columns, runs the OnUpdate defaults and
+// the field validators over each row, and honours Where for extra conditions;
+// Set and Model cannot be combined with it. Soft-deleted rows match like in
+// Update: add a Where on the soft-delete column to leave them out.
+//
+// Exec splits a list that would exceed the dialect's bind-parameter limit into
+// several statements, run in order, and sums the rows affected. The chunks are
+// atomic: on a DB they run in one transaction, on a Tx inside a savepoint, so a
+// failing chunk undoes the earlier ones; a DB pinned by OnConn cannot begin a
+// transaction and fails with ErrUnsupported. All chunks share one clock read.
+// SQL, and Rows with Returning, render one statement and fail with
+// ErrLimitExceeded when it would exceed the limit. Returning needs a dialect
+// with UPDATE ... RETURNING (PostgreSQL and SQLite); MySQL and MariaDB fail
+// with ErrUnsupported. RowsAffected counts the rows that match a listed key,
+// whether or not a value changed, on every dialect (the MySQL driver sets
+// clientFoundRows).
 func BulkUpdate[T any, PT Modeler[T]](q Querier, key ColumnRef, cols []ColumnRef, rows [][]any) UpdateQuery[T] {
+	return BulkUpdateKeys[T, PT](q, []ColumnRef{key}, cols, rows)
+}
+
+// BulkUpdateKeys is BulkUpdate for a composite key: each row holds one value
+// per column of keys first, then one value per column of cols. A row matches
+// the table rows whose every key column equals the row's value, so a NULL in
+// any key value matches nothing:
+//
+//	BulkUpdateKeys[Stock](db, []ColumnRef{StockRegion, StockSKU}, []ColumnRef{StockQty},
+//		[][]any{{"eu", int64(7), int64(40)}})
+//
+// The keys should identify one table row each; otherwise several rows change
+// to the same values. Everything else is as for BulkUpdate.
+func BulkUpdateKeys[T any, PT Modeler[T]](q Querier, keys []ColumnRef, cols []ColumnRef, rows [][]any) UpdateQuery[T] {
 	u := Update[T, PT](q)
-	u.bulk = &bulkSpec{key: key, cols: slices.Clone(cols), rows: slices.Clone(rows)}
+	u.bulk = &bulkSpec{keys: slices.Clone(keys), cols: slices.Clone(cols), rows: slices.Clone(rows)}
 	return u
 }
 
 // bulkPlan is a validated BulkUpdate: the key and column indexes and the
 // extra assignments every row gets.
 type bulkPlan struct {
-	key   int
+	keys  []int
 	cols  []int
 	extra []Assignment
 }
@@ -473,7 +500,7 @@ func (u UpdateQuery[T]) planBulk() (bulkPlan, error) {
 		return p, u.fail(ErrValidation, errors.New("model has no table"))
 	case len(u.assigns) > 0 || u.modelSet || u.softDelete:
 		return p, u.fail(ErrValidation, errors.New("BulkUpdate cannot be combined with Set or Model"))
-	case s.key == nil || len(s.cols) == 0:
+	case len(s.keys) == 0 || slices.Contains(s.keys, nil) || len(s.cols) == 0:
 		return p, u.fail(ErrValidation, errors.New("BulkUpdate needs a key and at least one column"))
 	case len(s.rows) == 0:
 		return p, u.fail(ErrValidation, errors.New("BulkUpdate needs at least one row"))
@@ -481,15 +508,22 @@ func (u UpdateQuery[T]) planBulk() (bulkPlan, error) {
 	index := func(name string) int {
 		return slices.IndexFunc(u.meta.Columns, func(c ColumnMeta) bool { return c.Name == name })
 	}
-	if p.key = index(s.key.ColumnName()); p.key < 0 {
-		return p, u.fail(ErrValidation, fmt.Errorf("key column %q is not mapped by %s", s.key.ColumnName(), u.meta.Table))
+	for _, k := range s.keys {
+		ki := index(k.ColumnName())
+		switch {
+		case ki < 0:
+			return p, u.fail(ErrValidation, fmt.Errorf("key column %q is not mapped by %s", k.ColumnName(), u.meta.Table))
+		case slices.Contains(p.keys, ki):
+			return p, u.fail(ErrValidation, fmt.Errorf("key column %q listed twice", k.ColumnName()))
+		}
+		p.keys = append(p.keys, ki)
 	}
 	for _, c := range s.cols {
 		ci := index(c.ColumnName())
 		switch {
 		case ci < 0:
 			return p, u.fail(ErrValidation, fmt.Errorf("column %q is not mapped by %s", c.ColumnName(), u.meta.Table))
-		case ci == p.key || slices.Contains(p.cols, ci):
+		case slices.Contains(p.keys, ci) || slices.Contains(p.cols, ci):
 			return p, u.fail(ErrValidation, fmt.Errorf("column %q listed twice", c.ColumnName()))
 		case u.reservedRole(c.ColumnName()) != "":
 			return p, u.fail(ErrValidation, fmt.Errorf("column %q is the %s column and cannot be set directly", c.ColumnName(), u.reservedRole(c.ColumnName())))
@@ -499,8 +533,8 @@ func (u UpdateQuery[T]) planBulk() (bulkPlan, error) {
 		p.cols = append(p.cols, ci)
 	}
 	for r, row := range s.rows {
-		if len(row) != 1+len(p.cols) {
-			return p, u.fail(ErrValidation, fmt.Errorf("row %d has %d values, want the key and %d columns", r, len(row), len(p.cols)))
+		if len(row) != len(p.keys)+len(p.cols) {
+			return p, u.fail(ErrValidation, fmt.Errorf("row %d has %d values, want %d key value(s) and %d column value(s)", r, len(row), len(p.keys), len(p.cols)))
 		}
 	}
 	fp, err := newFieldPlan(u.q, u.meta)
@@ -514,7 +548,7 @@ func (u UpdateQuery[T]) planBulk() (bulkPlan, error) {
 		for _, row := range s.rows {
 			err := fp.validate("update", u.meta, func(ci int) (any, bool) {
 				if j := slices.Index(p.cols, ci); j >= 0 {
-					return row[1+j], true
+					return row[len(p.keys)+j], true
 				}
 				for _, a := range p.extra {
 					if a.col == u.meta.Columns[ci].Name {
@@ -564,46 +598,123 @@ func (u UpdateQuery[T]) bulkSQL() (Compiled, error) {
 	if err != nil {
 		return Compiled{}, err
 	}
+	return u.bulkRender(p, u.bulk.rows, true)
+}
+
+// bulkGuard refuses the combinations BulkUpdate cannot express.
+func (u UpdateQuery[T]) bulkGuard() error {
+	if len(u.from) > 0 || len(u.with) > 0 {
+		return u.fail(ErrValidation, errors.New("BulkUpdate cannot be combined with With or From"))
+	}
+	return nil
+}
+
+// bulkChunks renders the statements of Exec: one per run of rows that stays
+// under the bind-parameter limit. The fixed parameters (updated_at, OnUpdate
+// values, Where) are measured on a one-row statement, so each chunk carries
+// them once.
+func (u UpdateQuery[T]) bulkChunks() ([]Compiled, error) {
+	p, err := u.planBulk()
+	if err != nil {
+		return nil, err
+	}
+	rows := u.bulk.rows
+	maxArgs := u.q.Dialect().MaxParams
+	per := len(p.keys) + len(p.cols)
+	size := len(rows)
+	if maxArgs > 0 {
+		one, err := u.bulkRender(p, rows[:1], false)
+		if err != nil {
+			return nil, err
+		}
+		if size = (maxArgs - (len(one.Args) - per)) / per; size < 1 {
+			return nil, u.bulkLimit(len(one.Args), maxArgs)
+		}
+		size = min(size, len(rows))
+	}
+	var out []Compiled
+	for start := 0; start < len(rows); start += size {
+		c, err := u.bulkRender(p, rows[start:min(start+size, len(rows))], true)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+func (u UpdateQuery[T]) bulkLimit(args, max int) error {
+	return &Error{Kind: ErrLimitExceeded, Op: "update", Table: u.meta.Table,
+		Err: fmt.Errorf("%d bind parameters exceed the %s limit of %d", args, u.q.Dialect().Name, max)}
+}
+
+// execBulk runs the chunks of a BulkUpdate, atomically when there are several.
+func (u UpdateQuery[T]) execBulk(ctx context.Context) (Result, error) {
+	if err := u.bulkGuard(); err != nil {
+		return Result{}, err
+	}
+	chunks, err := u.bulkChunks()
+	if err != nil {
+		return Result{}, err
+	}
+	if len(chunks) == 1 {
+		n, err := u.q.conn().exec(ctx, "update", u.meta.Table, chunks[0])
+		if err != nil {
+			return Result{}, err
+		}
+		return Result{RowsAffected: n}, nil
+	}
+	var total int64
+	err = runAtomic(ctx, u.q, "update", u.meta.Table, func(sq Querier) error {
+		for _, c := range chunks {
+			n, err := sq.conn().exec(ctx, "update", u.meta.Table, c)
+			if err != nil {
+				return err
+			}
+			total += n
+		}
+		return nil
+	})
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{RowsAffected: total}, nil
+}
+
+// bulkRender renders one BulkUpdate statement over rows. limit enforces the
+// bind-parameter limit.
+func (u UpdateQuery[T]) bulkRender(p bulkPlan, rows [][]any, limit bool) (Compiled, error) {
 	d := u.q.Dialect()
 	target := TableRef{Name: u.meta.Table, Schema: u.meta.Schema}
+	const src = "momo_v"
+	col := func(ci int) string { return u.meta.Columns[ci].Name }
 	c, err := compile(d, func(b *Builder) {
-		if !b.Dialect().Merge {
-			b.unsupported("bulk update from VALUES")
-			return
+		names := make([]string, 0, len(p.keys)+len(p.cols))
+		for _, ci := range slices.Concat(p.keys, p.cols) {
+			names = append(names, col(ci))
 		}
-		src := "momo_v"
-		names := make([]string, 0, 1+len(p.cols))
-		names = append(names, u.meta.Columns[p.key].Name)
-		for _, ci := range p.cols {
-			names = append(names, u.meta.Columns[ci].Name)
+		// join is MySQL's form: UPDATE t JOIN (...) ON ... SET t.c = v.c. The
+		// others take UPDATE t SET c = v.c FROM (...) WHERE ....
+		join := b.Dialect().Name == dialect.MySQL
+		qual := ""
+		if join {
+			qual = target.Qualifier()
 		}
-		b.withScope([]string{target.Qualifier(), src}, func() {
-			b.WriteString("UPDATE ")
-			target.appendFrom(b)
-			b.WriteString(" SET ")
-			for i, ci := range p.cols {
+		keysEq := func() {
+			for i, ki := range p.keys {
 				if i > 0 {
-					b.WriteString(", ")
+					b.WriteString(" AND ")
 				}
-				b.Ident(u.meta.Columns[ci].Name)
+				b.QualifiedIdent(target.Qualifier(), col(ki))
 				b.WriteString(" = ")
-				b.QualifiedIdent(src, u.meta.Columns[ci].Name)
+				b.QualifiedIdent(src, col(ki))
 			}
-			for _, a := range p.extra {
-				b.WriteString(", ")
-				u.appendAssignment(b, a, "")
-			}
-			if vi := u.meta.Version; vi >= 0 {
-				b.WriteString(", ")
-				b.Ident(u.meta.Columns[vi].Name)
-				b.WriteString(" = ")
-				b.QualifiedIdent(target.Qualifier(), u.meta.Columns[vi].Name)
-				b.WriteString(" + 1")
-			}
+		}
+		source := func() {
 			// The empty SELECT gives the rows the column types of the table: an
 			// unknown-typed bind parameter in a UNION branch takes the type of
 			// the other branch (a VALUES list would resolve it to text).
-			b.WriteString(" FROM (SELECT ")
+			b.WriteString("(SELECT ")
 			for i, n := range names {
 				if i > 0 {
 					b.WriteString(", ")
@@ -613,35 +724,71 @@ func (u UpdateQuery[T]) bulkSQL() (Compiled, error) {
 			b.WriteString(" FROM ")
 			target.appendFrom(b)
 			b.WriteString(" WHERE false")
-			for _, row := range u.bulk.rows {
+			for _, row := range rows {
 				b.WriteString(" UNION ALL SELECT ")
-				b.argFor(u.meta.Columns[p.key].Flags, row[0])
-				for j, ci := range p.cols {
-					b.WriteString(", ")
-					b.argFor(u.meta.Columns[ci].Flags, row[1+j])
+				for j, ci := range slices.Concat(p.keys, p.cols) {
+					if j > 0 {
+						b.WriteString(", ")
+					}
+					b.argFor(u.meta.Columns[ci].Flags, row[j])
 				}
 			}
 			b.WriteString(") AS ")
 			b.Ident(src)
-			b.WriteString(" WHERE ")
-			b.QualifiedIdent(target.Qualifier(), u.meta.Columns[p.key].Name)
-			b.WriteString(" = ")
-			b.QualifiedIdent(src, u.meta.Columns[p.key].Name)
-			if len(u.where)+len(u.extra) > 0 {
-				b.WriteString(" AND ")
-				appendAnd(b, append(slices.Clone(u.where), u.extra...))
+		}
+		where := append(slices.Clone(u.where), u.extra...)
+		b.withScope([]string{target.Qualifier(), src}, func() {
+			b.WriteString("UPDATE ")
+			target.appendFrom(b)
+			if join {
+				b.WriteString(" JOIN ")
+				source()
+				b.WriteString(" ON ")
+				keysEq()
+			}
+			b.WriteString(" SET ")
+			for i, ci := range p.cols {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				b.QualifiedIdent(qual, col(ci))
+				b.WriteString(" = ")
+				b.QualifiedIdent(src, col(ci))
+			}
+			for _, a := range p.extra {
+				b.WriteString(", ")
+				u.appendAssignment(b, a, qual)
+			}
+			if vi := u.meta.Version; vi >= 0 {
+				b.WriteString(", ")
+				b.QualifiedIdent(qual, col(vi))
+				b.WriteString(" = ")
+				b.QualifiedIdent(target.Qualifier(), col(vi))
+				b.WriteString(" + 1")
+			}
+			if !join {
+				b.WriteString(" FROM ")
+				source()
+				b.WriteString(" WHERE ")
+				keysEq()
+				if len(where) > 0 {
+					b.WriteString(" AND ")
+					appendAnd(b, where)
+				}
+			} else if len(where) > 0 {
+				b.WriteString(" WHERE ")
+				appendAnd(b, where)
 			}
 		})
-		renderReturning(b, u.meta, u.returning, func(col string) error {
-			return u.fail(ErrValidation, fmt.Errorf("Returning: column %q is not mapped by %s", col, u.meta.Table))
+		renderReturning(b, u.meta, u.returning, func(name string) error {
+			return u.fail(ErrValidation, fmt.Errorf("Returning: column %q is not mapped by %s", name, u.meta.Table))
 		})
 	})
 	if err != nil {
 		return Compiled{}, err
 	}
-	if d.MaxParams > 0 && len(c.Args) > d.MaxParams {
-		return Compiled{}, &Error{Kind: ErrLimitExceeded, Op: "update", Table: u.meta.Table,
-			Err: fmt.Errorf("%d bind parameters exceed the %s limit of %d", len(c.Args), d.Name, d.MaxParams)}
+	if limit && d.MaxParams > 0 && len(c.Args) > d.MaxParams {
+		return Compiled{}, u.bulkLimit(len(c.Args), d.MaxParams)
 	}
 	return c, nil
 }
