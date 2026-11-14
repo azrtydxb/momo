@@ -585,4 +585,33 @@ Decision (2026-11-13, integrator): as above.
   `--from-db`, load the models, diff them against an empty database, apply and
   compare the two inspections.
 
+## Issue #129: Sum and Avg over int16, int32 and Numeric columns (2026-11-14, integrator)
+
+- **Shape:** `Sum[T Number]` is unchanged, because widening `Number` would make
+  `Sum[int32]` return `Agg[int32]`, the wrong type, and a sum of int4 does not
+  fit int32. New functions instead: `SumInt[T Integer]` returning
+  `Agg[int64]`, and `SumNumeric[T Exact]` and `AvgNumeric[T Exact]` returning
+  `Agg[types.Numeric]`. `Avg` becomes `Avg[T Averageable]` returning
+  `Agg[float64]`; a call `momo.Avg` with a column still infers T, so existing
+  callers compile.
+- **Casts:** an aggregate carries an optional PostgreSQL cast that wraps the
+  call together with its FILTER and OVER clause (`CAST(SUM(x) FILTER (...) OVER
+(...) AS bigint)`). PostgreSQL: `SumInt` casts to `bigint` (SUM of bigint is
+  numeric), `Avg` casts to `double precision` unless the column is a float.
+  MySQL, MariaDB and SQLite get no cast for `SumInt` and `Avg`: database/sql
+  reads an integral DECIMAL into an int64 and a decimal into a float64, and a
+  sum past int64 then fails instead of saturating, which `CAST(... AS SIGNED)`
+  would do silently.
+- **Exact:** `SumNumeric` and `AvgNumeric` cast an integer argument to
+  `numeric` on PostgreSQL (so SUM over bigint cannot overflow). A `types.Numeric`
+  column is TEXT on MySQL and MariaDB, which would sum as DOUBLE, so it is cast
+  to `DECIMAL(65,30)` (30 decimal places, trailing zeros kept). SQLite: an
+  integer column sums exactly (an overflow is an error), but a TEXT Numeric sums
+  as a float and AVG is always a float, so those build with `ErrUnsupported`.
+- **Empty set:** all of them are NULL over zero rows, as `Sum` was; read into
+  a pointer. `types.Numeric.Scan` already takes int64, float64, string and
+  []byte, so no codec change.
+- **API diff:** `Avg` turning generic is an apidiff incompatible change only for
+  code that used `momo.Avg` as an uninstantiated function value.
+
 Decision (2026-11-14, integrator): as above.

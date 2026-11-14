@@ -45,13 +45,25 @@ func (f FilteredAgg[T]) Over(w WindowSpec) WindowExpr[T] {
 func (FilteredAgg[T]) resultType() T { var z T; return z }
 
 // AppendSQL writes the aggregate and its FILTER clause to b.
-func (f FilteredAgg[T]) AppendSQL(b *Builder) {
+func (f FilteredAgg[T]) AppendSQL(b *Builder) { f.appendWrapped(b, nil) }
+
+// appendWrapped writes the aggregate, its FILTER clause and tail inside any
+// cast the aggregate carries. MySQL and MariaDB have no FILTER clause, so the
+// predicate moves into the arguments there (and no cast applies).
+func (f FilteredAgg[T]) appendWrapped(b *Builder, tail func(*Builder)) {
 	if b.d.Name == dialect.MySQL && f.where != nil {
 		f.agg.fn.appendFiltered(b, f.where)
+		if tail != nil {
+			tail(b)
+		}
 		return
 	}
-	f.agg.AppendSQL(b)
-	appendFilter(b, f.where)
+	f.agg.appendWrapped(b, func(b *Builder) {
+		appendFilter(b, f.where)
+		if tail != nil {
+			tail(b)
+		}
+	})
 }
 
 // appendFilter renders " FILTER (WHERE p)". A nil predicate fails the build
@@ -381,7 +393,14 @@ func (e WindowExpr[T]) AppendSQL(b *Builder) {
 		b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("%s does not take a window frame", e.name)})
 		return
 	}
+	over := func(b *Builder) {
+		b.writeByte(' ')
+		e.spec.appendSQL(b)
+	}
+	if c, ok := e.call.(castable); ok {
+		c.appendWrapped(b, over)
+		return
+	}
 	e.call.AppendSQL(b)
-	b.writeByte(' ')
-	e.spec.appendSQL(b)
+	over(b)
 }
