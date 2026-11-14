@@ -20,6 +20,7 @@ const (
 	ActionUnchanged = "unchanged" // the file is current
 	ActionConflict  = "conflict"  // the file was edited by hand and the database changed it
 	ActionOrphan    = "orphan"    // the file models a table that is gone or skipped
+	ActionHeader    = "header"    // the body is current and only the header hash is stale
 )
 
 // modelFile matches the names fileName gives, with or without a counter.
@@ -89,6 +90,14 @@ func planFile(dir string, f File, overwrite bool) (Action, error) {
 		a.Kind, a.Content = ActionUnchanged, nil
 		return a, nil
 	}
+	if refreshed, ok := refreshHeader(existing, f.Content); ok {
+		// The body is the regenerated body, so only the hash in the header
+		// line is out of date, for example after a hand edit that the database
+		// now carries too. --check treats the file as current; a plain run
+		// rewrites line 1 and nothing else.
+		a.Kind, a.Content = ActionHeader, refreshed
+		return a, nil
+	}
 	edited, generated := Edited(existing)
 	if generated && edited {
 		// Edited by hand, but the database did not change the model since it
@@ -115,6 +124,32 @@ func planFile(dir string, f File, overwrite bool) (Action, error) {
 	return a, nil
 }
 
+// refreshHeader reports whether existing is a file written by WithHeader whose
+// body equals the body of regenerated although the hash in its header differs,
+// and returns existing with only its first line replaced by the header of
+// regenerated. Line endings are normalised to LF for the comparison, as the
+// plain generator does for a checkout with CRLF; the rest of the file, its
+// line endings included, is kept byte for byte.
+func refreshHeader(existing, regenerated []byte) ([]byte, bool) {
+	newBody, newHash, ok := SplitHeader(regenerated)
+	if !ok {
+		return nil, false
+	}
+	oldBody, oldHash, ok := SplitHeader(bytes.ReplaceAll(existing, []byte("\r\n"), []byte("\n")))
+	if !ok || oldHash == newHash || !bytes.Equal(oldBody, newBody) {
+		return nil, false
+	}
+	i := bytes.IndexByte(existing, '\n')
+	if i < 0 {
+		return nil, false
+	}
+	line := headerPrefix + newHash
+	if i > 0 && existing[i-1] == '\r' {
+		line += "\r"
+	}
+	return append([]byte(line), existing[i:]...), true
+}
+
 func readFile(path string) ([]byte, error) {
 	b, err := os.ReadFile(path) // #nosec G304 -- path is in the model directory the user named
 	if err != nil {
@@ -127,7 +162,7 @@ func readFile(path string) ([]byte, error) {
 }
 
 // Apply carries out the actions through write, which stores one file. A
-// conflict writes the regenerated version next to the file with the .new
+// header action writes the file with its first line replaced. A conflict writes the regenerated version next to the file with the .new
 // suffix and leaves the file alone. It returns the paths it wrote. The caller
 // supplies write so that this package never touches the filesystem itself.
 func Apply(dir string, actions []Action, write func(path string, content []byte) error) ([]string, error) {
@@ -135,7 +170,7 @@ func Apply(dir string, actions []Action, write func(path string, content []byte)
 	for _, a := range actions {
 		var name string
 		switch a.Kind {
-		case ActionCreate, ActionUpdate:
+		case ActionCreate, ActionUpdate, ActionHeader:
 			name = a.File
 		case ActionConflict:
 			name = a.File + newSuffix

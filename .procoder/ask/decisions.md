@@ -514,3 +514,19 @@ n DAY)` and `DATEDIFF(a, b)`. SQLite, which stores a date as `YYYY-MM-DD`
   `ErrValidation`.
 
 Decision (2026-11-13, integrator): as above.
+
+## Issue #128: --check compares the body, not only the header hash (2026-11-14, integrator)
+
+- **Behaviour:** when the regenerated body of a `generate --from-db` model file
+  equals the file's body byte for byte (everything after the header line, line
+  endings normalised to LF as the plain generator does), `--check` reports the
+  file as current although the header hash differs. A plain run rewrites only
+  line 1 with the correct hash (action `header`, printed as `header: <file>`),
+  writes no `.new` file and reports no conflict.
+- **Unchanged:** a body that differs is still stale or a conflict. A file with
+  no header or a malformed one keeps its handling. Plain `momo generate` does
+  not read or write the header and is not changed.
+- **Not chosen:** refreshing the header from `momo generate` (the issue's
+  alternative).
+
+Decision (2026-11-14, integrator): as above.

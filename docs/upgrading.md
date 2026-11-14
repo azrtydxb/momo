@@ -5,6 +5,19 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.12.0
+
+### `generate --from-db --check` compares the body, not only the header hash
+
+No change is needed. A model file written by `momo generate --from-db` that
+you edited by hand used to be reported as stale (`--check`) or as a conflict
+with a `.new` file (plain run) whenever the database now held your edit too,
+because the `// momo:fromdb sha256=...` header still carried the hash of the
+old body. Now a file whose body equals the regenerated body is current: `--check`
+passes, and a plain run rewrites only the header line. A file whose body
+differs is still stale or a conflict, and `momo generate` without `--from-db`
+is unchanged.
+
 ## Upgrading to 0.11.0
 
 Two changes can need an edit in your code: an explicit `updated_at` in
