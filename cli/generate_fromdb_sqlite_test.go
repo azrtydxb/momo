@@ -167,15 +167,20 @@ func TestGenerateFromDBSQLiteMissingFile(t *testing.T) {
 			t.Fatalf("%s: exit %d, %q", src, code, errb.String())
 		}
 	}
-	// An empty or localhost authority is the local machine.
-	for _, src := range []string{"file://localhost" + missing, "file://LOCALHOST" + missing, "file://" + missing} {
+	// An empty or localhost authority is the local machine. The URI path is
+	// /C:/... for a Windows drive path.
+	uriPath := filepath.ToSlash(missing)
+	if !strings.HasPrefix(uriPath, "/") {
+		uriPath = "/" + uriPath
+	}
+	for _, src := range []string{"file://localhost" + uriPath, "file://LOCALHOST" + uriPath, "file://" + uriPath} {
 		var out, errb bytes.Buffer
 		if code := Run([]string{"generate", "--from-db", src}, &out, &errb); code != exitUsage || !strings.Contains(errb.String(), "does not exist") {
 			t.Fatalf("%s: exit %d, %q", src, code, errb.String())
 		}
 	}
 	// Any other host is refused, and so is the file it would name.
-	for _, src := range []string{"file://example.com" + missing, "file://db.internal/x.db"} {
+	for _, src := range []string{"file://example.com" + uriPath, "file://db.internal/x.db"} {
 		var out, errb bytes.Buffer
 		if code := Run([]string{"generate", "--from-db", src}, &out, &errb); code != exitUsage || !strings.Contains(errb.String(), "other than localhost") {
 			t.Fatalf("%s: exit %d, %q", src, code, errb.String())

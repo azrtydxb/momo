@@ -69,18 +69,32 @@ func sqliteTargetPath(target string) (string, error) {
 	}
 	if auth, ok := strings.CutPrefix(rest, "//"); ok {
 		host, path, _ := strings.Cut(auth, "/")
-		if host != "" && !strings.EqualFold(host, "localhost") {
+		switch {
+		case hasDriveLetter(auth):
+			// file://C:/x or file://C:\x: a Windows path written without the
+			// third slash, not a host.
+			rest = auth
+		case host != "" && !strings.EqualFold(host, "localhost"):
 			return "", errors.New("the file: URI names a host other than localhost; a SQLite file must be local")
-		}
-		rest = "/" + path
-		if path == "" {
+		case path == "":
 			rest = ""
+		default:
+			rest = "/" + path
 		}
 	}
 	if dec, err := url.PathUnescape(rest); err == nil {
 		rest = dec
 	}
+	// file:///C:/x names the Windows path C:/x.
+	if len(rest) > 1 && rest[0] == '/' && hasDriveLetter(rest[1:]) {
+		rest = rest[1:]
+	}
 	return rest, nil
+}
+
+// hasDriveLetter reports whether s opens with a Windows drive such as C:.
+func hasDriveLetter(s string) bool {
+	return len(s) >= 2 && s[1] == ':' && (s[0] >= 'a' && s[0] <= 'z' || s[0] >= 'A' && s[0] <= 'Z')
 }
 
 // requireSQLiteFile turns the --from-db value into the target sqlitepure opens
