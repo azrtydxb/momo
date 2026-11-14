@@ -28,7 +28,20 @@ import (
 // list still works in the outer ORDER BY, which cannot see the inner tables.
 // The helper columns never reach the outer select list, so a scan reads exactly
 // the columns of the query. An item that is neither a column nor an As alias
-// has no name to give back and keeps momo_cN: alias it with As to name it.
+// has no name to give back and keeps momo_cN: alias it with As to name it, and
+// a subquery or CTE that reads such an item by its PostgreSQL name must alias
+// it too. An As alias is checked as Aliased.AppendSQL checks it.
+//
+// Count and Exists wrap the statement. With the real select list the derived
+// table could repeat a name (a join that selects p.id and c.id), which MySQL
+// rejects, so a count renders the outer query as SELECT 1 AS momo_one over the
+// same rows, without the ORDER BY.
+//
+// A nullable ORDER BY item with no NULLS term gets PostgreSQL's placement
+// (ASC NULLS LAST, DESC NULLS FIRST) written out, so the tiebreak picks the
+// same row on every dialect. This applies where momo knows the column is
+// nullable (a model column or a NullColumn); for ColumnOf and other
+// expressions it does not, so give those an explicit NullsFirst or NullsLast.
 const (
 	distinctDerived = "momo_d"
 	distinctRowNum  = "momo_rn"
@@ -76,6 +89,13 @@ func (sq SelectQuery[T]) derivedItems(b *Builder) ([]derivedItem, bool) {
 		if a, ok := e.(interface{ unalias() (Expr, string) }); ok {
 			it.expr, it.name = a.unalias()
 			it.aliased = true
+			// Aliased.AppendSQL checks the alias; the emulation renders the
+			// expression itself, so it checks here and refuses what PostgreSQL
+			// refuses.
+			if err := validName(it.name); err != nil {
+				b.SetErr(&Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("alias %q: %w", it.name, err)})
+				return nil, false
+			}
 		} else if c, ok := e.(interface{ ColumnName() string }); ok {
 			it.name = c.ColumnName()
 		}
@@ -143,10 +163,30 @@ func (sq SelectQuery[T]) renderDistinctOnWindow(b *Builder) {
 			return
 		}
 	}
+	// PostgreSQL puts NULLs last in an ascending order and first in a
+	// descending one; SQLite and MySQL put them the other way round. Where momo
+	// knows the expression is nullable, render the PostgreSQL placement
+	// explicitly so the tiebreak picks the same row. A column declared without
+	// nullability (ColumnOf, an expression) is not known to be nullable: give
+	// such an item an explicit NullsFirst or NullsLast.
+	for i, o := range order {
+		if o.Nulls == NullsDefault && FlagsOf(o.Expr)&FlagNullable != 0 {
+			if o.Desc {
+				order[i].Nulls = NullsFirst
+			} else {
+				order[i].Nulls = NullsLast
+			}
+		}
+	}
 
 	writeWithClause(b, s.with)
 	b.withScope([]string{distinctDerived}, func() {
 		b.WriteString("SELECT ")
+		if s.distinctCount {
+			b.WriteString("1 AS ")
+			b.Ident("momo_one")
+			return
+		}
 		for i, it := range items {
 			if i > 0 {
 				b.WriteString(", ")
@@ -195,7 +235,11 @@ func (sq SelectQuery[T]) renderDistinctOnWindow(b *Builder) {
 	b.withScope([]string{distinctDerived}, func() {
 		b.WriteString(" WHERE ")
 		b.QualifiedIdent(distinctDerived, distinctRowNum)
-		b.WriteString(" = 1 ORDER BY ")
+		b.WriteString(" = 1")
+		if s.distinctCount {
+			return // a count needs no order
+		}
+		b.WriteString(" ORDER BY ")
 		for i, o := range order {
 			if i > 0 {
 				b.WriteString(", ")

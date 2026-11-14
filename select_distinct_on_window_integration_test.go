@@ -26,6 +26,13 @@ var dBTMeta = anMeta([]string{"b", "t"}, func(m *dBT) []any { return []any{&m.B,
 
 func (*dBT) MomoMeta() *momo.Meta[dBT] { return dBTMeta }
 
+// dII is two integers.
+type dII struct{ A, B int64 }
+
+var dIIMeta = anMeta([]string{"a", "b"}, func(m *dII) []any { return []any{&m.A, &m.B} })
+
+func (*dII) MomoMeta() *momo.Meta[dII] { return dIIMeta }
+
 // seedDistinctOn inserts seven documents (ids 1 to 7 in this order):
 //
 //	tenant 1: a (body NULL, v10), b (NULL, v20), c (x, v30)
@@ -182,6 +189,83 @@ func runDistinctOnWindow(t *testing.T, db *momo.DB) {
 		}
 		if want := []string{"b", "e", "g"}; !reflect.DeepEqual(got, want) {
 			t.Fatalf("titles = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("same-named columns with All and Count", func(t *testing.T) {
+		// p.id and c.id are both "id": the derived tables of the emulation
+		// and of Count must not repeat a name, which MySQL refuses (1060).
+		p := momo.TableRef{Name: "documents", Alias: "p"}
+		c := momo.TableRef{Name: "documents", Alias: "c"}
+		pTenant := momo.ColumnOf[int64]("p", "tenant_id")
+		pID := momo.ColumnOf[int64]("p", "id")
+		cID := momo.ColumnOf[int64]("c", "id")
+		cVersion := momo.ColumnOf[int64]("c", "version")
+		q := momo.Select[dII](db).From(p).Join(c, pID.EqExpr(cID)).
+			Columns(pID, cID).DistinctOn(pTenant).
+			OrderBy(pTenant.Asc(), cVersion.Desc(), pID.Asc())
+		rows, err := q.All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := []dII{{3, 3}, {5, 5}, {7, 7}}; !reflect.DeepEqual(rows, want) {
+			t.Fatalf("rows = %+v, want %+v", rows, want)
+		}
+		n, err := q.Count(ctx)
+		if err != nil || n != 3 {
+			t.Fatalf("Count = %d, %v, want 3", n, err)
+		}
+		ok, err := q.Exists(ctx)
+		if err != nil || !ok {
+			t.Fatalf("Exists = %v, %v, want true", ok, err)
+		}
+	})
+
+	t.Run("default null placement matches PostgreSQL", func(t *testing.T) {
+		// No NULLS term on a nullable column: ASC puts NULLs last, DESC first.
+		rows, err := momo.Select[dBT](db).From(anDocs).Columns(suite.DocBody, suite.DocTitle).
+			DistinctOn(suite.DocBody).
+			OrderBy(suite.DocBody.Asc(), suite.DocVersion.Desc(), suite.DocID.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := []dBT{{strp("x"), "c"}, {strp("y"), "e"}, {nil, "b"}}; !reflect.DeepEqual(rows, want) {
+			t.Fatalf("asc rows = %+v, want %+v", rows, want)
+		}
+		// Tenant 1 has two NULL bodies: DESC NULLS FIRST picks a by id. Tenant
+		// 3 picks g (NULL) over f (y).
+		kt, err := momo.Select[anKT](db).From(anDocs).Columns(suite.DocTenantID, suite.DocTitle).
+			DistinctOn(suite.DocTenantID).
+			OrderBy(suite.DocTenantID.Asc(), suite.DocBody.Desc(), suite.DocID.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := []anKT{{1, "a"}, {2, "e"}, {3, "g"}}; !reflect.DeepEqual(kt, want) {
+			t.Fatalf("desc rows = %+v, want %+v", kt, want)
+		}
+	})
+
+	t.Run("subquery and CTE sources", func(t *testing.T) {
+		sTenant := momo.ColumnOf[int64]("s", "tenant_id")
+		sTitle := momo.ColumnOf[string]("s", "title")
+		fromSub, err := momo.Select[anKT](db).From(momo.FromSubquery(latest(), "s")).
+			Columns(sTenant, sTitle).OrderBy(sTenant.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []anKT{{1, "c"}, {2, "e"}, {3, "g"}}
+		if !reflect.DeepEqual(fromSub, want) {
+			t.Fatalf("subquery rows = %+v, want %+v", fromSub, want)
+		}
+		dTenant := momo.ColumnOf[int64]("d", "tenant_id")
+		dTitle := momo.ColumnOf[string]("d", "title")
+		fromCTE, err := momo.Select[anKT](db).With("d", latest(), "tenant_id", "title").From(momo.CTE("d")).
+			Columns(dTenant, dTitle).OrderBy(dTenant.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(fromCTE, want) {
+			t.Fatalf("cte rows = %+v, want %+v", fromCTE, want)
 		}
 	})
 

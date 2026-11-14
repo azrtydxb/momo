@@ -64,7 +64,11 @@ type selectCore struct {
 	preloads []any
 	// distinctOn holds the DISTINCT ON expressions (see DistinctOn).
 	distinctOn []Expr
-	err        error
+	// distinctCount marks the copy that Count wraps: an emulated DistinctOn
+	// then projects one constant column instead of the select list, whose
+	// names can repeat in a join and which MySQL refuses in a derived table.
+	distinctCount bool
+	err           error
 }
 
 // SelectQuery builds and runs a SELECT whose rows scan into T.
@@ -741,6 +745,7 @@ func (sq SelectQuery[T]) Count(ctx context.Context) (int64, error) {
 	if len(inner.s.distinctOn) == 0 { // DISTINCT ON keeps its ORDER BY: it picks the rows
 		inner.s.order = nil
 	}
+	inner.s.distinctCount = len(inner.s.distinctOn) > 0
 	inner.s.keyset = nil
 	c, err := compile(sq.q.Dialect(), func(b *Builder) {
 		b.WriteString("SELECT COUNT(*) FROM ")

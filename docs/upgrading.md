@@ -15,9 +15,10 @@ a test that expects the refusal) now takes the success path.
 
 `SelectQuery.DistinctOn` returned `ErrUnsupported` on SQLite, MySQL and
 MariaDB. It now runs on all of them, emulated with a window function, and
-returns the rows PostgreSQL's `DISTINCT ON` returns: the first row of each
-group of the leading `OrderBy` keys, the tie-breakers after them deciding which
-row is first, and all rows with a NULL key forming one group. A derived table
+keeps the first row of each group of the leading `OrderBy` keys, the
+tie-breakers after them deciding which row is first, and all rows with a NULL
+key forming one group, as PostgreSQL's `DISTINCT ON` does when the `OrderBy` is
+total (see the NULLS point below). A derived table
 numbers the rows of each group with `ROW_NUMBER()` and the outer query keeps
 number 1. It needs SQLite 3.25, MySQL 8.0 or MariaDB 10.2, the versions that
 have window functions. PostgreSQL is unchanged.
@@ -41,8 +42,19 @@ What to check:
   would not cover the rows returned. PostgreSQL refuses the combination with
   `ErrValidation`.
 - Servers place NULLs differently by default (PostgreSQL last in an ascending
-  order, the others first). Give the leading key `NullsFirst` or `NullsLast` to
-  get the same order everywhere.
+  order and first in a descending one, the others the reverse). For an
+  `OrderBy` item on a nullable model column or `NullColumn` with no NULLS term,
+  momo writes PostgreSQL's placement out, so the same row wins on every
+  dialect. It cannot know that a `ColumnOf` column or an expression is
+  nullable: give those an explicit `NullsFirst` or `NullsLast`, or the tiebreak
+  can pick a different row than PostgreSQL does.
+- A subquery or CTE that reads an unaliased select-list expression by the name
+  PostgreSQL gives it must alias it with `As`: on the emulated dialects that
+  column is `momo_cN`. Columns and `As` aliases keep their names.
+- `Count` and `Exists` count the groups without repeating the select list, so a
+  join that selects two columns of the same name works on MySQL too.
+- An `As` alias is checked as everywhere else: an empty, malformed or
+  over-long alias is `ErrValidation` on every dialect.
 
 ## Upgrading to 0.12.0
 

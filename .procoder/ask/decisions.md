@@ -890,16 +890,29 @@ Decision (2026-11-14, integrator): as above.
   in the select list is `ErrValidation`.
 - **Interactions:** WHERE, joins, GROUP BY, HAVING, soft-delete and the keyset
   `After` predicate apply before the dedupe, as on PostgreSQL; LIMIT and OFFSET
-  apply after it, on the outer query. `Count` and `Exists` wrap the statement,
-  so they count groups, as they do on PostgreSQL. NULL keys form one group, as
-  in `DISTINCT ON`.
+  apply after it, on the outer query. `Count` and `Exists` count the groups, as
+  on PostgreSQL, from a form whose outer select list is one constant column
+  (`momo_one`) without the ORDER BY: wrapping the real select list would give
+  MySQL a derived table with repeated names for a join that selects `p.id` and
+  `c.id` (error 1060). NULL keys form one group, as in `DISTINCT ON`.
+- **Alias check:** the emulation renders an `As` expression itself, so it calls
+  the same name check as `Aliased.AppendSQL`; an empty, malformed or over-long
+  alias is `ErrValidation` on every dialect.
+- **Unaliased expressions:** an item that is neither a column nor an `As`
+  alias is `momo_cN` on the emulated dialects, so a subquery or CTE that reads
+  it by its PostgreSQL name must alias it.
 - **Refused:** `ForUpdate`, `ForShare` and the other row locks with `DistinctOn`
   return `ErrUnsupported` on SQLite, MySQL and MariaDB: the rows are read in a
   derived table, so a lock would not cover the rows returned, and PostgreSQL
   refuses the same combination (`ErrValidation`).
-- **Default NULL order differs by server** (PostgreSQL sorts NULLs last in an
-  ascending order, the other three first), as everywhere in momo; give the
-  leading key `NullsLast` or `NullsFirst` for the same order on every dialect.
+- **NULL placement:** PostgreSQL sorts NULLs last in an ascending order and
+  first in a descending one; the other three do the opposite. Where momo knows
+  an `OrderBy` item is nullable (a model column or `NullColumn`) and it has no
+  NULLS term, the emulation writes PostgreSQL's placement out, so the tiebreak
+  picks the same row. For `ColumnOf` and expressions momo cannot know, so those
+  need an explicit `NullsFirst` or `NullsLast`; the docs say so. The rows
+  therefore equal PostgreSQL's for a total `OrderBy` with that caveat, not
+  unconditionally.
 - **Tests:** goldens for the three dialects; integration tests with ties and a
   NULL key on PostgreSQL and SQLite (`testopen.Each`) and on MySQL 8.4, MySQL
   9.7 and MariaDB 11.8 (`testopen.EachMySQL`), against the rows PostgreSQL's
