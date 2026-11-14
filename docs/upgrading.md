@@ -97,6 +97,23 @@ years := sqlfn.Greatest[float64](momo.Lit(1.0),
   MariaDB's `JSON_TYPE` are mapped to the same six names: `object`, `array`,
   `string`, `number`, `boolean` and `null`. A SQL NULL column gives SQL NULL.
 
+### `momo generate --from-db` reads MySQL and MariaDB
+
+Besides PostgreSQL, the command now inspects a MySQL 8.4, MySQL 9.7 or
+MariaDB 11.8 database when `momo.yaml` sets `dialects: [mysql]`. A project that
+sets `dialects: [postgres]` or sets none behaves as before. See
+[MySQL and MariaDB](mysql.md#models-from-a-database).
+
+### A comma inside parentheses in a tag option
+
+The tag parser now keeps a comma that sits inside balanced parentheses in one
+option, so `type:decimal(10,2)` is read as one option, and inside parentheses it
+skips a single-quoted value, so `type:enum('a)b','c')` is one option too.
+Before, the comma split it in two and the second half was an error or a stray
+option. A tag with no parentheses, and one whose parentheses or quotes do not
+balance, is split at every comma as before. A tag that held a comma inside
+parentheses now reads as one option; check any such tag.
+
 ## Upgrading to 0.11.0
 
 Two changes can need an edit in your code: an explicit `updated_at` in

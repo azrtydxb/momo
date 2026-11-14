@@ -120,9 +120,10 @@ func AddDays(d momo.Expression[types.Date], n int) DateExpr {
 	return addDays(d, momo.Value(lit), &lit)
 }
 
-// AddDaysExpr is d + n for a count that is an expression: a bound
-// momo.Value(int32(3)), or a column read with momo.Typed[int32](col). See
-// AddDays for the rendering and for infinity. A NULL count gives NULL. On
+// AddDaysExpr is d + n for a count that is an int32 expression, such as a
+// bound momo.Value(int32(3)) or an integer column read through momo.Typed with
+// type argument int32. See AddDays for the rendering and for infinity. A NULL
+// count gives NULL. On
 // PostgreSQL a count read from a column must be an int4 (integer) column:
 // momo.Typed[int32] over a bigint column fails at run time with "operator does
 // not exist: date + bigint".
