@@ -364,14 +364,6 @@ func TestAnalyticsErrors(t *testing.T) {
 			_, err := momo.Select[unitDocument](pg).DistinctOn(momo.As[int64](DocTenantID, "x")).OrderBy(DocTenantID.Asc()).SQL()
 			return err
 		}, momo.ErrValidation},
-		{"distinct on sqlite", func() error {
-			_, err := momo.Select[unitDocument](sq).DistinctOn(DocTenantID).OrderBy(DocTenantID.Asc()).SQL()
-			return err
-		}, momo.ErrUnsupported},
-		{"distinct on mysql", func() error {
-			_, err := momo.Select[unitDocument](my).DistinctOn(DocTenantID).OrderBy(DocTenantID.Asc()).SQL()
-			return err
-		}, momo.ErrUnsupported},
 
 		{"lateral on sqlite", func() error {
 			sub := momo.Select[anKT](sq).From(anDocs).Columns(DocID, DocTitle)

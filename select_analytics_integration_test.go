@@ -227,9 +227,6 @@ func TestAnalyticsDistinctOn(t *testing.T) {
 		q := momo.Select[anKT](db).From(anDocs).Columns(suite.DocTenantID, suite.DocTitle).
 			DistinctOn(suite.DocTenantID).OrderBy(suite.DocTenantID.Asc(), suite.DocVersion.Desc())
 		rows, err := q.All(ctx)
-		if wantUnsupported(t, d, err) {
-			return
-		}
 		if err != nil {
 			t.Fatal(err)
 		}
