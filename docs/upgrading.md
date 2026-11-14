@@ -5,6 +5,45 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.13.0
+
+No edit is needed in your code. One call that returned `ErrUnsupported` on some
+dialects now returns rows, so code that relied on the error (a fallback branch,
+a test that expects the refusal) now takes the success path.
+
+### `DistinctOn` on SQLite, MySQL and MariaDB
+
+`SelectQuery.DistinctOn` returned `ErrUnsupported` on SQLite, MySQL and
+MariaDB. It now runs on all of them, emulated with a window function, and
+returns the rows PostgreSQL's `DISTINCT ON` returns: the first row of each
+group of the leading `OrderBy` keys, the tie-breakers after them deciding which
+row is first, and all rows with a NULL key forming one group. A derived table
+numbers the rows of each group with `ROW_NUMBER()` and the outer query keeps
+number 1. It needs SQLite 3.25, MySQL 8.0 or MariaDB 10.2, the versions that
+have window functions. PostgreSQL is unchanged.
+
+What to check:
+
+- The `OrderBy` rule is the same on every dialect: the leading items must be the
+  `DistinctOn` expressions, in any order, and an `OrderBy` is required
+  (`ErrValidation` otherwise). A query that built on PostgreSQL builds on the
+  others.
+- The helper column never reaches your scan or a raw read of the statement. Each
+  result column keeps the name of its column or its `As` alias; a bare function
+  in the select list has no such name there, so alias it with `As`.
+- An `OrderBy` on a column that is not in the select list works. An `OrderBy`
+  on an `As` alias is allowed when the alias is in the select list.
+- `Count` and `Exists` count the groups, as on PostgreSQL. `Where`, joins,
+  `GroupBy`, `Having` and keyset `After` filter before the dedupe; `Limit` and
+  `Offset` apply after it.
+- A row lock (`ForUpdate`, `ForShare`) with `DistinctOn` is `ErrUnsupported` on
+  these dialects, because the rows are read in a derived table and the lock
+  would not cover the rows returned. PostgreSQL refuses the combination with
+  `ErrValidation`.
+- Servers place NULLs differently by default (PostgreSQL last in an ascending
+  order, the others first). Give the leading key `NullsFirst` or `NullsLast` to
+  get the same order everywhere.
+
 ## Upgrading to 0.12.0
 
 Two changes can need an edit. `momo.Avg` is now generic, so code that uses it

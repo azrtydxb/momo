@@ -16,8 +16,17 @@ import (
 // DistinctOn requires an OrderBy whose leading items are exactly es (in any
 // order) followed by the tie-breakers that pick the row; otherwise the build
 // fails with ErrValidation, the same rule PostgreSQL enforces. DistinctOn
-// replaces Distinct. PostgreSQL only; other dialects fail the build with
-// ErrUnsupported.
+// replaces Distinct.
+//
+// PostgreSQL renders DISTINCT ON natively. SQLite, MySQL and MariaDB have no
+// such clause, so the query is emulated with a window function: the select
+// list, the ORDER BY expressions and ROW_NUMBER() OVER (PARTITION BY es ORDER
+// BY order) run in a derived table, and the outer query keeps the rows
+// numbered 1, applies the ORDER BY, LIMIT and OFFSET and projects exactly the
+// select list. WHERE, joins, GROUP BY, HAVING and keyset After apply before
+// the dedupe, as they do on PostgreSQL. A row lock (ForUpdate, ForShare)
+// cannot be combined with DistinctOn and fails with ErrUnsupported on those
+// dialects (ErrValidation on PostgreSQL).
 func (sq SelectQuery[T]) DistinctOn(es ...Expr) SelectQuery[T] {
 	if len(es) == 0 {
 		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("DistinctOn needs at least one expression")}
@@ -31,13 +40,23 @@ func (sq SelectQuery[T]) DistinctOn(es ...Expr) SelectQuery[T] {
 }
 
 // renderDistinctOn writes DISTINCT ON (...) after SELECT, validating the
-// ORDER BY prefix rule.
+// ORDER BY prefix rule. It is the PostgreSQL rendering; the other dialects
+// take renderDistinctOnWindow.
 func (sq SelectQuery[T]) renderDistinctOn(b *Builder) {
-	s := &sq.s
-	if b.d.Name != dialect.Postgres {
-		b.unsupported("DISTINCT ON")
+	exprs, ok := sq.validateDistinctOn(b)
+	if !ok {
 		return
 	}
+	b.WriteString("DISTINCT ON (")
+	appendList(b, exprs)
+	b.WriteString(") ")
+}
+
+// validateDistinctOn checks the ORDER BY prefix rule on every dialect, so the
+// emulation refuses what PostgreSQL refuses. It returns the DISTINCT ON
+// expressions without repeats, or false after recording the error.
+func (sq SelectQuery[T]) validateDistinctOn(b *Builder) ([]Expr, bool) {
+	s := &sq.s
 	// A repeated expression adds nothing: keep the first of each.
 	var exprs []Expr
 	var seen []renderedExpr
@@ -54,7 +73,7 @@ func (sq SelectQuery[T]) renderDistinctOn(b *Builder) {
 	}
 	if len(s.order) < n {
 		fail("DistinctOn needs an OrderBy whose first %d items are the DISTINCT ON expressions; the row kept per group is otherwise arbitrary", n)
-		return
+		return nil, false
 	}
 	// Each DISTINCT ON expression must be matched by a distinct leading
 	// ORDER BY item.
@@ -74,12 +93,10 @@ func (sq SelectQuery[T]) renderDistinctOn(b *Builder) {
 		}
 		if !found {
 			fail("DistinctOn expression %s is not among the first %d OrderBy items; PostgreSQL requires the leading ORDER BY items to match the DISTINCT ON expressions", want.sql, n)
-			return
+			return nil, false
 		}
 	}
-	b.WriteString("DISTINCT ON (")
-	appendList(b, exprs)
-	b.WriteString(") ")
+	return exprs, true
 }
 
 // renderedExpr is an expression rendered on its own, for comparing two
