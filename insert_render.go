@@ -127,6 +127,10 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 		return
 	}
 	d := b.Dialect()
+	if err := q.checkExplicitZero(d); err != nil {
+		b.SetErr(err)
+		return
+	}
 	if q.i.unnest {
 		if err := q.unnestCheck(d, mode); err != nil {
 			b.SetErr(err)
