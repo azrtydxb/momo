@@ -34,6 +34,8 @@ import (
 // PostgreSQL identity sequence, and explicit serial ids do not advance the
 // serial sequence either, so later generated keys may collide with them; the
 // caller must setval the sequence. FromSelect cannot supply serial ids at all.
+// A serial or identity column that is not the conflict-target key is written
+// by naming it in InsertQuery.Explicit, which also works on Upsert.
 //
 // When the conflict target is the primary key and every model carries a
 // non-zero identity value, the identity column joins the INSERT column list
@@ -231,8 +233,8 @@ func (q InsertQuery[T]) defaultUpsertSet() []Assignment {
 // resolveIdentity decides whether the identity column joins the INSERT list.
 func (q *InsertQuery[T]) resolveIdentity() error {
 	id := q.meta.Identity
-	if len(q.models) == 0 || id < 0 || id >= len(q.meta.Columns) {
-		return nil
+	if len(q.models) == 0 || id < 0 || id >= len(q.meta.Columns) || q.explicitCol(id) {
+		return nil // Explicit already decides: the value is written as-is
 	}
 	if q.meta.Columns[id].Flags&FlagReadOnly != 0 || !slices.Contains(q.meta.PK, id) {
 		return nil

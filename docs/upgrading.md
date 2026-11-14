@@ -70,6 +70,25 @@ passes, and a plain run rewrites only the header line. A file whose body
 differs is still stale or a conflict, and `momo generate` without `--from-db`
 is unchanged.
 
+### Explicit identity values on `Insert`: no change needed
+
+`momo.InsertQuery.Explicit` is new and opt-in, so existing code needs no edit.
+An `Insert` still leaves identity, serial and auto-increment columns out of the
+statement, and it still drops a non-zero value in such a struct field silently
+(the database generates a new one). If you relied on that, nothing changes.
+
+If you need to keep the value (an import, a backfill, a receipt number in a
+non-key `serial` column), name the column:
+
+```text
+momo.Insert[models.Receipt](q).Model(&r).Explicit(receipt.Seq).Exec(ctx)
+```
+
+PostgreSQL renders `OVERRIDING SYSTEM VALUE` for a `GENERATED ALWAYS AS
+IDENTITY` column only. A zero value in an `Explicit` column is written as-is.
+An explicit value does not advance the sequence, so run `setval` yourself
+afterwards. See issue #127.
+
 ## Upgrading to 0.11.0
 
 Two changes can need an edit in your code: an explicit `updated_at` in
