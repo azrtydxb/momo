@@ -38,7 +38,9 @@ func (*aggTextCountRow) MomoMeta() *momo.Meta[aggTextCountRow] {
 // (member order is not defined there, so the test compares sorted), the empty
 // group falling out as NULL instead of an empty array, and the forms MySQL
 // cannot express (array_agg, an ordered or distinct JSON aggregate, to_jsonb,
-// FILTER, WITHIN GROUP) rendering anyway instead of ErrUnsupported.
+// WITHIN GROUP, and FILTER on an aggregate that keeps NULLs) rendering anyway
+// instead of ErrUnsupported, and FILTER on a NULL-skipping aggregate, which
+// is rewritten to CASE WHEN, selecting the wrong rows.
 func TestAggregatesOnMySQLFamily(t *testing.T) {
 	testopen.EachMySQL(t, func(t *testing.T, db *momo.DB) {
 		suite.CreateDocuments(t, db, suite.CapsOf(db))
@@ -89,6 +91,12 @@ func TestAggregatesOnMySQLFamily(t *testing.T) {
 			t.Fatalf("empty group = %#v; want an empty array, not null", got)
 		}
 
+		filtered := agg.String(suite.DocTitle, ",").OrderBy(suite.DocTitle.Asc()).Filter(suite.DocTenantID.Eq(2))
+		fr, err := momo.Select[aggStrRow](db).From(docs).Columns(filtered).All(ctx)
+		if err != nil || len(fr) != 1 || fr[0].S != "bravo,charlie" {
+			t.Fatalf("GROUP_CONCAT with FILTER = %+v, %v; want bravo,charlie", fr, err)
+		}
+
 		unsupported := func(name string, e momo.Expr) {
 			t.Helper()
 			_, err := momo.Select[aggStrRow](db).From(docs).Columns(e).All(ctx)
@@ -100,7 +108,7 @@ func TestAggregatesOnMySQLFamily(t *testing.T) {
 		unsupported("ordered JSON_ARRAYAGG", agg.JSONB[aggItem](obj).OrderBy(suite.DocTitle.Asc()))
 		unsupported("distinct JSON_ARRAYAGG", agg.JSONB[aggItem](obj).Distinct())
 		unsupported("to_jsonb", agg.ToJSONB[string](suite.DocTitle))
-		unsupported("FILTER", agg.String(suite.DocTitle, ",").Filter(suite.DocTenantID.Eq(1)))
+		unsupported("FILTER on JSON_ARRAYAGG", agg.JSONB[aggItem](obj).Filter(suite.DocTenantID.Eq(1)))
 		unsupported("WITHIN GROUP", agg.PercentileCont(0.5).WithinGroup(suite.DocTenantID.Asc()))
 	})
 }

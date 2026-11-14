@@ -138,17 +138,41 @@ func mwStr(v *int64) string {
 	return fmt.Sprint(*v)
 }
 
-// Catches: the aggregate FILTER clause rendering for MySQL or MariaDB, which
-// neither parses, instead of ErrUnsupported.
-func TestAggregateFilterIsUnsupportedOnMySQLFamily(t *testing.T) {
+// Catches: the aggregate FILTER clause on MySQL and MariaDB, which have no
+// FILTER and get agg(CASE WHEN p THEN x END), counting or summing the wrong
+// rows, ignoring the filter in HAVING or in a window, or turning COUNT(*) into
+// a count of every row.
+func TestAggregateFilterOnMySQLFamily(t *testing.T) {
 	testopen.EachMySQL(t, func(t *testing.T, db *momo.DB) {
 		seedAnalytics(t, db)
+		ctx := context.Background()
 		over10 := momo.CountAll().Filter(suite.DocVersion.Gt(10))
-		_, err := momo.Select[anCounts](db).From(anDocs).
+		rows, err := momo.Select[anCounts](db).From(anDocs).
 			Columns(suite.DocTenantID, momo.CountAll(), over10).
-			GroupBy(suite.DocTenantID).All(context.Background())
-		if !errors.Is(err, momo.ErrUnsupported) {
-			t.Fatalf("FILTER = %v, want ErrUnsupported", err)
+			GroupBy(suite.DocTenantID).OrderBy(suite.DocTenantID.Asc()).All(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []anCounts{{1, 3, 2}, {2, 1, 0}, {3, 3, 0}}
+		if !slices.Equal(rows, want) {
+			t.Fatalf("rows = %+v, want %+v", rows, want)
+		}
+
+		kept, err := momo.Select[anCounts](db).From(anDocs).
+			Columns(suite.DocTenantID, momo.CountAll(), over10).
+			GroupBy(suite.DocTenantID).Having(over10.Gt(0)).All(ctx)
+		if err != nil || len(kept) != 1 || kept[0].K != 1 {
+			t.Fatalf("having = %+v, %v", kept, err)
+		}
+
+		// A filtered aggregate that skips NULLs, as a window function: tenant 1
+		// sums its versions above 10 (20 + 30).
+		sum := momo.Sum(suite.DocVersion).Filter(suite.DocVersion.Gt(10)).Over(momo.Over().PartitionBy(suite.DocTenantID))
+		w, err := momo.Select[anWin](db).From(anDocs).
+			Columns(suite.DocTitle, momo.RowNumber().Over(momo.Over().OrderBy(suite.DocID.Asc())), momo.Lag(suite.DocVersion, 1).Over(momo.Over().OrderBy(suite.DocID.Asc())), sum).
+			Where(suite.DocTenantID.Eq(1)).OrderBy(suite.DocTitle.Asc()).All(ctx)
+		if err != nil || len(w) != 3 || w[0].Running == nil || *w[0].Running != 50 {
+			t.Fatalf("filtered window = %+v, %v", w, err)
 		}
 	})
 }
