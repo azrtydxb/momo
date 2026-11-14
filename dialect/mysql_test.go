@@ -26,6 +26,9 @@ func TestMySQLFlavorCapabilities(t *testing.T) {
 	if ma.Returning || !ma.InsertReturning {
 		t.Fatal("MariaDB: InsertReturning true, Returning (update/delete) false in 11.8")
 	}
+	if my.DeleteReturning || !ma.DeleteReturning {
+		t.Fatal("DeleteReturning: MySQL false, MariaDB true")
+	}
 	if len(my.Vector.Metrics) != 0 {
 		t.Fatalf("MySQL Community has no distance functions, got %v", my.Vector.Metrics)
 	}
