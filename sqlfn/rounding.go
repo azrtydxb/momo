@@ -41,7 +41,8 @@ func rounded[T Fractional](e momo.Expression[T], ceil bool) RoundedExpr[T] {
 // SQLite has floor() only when it is built with the math functions, which the
 // mattn driver omits without its sqlite_math_functions build tag, so Momo does
 // not call it: it renders a CASE over CAST(e AS INTEGER) that gives the same
-// result on every SQLite build and repeats e a few times. A float with an
+// result on every SQLite build and repeats e five times; nesting compounds
+// that (and Greatest's own repetition on top of it), so keep e small there. A float with an
 // absolute value of 2^52 or more is already whole and is returned as it is.
 //
 // types.Numeric is PostgreSQL only: SQLite and MySQL store it as TEXT, so the

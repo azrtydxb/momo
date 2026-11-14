@@ -48,6 +48,7 @@ var (
 	xiS  = momo.NewNullColumn[string]("xt_ext", "s", 0)
 	xiT  = momo.NewNullColumn[string]("xt_ext", "t", 0)
 	xiF  = momo.NewNullColumn[float64]("xt_ext", "f", 0)
+	xwF  = momo.NewNullColumn[float64]("xt_whole", "f", 0)
 )
 
 type xtInt struct {
@@ -183,10 +184,10 @@ func wantStrs(t *testing.T, label string, db *momo.DB, e momo.Expr, want []*stri
 	}
 }
 
-func wantFloats(t *testing.T, label string, db *momo.DB, e momo.Expr, want []*float64) {
+func wantFloats(t *testing.T, label string, db *momo.DB, table string, e momo.Expr, want []*float64) {
 	t.Helper()
-	rows, err := momo.Select[xtFloat](db).From(momo.TableRef{Name: "xt_ext"}).Columns(xiID, e).
-		OrderBy(momo.Asc(xiID)).All(context.Background())
+	rows, err := momo.Select[xtFloat](db).From(momo.TableRef{Name: table}).Columns(momo.ColumnOf[int64](table, "id"), e).
+		OrderBy(momo.Asc(momo.ColumnOf[int64](table, "id"))).All(context.Background())
 	if err != nil {
 		t.Errorf("%s: %v", label, err)
 		return
@@ -244,10 +245,24 @@ func TestFloorCeilExecute(t *testing.T) {
 	eachAllDB(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedExt(t, db, d)
 		f := func(v float64) *float64 { return ptr(v) }
-		wantFloats(t, "Floor(f)", db, sqlfn.Floor[float64](xiF),
+		wantFloats(t, "Floor(f)", db, "xt_ext", sqlfn.Floor[float64](xiF),
 			[]*float64{f(2), f(-3), nil, f(3), f(-1), f(1e19)})
-		wantFloats(t, "Ceil(f)", db, sqlfn.Ceil[float64](xiF),
+		wantFloats(t, "Ceil(f)", db, "xt_ext", sqlfn.Ceil[float64](xiF),
 			[]*float64{f(3), f(-2), nil, f(3), f(0), f(1e19)})
+		// Large magnitudes, a whole negative and the edge of the SQLite pass-through
+		// (2^52): the CAST rewrite must neither saturate nor shift a whole float.
+		exec97(t, db,
+			"DROP TABLE IF EXISTS xt_whole",
+			"CREATE TABLE xt_whole (id bigint primary key, f "+map[dialect.Name]string{dialect.Postgres: "double precision", dialect.MySQL: "double", dialect.SQLite: "real"}[d]+")",
+			"INSERT INTO xt_whole VALUES (1, -1e19)",
+			"INSERT INTO xt_whole VALUES (2, 4503599627370496)",
+			"INSERT INTO xt_whole VALUES (3, -3.0)",
+			"INSERT INTO xt_whole VALUES (4, 4503599627370495.5)",
+		)
+		wantFloats(t, "Floor(whole)", db, "xt_whole", sqlfn.Floor[float64](xwF),
+			[]*float64{f(-1e19), f(4503599627370496), f(-3), f(4503599627370495)})
+		wantFloats(t, "Ceil(whole)", db, "xt_whole", sqlfn.Ceil[float64](xwF),
+			[]*float64{f(-1e19), f(4503599627370496), f(-3), f(4503599627370496)})
 		if n := count97(t, db, "xt_ext", sqlfn.Floor[float64](xiF).Eq(-3)); n != 1 {
 			t.Errorf("Floor(f) = -3 matched %d rows, want 1", n)
 		}

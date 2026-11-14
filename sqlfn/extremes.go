@@ -49,12 +49,16 @@ func extreme[T Ordered](least bool, a, b momo.Expression[T], more []momo.Express
 // largest of those is taken (GREATEST on MySQL and MariaDB, the scalar max()
 // on SQLite). The rewrite repeats every argument once per argument, so
 // n arguments render n*n operands; keep the list short and do not pass a
-// non-deterministic expression such as random().
+// non-deterministic expression such as random(). Nesting compounds the
+// repetition: on SQLite, a two-argument Greatest over a Case that wraps a
+// Floor renders the Floor's operand 4*5 = 20 times.
 //
 // Arguments are expressions of the same type T; wrap a Go value with
 // momo.Value or momo.Lit. Strings compare under the collation of the dialect
-// (MySQL's default is case-insensitive, SQLite compares bytes). A
-// types.Numeric is PostgreSQL only (see Ordered).
+// (MySQL's default is case-insensitive, SQLite compares bytes). SQLite stores
+// time.Time and types.Date as text, so there they compare as text: ISO dates
+// and UTC RFC 3339 times order correctly, a mix of formats or offsets does
+// not. A types.Numeric is PostgreSQL only (see Ordered).
 func Greatest[T Ordered](a, b momo.Expression[T], more ...momo.Expression[T]) ExtremeExpr[T] {
 	return extreme(false, a, b, more)
 }
