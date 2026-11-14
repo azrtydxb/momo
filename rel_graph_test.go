@@ -114,7 +114,7 @@ func TestFindOrCreateReturnsStoredRow(t *testing.T) {
 }
 
 func TestUpsertByPK(t *testing.T) {
-	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
 		ctx := context.Background()
 		if err := momo.UpsertByPK[models.Tag, *models.Tag](ctx, db, &models.Tag{ID: 1, Name: "golang"}); err != nil {
@@ -136,7 +136,7 @@ func TestUpsertByPK(t *testing.T) {
 }
 
 func TestCreateGraphBelongsToFirstAndManyToMany(t *testing.T) {
-	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
 		ctx := context.Background()
 		a := models.Author{ID: 50, Name: "Linus"}
@@ -167,7 +167,7 @@ func TestCreateGraphBelongsToFirstAndManyToMany(t *testing.T) {
 }
 
 func TestCreateGraphPolymorphicCompositeAndSelfReference(t *testing.T) {
-	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
 		ctx := context.Background()
 
@@ -220,7 +220,7 @@ func TestCreateGraphPolymorphicCompositeAndSelfReference(t *testing.T) {
 }
 
 func TestCreateGraphRollsBackWholeGraph(t *testing.T) {
-	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
 		ctx := context.Background()
 		// The second comment collides with seeded comment 1: the parent and the
@@ -260,7 +260,7 @@ func TestCreateGraphRollsBackWholeGraph(t *testing.T) {
 
 func TestCreateGraphRunsFieldHooksOnChildren(t *testing.T) {
 	h := &relfixture.Hook{}
-	testopen.Each(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
 		relfixture.CreateSchema(t, db)
 		doc := &models.Document{ID: 65, Title: "t", Comments: []models.Comment{{ID: 93, Body: ""}}}
 		err := momo.CreateGraph(context.Background(), db, doc, document.Comments.Include())
@@ -326,7 +326,7 @@ func TestFindOrCreateSoftDeletedRowIntegration(t *testing.T) {
 // the graph fails with ErrUniqueViolation and is undone. Link is the way to
 // associate existing children.
 func TestCreateGraphPersistedManyToManyChildIntegration(t *testing.T) {
-	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
 		ctx := context.Background()
 
@@ -360,7 +360,7 @@ func TestCreateGraphPersistedManyToManyChildIntegration(t *testing.T) {
 
 // 1000 children are written and read back through the bulk path.
 func TestCreateGraphThousandChildrenIntegration(t *testing.T) {
-	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
 		ctx := context.Background()
 		doc := &models.Document{ID: 30, Title: "big", Comments: make([]models.Comment, 1000)}

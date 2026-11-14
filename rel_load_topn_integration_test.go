@@ -30,7 +30,7 @@ import (
 // 1 twice, and the top-2 must still be two distinct tags. Soft-deleted far
 // rows are excluded before ranking.
 func TestTopNManyToManyDuplicateJoinRows(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
 		ctx := context.Background()
 		for _, s := range []string{
 			"DROP TABLE IF EXISTS mm_post_tags",
@@ -64,7 +64,7 @@ func TestTopNManyToManyDuplicateJoinRows(t *testing.T) {
 // duplicated join rows, each post still gets exactly N distinct tags: ties are
 // broken by the child primary key and duplicates share a rank.
 func TestTopNManyToManyNonUniqueOrderDuplicateJoinRows(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
 		ctx := context.Background()
 		for _, s := range []string{
 			"DROP TABLE IF EXISTS mm_post_tags",
@@ -112,7 +112,7 @@ func mustExec(t *testing.T, db *momo.DB, sql string, args ...any) {
 }
 
 func TestEagerLoadTopNPerParent(t *testing.T) {
-	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
 		docs := allDocs(t, db)
 		h.After = nil
@@ -141,7 +141,7 @@ func TestEagerLoadTopNPerParent(t *testing.T) {
 // TestWindowFunctions pins the window semantics the strategy relies on: ranks
 // restart in every partition and follow the ORDER BY.
 func TestWindowFunctions(t *testing.T) {
-	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
 		ranks, err := momo.Scalars[int64](context.Background(), db,
 			`SELECT ROW_NUMBER() OVER (PARTITION BY document_id ORDER BY id DESC) FROM comments ORDER BY document_id, id DESC`)
@@ -155,7 +155,7 @@ func TestWindowFunctions(t *testing.T) {
 }
 
 func TestTopNPerParentVariants(t *testing.T) {
-	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
 		ctx := context.Background()
 		docs := allDocs(t, db)
@@ -230,7 +230,7 @@ func TestTopNPerParentVariants(t *testing.T) {
 }
 
 func TestTopNPerParentSoftDeleteComposite(t *testing.T) {
-	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
 		ctx := context.Background()
 
@@ -276,7 +276,7 @@ func TestTopNPerParentSoftDeleteComposite(t *testing.T) {
 }
 
 func TestTopNPerParentPolymorphic(t *testing.T) {
-	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
 		ctx := context.Background()
 		mustExec(t, db, `INSERT INTO images (id, owner_type, owner_id, url) VALUES (3, 'document', 1, 'u3'), (4, 'author', 1, 'u4'), (5, 'document', 1, 'u5')`)
@@ -306,7 +306,7 @@ func TestTopNPerParentPolymorphic(t *testing.T) {
 
 // Nested loads run once, over the kept children only.
 func TestTopNPerParentNested(t *testing.T) {
-	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
 		docs := allDocs(t, db)
 		h.Events = nil
@@ -337,7 +337,7 @@ func TestTopNPerParentNested(t *testing.T) {
 
 func TestTopNPerParentChunking(t *testing.T) {
 	h := &relfixture.Hook{}
-	testopen.Each(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
 		h.After, h.Events = nil, nil
 		relfixture.CreateSchema(t, db)
 		relfixture.SeedBasic(t, db)
@@ -357,7 +357,7 @@ func TestTopNPerParentChunking(t *testing.T) {
 }
 
 func TestTopNPerParentRejections(t *testing.T) {
-	relfixture.Each(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
+	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
 		ctx := context.Background()
 		docs := allDocs(t, db)
