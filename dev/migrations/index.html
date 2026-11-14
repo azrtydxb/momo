@@ -2206,7 +2206,7 @@
 
 
 <h1 id="migration-safety-and-recovery">Migration safety and recovery<a class="headerlink" href="#migration-safety-and-recovery" title="Permanent link">&para;</a></h1>
-<p>Momo v0.11.0, PostgreSQL, SQLite, MySQL and MariaDB (sections 3, 3a and 9). Every statement here was checked against <!-- x-release-please-version -->
+<p>Momo v0.12.0, PostgreSQL, SQLite, MySQL and MariaDB (sections 3, 3a and 9). Every statement here was checked against <!-- x-release-please-version -->
 <code>migrate/</code>, <code>cli/</code>, <code>schema/</code> and <code>dialect/</code>; the tests that pin a
 behavior are named. For the first run see README, <a href="https://github.com/azrtydxb/momo/blob/main/README.md#3-create-and-apply-the-migration">Create and apply the
 migration</a>.</p>
@@ -2276,7 +2276,7 @@ set <code>migrate.dir.postgres</code> or <code>--dir</code>). <code>diff</code> 
 <tr>
 <th>Artifact</th>
 <th>Field</th>
-<th>v0.11.0 value</th>
+<th>v0.12.0 value</th>
 <th>Newer than this binary <!-- x-release-please-version --></th>
 </tr>
 </thead>
@@ -2872,7 +2872,7 @@ transaction pooling the advisory lock, the <code>SET lock_timeout</code> and the
 <code>search_path</code> belong to a server connection that the next statement may not
 reuse, so the lock does not protect and the timeouts can leak or not apply.
 The driver's default query mode is PgBouncer-safe for application queries; the
-migration engine through PgBouncer is <strong>not tested</strong> in v0.11.0. A startup <!-- x-release-please-version -->
+migration engine through PgBouncer is <strong>not tested</strong> in v0.12.0. A startup <!-- x-release-please-version -->
 <code>search_path</code> is also not reliable through a pooler, so set the schema on the
 role or on a direct connection.</p>
 <h2 id="3a-sqlite">3a. SQLite<a class="headerlink" href="#3a-sqlite" title="Permanent link">&para;</a></h2>
