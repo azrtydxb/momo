@@ -1210,6 +1210,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#aggregates-over-integer-and-typesnumeric-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aggregates over integer and types.Numeric columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#explicit-identity-values-on-insert-no-change-needed" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2169,6 +2180,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#aggregates-over-integer-and-typesnumeric-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aggregates over integer and types.Numeric columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#explicit-identity-values-on-insert-no-change-needed" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2917,7 +2939,10 @@
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
 <h2 id="upgrading-to-0120">Upgrading to 0.12.0<a class="headerlink" href="#upgrading-to-0120" title="Permanent link">&para;</a></h2>
-<p>No change is needed in your code. Two things can change what a command does,
+<p>One change can need an edit: <code>momo.Avg</code> is now generic, so code that uses it
+as an uninstantiated function value must write <code>momo.Avg[float64]</code> (see
+"Aggregates over integer and <code>types.Numeric</code> columns" below). Otherwise no
+change is needed in your code. Two things can change what a command does,
 both below: a <code>momo.yaml</code> that lists several dialects, and a MySQL or MariaDB
 schema that the library generated earlier. Several calls that returned
 <code>ErrUnsupported</code> on some dialects now return results, so code that relied on
@@ -3066,6 +3091,35 @@ Before, the comma split it in two and the second half was an error or a stray
 option. A tag with no parentheses, and one whose parentheses or quotes do not
 balance, is split at every comma as before. A tag that held a comma inside
 parentheses now reads as one option; check any such tag.</p>
+<h3 id="aggregates-over-integer-and-typesnumeric-columns">Aggregates over integer and <code>types.Numeric</code> columns<a class="headerlink" href="#aggregates-over-integer-and-typesnumeric-columns" title="Permanent link">&para;</a></h3>
+<p><code>momo.Sum</code> still takes only an <code>int64</code> or <code>float64</code> column. New functions cover
+the rest, so wrapping the column in <code>sqlfn.Cast[int64]</code> with the type <code>bigint</code>
+is no longer needed:</p>
+<ul>
+<li><code>momo.SumInt(col)</code> sums an int, int8, int16, int32 or int64 column and returns an
+  <code>Agg[int64]</code> on every dialect. PostgreSQL returns numeric for <code>SUM</code> of a
+  bigint, so Momo writes <code>CAST(SUM(x) AS bigint)</code> there; a sum past int64 is an
+  error on every dialect.</li>
+<li><code>momo.SumNumeric(col)</code> and <code>momo.AvgNumeric(col)</code> return an exact
+  <code>types.Numeric</code> over an integer or <code>types.Numeric</code> column. SQLite cannot be
+  exact over a TEXT <code>types.Numeric</code> column, so <code>SumNumeric</code> over one and every
+  <code>AvgNumeric</code> fail with <code>ErrUnsupported</code> there. MySQL and MariaDB cast a
+  <code>types.Numeric</code> column to <code>DECIMAL(65,30)</code>, so the result has 30 decimal
+  places. On MySQL and MariaDB a value or a sum beyond <code>DECIMAL(65,30)</code> (more
+  than 35 integer digits) saturates or warns rather than erroring, and NaN and
+  Infinity cannot be stored there. Numeric results differ in trailing zeros
+  across dialects, so compare them numerically, not as strings. The SQLite
+  <code>ErrUnsupported</code> message names the aggregate and suggests <code>momo.Avg</code>
+  (float64) or <code>momo.SumInt</code> (integers).</li>
+<li><code>momo.Avg</code> now takes an integer, float or <code>types.Numeric</code> column and still
+  returns <code>float64</code>. The signature is generic (<code>Avg[T Averageable]</code>); a call
+  such as <code>momo.Avg(col)</code> compiles unchanged. Code that uses <code>momo.Avg</code> as an
+  uninstantiated function value must write <code>momo.Avg[float64]</code>. PostgreSQL
+  gets <code>CAST(AVG(x) AS double precision)</code> for a non-float column.</li>
+</ul>
+<div class="highlight"><pre><span></span><code>total, err := momo.Select[momo.Row1[*int64]](db).From(order.Table).
+    Columns(momo.SumInt(order.Cents)).One(ctx) // Cents is an int32 column
+</code></pre></div>
 <h3 id="explicit-identity-values-on-insert-no-change-needed">Explicit identity values on <code>Insert</code>: no change needed<a class="headerlink" href="#explicit-identity-values-on-insert-no-change-needed" title="Permanent link">&para;</a></h3>
 <p><code>momo.InsertQuery.Explicit</code> is new and opt-in, so existing code needs no edit.
 An <code>Insert</code> still leaves identity, serial and auto-increment columns out of the

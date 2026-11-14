@@ -1777,9 +1777,19 @@
 <td>Association is one relation listed for CreateGraph.</td>
 </tr>
 <tr>
+<td><code>momo.Averageable</code></td>
+<td>type</td>
+<td>Averageable is the constraint of Avg: an integer, a float or a types.Numeric column.</td>
+</tr>
+<tr>
 <td><code>momo.Avg</code></td>
 <td>func</td>
-<td>Avg is AVG(expr) as float64.</td>
+<td>Avg is AVG(expr) as float64 over an integer, float or types.Numeric column.</td>
+</tr>
+<tr>
+<td><code>momo.AvgNumeric</code></td>
+<td>func</td>
+<td>AvgNumeric is AVG(expr) as an exact types.Numeric over an integer or a types.Numeric column.</td>
 </tr>
 <tr>
 <td><code>momo.Batcher</code></td>
@@ -2497,6 +2507,11 @@
 <td>EscapeLike escapes %, _ and the escape character ! (each is prefixed with !) so the result matches literally inside a LIKE pattern rendered with ESCAPE '!', which Like, ILike and ContainsLiteral always emit.</td>
 </tr>
 <tr>
+<td><code>momo.Exact</code></td>
+<td>type</td>
+<td>Exact is the constraint of SumNumeric and AvgNumeric: the column types whose aggregate the database can compute exactly, integers and types.Numeric.</td>
+</tr>
+<tr>
 <td><code>momo.ExcludedExpr</code></td>
 <td>type</td>
 <td>ExcludedExpr is the EXCLUDED.<col> reference returned by Column.Excluded.</td>
@@ -3077,6 +3092,11 @@
 <td>InsertValue is an explicit column write accepted by Insert.Values: an Assignment, or an InsertAssignment from a create-only or immutable column.</td>
 </tr>
 <tr>
+<td><code>momo.Integer</code></td>
+<td>type</td>
+<td>Integer is the constraint of SumInt: the signed integer column types.</td>
+</tr>
+<tr>
 <td><code>momo.Interceptor</code></td>
 <td>type</td>
 <td>Interceptor may append predicates or return an error to deny the statement.</td>
@@ -3519,7 +3539,7 @@
 <tr>
 <td><code>momo.Number</code></td>
 <td>type</td>
-<td>Number is the constraint of the numeric aggregates SUM.</td>
+<td>Number is the constraint of Sum, which keeps the column's own type as its result.</td>
 </tr>
 <tr>
 <td><code>momo.Operation</code></td>
@@ -4445,6 +4465,16 @@
 <td><code>momo.Sum</code></td>
 <td>func</td>
 <td>Sum is SUM(expr).</td>
+</tr>
+<tr>
+<td><code>momo.SumInt</code></td>
+<td>func</td>
+<td>SumInt is SUM(expr) over an int, int8, int16, int32 or int64 column with an int64 result, whatever the column width.</td>
+</tr>
+<tr>
+<td><code>momo.SumNumeric</code></td>
+<td>func</td>
+<td>SumNumeric is SUM(expr) as an exact types.Numeric over an integer or a types.Numeric column.</td>
 </tr>
 <tr>
 <td><code>momo.TableRef</code></td>

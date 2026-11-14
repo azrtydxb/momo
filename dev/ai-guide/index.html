@@ -2793,7 +2793,24 @@ SQLite), <code>SelectUnion[T]</code> (runs a union at the top level with an oute
 <code>FromSubquery</code>, <code>Each</code> (a context and a callback per row) and <code>Iter</code> (a
 context; it returns <code>iter.Seq2[T, error]</code>). <code>Count</code> and <code>Exists</code> wrap the whole
 statement, so they keep a lock clause and lock the rows they count. Aggregates: <code>momo.CountAll</code>,
-<code>CountOf</code>, <code>CountDistinct</code>, <code>Sum</code>, <code>Avg</code>, <code>Min</code>, <code>Max</code>.</p>
+<code>CountOf</code>, <code>CountDistinct</code>, <code>Sum</code>, <code>SumInt</code>, <code>SumNumeric</code>, <code>Avg</code>, <code>AvgNumeric</code>, <code>Min</code>, <code>Max</code>.</p>
+<p>Pick the sum or average by the column type. <code>momo.Sum</code> keeps an <code>int64</code> or
+<code>float64</code> column's own type. For an int16 or int32 column (a Prisma <code>Int</code> is
+int4) use <code>momo.SumInt</code>, which takes int, int8, int16, int32 or int64 and returns an
+<code>int64</code> on every dialect with no <code>sqlfn.Cast</code> (PostgreSQL gets
+<code>CAST(SUM(x) AS bigint)</code>; a sum past int64 is an error). For an exact result use
+<code>momo.SumNumeric</code> or <code>momo.AvgNumeric</code>, which return <code>types.Numeric</code> and take an
+integer or <code>types.Numeric</code> column; SQLite cannot add a TEXT <code>types.Numeric</code>
+column exactly, so <code>SumNumeric</code> over one and every <code>AvgNumeric</code> are
+<code>ErrUnsupported</code> there. <code>momo.Avg</code> takes an integer, float or <code>types.Numeric</code>
+column and returns <code>float64</code> (PostgreSQL gets <code>CAST(AVG(x) AS double precision)</code>).
+On MySQL and MariaDB a value or sum beyond <code>DECIMAL(65,30)</code> (more than 35
+integer digits) saturates or warns rather than erroring, and NaN and Infinity
+cannot be stored in the TEXT column. Numeric results differ in trailing zeros
+across dialects (MySQL and MariaDB always give 30 decimal places), so compare
+them numerically, not as strings. The SQLite <code>ErrUnsupported</code> message names the
+aggregate and points to <code>momo.Avg</code> (float64) or <code>momo.SumInt</code> (integers).
+All of them are NULL over zero rows: read them into a pointer, as <code>Sum</code>.</p>
 <p>An aggregate takes <code>Filter(p)</code> (<code>momo.Agg.Filter</code>, <code>agg.Call.Filter</code>) on every
 dialect. PostgreSQL and SQLite render <code>agg(x) FILTER (WHERE p)</code>. MySQL and
 MariaDB have no FILTER, so momo renders <code>agg(CASE WHEN p THEN x END)</code> and

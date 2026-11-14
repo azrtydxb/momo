@@ -1946,7 +1946,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>Aggregates, <code>GroupBy</code>, <code>Having</code></td>
 <td>yes</td>
 <td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
-<td><code>CountAll</code>, <code>CountOf</code>, <code>CountDistinct</code>, <code>Sum</code>, <code>Avg</code>, <code>Min</code>, <code>Max</code></td>
+<td><code>CountAll</code>, <code>CountOf</code>, <code>CountDistinct</code>, <code>Sum</code>, <code>Avg</code>, <code>Min</code>, <code>Max</code>. <code>momo.SumInt</code> sums an int, int8, int16, int32 or int64 column as <code>int64</code>. <code>momo.SumNumeric</code> and <code>momo.AvgNumeric</code> give an exact <code>types.Numeric</code>, and <code>momo.Avg</code> takes an integer, float or <code>types.Numeric</code> column. PostgreSQL, MySQL and MariaDB: yes (MySQL, MariaDB cast a <code>types.Numeric</code> TEXT column to <code>DECIMAL(65,30)</code>). SQLite: <code>SumInt</code>, <code>Avg</code> and <code>SumNumeric</code> over an integer column yes; <code>SumNumeric</code> over a <code>types.Numeric</code> column and <code>AvgNumeric</code> are <code>ErrUnsupported</code></td>
 </tr>
 <tr>
 <td>Projections (non-model result types)</td>
