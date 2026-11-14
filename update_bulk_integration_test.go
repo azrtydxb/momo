@@ -78,8 +78,6 @@ func wantStock(t testing.TB, got map[string]stockRow, key string, qty int64, not
 	}
 }
 
-func strp(s string) *string { return &s }
-
 // Catches: a composite key matched on one column (rows of the same region or
 // sku changing), a NULL value bound as a zero value, a key outside the table
 // creating a row, a list-wide affected count that differs between servers, and
