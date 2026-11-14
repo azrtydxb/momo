@@ -73,3 +73,10 @@ func Compile(name dialect.Name, p momo.Predicate) (momo.Compiled, error) {
 		Where(p).
 		SQL()
 }
+
+// DBFlavor opens a DB for the MySQL-family flavor (dialect.FlavorMySQL or
+// dialect.FlavorMariaDB) over a driver that records statements and runs none.
+// DB(dialect.MySQL) renders the MySQL flavor only.
+func DBFlavor(f dialect.Flavor) *momo.DB {
+	return momo.New(fakedriver.NewDialect(dialect.MySQLFlavor(f)))
+}
