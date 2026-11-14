@@ -3538,7 +3538,17 @@ file, or run again with <code>--overwrite</code> to take the regenerated one.
 <code>--overwrite</code> only replaces a conflicting file: an edited file whose model the
 database did not change stays as it is. A file whose
 table is gone is printed as <code>orphan</code> and never deleted. <code>--check</code> writes
-nothing, prints <code>stale: &lt;file&gt;</code> for each difference and exits 1. The init
+nothing, prints <code>stale: &lt;file&gt;</code> for each difference and exits 1.</p>
+<p>The header hash is only a guide to whether a file was edited; the body decides.
+When the regenerated body equals the file's body byte for byte (line endings
+aside, so a CRLF checkout counts), the file is current even though the hash in
+its header differs, which is the case after you edit a model by hand, run
+<code>momo generate</code> and <code>momo migrate diff</code>, and then check a database the
+migrations built. <code>--check</code> then reports nothing for that file. A plain run
+prints <code>header: &lt;file&gt;</code> and rewrites only the first line so the hash is right
+again; it writes no <code>.new</code> file and reports no conflict. A body that differs
+from the regenerated one is a conflict or stale as before. <code>momo generate</code>
+without <code>--from-db</code> never reads or writes this header. The init
 snapshot is written once: when the migration directory already has a snapshot,
 use <code>diff</code> for later schema changes. Put code of your own in other files and
 rules in the <code>introspect</code> section, and a re-run stays quiet.</p>

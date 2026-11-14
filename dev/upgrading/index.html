@@ -1099,6 +1099,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0120" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.12.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.12.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#generate-from-db-check-compares-the-body-not-only-the-header-hash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        generate --from-db --check compares the body, not only the header hash
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0110" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1931,6 +1959,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0120" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.12.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.12.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#generate-from-db-check-compares-the-body-not-only-the-header-hash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        generate --from-db --check compares the body, not only the header hash
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0110" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2662,6 +2718,16 @@
 <a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
+<h2 id="upgrading-to-0120">Upgrading to 0.12.0<a class="headerlink" href="#upgrading-to-0120" title="Permanent link">&para;</a></h2>
+<h3 id="generate-from-db-check-compares-the-body-not-only-the-header-hash"><code>generate --from-db --check</code> compares the body, not only the header hash<a class="headerlink" href="#generate-from-db-check-compares-the-body-not-only-the-header-hash" title="Permanent link">&para;</a></h3>
+<p>No change is needed. A model file written by <code>momo generate --from-db</code> that
+you edited by hand used to be reported as stale (<code>--check</code>) or as a conflict
+with a <code>.new</code> file (plain run) whenever the database now held your edit too,
+because the <code>// momo:fromdb sha256=...</code> header still carried the hash of the
+old body. Now a file whose body equals the regenerated body is current: <code>--check</code>
+passes, and a plain run rewrites only the header line. A file whose body
+differs is still stale or a conflict, and <code>momo generate</code> without <code>--from-db</code>
+is unchanged.</p>
 <h2 id="upgrading-to-0110">Upgrading to 0.11.0<a class="headerlink" href="#upgrading-to-0110" title="Permanent link">&para;</a></h2>
 <p>Two changes can need an edit in your code: an explicit <code>updated_at</code> in
 <code>DoUpdate</code> is refused, and on PostgreSQL a JSON null no longer reads as a nil
