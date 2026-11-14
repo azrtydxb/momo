@@ -2983,12 +2983,16 @@
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
 <h2 id="upgrading-to-0120">Upgrading to 0.12.0<a class="headerlink" href="#upgrading-to-0120" title="Permanent link">&para;</a></h2>
-<p>One change can need an edit: <code>momo.Avg</code> is now generic, so code that uses it
+<p>Two changes can need an edit. <code>momo.Avg</code> is now generic, so code that uses it
 as an uninstantiated function value must write <code>momo.Avg[float64]</code> (see
-"Aggregates over integer and <code>types.Numeric</code> columns" below). Otherwise no
-change is needed in your code. Two things can change what a command does,
-both below: a <code>momo.yaml</code> that lists several dialects, and a MySQL or MariaDB
-schema that the library generated earlier. Several calls that returned
+"Aggregates over integer and <code>types.Numeric</code> columns" below). And
+<code>momo generate --from-db --schema</code> is now a usage error on MySQL and MariaDB,
+which ignored the flag before, so a script that passes it there must drop it (see "<code>momo generate --from-db</code> reads SQLite" below). Otherwise no
+change is needed in your code. Three things can change what a command does,
+all below: a <code>momo.yaml</code> that lists several dialects, a MySQL or MariaDB
+schema that the library generated earlier, and a SQLite <code>INTEGER PRIMARY KEY</code>
+that inspection now reports as NOT NULL, which can show one rebuild in the
+next <code>momo migrate diff</code>. Several calls that returned
 <code>ErrUnsupported</code> on some dialects now return results, so code that relied on
 the error (a fallback branch, a test that expects the refusal) now takes the
 success path. Check the semantic differences below before you drop a

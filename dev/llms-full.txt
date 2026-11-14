@@ -9285,12 +9285,16 @@ later releases can break more.
 
 ## Upgrading to 0.12.0
 
-One change can need an edit: `momo.Avg` is now generic, so code that uses it
+Two changes can need an edit. `momo.Avg` is now generic, so code that uses it
 as an uninstantiated function value must write `momo.Avg[float64]` (see
-"Aggregates over integer and `types.Numeric` columns" below). Otherwise no
-change is needed in your code. Two things can change what a command does,
-both below: a `momo.yaml` that lists several dialects, and a MySQL or MariaDB
-schema that the library generated earlier. Several calls that returned
+"Aggregates over integer and `types.Numeric` columns" below). And
+`momo generate --from-db --schema` is now a usage error on MySQL and MariaDB,
+which ignored the flag before, so a script that passes it there must drop it (see "`momo generate --from-db` reads SQLite" below). Otherwise no
+change is needed in your code. Three things can change what a command does,
+all below: a `momo.yaml` that lists several dialects, a MySQL or MariaDB
+schema that the library generated earlier, and a SQLite `INTEGER PRIMARY KEY`
+that inspection now reports as NOT NULL, which can show one rebuild in the
+next `momo migrate diff`. Several calls that returned
 `ErrUnsupported` on some dialects now return results, so code that relied on
 the error (a fallback branch, a test that expects the refusal) now takes the
 success path. Check the semantic differences below before you drop a
