@@ -49,8 +49,11 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 	if l.dialectName, err = l.chooseDialect(); err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
-	if l.dialectName != string(dialect.Postgres) {
-		return l.errf(exitUsage, "--from-db reads PostgreSQL databases only, not %s", l.dialectName)
+	if l.dialectName != string(dialect.Postgres) && l.dialectName != string(dialect.SQLite) {
+		return l.errf(exitUsage, "--from-db reads PostgreSQL and SQLite databases only, not %s", l.dialectName)
+	}
+	if a.schemas != "" && l.dialectName == string(dialect.SQLite) {
+		return l.errf(exitUsage, "--schema does not apply to SQLite, which has one namespace per database file")
 	}
 	if a.schemas != "" {
 		l.file.Migrate.Schemas = strings.Split(a.schemas, ",")
@@ -78,6 +81,11 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 	if err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
+	if l.dialectName == string(dialect.SQLite) {
+		if err := requireSQLiteFile(dsn); err != nil {
+			return l.errf(exitUsage, "%v", err)
+		}
+	}
 	// introspect.skip tables get no model, so inspection skips them before
 	// reading them: one the schema model cannot represent must not fail the run.
 	savedExclude := l.file.Migrate.Exclude
@@ -95,7 +103,7 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 	if err := checkOnlyMatched(l.file.Introspect.Only, live.Tables, l.say); err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
-	res, err := fromdb.Generate(live, fromdb.Options{Package: pkg, Namer: namer, Config: l.file.Introspect})
+	res, err := fromdb.Generate(live, fromdb.Options{Package: pkg, Namer: namer, Config: l.file.Introspect, Dialect: dialect.Name(l.dialectName)})
 	if err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
@@ -214,8 +222,13 @@ func packageNameFor(dir string) string {
 
 // fromDBURL resolves --from-db: "-" reads the URL from standard input, a
 // value that looks like a URL or a key=value string is the connection string
-// itself, and anything else names an environment variable.
+// itself, and anything else names an environment variable. For SQLite a path,
+// a sqlite: or file: URL or an existing file is the database itself.
 func (l *cli) fromDBURL(src string) (string, error) {
+	// A SQLite database is a path or a sqlite: or file: URL; it holds no secret.
+	if l.dialectName == string(dialect.SQLite) && src != "-" && looksLikeSQLiteSource(src) {
+		return src, nil
+	}
 	switch {
 	case src == "-":
 		if f, ok := migrateStdin.(*os.File); ok {

@@ -5,6 +5,30 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.12.0
+
+Nothing in this release needs an edit in your code.
+
+### `momo generate --from-db` reads SQLite
+
+No change is needed. `momo generate --from-db` now also reads a SQLite
+database: set `dialects: [sqlite]` in `momo.yaml` and pass the file (a path, a
+`sqlite:` or `file:` URL, or an environment variable that holds one). The CLI
+opens it with the pure-Go driver `driver/sqlitepure`, so the binary needs no
+cgo, and `momo migrate` runs on a SQLite file with `--url` or `migrate.url_env`
+too. A project that uses PostgreSQL sees no difference.
+
+Two details can change what an existing SQLite project sees, and neither asks
+for an edit:
+
+- Inspection now reports an `INTEGER PRIMARY KEY` column as NOT NULL. SQLite
+  reports it as nullable when the DDL does not say NOT NULL, but the column is
+  the rowid and cannot hold NULL. A model that declares it NOT NULL no longer
+  differs from such a database.
+- The `momo.Model` marker tag accepts the new options `autoincrement`,
+  `without_rowid` and `strict`, which declare the SQLite table options of the
+  same name. A model that does not use them is unchanged.
+
 ## Upgrading to 0.11.0
 
 Two changes can need an edit in your code: an explicit `updated_at` in

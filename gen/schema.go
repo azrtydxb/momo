@@ -197,6 +197,7 @@ func (b *schemaBuilder) addModel(m *Model) {
 	b.names = map[string]string{}
 	b.applyIndexTags(m, &t)
 	b.applyCompanion(m, &t)
+	b.applyTableOptions(m, &t)
 	if m.IsView {
 		// The companion's views, functions and policies are merged above; the
 		// table is not part of the schema, only the emitter reads it.
@@ -207,6 +208,23 @@ func (b *schemaBuilder) addModel(m *Model) {
 	b.index[m] = len(b.s.Tables)
 	b.s.Tables = append(b.s.Tables, t)
 	b.dialectCheck()
+}
+
+// applyTableOptions copies the SQLite table options of the momo.Model marker
+// (autoincrement, without_rowid, strict) to t. They exist on SQLite only, so a
+// model that names one while a configured dialect is another is a diagnostic;
+// the rules about which table may be AUTOINCREMENT are the renderer's.
+func (b *schemaBuilder) applyTableOptions(m *Model, t *schema.Table) {
+	if !m.Autoincrement && !m.WithoutRowID && !m.Strict {
+		return
+	}
+	for _, d := range append(slices.Clone(b.dialects), b.primary) {
+		if d != dialect.SQLite {
+			b.diag(m.Pos, fmt.Sprintf("model %s: autoincrement, without_rowid and strict are SQLite table options and are not supported on %s", m.GoName, d))
+			return
+		}
+	}
+	t.Autoincrement, t.WithoutRowID, t.Strict = m.Autoincrement, m.WithoutRowID, m.Strict
 }
 
 // applyColumnTags maps the column-level tags of f to a schema column.

@@ -341,6 +341,7 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 	m.IsView = d.viewIdx >= 0
 	m.Schema = mt.Schema
 	m.Table = mt.Table
+	m.Autoincrement, m.WithoutRowID, m.Strict = mt.Autoincrement, mt.WithoutRowID, mt.Strict
 	if m.Table == "" {
 		m.Table = d.namer.TableName(m.GoName)
 	}

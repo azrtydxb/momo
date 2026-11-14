@@ -27,6 +27,7 @@ import (
 	"github.com/azrtydxb/momo/internal/migratecfg"
 	"github.com/azrtydxb/momo/migrate"
 	mpg "github.com/azrtydxb/momo/migrate/postgres"
+	msqlite "github.com/azrtydxb/momo/migrate/sqlite"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -322,8 +323,11 @@ func dirFS(dir string) iofs.FS {
 
 // dialectImpl returns the migration dialect, or an error when none exists yet.
 func (l *cli) dialectImpl() (migrate.Dialect, error) {
-	if l.dialectName == string(dialect.Postgres) {
+	switch l.dialectName {
+	case string(dialect.Postgres):
 		return mpg.New(), nil
+	case string(dialect.SQLite):
+		return msqlite.New(), nil
 	}
 	return nil, fmt.Errorf("migrations for dialect %q are not available yet", l.dialectName)
 }
@@ -367,7 +371,9 @@ func (l *cli) databaseURL() (string, error) {
 		}
 	case "":
 	default:
-		_, _ = fmt.Fprintln(l.errOut, "momo: warning: --url puts the database URL in the process list, where other users can read it; use MOMO_DATABASE_URL, migrate.url_env or --url - (stdin) instead")
+		if l.dialectName != string(dialect.SQLite) {
+			_, _ = fmt.Fprintln(l.errOut, "momo: warning: --url puts the database URL in the process list, where other users can read it; use MOMO_DATABASE_URL, migrate.url_env or --url - (stdin) instead")
+		}
 	}
 	if u == "" {
 		if name := l.file.Migrate.URLEnv[l.dialectName]; name != "" {
@@ -387,6 +393,9 @@ func (l *cli) databaseURL() (string, error) {
 // noteURL registers the URL and its password as secrets to redact, and warns
 // when TLS is not enforced for a remote host.
 func (l *cli) noteURL(u string) {
+	if l.dialectName == string(dialect.SQLite) {
+		return // a SQLite database is a file path: no password and no host
+	}
 	l.secrets = append(l.secrets, u)
 	if w := tlsWarning(u, l.env); w != "" {
 		_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", migrate.RedactURLs(w, l.secrets...))
@@ -417,6 +426,9 @@ func (l *cli) openEngineAt(ctx context.Context, dsn string, extra ...migrate.Opt
 	opts, err := l.engineOptions(d, extra...)
 	if err != nil {
 		return nil, nil, l.errf(exitUsage, "%v", err)
+	}
+	if l.dialectName == string(dialect.SQLite) {
+		return l.openSQLiteEngine(dsn, opts)
 	}
 	if l.dialectName != string(dialect.Postgres) {
 		return nil, nil, l.errf(exitUsage, "no driver for dialect %q", l.dialectName)

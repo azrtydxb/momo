@@ -606,14 +606,13 @@ func TestDBDefaultFits(t *testing.T) {
 	}
 }
 
-// Catches: --from-db tagging a MySQL, MariaDB or SQLite default, where a zero
-// value would then fail (MySQL has no RETURNING) or be read back differently.
-func TestDBDefaultFitsOnlyOnPostgres(t *testing.T) {
+// Catches: --from-db tagging a MySQL or MariaDB default, where a zero value
+// would then fail (no RETURNING to read the stored value back). PostgreSQL and
+// SQLite read it back; TestDBDefaultFitsSQLite covers SQLite.
+func TestDBDefaultFitsNotOnMySQL(t *testing.T) {
 	col := schema.Column{Default: "CURRENT_TIMESTAMP"}
-	for _, d := range []dialect.Name{dialect.MySQL, dialect.SQLite} {
-		if dbDefaultFits(d, &col, nil) {
-			t.Errorf("%s: dbdefault must not be emitted", d)
-		}
+	if dbDefaultFits(dialect.MySQL, &col, nil) {
+		t.Errorf("%s: dbdefault must not be emitted", dialect.MySQL)
 	}
 	if !dbDefaultFits(dialect.Postgres, &col, nil) {
 		t.Error("postgres: dbdefault expected")

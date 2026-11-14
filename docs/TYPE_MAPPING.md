@@ -258,6 +258,30 @@ except `NaN`, which SQLite does not have (see Floats).
   infinities), or as a string to avoid binary floating point. Values beyond
   `float64` precision round-trip exactly, and `numeric` also accepts `NaN`.
 
+## Reading a SQLite database with --from-db
+
+`momo generate --from-db` on a SQLite database maps a declared column type to a
+Go type by the type affinity rules of SQLite, the inverse of the SQLite column
+of the generated mappings above. It adds a `type:` tag with the declared type
+whenever the Go type's own SQLite column differs, so the models build the column
+back as it was.
+
+| Declared type contains or is | Go type      | Tag written                         |
+| ---------------------------- | ------------ | ----------------------------------- |
+| `INT` (`INTEGER`, `BIGINT`)  | `int64`      | `type:<declared>` unless `INTEGER`  |
+| `CHAR`, `CLOB`, `TEXT`       | `string`     | `type:<declared>` unless `TEXT`     |
+| `BLOB`                       | `[]byte`     | `type:<declared>` unless `BLOB`     |
+| `REAL`, `FLOA`, `DOUB`       | `float64`    | `type:<declared>` unless `REAL`     |
+| `BOOLEAN`                    | `bool`       | `type:BOOLEAN`                      |
+| `DATETIME`, `TIMESTAMP`      | `time.Time`  | `type:DATETIME` or `type:TIMESTAMP` |
+| `DATE`                       | `types.Date` | `type:DATE`                         |
+| `NUMERIC`                    | `float64`    | `type:NUMERIC`, with a report note  |
+
+Any other declared type has NUMERIC affinity, which holds integers, floats and
+text alike, so it has no single Go type: `DECIMAL(10,2)`, `JSON` and a column
+with no declared type are errors until an `introspect.types` or
+`introspect.columns` rule names the Go type. The column text is never guessed.
+
 ## Null handling
 
 A column that can be NULL needs a Go type that can hold NULL: a pointer

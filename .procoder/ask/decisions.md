@@ -514,3 +514,41 @@ n DAY)` and `DATEDIFF(a, b)`. SQLite, which stores a date as `YYYY-MM-DD`
   `ErrValidation`.
 
 Decision (2026-11-13, integrator): as above.
+
+## Parity: --from-db on SQLite (2026-11-14, integrator)
+
+- **Scope:** `momo generate --from-db` reads a SQLite database. The dialect
+  comes from `momo.yaml`; the value is a path, a `sqlite:` or `file:` URL, or an
+  environment variable name. The CLI opens it with `driver/sqlitepure`, so the
+  binary needs no cgo. Opening sets WAL mode, as every momo SQLite connection
+  does; the file must exist, because opening a missing one would create it.
+- **Reuse:** the inspection is `migrate/sqlite`'s, through `Engine.Inspect`, not
+  a second reader. `fromdb.Generate` takes `Options.Dialect` (PostgreSQL or
+  SQLite). The CLI's `dialectImpl` and `openEngineAt` gain SQLite, so
+  `momo migrate` runs on SQLite as well.
+- **Inspection fix:** a rowid alias (`INTEGER PRIMARY KEY`) is reported NOT
+  NULL. The pragma says nullable for one that is not declared NOT NULL, but it
+  cannot hold NULL, and a model cannot declare a nullable key. Another primary
+  key column that allows NULL is written NOT NULL with a warning.
+- **Table options:** `AUTOINCREMENT`, `WITHOUT ROWID` and `STRICT` had no model
+  declaration, so a database that uses them could not round-trip. They are the
+  `autoincrement`, `without_rowid` and `strict` options of the `momo.Model`
+  marker tag, a diagnostic on any other dialect.
+- **Types:** a declared type maps by the SQLite affinity rules (INT, CHAR, CLOB,
+  TEXT, BLOB, REAL, FLOA, DOUB), plus BOOLEAN, DATETIME, TIMESTAMP and DATE. The
+  declared spelling is kept with a `type:` tag when the Go type alone would give
+  another. NUMERIC affinity by default (`DECIMAL(10,2)`, `JSON`) and a column
+  with no type stay unmapped errors: there is no one Go type to guess.
+- **dbdefault:** the PostgreSQL rule applies unchanged to SQLite, which reads the
+  value back with `RETURNING`: computed defaults are tagged, constant ones only
+  with `introspect.dbdefault: all`, where a non-zero `bool` or number becomes a
+  pointer. MySQL is still excluded.
+- **Indexes:** a unique index with no option is `c.Index(...).Unique()` on
+  SQLite. The PostgreSQL spelling `c.Unique(...).Method("btree")` would store a
+  method that SQLite inspection never reports.
+- **Skipped:** policies, extensions, schemas and functions do not exist on
+  SQLite and are never read. A SQLite CHECK of the form `col IN (...)` on a TEXT
+  column stays an enum column, which models and the SQLite renderer already
+  support.
+
+Decision (2026-11-14, integrator): as above.

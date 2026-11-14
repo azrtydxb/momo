@@ -96,7 +96,8 @@ func (r *Result) Failed() bool {
 type Options struct {
 	// Package is the Go package name of the models.
 	Package string
-	// Dialect defaults to PostgreSQL, the only dialect with an inspector.
+	// Dialect is the dialect of the inspected schema: PostgreSQL (the default)
+	// or SQLite, the dialects with an inspector.
 	Dialect dialect.Name
 	// Namer derives the table and column names the generator will derive from
 	// the Go names; tags are written only where it would derive another name.
@@ -115,8 +116,8 @@ func Generate(s *schema.Schema, o Options) (*Result, error) {
 	if o.Dialect == "" {
 		o.Dialect = dialect.Postgres
 	}
-	if o.Dialect != dialect.Postgres {
-		return nil, fmt.Errorf("fromdb: dialect %s is not supported yet: only PostgreSQL has an inspector", o.Dialect)
+	if o.Dialect != dialect.Postgres && o.Dialect != dialect.SQLite {
+		return nil, fmt.Errorf("fromdb: dialect %s is not supported yet: only PostgreSQL and SQLite have an inspector", o.Dialect)
 	}
 	if !token.IsIdentifier(o.Package) {
 		return nil, fmt.Errorf("fromdb: %q is not a Go package name", o.Package)
@@ -243,7 +244,7 @@ func (g *generator) cleanGlobals() {
 	for _, t := range g.clean.Tables {
 		for _, c := range t.Columns {
 			base, _, _ := splitType(schema.NormalizeType(g.o.Dialect, c.Type))
-			if _, ok := postgresVectors[base]; ok && base != "bit" {
+			if _, ok := postgresVectors[base]; ok && base != "bit" && g.o.Dialect == dialect.Postgres {
 				vec = true
 			}
 		}
@@ -391,6 +392,14 @@ func (g *generator) columns(m *model) {
 	pk := map[string]bool{}
 	for _, c := range t.PrimaryKey {
 		pk[c] = true
+		// A primary key column is NOT NULL in a model. SQLite lets a key column
+		// of a rowid table hold NULL unless it says NOT NULL, so the database can
+		// differ: the model and the snapshot take the NOT NULL, and the baseline
+		// reports the column.
+		if col := colByName(t, c); col != nil && col.Nullable {
+			col.Nullable = false
+			g.add(SevWarn, t.Name+"."+c, "the primary key column allows NULL in the database, which a model cannot declare: it is written NOT NULL, and the baseline will report the column")
+		}
 	}
 	for i := range t.Columns {
 		// field may adjust the column (an enum column's type), and the snapshot
@@ -580,7 +589,11 @@ func (g *generator) typeTags(col *schema.Column, gt GoType) ([]string, error) {
 		if !tagSafe(col.Enum) {
 			return nil, fmt.Errorf("the enum name %q cannot be written in a tag", col.Enum)
 		}
-		col.Type = col.Enum
+		if g.o.Dialect != dialect.SQLite {
+			// A PostgreSQL enum column has the enum as its type. A SQLite one is a
+			// TEXT column with a CHECK, and the enum tag leaves it TEXT.
+			col.Type = col.Enum
+		}
 		return []string{"enum:" + col.Enum}, nil
 	}
 	want := schema.NormalizeType(g.o.Dialect, col.Type)
@@ -653,20 +666,20 @@ func mergeTags(generated, user []string) []string {
 // would otherwise overwrite. A constant default is left alone, as is a column
 // whose other tags already decide how it is written. A sequence default
 // (nextval(...)) on a column that is not identity or serial counts as
-// computed, so a zero id is no longer written over it. Only PostgreSQL
-// qualifies: the tag needs INSERT ... RETURNING to read the value back, which
-// plain MySQL lacks, and MariaDB and SQLite have no inspector here yet.
+// computed, so a zero id is no longer written over it. Only PostgreSQL and
+// SQLite qualify: the tag needs INSERT ... RETURNING to read the value back,
+// which plain MySQL lacks.
 func dbDefaultFits(d dialect.Name, col *schema.Column, opts []string) bool {
 	return computedDefault(col.Default) && dbDefaultAny(d, col, opts)
 }
 
 // dbDefaultAny reports whether the field of col could carry dbdefault whatever
-// its default is: a NOT NULL PostgreSQL column with a default that no other
+// its default is: a NOT NULL PostgreSQL or SQLite column with a default that no other
 // tag already owns. introspect.dbdefault: all tags every such column, constant
 // defaults (DEFAULT 1) included. A nullable column never qualifies, because a
 // nil pointer would stop meaning NULL.
 func dbDefaultAny(d dialect.Name, col *schema.Column, opts []string) bool {
-	if d != dialect.Postgres || col.Nullable || col.Identity != "" || strings.TrimSpace(col.Default) == "" {
+	if (d != dialect.Postgres && d != dialect.SQLite) || col.Nullable || col.Identity != "" || strings.TrimSpace(col.Default) == "" {
 		return false
 	}
 	for _, o := range opts {
@@ -926,7 +939,7 @@ func (g *generator) index(m *model, ix schema.Index) bool {
 	if !allExpr && g.tagIndex(m, ix, method) {
 		return true
 	}
-	m.stmts = append(m.stmts, indexStmt(m, ix, method, allExpr))
+	m.stmts = append(m.stmts, indexStmt(m, ix, method, allExpr, g.o.Dialect))
 	return true
 }
 
@@ -1005,9 +1018,14 @@ func defaultIndexName(table, column string, unique bool) string {
 	return table + "_" + column + "_idx"
 }
 
-func indexStmt(m *model, ix schema.Index, method string, allExpr bool) string {
+func indexStmt(m *model, ix schema.Index, method string, allExpr bool, d dialect.Name) string {
 	var args []string
 	call := "c.Index"
+	// PostgreSQL normalizes the btree method away, so a unique index with no
+	// option is written c.Unique(...).Method("btree") to tell it from a
+	// constraint. Other dialects keep the method as written and inspect none,
+	// so there the unique index is c.Index(...).Unique().
+	uniqueOpt := ix.Unique && !allExpr && d != dialect.Postgres
 	if allExpr {
 		call = "c.IndexExpr"
 		for _, p := range ix.Parts {
@@ -1018,7 +1036,7 @@ func indexStmt(m *model, ix schema.Index, method string, allExpr bool) string {
 			}
 		}
 	} else {
-		if ix.Unique {
+		if ix.Unique && !uniqueOpt {
 			call = "c.Unique"
 		}
 		for _, p := range ix.Parts {
@@ -1032,7 +1050,7 @@ func indexStmt(m *model, ix schema.Index, method string, allExpr bool) string {
 	}
 	s += ")"
 	opts := 0
-	if allExpr && ix.Unique {
+	if (allExpr || uniqueOpt) && ix.Unique {
 		s += ".Unique()"
 		opts++
 	}
@@ -1066,7 +1084,7 @@ func indexStmt(m *model, ix schema.Index, method string, allExpr bool) string {
 			opts++
 		}
 	}
-	if ix.Unique && !allExpr && opts == 0 {
+	if ix.Unique && !allExpr && !uniqueOpt && opts == 0 {
 		// A unique with no option reads as a constraint; the btree method makes
 		// it the unique index it is.
 		s += `.Method("btree")`
@@ -1234,6 +1252,15 @@ func (m *model) markerTags(g *generator) []string {
 	}
 	if m.t.Schema != "" {
 		out = append(out, "schema:"+m.t.Schema)
+	}
+	if m.t.Autoincrement {
+		out = append(out, "autoincrement")
+	}
+	if m.t.WithoutRowID {
+		out = append(out, "without_rowid")
+	}
+	if m.t.Strict {
+		out = append(out, "strict")
 	}
 	if r, ok := g.o.Config.Tables[m.t.Name]; ok {
 		out = mergeTags(out, r.Tags)

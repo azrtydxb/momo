@@ -58,11 +58,11 @@ set `migrate.dir.postgres` or `--dir`). `diff` writes exactly three files:
 ### Format versions
 
 | Artifact         | Field                                 | v0.11.0 value | Newer than this binary <!-- x-release-please-version --> |
-| ---------------- | ------------------------------------- | ------------ | -------------------------------------------------------- |
-| Snapshot wrapper | `format_version`                      | 1            | read error, "upgrade momo"                               |
-| Embedded schema  | `schema.format_version`               | 1            | read error, "upgrade momo"                               |
-| `momo.sum`       | header `# momo.sum format=N`          | 1            | read error                                               |
-| History table    | `checksum` of the row `__momo_meta__` | 1            | apply refuses, "upgrade momo"                            |
+| ---------------- | ------------------------------------- | ------------- | -------------------------------------------------------- |
+| Snapshot wrapper | `format_version`                      | 1             | read error, "upgrade momo"                               |
+| Embedded schema  | `schema.format_version`               | 1             | read error, "upgrade momo"                               |
+| `momo.sum`       | header `# momo.sum format=N`          | 1             | read error                                               |
+| History table    | `checksum` of the row `__momo_meta__` | 1             | apply refuses, "upgrade momo"                            |
 
 A snapshot without `format_version` is rejected.
 
@@ -1015,8 +1015,9 @@ engine, err := migrate.NewEngine(drv, dir, migrate.WithDialect(pg), migrate.With
 
 Worked example: `examples/adopt-existing-schema`.
 
-`momo generate --from-db` reads a live PostgreSQL database and writes the
-models and the init snapshot, so nothing has to be written by hand first.
+`momo generate --from-db` reads a live PostgreSQL or SQLite database (the
+dialect of `momo.yaml`; see [a SQLite database](#a-sqlite-database)) and writes
+the models and the init snapshot, so nothing has to be written by hand first.
 
 1. Run `momo generate --from-db DATABASE_URL`. The value is a database URL, `-`
    to read the URL from standard input, or the name of an environment variable
@@ -1081,6 +1082,57 @@ the expression.
 A VIRTUAL one also gets the `virtual` tag option (or `c.GeneratedVirtual(&m.Field,
 "<expr>")` when the expression has a comma), so the model declares the kind the
 database has.
+
+### A SQLite database
+
+With `dialects: [sqlite]` in `momo.yaml`, `--from-db` takes the database file:
+a path, a `sqlite:` or `file:` URL, or the name of an environment variable that
+holds one. The file must exist. The CLI opens it with the pure-Go driver
+`driver/sqlitepure`, so no cgo is needed, and, like every momo SQLite
+connection, that sets WAL mode on the file. `--schema` is refused: SQLite has
+one namespace per database file. The same `momo migrate` commands (`diff`,
+`apply`, `baseline`, `drift` and the rest) run on SQLite with `--url` or
+`migrate.url_env` pointing at the file.
+
+The models of a SQLite database keep what a rebuild from the models needs:
+
+- Each declared column type maps by the SQLite affinity rules: a name with
+  `INT` is `int64`, with `CHAR`, `CLOB` or `TEXT` is `string`, with `BLOB` is
+  `[]byte`, with `REAL`, `FLOA` or `DOUB` is `float64`; `BOOLEAN` is `bool`,
+  `DATETIME` and `TIMESTAMP` are `time.Time` and `DATE` is `types.Date`. The
+  declared spelling is kept with a `type:` tag whenever the Go type alone would
+  give another (`type:VARCHAR(200)`, `type:BOOLEAN`). A type with NUMERIC
+  affinity that is not one of those (`DECIMAL(10,2)`, `JSON`) or no declared type
+  is an error until an `introspect.types` or `introspect.columns` rule names a
+  Go type; see [TYPE_MAPPING.md](TYPE_MAPPING.md#reading-a-sqlite-database-with---from-db).
+- An `INTEGER PRIMARY KEY` is the rowid alias: the field is tagged `pk,identity`
+  and the column is NOT NULL, which SQLite does not report for it. A primary key
+  column of another kind that allows NULL (SQLite permits that on a rowid table)
+  is written NOT NULL with a warning, and the baseline reports the column.
+- `AUTOINCREMENT`, `WITHOUT ROWID` and `STRICT` are the `autoincrement`,
+  `without_rowid` and `strict` options of the `momo.Model` tag, valid on SQLite
+  only.
+- A `CHECK (col IN ('a', 'b'))` on a TEXT column is an enum column
+  (`enum:<table>_<column>` plus a `c.Enum` call), which SQLite builds back as the
+  same CHECK. Other checks are `c.Check` calls with the constraint name SQLite
+  holds, or `<table>_check` for an unnamed one.
+- Defaults are written as SQLite reports them. With `introspect.dbdefault: all`
+  a NOT NULL column with a default gets `dbdefault`, and a `bool` or number
+  column whose constant default is true or non-zero becomes a pointer, as on
+  PostgreSQL; a computed default (`CURRENT_TIMESTAMP`, `datetime('now')`) is
+  tagged without the option. SQLite reads the value back with `RETURNING`.
+- A unique constraint is `c.Unique`, a unique index is a `unique` tag or
+  `c.Index(...).Unique()`, and partial and expression indexes keep their
+  `WHERE` text and expressions (`c.Index(...).Where(...)`, `c.IndexExpr`).
+- Foreign keys become `belongs_to` fields (and with `introspect.inverse` the
+  `has_many` or `has_one` on the other side), with their `on_delete` and
+  `on_update` actions; STORED and VIRTUAL generated columns become `read_only`
+  fields with `generated` and, for VIRTUAL, `virtual`; views and triggers are
+  declared with `c.View` and `c.Trigger`.
+
+SQLite has no schemas, extensions, native enums, functions, policies or row-level
+security, so none is read or written. A shadow table of a virtual table, the
+`sqlite_` tables and the two momo bookkeeping tables are never modeled.
 
 ### The introspect section
 
@@ -1172,7 +1224,7 @@ function only that code reaches is not written and a fresh database built from
 the models lacks it. `functions: all` writes every function on the first model,
 as releases before 0.7.0 did, and is the workaround.
 
-`dbdefault: all` tags every NOT NULL PostgreSQL column that has a default with
+`dbdefault: all` tags every NOT NULL PostgreSQL or SQLite column that has a default with
 `dbdefault`, constant defaults such as `DEFAULT 1` included (by default only
 computed defaults are tagged), so `InsertQuery.Model` leaves an unset field to the
 database default. A nullable column is never tagged. A `bool` or number column

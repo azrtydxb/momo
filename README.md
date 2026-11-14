@@ -468,7 +468,7 @@ work the same way. See [docs/projections.md](docs/projections.md),
 
 - `momo generate [-c momo.yaml] [--check] [patterns...]` writes the generated
   code, or with `--check` lists stale files and exits 1.
-- `momo generate --from-db <url|-|ENVVAR>` inspects a PostgreSQL database and
+- `momo generate --from-db <url|-|ENVVAR>` inspects a PostgreSQL or SQLite database and
   writes the models and the init snapshot, so an existing schema is adopted
   without writing the structs by hand; see
   [adopting an existing database](docs/migrations.md#7-adopting-an-existing-database).
