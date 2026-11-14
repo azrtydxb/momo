@@ -1155,6 +1155,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#sqlfngreatest-sqlfnleast-sqlfnfloor-sqlfnceil-and-jsonoptypeof" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sqlfn.Greatest, sqlfn.Least, sqlfn.Floor, sqlfn.Ceil and jsonop.TypeOf
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#mysql-and-mariadb-graph-writes-findorcreate-and-upsert-targets" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2081,6 +2092,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#sqlfngreatest-sqlfnleast-sqlfnfloor-sqlfnceil-and-jsonoptypeof" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sqlfn.Greatest, sqlfn.Least, sqlfn.Floor, sqlfn.Ceil and jsonop.TypeOf
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#mysql-and-mariadb-graph-writes-findorcreate-and-upsert-targets" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2905,6 +2927,30 @@ old body. Now a file whose body equals the regenerated body is current: <code>--
 passes, and a plain run rewrites only the header line. A file whose body
 differs is still stale or a conflict, and <code>momo generate</code> without <code>--from-db</code>
 is unchanged.</p>
+<h3 id="sqlfngreatest-sqlfnleast-sqlfnfloor-sqlfnceil-and-jsonoptypeof"><code>sqlfn.Greatest</code>, <code>sqlfn.Least</code>, <code>sqlfn.Floor</code>, <code>sqlfn.Ceil</code> and <code>jsonop.TypeOf</code><a class="headerlink" href="#sqlfngreatest-sqlfnleast-sqlfnfloor-sqlfnceil-and-jsonoptypeof" title="Permanent link">&para;</a></h3>
+<p>No change is needed; these are new functions. They replace the raw SQL or the
+untyped <code>momo.Func</code> calls that a per-row setting read from JSON needed
+(<code>GREATEST(1, CASE WHEN jsonb_typeof(v) = 'number' THEN floor(...) ELSE ... END)</code>):</p>
+<div class="highlight"><pre><span></span><code>years := sqlfn.Greatest[float64](momo.Lit(1.0),
+    sqlfn.Case[float64]().WhenExpr(jsonop.TypeOf(v).Eq("number"), floored).Else(fallback))
+</code></pre></div>
+<ul>
+<li><code>sqlfn.Greatest</code> and <code>sqlfn.Least</code> ignore NULL arguments and are NULL only when
+  every argument is NULL, on every dialect. That is PostgreSQL's rule; MySQL,
+  MariaDB and SQLite return NULL for any NULL argument, so Momo rewrites each
+  argument <code>x</code> to <code>COALESCE(x, the other arguments)</code> there. The rewrite renders
+  every argument once per argument, so keep the list short. <code>types.Numeric</code> is
+  PostgreSQL only and fails with <code>momo.ErrUnsupported</code> elsewhere, as the
+  <code>sqlfn</code> arithmetic does.</li>
+<li><code>sqlfn.Floor</code> and <code>sqlfn.Ceil</code> take a float or a <code>types.Numeric</code> and return
+  the same type (an integer needs a <code>sqlfn.Cast</code> first, because PostgreSQL's
+  <code>floor</code> of an integer is <code>double precision</code>). SQLite is rendered with
+  <code>CAST</code> rather than <code>floor()</code>, which the mattn driver lacks without its
+  <code>sqlite_math_functions</code> build tag. <code>types.Numeric</code> is PostgreSQL only.</li>
+<li><code>jsonop.TypeOf</code> is <code>jsonb_typeof</code>. SQLite's <code>json_type</code> and MySQL and
+  MariaDB's <code>JSON_TYPE</code> are mapped to the same six names: <code>object</code>, <code>array</code>,
+  <code>string</code>, <code>number</code>, <code>boolean</code> and <code>null</code>. A SQL NULL column gives SQL NULL.</li>
+</ul>
 <h3 id="mysql-and-mariadb-graph-writes-findorcreate-and-upsert-targets">MySQL and MariaDB: graph writes, <code>FindOrCreate</code> and upsert targets<a class="headerlink" href="#mysql-and-mariadb-graph-writes-findorcreate-and-upsert-targets" title="Permanent link">&para;</a></h3>
 <p>Calls that returned <code>ErrUnsupported</code> on MySQL or MariaDB now work. No existing
 working code changes behaviour.</p>

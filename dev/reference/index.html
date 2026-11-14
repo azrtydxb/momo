@@ -7215,6 +7215,31 @@
 <td>method</td>
 <td>Flags returns the sensitive flag of the column operand plus FlagNullable.</td>
 </tr>
+<tr>
+<td><code>jsonop.TypeExpr</code></td>
+<td>type</td>
+<td>TypeExpr is the JSON type name of a JSON value, an Expression[string] with the comparison and ordering methods of any scalar expression.</td>
+</tr>
+<tr>
+<td><code>jsonop.TypeExpr.AppendSQL</code></td>
+<td>method</td>
+<td>AppendSQL renders the type name.</td>
+</tr>
+<tr>
+<td><code>jsonop.TypeExpr.As</code></td>
+<td>method</td>
+<td>As names the expression in a select list.</td>
+</tr>
+<tr>
+<td><code>jsonop.TypeExpr.Flags</code></td>
+<td>method</td>
+<td>Flags returns the sensitive flag of the column operand plus FlagNullable.</td>
+</tr>
+<tr>
+<td><code>jsonop.TypeOf</code></td>
+<td>func</td>
+<td>TypeOf is the type of the JSON value in c as one of the six names of PostgreSQL's jsonb_typeof: "object", "array", "string", "number", "boolean" and "null".</td>
+</tr>
 </tbody>
 </table>
 <h2 id="obs">obs<a class="headerlink" href="#obs" title="Permanent link">&para;</a></h2>
@@ -7437,6 +7462,11 @@
 <td>As names the expression in a select list.</td>
 </tr>
 <tr>
+<td><code>sqlfn.Ceil</code></td>
+<td>func</td>
+<td>Ceil is the smallest whole number not below e: the mirror of Floor, with the same types, NULL handling and dialect rules (ceil on PostgreSQL, MySQL and MariaDB; a CAST based CASE on SQLite).</td>
+</tr>
+<tr>
 <td><code>sqlfn.CoalesceExpr</code></td>
 <td>func</td>
 <td>CoalesceExpr is COALESCE(a, b, more...): the first non-NULL expression.</td>
@@ -7512,9 +7542,44 @@
 <td>DivExpr is e / other, for example DivExpr(final, NullIf(max, 0)).</td>
 </tr>
 <tr>
+<td><code>sqlfn.ExtremeExpr</code></td>
+<td>type</td>
+<td>ExtremeExpr is GREATEST or LEAST over two or more expressions of the Go type T.</td>
+</tr>
+<tr>
+<td><code>sqlfn.ExtremeExpr.AppendSQL</code></td>
+<td>method</td>
+<td>AppendSQL writes the call to b.</td>
+</tr>
+<tr>
+<td><code>sqlfn.ExtremeExpr.As</code></td>
+<td>method</td>
+<td>As names the expression in a select list.</td>
+</tr>
+<tr>
+<td><code>sqlfn.Floor</code></td>
+<td>func</td>
+<td>Floor is the largest whole number not above e, with the type of e: a float stays a float (floor(2.7) is 2, scanned as 2.0) and a types.Numeric stays a types.Numeric.</td>
+</tr>
+<tr>
+<td><code>sqlfn.Fractional</code></td>
+<td>type</td>
+<td>Fractional is the constraint of Floor and Ceil: the Go float kinds and types.Numeric.</td>
+</tr>
+<tr>
+<td><code>sqlfn.Greatest</code></td>
+<td>func</td>
+<td>Greatest is the largest of its arguments, ignoring NULL, on every dialect.</td>
+</tr>
+<tr>
 <td><code>sqlfn.Infinity</code></td>
 <td>func</td>
 <td>Infinity is 'infinity'::timestamptz, later than every timestamp.</td>
+</tr>
+<tr>
+<td><code>sqlfn.Least</code></td>
+<td>func</td>
+<td>Least is the smallest of its arguments, ignoring NULL, on every dialect: the mirror of Greatest, with the same NULL handling and rewrite (LEAST on PostgreSQL, MySQL and MariaDB, the scalar min() on SQLite).</td>
 </tr>
 <tr>
 <td><code>sqlfn.Length</code></td>
@@ -7570,6 +7635,26 @@
 <td><code>sqlfn.Numeric</code></td>
 <td>type</td>
 <td>Numeric is the constraint of the arithmetic helpers: the Go integer and float kinds, and types.Numeric (the exact decimal that a PostgreSQL numeric column maps to).</td>
+</tr>
+<tr>
+<td><code>sqlfn.Ordered</code></td>
+<td>type</td>
+<td>Ordered is the constraint of Greatest and Least: the Go integer, float and string kinds, time.Time, types.Date and types.Numeric.</td>
+</tr>
+<tr>
+<td><code>sqlfn.RoundedExpr</code></td>
+<td>type</td>
+<td>RoundedExpr is FLOOR or CEIL of an expression of the Go type T.</td>
+</tr>
+<tr>
+<td><code>sqlfn.RoundedExpr.AppendSQL</code></td>
+<td>method</td>
+<td>AppendSQL writes the call to b.</td>
+</tr>
+<tr>
+<td><code>sqlfn.RoundedExpr.As</code></td>
+<td>method</td>
+<td>As names the expression in a select list.</td>
 </tr>
 <tr>
 <td><code>sqlfn.Sub</code></td>

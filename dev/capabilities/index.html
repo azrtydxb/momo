@@ -1849,10 +1849,10 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <tbody>
 <tr>
 <td>JSON operators on <code>types.JSON[T]</code></td>
-<td><code>jsonop.Text</code>, <code>jsonop.Path</code>, <code>jsonop.Root</code>, <code>jsonop.Contains</code>, <code>jsonop.HasKey</code>, <code>jsonop.DeleteKey</code>, <code>jsonop.Concat</code>, <code>jsonop.Set</code></td>
+<td><code>jsonop.Text</code>, <code>jsonop.Path</code>, <code>jsonop.Root</code>, <code>jsonop.Contains</code>, <code>jsonop.HasKey</code>, <code>jsonop.DeleteKey</code>, <code>jsonop.Concat</code>, <code>jsonop.Set</code>, <code>jsonop.TypeOf</code></td>
 <td>yes</td>
-<td><code>jsonop.Text</code>, <code>jsonop.Path</code>, <code>jsonop.Root</code>, <code>jsonop.DeleteKey</code> and <code>jsonop.HasKey</code> run on both SQLite drivers; a JSON boolean extracts as <code>1</code> or <code>0</code>; <code>jsonop.Contains</code>, <code>jsonop.Concat</code> and <code>jsonop.Set</code> are <code>ErrUnsupported</code></td>
-<td>SQL is golden-tested only; no integration test runs it against a MySQL or MariaDB server</td>
+<td><code>jsonop.Text</code>, <code>jsonop.Path</code>, <code>jsonop.Root</code>, <code>jsonop.DeleteKey</code>, <code>jsonop.HasKey</code> and <code>jsonop.TypeOf</code> run on both SQLite drivers; a JSON boolean extracts as <code>1</code> or <code>0</code>; <code>jsonop.Contains</code>, <code>jsonop.Concat</code> and <code>jsonop.Set</code> are <code>ErrUnsupported</code></td>
+<td>SQL is golden-tested only, except <code>jsonop.TypeOf</code>, which has integration tests on MySQL 8.4, MySQL 9.7 and MariaDB 11.8</td>
 </tr>
 <tr>
 <td>Date and time expressions</td>
@@ -2152,7 +2152,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>Typed <code>substr</code>, <code>CASE</code>, arithmetic</td>
 <td>yes</td>
 <td>SQLite yes; MySQL runs in the shared suite (<code>suite.RunAll</code>) only where that suite covers it</td>
-<td><code>momo.Func[T]</code>; in <code>sqlfn</code>: <code>sqlfn.Substr</code>, <code>sqlfn.Lower</code>, <code>sqlfn.Upper</code>, <code>sqlfn.Length</code> (MySQL: <code>char_length</code>), <code>sqlfn.Case[T]()</code>, <code>sqlfn.Add</code>/<code>sqlfn.Sub</code>/<code>sqlfn.Mul</code>/<code>sqlfn.Div</code> and <code>...Expr</code> (<code>/</code> on integers returns DECIMAL on MySQL; guard a divisor with <code>sqlfn.NullIf</code> on every dialect), <code>sqlfn.CoalesceExpr</code>, <code>sqlfn.Cast[T]</code>, <code>sqlfn.Concat</code></td>
+<td><code>momo.Func[T]</code>; in <code>sqlfn</code>: <code>sqlfn.Substr</code>, <code>sqlfn.Lower</code>, <code>sqlfn.Upper</code>, <code>sqlfn.Length</code> (MySQL: <code>char_length</code>), <code>sqlfn.Case[T]()</code>, <code>sqlfn.Add</code>/<code>sqlfn.Sub</code>/<code>sqlfn.Mul</code>/<code>sqlfn.Div</code> and <code>...Expr</code> (<code>/</code> on integers returns DECIMAL on MySQL; guard a divisor with <code>sqlfn.NullIf</code> on every dialect), <code>sqlfn.CoalesceExpr</code>, <code>sqlfn.Greatest</code>/<code>sqlfn.Least</code> (NULL arguments are ignored on every dialect; MySQL and SQLite are rewritten to match PostgreSQL), <code>sqlfn.Floor</code>/<code>sqlfn.Ceil</code> on floats (SQLite without its math functions; <code>types.Numeric</code> is PostgreSQL only), <code>sqlfn.Cast[T]</code>, <code>sqlfn.Concat</code></td>
 </tr>
 <tr>
 <td>Aggregate ORDER BY, <code>WITHIN GROUP</code>, <code>string_agg</code>, <code>array_agg</code>, <code>jsonb_agg</code></td>

@@ -2006,6 +2006,16 @@ diagnostic and nothing is written for that package.</p>
   elements made of digits can be array indexes. SQLite renders <code>json_extract</code>
   and <code>json_type</code> (<code>jsonop.Contains</code> is <code>ErrUnsupported</code> there); MySQL renders
   its JSON functions.</li>
+<li>JSON type name: <code>jsonop.TypeOf(col)</code> is <code>jsonb_typeof</code> and gives one of
+  <code>object</code>, <code>array</code>, <code>string</code>, <code>number</code>, <code>boolean</code> or <code>null</code> on every dialect
+  (SQLite and MySQL names are mapped), SQL NULL for a SQL NULL column and the
+  text <code>null</code> for the JSON literal null. <code>sqlfn.Greatest</code> and <code>sqlfn.Least</code>
+  ignore NULL arguments on every dialect (MySQL and SQLite are rewritten, so
+  each argument renders once per argument); <code>sqlfn.Floor</code> and <code>sqlfn.Ceil</code> take
+  a float or a <code>types.Numeric</code> and return the same type, and <code>types.Numeric</code> is
+  PostgreSQL only. Together they replace the raw SQL of a per-row setting read
+  from JSON and floored, with a minimum of one: a <code>sqlfn.Case</code> that tests
+  <code>jsonop.TypeOf</code> against <code>number</code> inside <code>sqlfn.Greatest</code>.</li>
 <li>JSON edits and scalars: <code>jsonop.Root(col)</code> reads a scalar stored at the
   root of the value (<code>col #&gt;&gt; '{}'</code>; cast it with <code>sqlfn.Cast</code> for a number).
   <code>jsonop.DeleteKey(expr, key)</code> is <code>expr - 'key'</code> (SQLite <code>json_remove</code>, MySQL
@@ -2831,7 +2841,8 @@ does not release a shared lock; use <code>advisory.UnlockShared</code>.</p>
 <p>Typed expressions (no <code>momo.SQL</code> needed). Computed values (<code>momo.Func</code> and, in the
 package <code>github.com/azrtydxb/momo/sqlfn</code>, <code>sqlfn.Substr</code>, <code>sqlfn.Lower</code>,
 <code>sqlfn.Upper</code>, <code>sqlfn.Length</code>, <code>sqlfn.Case</code>, <code>sqlfn.Add</code>/<code>sqlfn.Sub</code>/<code>sqlfn.Mul</code>,
-<code>sqlfn.Cast</code>, <code>sqlfn.Concat</code>, <code>sqlfn.CoalesceExpr</code>) work in <code>Columns</code>, <code>GroupBy</code>, <code>OrderBy</code> and <code>SetExpr</code>, and carry
+<code>sqlfn.Cast</code>, <code>sqlfn.Concat</code>, <code>sqlfn.CoalesceExpr</code>, <code>sqlfn.Greatest</code>, <code>sqlfn.Least</code>,
+<code>sqlfn.Floor</code>, <code>sqlfn.Ceil</code>) work in <code>Columns</code>, <code>GroupBy</code>, <code>OrderBy</code> and <code>SetExpr</code>, and carry
 the comparisons of a column for <code>Where</code> and <code>Having</code>: <code>Eq</code>, <code>Ne</code>, <code>Lt</code>, <code>Le</code>,
 <code>Gt</code>, <code>Ge</code>, <code>EqExpr</code> and the other <code>...Expr</code> forms, <code>In</code>, <code>NotIn</code>, <code>Between</code>,
 <code>IsNull</code>, <code>IsNotNull</code>; plus <code>Asc</code> and <code>Desc</code>. An <code>.As</code> alias belongs in the
