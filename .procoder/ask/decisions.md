@@ -558,6 +558,45 @@ Decision (2026-11-13, integrator): as above.
 - **Not chosen:** refreshing the header from `momo generate` (the issue's
   alternative).
 
+## Issue #131: Greatest/Least, Floor/Ceil and jsonop.TypeOf (2026-11-14, integrator)
+
+- **API:** `sqlfn.Greatest` and `sqlfn.Least` over expressions
+  of an `Ordered` type (cmp.Ordered, time.Time, types.Date, types.Numeric);
+  `sqlfn.Floor` and `sqlfn.Ceil` over a `Fractional` type (floats and
+  types.Numeric); `jsonop.TypeOf` returning an `Expression[string]`.
+  Round and Trunc are not added: PostgreSQL's `round(double precision)` rounds
+  half to even and `round(numeric)` half away from zero, so one signature could
+  not give one result on every dialect. Floor and Ceil take no integer type
+  because PostgreSQL's `floor(integer)` is double precision and would not scan
+  into the same Go type. `jsonop.TypeOf` takes the same
+  `Expression[types.JSON[T]]` as the other `jsonop` functions, so a
+  `types.JSON[json.RawMessage]` column works with no separate overload.
+- **NULL semantics of Greatest and Least:** identical on every dialect, the
+  PostgreSQL rule (NULL arguments are ignored, the result is NULL only when all
+  are NULL). MySQL, MariaDB and SQLite return NULL for any NULL argument, so
+  there each argument `x` is rendered as `COALESCE(x, the other arguments)`
+  inside `GREATEST`/`LEAST` (MySQL, MariaDB) or the scalar `max()`/`min()`
+  (SQLite). Cost: n arguments render n*n operands, and a non-deterministic
+  argument is evaluated several times; documented in the doc comment.
+- **Floor and Ceil per dialect:** `floor`/`ceil` on PostgreSQL, MySQL and
+  MariaDB. SQLite is rendered without `floor()`: the mattn driver the CI uses
+  has no math functions without its `sqlite_math_functions` build tag
+  (checked in go-sqlite3 v1.14.53, the repository sets no such tag), while
+  modernc enables `SQLITE_ENABLE_MATH_FUNCTIONS`. The emulation is a CASE over
+  `CAST(x AS INTEGER)` and returns REAL; floats from 2^52 are whole and pass
+  through, which keeps the cast away from the int64 limits.
+- **types.Numeric:** Greatest, Least, Floor and Ceil over `types.Numeric` are
+  PostgreSQL only and fail with `ErrUnsupported` ("PostgreSQL only") on SQLite
+  and MySQL, as the `sqlfn` arithmetic does: it is TEXT there, which orders
+  lexically and would floor through floating point.
+- **TypeOf per dialect:** PostgreSQL `jsonb_typeof(c)`. SQLite
+  `CASE json_type(c) ...` (integer, real to number; text to string; true, false
+  to boolean). MySQL and MariaDB `CASE JSON_TYPE(c) ...` (INTEGER, UNSIGNED
+  INTEGER, DOUBLE, DECIMAL to number; BOOLEAN, STRING, OBJECT, ARRAY, NULL
+  lower-cased). All give the six PostgreSQL names; SQL NULL stays SQL NULL and
+  the JSON literal null is the text `null`. A MySQL type a stored document
+  cannot have (DATE, OPAQUE) maps to NULL.
+
 ## Parity: MySQL and MariaDB write read-back and upsert targets (2026-11-14, integrator)
 
 - **MariaDB read-back:** `CreateGraph`, the identity read-back of a single

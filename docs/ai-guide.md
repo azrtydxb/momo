@@ -281,6 +281,16 @@ Nullability and column rules:
   elements made of digits can be array indexes. SQLite renders `json_extract`
   and `json_type` (`jsonop.Contains` is `ErrUnsupported` there); MySQL renders
   its JSON functions.
+- JSON type name: `jsonop.TypeOf(col)` is `jsonb_typeof` and gives one of
+  `object`, `array`, `string`, `number`, `boolean` or `null` on every dialect
+  (SQLite and MySQL names are mapped), SQL NULL for a SQL NULL column and the
+  text `null` for the JSON literal null. `sqlfn.Greatest` and `sqlfn.Least`
+  ignore NULL arguments on every dialect (MySQL and SQLite are rewritten, so
+  each argument renders once per argument); `sqlfn.Floor` and `sqlfn.Ceil` take
+  a float or a `types.Numeric` and return the same type, and `types.Numeric` is
+  PostgreSQL only. Together they replace the raw SQL of a per-row setting read
+  from JSON and floored, with a minimum of one: a `sqlfn.Case` that tests
+  `jsonop.TypeOf` against `number` inside `sqlfn.Greatest`.
 - JSON edits and scalars: `jsonop.Root(col)` reads a scalar stored at the
   root of the value (`col #>> '{}'`; cast it with `sqlfn.Cast` for a number).
   `jsonop.DeleteKey(expr, key)` is `expr - 'key'` (SQLite `json_remove`, MySQL
@@ -1073,7 +1083,8 @@ does not release a shared lock; use `advisory.UnlockShared`.
 Typed expressions (no `momo.SQL` needed). Computed values (`momo.Func` and, in the
 package `github.com/azrtydxb/momo/sqlfn`, `sqlfn.Substr`, `sqlfn.Lower`,
 `sqlfn.Upper`, `sqlfn.Length`, `sqlfn.Case`, `sqlfn.Add`/`sqlfn.Sub`/`sqlfn.Mul`,
-`sqlfn.Cast`, `sqlfn.Concat`, `sqlfn.CoalesceExpr`) work in `Columns`, `GroupBy`, `OrderBy` and `SetExpr`, and carry
+`sqlfn.Cast`, `sqlfn.Concat`, `sqlfn.CoalesceExpr`, `sqlfn.Greatest`, `sqlfn.Least`,
+`sqlfn.Floor`, `sqlfn.Ceil`) work in `Columns`, `GroupBy`, `OrderBy` and `SetExpr`, and carry
 the comparisons of a column for `Where` and `Having`: `Eq`, `Ne`, `Lt`, `Le`,
 `Gt`, `Ge`, `EqExpr` and the other `...Expr` forms, `In`, `NotIn`, `Between`,
 `IsNull`, `IsNotNull`; plus `Asc` and `Desc`. An `.As` alias belongs in the
