@@ -115,9 +115,6 @@ func TestDBDefaultPointerLive(t *testing.T) {
 		}
 
 		// One statement mixing nil, an explicit false and an explicit 0.
-		if !d.DefaultInValues {
-			return // SQLite cannot put DEFAULT in a row; the mix is refused elsewhere
-		}
 		mixed := []dbdPtrLive{
 			{Name: "m1"},
 			{Name: "m2", Active: ptrTo(false), Level: ptrTo(int64(0))},

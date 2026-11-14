@@ -7,11 +7,49 @@ later releases can break more.
 
 ## Upgrading to 0.13.0
 
-No edit is needed in your code. Two calls that returned `ErrUnsupported` on
-some dialects now return rows: `SelectQuery.DistinctOn` on SQLite, MySQL and
-MariaDB, and `Delete(...).Returning(...)` on MariaDB. Code that relied on the
-error (a fallback branch, a test that expects the refusal) now takes the
-success path.
+No edit is needed in your code. Several calls that returned `ErrUnsupported` on
+some dialects now return results (`DistinctOn` on SQLite, MySQL and MariaDB,
+`DELETE ... USING` and mixed `DEFAULT` rows in a multi-row insert on SQLite,
+and `Delete(...).Returning(...)` on MariaDB), so code that relied on the error
+(a fallback branch, a test that expects the refusal) now takes the success
+path.
+
+### `DELETE ... USING` runs on SQLite
+
+`DeleteQuery.Using` on SQLite renders
+`DELETE FROM t WHERE EXISTS (SELECT 1 FROM src WHERE ...)`, because SQLite has
+no `USING`. A target row is deleted once if at least one source row satisfies
+`Where`, which is what `USING` means on PostgreSQL, and it works with a
+composite primary key and a table without one. SQLite's `RETURNING` reads the
+deleted table only, so `Returning` accepts columns of the target; a column of a
+`Using` source is still `ErrUnsupported` there. A workaround that put a
+subquery in `Where` keeps working. Two rules apply on every dialect. A `Using`
+source with the target's own name is now `ErrValidation` (PostgreSQL already
+refused it; on SQLite it would have bound every column to the inner table):
+alias it with `TableRef.As` to join a table to itself. And qualify every column
+in a raw `Where` fragment and in interceptor predicates: on SQLite an
+unqualified column that the target and a source share binds to the source,
+where PostgreSQL reports it as ambiguous.
+
+### Mixed `DEFAULT` rows in a multi-row insert run on SQLite
+
+`Models` with a `dbdefault` field that is zero in some rows and set in others,
+and `ValuesRows` with a column that is omitted or `SetDefault` in some rows and
+given in others, failed with `ErrUnsupported` on SQLite, which cannot put
+`DEFAULT` in a `VALUES` list. `Exec` and `Rows` now split the rows into runs of
+consecutive rows that leave the same columns to the database default and insert
+each run as its own statement, in order, inside one transaction (a savepoint
+inside a `Tx`). The stored defaults are read back into the models as before,
+and `Rows` returns the rows in the order you gave. An insert that alternates
+between patterns costs one statement per change. `SQL` renders one statement,
+so it still fails with `ErrUnsupported` for such a mix, as do `Unnest` and
+`Copy`; a `WITH` clause on a split insert is `ErrValidation`, and a split
+insert on a connection pinned with `OnConn`, which cannot open the transaction,
+fails with `ErrUnsupported` before any statement runs. Other dialects are
+unchanged. PostgreSQL and MariaDB still write `DEFAULT` inline in one statement
+for `Models`. MySQL has no `RETURNING`, so `Models` with a zero `dbdefault`
+field still fails there with `ErrUnsupported`, as before. `ValuesRows` writes
+`DEFAULT` inline on PostgreSQL, MySQL and MariaDB.
 
 ### `DistinctOn` on SQLite, MySQL and MariaDB
 

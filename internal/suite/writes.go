@@ -521,14 +521,8 @@ func WriteStatesMultiRow(t *testing.T, db *momo.DB, caps Caps) {
 		[]momo.Assignment{DocTenantID.Set(1), DocTitle.Set("n1"), DocStatus.SetDefault()},
 		[]momo.Assignment{DocTenantID.Set(1), DocTitle.Set("n2"), DocStatus.Set("y")},
 	)
-	_, err := mixed.Exec(ctx)
-	if !caps.DefaultInValues {
-		if !errors.Is(err, momo.ErrUnsupported) {
-			t.Fatalf("mixed DEFAULT on %s: err = %v, want ErrUnsupported", caps.Dialect, err)
-		}
-		return
-	}
-	if err != nil {
+	// A dialect without DEFAULT in VALUES (SQLite) inserts the rows as runs.
+	if _, err := mixed.Exec(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if n1 := statusOf(t, db, "n1"); !n1.Valid || n1.String != "draft" {

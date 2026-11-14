@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"time"
 )
 
 // Exec runs the statement and reports the rows it inserted.
@@ -165,6 +167,26 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 		}
 	}
 	q = q.withDBD() // after hooks and ids: the plan is computed once and sliced per chunk
+	runs, err := q.defaultRuns()
+	if err != nil {
+		return nil, err
+	}
+	if runs == nil {
+		return q.planBulk()
+	}
+	var out []InsertQuery[T]
+	for _, r := range runs {
+		cs, err := r.planBulk()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, cs...)
+	}
+	return out, nil
+}
+
+// planBulk splits a bulk model insert over the bind-parameter limit; see plan.
+func (q InsertQuery[T]) planBulk() ([]InsertQuery[T], error) {
 	one := []InsertQuery[T]{q}
 	if q.i.unnest {
 		return one, nil // one array parameter per column: the bind count does not grow with the rows
@@ -249,6 +271,121 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 		out = append(out, c)
 	}
 	return out, nil
+}
+
+// defaultRuns splits a multi-row insert on a dialect whose VALUES list cannot
+// hold DEFAULT (SQLite) into runs of consecutive rows that leave the same
+// columns to the database default. Within a run every column is either default
+// in every row, so it leaves the column list and the column default applies, or
+// given in every row, so each run is an ordinary statement. Runs are
+// consecutive, never regrouped, so rows are stored and returned in the order
+// the caller gave them. It returns nil when no split is needed: the dialect
+// takes DEFAULT, Unnest, a single row or a uniform statement.
+func (q InsertQuery[T]) defaultRuns() ([]InsertQuery[T], error) {
+	if q.q == nil || q.i.unnest || q.i.err != nil || q.meta.Table == "" || q.q.Dialect().DefaultInValues {
+		return nil, nil
+	}
+	var sigs [][]bool
+	if q.i.hasRows {
+		sigs = q.rowsDefaultSigs()
+	} else if len(q.models) > 1 {
+		sigs = q.dbd.rows
+	}
+	if len(sigs) < 2 {
+		return nil, nil
+	}
+	var bounds []int // the start of each run
+	for r := range sigs {
+		if r == 0 || !slices.Equal(sigs[r], sigs[r-1]) {
+			bounds = append(bounds, r)
+		}
+	}
+	if len(bounds) < 2 {
+		return nil, nil
+	}
+	if len(q.i.with) > 0 {
+		return nil, q.verr("", "With: the rows leave different columns to the database default, so the insert needs %d statements on %s and a WITH clause would repeat in each; give every row the same columns", len(bounds), q.q.Dialect().Name)
+	}
+	if q.clock.IsZero() {
+		q.clock = q.q.conn().now() // one statement time for every run
+	}
+	out := make([]InsertQuery[T], 0, len(bounds))
+	for i, lo := range bounds {
+		hi := len(sigs)
+		if i+1 < len(bounds) {
+			hi = bounds[i+1]
+		}
+		c := q
+		if q.i.hasRows {
+			c.i.rows = q.i.rows[lo:hi:hi]
+		} else {
+			c.models = q.models[lo:hi:hi]
+			c.dbd = q.dbd.slice(lo, hi)
+			if len(q.back) == len(q.models) {
+				c.back = q.back[lo:hi:hi]
+			}
+			if q.pre != nil {
+				c.pre = q.pre[lo:hi:hi]
+			}
+		}
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+// rowsDefaultSigs returns, per ValuesRows row, which columns of the statement
+// the row leaves to the database default: a column some row assigns that this
+// row omits or sets with SetDefault, unless a Go-side default or an automatic
+// timestamp fills it. It returns nil when the rows cannot be resolved; render
+// reports that.
+func (q InsertQuery[T]) rowsDefaultSigs() [][]bool {
+	if len(q.i.rows) < 2 {
+		return nil
+	}
+	fp, err := newFieldPlan(q.q, q.meta)
+	if err != nil {
+		return nil
+	}
+	n := len(q.meta.Columns)
+	kinds := make([]map[int]setKind, len(q.i.rows))
+	union := make([]bool, n)
+	for r, row := range q.i.rows {
+		kinds[r] = map[int]setKind{}
+		for _, a := range row {
+			ci := q.column(a.col)
+			if ci < 0 {
+				return nil
+			}
+			kinds[r][ci] = a.kind
+			union[ci] = true
+		}
+	}
+	sigs := make([][]bool, len(q.i.rows))
+	for r := range q.i.rows {
+		seen := make(map[int]struct{}, len(kinds[r]))
+		for ci := range kinds[r] {
+			seen[ci] = struct{}{}
+		}
+		stamped, _, err := q.timestampAssigns(seen, time.Time{}) // presence only
+		if err != nil {
+			return nil
+		}
+		sig := make([]bool, n)
+		for ci := range n {
+			kind, assigned := kinds[r][ci]
+			switch {
+			case assigned:
+				sig[ci] = kind == setDefault
+			case !union[ci]:
+			case fp.def[ci] != nil && q.writable(ci):
+			case slices.Contains(stamped, ci):
+			default:
+				sig[ci] = true
+			}
+		}
+		sigs[r] = sig
+	}
+	return sigs
 }
 
 // chunkRows is the Rows of a chunked insert with RETURNING: it queries the
