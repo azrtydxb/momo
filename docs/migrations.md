@@ -1102,7 +1102,7 @@ The models of a SQLite database keep what a rebuild from the models needs:
   `DATETIME` and `TIMESTAMP` are `time.Time` and `DATE` is `types.Date`. The
   declared spelling is kept with a `type:` tag whenever the Go type alone would
   give another (`type:VARCHAR(200)`, `type:BOOLEAN`). A type with NUMERIC
-  affinity that is not one of those (`DECIMAL(10,2)`, `JSON`) or no declared type
+  affinity that is not one of those (`DECIMAL(10,2)`, a `json` column) or no declared type
   is an error until an `introspect.types` or `introspect.columns` rule names a
   Go type; see [TYPE_MAPPING.md](TYPE_MAPPING.md#reading-a-sqlite-database-with---from-db).
 - An `INTEGER PRIMARY KEY` is the rowid alias: the field is tagged `pk,identity`

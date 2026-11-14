@@ -266,19 +266,18 @@ of the generated mappings above. It adds a `type:` tag with the declared type
 whenever the Go type's own SQLite column differs, so the models build the column
 back as it was.
 
-| Declared type contains or is | Go type      | Tag written                         |
-| ---------------------------- | ------------ | ----------------------------------- |
-| `INT` (`INTEGER`, `BIGINT`)  | `int64`      | `type:<declared>` unless `INTEGER`  |
-| `CHAR`, `CLOB`, `TEXT`       | `string`     | `type:<declared>` unless `TEXT`     |
-| `BLOB`                       | `[]byte`     | `type:<declared>` unless `BLOB`     |
-| `REAL`, `FLOA`, `DOUB`       | `float64`    | `type:<declared>` unless `REAL`     |
-| `BOOLEAN`                    | `bool`       | `type:BOOLEAN`                      |
-| `DATETIME`, `TIMESTAMP`      | `time.Time`  | `type:DATETIME` or `type:TIMESTAMP` |
-| `DATE`                       | `types.Date` | `type:DATE`                         |
-| `NUMERIC`                    | `float64`    | `type:NUMERIC`, with a report note  |
+- A name with `INT` (`INTEGER`, `BIGINT`) is `int64`.
+- A name with `CHAR`, `CLOB` or `TEXT` is `string`.
+- A name with `BLOB` is `[]byte`.
+- A name with `REAL`, `FLOA` or `DOUB` is `float64`.
+- `BOOLEAN` is `bool`; `DATETIME` and `TIMESTAMP` are `time.Time`; `DATE` is
+  `types.Date`; `NUMERIC` is `float64`, with a report note.
+
+The `type:` tag carries the declared type unless the Go type's own SQLite
+column already spells it that way (`INTEGER`, `TEXT`, `BLOB`, `REAL`).
 
 Any other declared type has NUMERIC affinity, which holds integers, floats and
-text alike, so it has no single Go type: `DECIMAL(10,2)`, `JSON` and a column
+text alike, so it has no single Go type: `DECIMAL(10,2)`, a `json` column and a column
 with no declared type are errors until an `introspect.types` or
 `introspect.columns` rule names the Go type. The column text is never guessed.
 
