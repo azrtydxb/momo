@@ -1726,7 +1726,7 @@ defaults to <code>CacheStatement</code> (not PgBouncer-safe), so set
 <td>yes</td>
 </tr>
 <tr>
-<td><code>NullsOrdering</code></td>
+<td><code>NullsOrdering</code> (native NULLS FIRST or LAST; emulated on MySQL)</td>
 <td>yes</td>
 <td>yes</td>
 <td>no</td>
@@ -1782,7 +1782,7 @@ defaults to <code>CacheStatement</code> (not PgBouncer-safe), so set
 <td>no</td>
 </tr>
 <tr>
-<td><code>ILike</code></td>
+<td><code>ILike</code> (native ILIKE; emulated elsewhere)</td>
 <td>yes</td>
 <td>no</td>
 <td>no</td>
@@ -2199,8 +2199,20 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <tr>
 <td>Aggregate <code>FILTER</code> clause</td>
 <td>yes</td>
-<td>SQLite: yes; MySQL: <code>ErrUnsupported</code></td>
-<td><code>Agg.Filter</code> returns a <code>FilteredAgg</code> usable in a select list, HAVING and <code>Over</code></td>
+<td>SQLite: yes; MySQL and MariaDB: emulated as <code>agg(CASE WHEN p THEN x END)</code>, exact for the aggregates that skip NULLs; <code>ErrUnsupported</code> for those that keep NULLs (<code>agg.JSONB</code>, other <code>agg.Func</code>)</td>
+<td><code>Agg.Filter</code> returns a <code>FilteredAgg</code> usable in a select list, HAVING and <code>Over</code>; <code>agg.Call.Filter</code> for the <code>agg</code> calls</td>
+</tr>
+<tr>
+<td>Case-insensitive <code>ILike</code></td>
+<td>native <code>ILIKE</code></td>
+<td>SQLite, MySQL and MariaDB: emulated as <code>LOWER(x) LIKE LOWER(?) ESCAPE '!'</code>. SQLite folds ASCII only; MySQL follows the column collation; an index on <code>x</code> is not used; on MySQL and MariaDB <code>x</code> must be a character column (<code>BINARY</code>, <code>VARBINARY</code> and <code>BLOB</code> compare case-sensitively)</td>
+<td><code>ILike</code>, with <code>Not</code> for NOT ILIKE</td>
+</tr>
+<tr>
+<td><code>NullsFirst</code> and <code>NullsLast</code></td>
+<td>native</td>
+<td>SQLite: native; MySQL and MariaDB: emulated as <code>(e IS NULL) DESC\|ASC, e ASC\|DESC</code>, exact; <code>After</code> over a nullable key, a union outer <code>OrderBy</code> and a <code>Range</code> frame with an offset over one NULLS-ordered item (the server needs one sort key, error 3587) are <code>ErrUnsupported</code></td>
+<td><code>Order.NullsFirst</code>, <code>Order.NullsLast</code></td>
 </tr>
 <tr>
 <td><code>DISTINCT ON</code></td>

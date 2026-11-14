@@ -653,6 +653,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#emulated-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Emulated features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#writes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1345,6 +1356,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#emulated-features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Emulated features
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#writes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1565,11 +1587,47 @@ unknown flavor, because it has no error to return.)</p>
 </tr>
 </tbody>
 </table>
+<p><code>NullsOrdering</code> and <code>ILike</code> mean native syntax, not availability. Both
+features work on MySQL and MariaDB through emulation (see
+<a href="#emulated-features">Emulated features</a>), so the table says <code>no</code> while
+<code>momo.ILike</code>, <code>NullsFirst</code> and <code>NullsLast</code> run.</p>
 <p><code>Returning</code> is the UPDATE and DELETE form. MariaDB 11.8 can return rows from an
 INSERT only (<code>INSERT ... RETURNING</code>), which is why it has <code>InsertReturning</code>
 set while <code>Returning</code> stays false: <code>Returning</code> on an insert works on MariaDB,
 and on an update or delete it is <code>ErrUnsupported</code> on both servers. MySQL has
 no <code>RETURNING</code> at all.</p>
+<h2 id="emulated-features">Emulated features<a class="headerlink" href="#emulated-features" title="Permanent link">&para;</a></h2>
+<p>Three PostgreSQL features have no MySQL or MariaDB spelling. Momo renders an
+equivalent instead of returning <code>ErrUnsupported</code>.</p>
+<ul>
+<li><strong>ILIKE.</strong> <code>momo.ILike(col, pattern)</code> renders
+  <code>LOWER(col) LIKE LOWER(?) ESCAPE '!'</code>, and <code>momo.Not(momo.ILike(...))</code> negates
+  it. <code>LOWER</code> folds Unicode letters by the character set, but the <code>LIKE</code>
+  comparison follows the column collation. The default collations of MySQL 8.4
+  and 9.7 (<code>utf8mb4_0900_ai_ci</code>) and MariaDB 11.8 are accent-insensitive, so <code>a</code>
+  matches <code>ä</code>, which PostgreSQL <code>ILIKE</code> does not. Momo does not force a
+  collation, because the accent-insensitive <code>_ai_</code> family is the thing it must
+  not add. Because <code>LOWER</code> wraps the column, an index on the column is not
+  used. The column must be a character type: on <code>BINARY</code>, <code>VARBINARY</code> and <code>BLOB</code>
+  columns <code>LOWER</code> does nothing and <code>LIKE</code> is case-sensitive, so the match is
+  case-sensitive there (momo adds no <code>CONVERT</code>).</li>
+<li><strong>NULLS FIRST and NULLS LAST.</strong> <code>NullsFirst</code> renders
+  <code>(e IS NULL) DESC, e ASC|DESC</code> and <code>NullsLast</code> renders
+  <code>(e IS NULL) ASC, e ASC|DESC</code>, which orders exactly as PostgreSQL. <code>e</code> is
+  rendered twice, so values it binds appear twice among the arguments, in
+  order. <code>After</code> over a nullable key stays <code>ErrUnsupported</code>, and the outer
+  <code>OrderBy</code> of a union with a NULLS term is <code>ErrUnsupported</code>, and so is a window
+  with a <code>Range</code> frame that has an offset and a single <code>OrderBy</code> item with a
+  NULLS term (the emulation adds a second sort key, and the server rejects that
+  with error 3587).</li>
+<li><strong>Aggregate FILTER.</strong> <code>agg(x) FILTER (WHERE p)</code> renders
+  <code>agg(CASE WHEN p THEN x END)</code>, and <code>COUNT(*) FILTER (WHERE p)</code> renders
+  <code>COUNT(CASE WHEN p THEN 1 END)</code>. It is exact for <code>Sum</code>, <code>Avg</code>, <code>Min</code>, <code>Max</code>,
+  <code>CountOf</code>, <code>CountDistinct</code> and <code>agg.String</code>, and works with <code>Over</code>. A call
+  that keeps NULLs (<code>agg.JSONB</code>, any <code>agg.Func</code> outside <code>count</code>, <code>sum</code>, <code>avg</code>,
+  <code>min</code>, <code>max</code> and the <code>std</code> and <code>var</code> family, or one over a raw <code>*</code>) stays
+  <code>ErrUnsupported</code>; use <code>momo.CountAll().Filter(p)</code> for <code>COUNT(*)</code>.</li>
+</ul>
 <h2 id="writes">Writes<a class="headerlink" href="#writes" title="Permanent link">&para;</a></h2>
 <ul>
 <li>A single <code>Model</code> insert reads <code>LAST_INSERT_ID</code> and writes it into the

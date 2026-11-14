@@ -1206,6 +1206,19 @@ PostgreSQL, pass `ILike` a pattern built as a percent sign, the user text run
 through `momo.EscapeLike`, and another percent sign. A user typing `%` then
 matches only a literal percent sign, never every row.
 
+`ILike` works on every dialect, but it is emulated off PostgreSQL: SQLite,
+MySQL and MariaDB render `LOWER(x) LIKE LOWER(?) ESCAPE '!'`. The results can
+differ from PostgreSQL on non-ASCII text. SQLite folds ASCII letters only, so
+`ILike` does not match `Ä` against `ä` there. MySQL and MariaDB fold with
+`LOWER`, but the comparison follows the column collation, and the default
+`_ai_ci` collations are also accent-insensitive (`a` matches `ä`), which
+PostgreSQL `ILIKE` is not. Momo forces no collation. The `LOWER` around the
+column means an index on the column is not used. On MySQL and MariaDB the
+column must be a character type: on `BINARY`, `VARBINARY` and `BLOB` columns
+`LOWER` does nothing and `LIKE` is case-sensitive, so `ILike` matches
+case-sensitively there (momo adds no `CONVERT`). `momo.Not(momo.ILike(...))`
+is NOT ILIKE.
+
 A backslash is not an escape character. Without an ESCAPE clause PostgreSQL
 and MySQL treat `\` as the LIKE escape; in momo a pattern such as `\%` means
 a literal backslash followed by a wildcard. Replace hand-escaped patterns with
@@ -1241,6 +1254,20 @@ SQLite), `SelectUnion[T]` (runs a union at the top level with an outer
 context; it returns `iter.Seq2[T, error]`). `Count` and `Exists` wrap the whole
 statement, so they keep a lock clause and lock the rows they count. Aggregates: `momo.CountAll`,
 `CountOf`, `CountDistinct`, `Sum`, `Avg`, `Min`, `Max`.
+
+An aggregate takes `Filter(p)` (`momo.Agg.Filter`, `agg.Call.Filter`) on every
+dialect. PostgreSQL and SQLite render `agg(x) FILTER (WHERE p)`. MySQL and
+MariaDB have no FILTER, so momo renders `agg(CASE WHEN p THEN x END)` and
+`COUNT(CASE WHEN p THEN 1 END)` for `CountAll`, which gives the same result for
+every aggregate that skips NULLs: `Sum`, `Avg`, `Min`, `Max`, `CountOf`,
+`CountDistinct`, `agg.String`, and `agg.Func` over `count`, `sum`, `avg`, `min`,
+`max` and the `std` and `var` family. It also works as a window function with
+`Over`. A value that `p` binds appears once per argument of the call. An
+aggregate that keeps NULLs (`agg.JSONB`, which is JSON_ARRAYAGG there, or any
+other `agg.Func`) is `ErrUnsupported` on MySQL and MariaDB with a message that
+names the reason, because the rewrite would add a NULL element per
+filtered-out row; filter in `Where` or a subquery. `agg.Func` over a raw `*`
+with `Filter` is `ErrUnsupported` there too; use `momo.CountAll().Filter(p)`.
 
 Advisory locks (PostgreSQL, inside a transaction), in the package
 `github.com/azrtydxb/momo/advisory`: `advisory.XactLock(ctx, tx, key)` waits
@@ -1292,11 +1319,25 @@ mismatch. Otherwise group by position or alias in an outer query. Keyset paginat
 an alias is not valid in WHERE or inside a window ORDER BY; order by the
 expression itself there.
 
+`NullsFirst` and `NullsLast` on any `Order` work on every dialect, with the exceptions below. MySQL and
+MariaDB have no NULLS clause, so momo renders `(e IS NULL) DESC, e ASC` for
+`NullsFirst` and `(e IS NULL) ASC, e ASC` for `NullsLast`, which orders exactly
+as PostgreSQL does. The expression `e` is rendered twice, so a value it binds
+appears twice among the arguments, in order. `After` over a nullable key is
+`ErrUnsupported` on every dialect, so an emulated NULLS term never meets a
+cursor over NULLs. The outer `OrderBy` of a `SelectUnion` with `NullsFirst` or
+`NullsLast` is `ErrUnsupported` on MySQL and MariaDB. So is a window whose frame
+is `Range` with an offset (`Preceding(n)` or `Following(n)`) and whose single
+`OrderBy` item has a NULLS term: the emulation adds a second sort key and those
+servers need exactly one (error 3587). Drop the NULLS term or use `Rows`. A `Distinct` select that
+orders by an emulated expression missing from its select list can be rejected by
+MySQL (error 3065, with `ONLY_FULL_GROUP_BY`).
+
 A predicate orders through `momo.OrderByPredicate(p)`, which has `Asc()` and
 `Desc()` and renders `ORDER BY (p)`: `OrderBy(momo.OrderByPredicate(t.BuiltinKey.IsNull()).Asc(), t.Name.Asc())`
 lists rows with a `builtin_key` first. False sorts before true, so `(col IS NULL) ASC` puts NULLs
 last on every dialect. A predicate has no `Asc` method of its own, because `Predicate` is an interface.
-`NullsFirst` and `NullsLast` on it are `ErrUnsupported` on MySQL and MariaDB. `After` over a
+`NullsFirst` and `NullsLast` on it work on every dialect. `After` over a
 predicate key is `ErrValidation`, and so is a predicate in the outer `OrderBy` of a `SelectUnion`
 (unqualified result columns only). `OrderByPredicate(nil)` is `ErrValidation`; an `agg` call's
 `OrderBy` needs `.Asc()` or `.Desc()`.
@@ -1862,7 +1903,9 @@ values through `Builder.Arg` or `Builder.ArgFor`, never concatenated into the SQ
 - `Order.AppendOrder`: renders one ORDER BY item (`expr ASC|DESC [NULLS ...]`) for
   an expression that carries its own ordering, such as `agg.Call.OrderBy`.
 - `Builder.AppendFilter`: writes ` FILTER (WHERE p)` after an aggregate call
-  and fails the build for a nil predicate or on MySQL.
+  and fails the build for a nil predicate or on MySQL. MySQL has no FILTER, so an
+  aggregate that wants MySQL support rewrites its own arguments to
+  `CASE WHEN p THEN x END` instead, as `momo.Agg.Filter` and `agg.Call.Filter` do.
 - `momo.WindowOf[T]`: turns your aggregate call into a window function,
   `call OVER (...)`; `agg.Call.Over` is built on it.
 - `Builder.MarkSensitive`: call it from an expression that writes a sensitive
@@ -4552,11 +4595,49 @@ The rows below are checked against `dialect.MySQLFlavor` by
 | Vector.Metrics   | none  | l2, cosine |
 | Vector.Indexes   | none  | vector     |
 
+`NullsOrdering` and `ILike` mean native syntax, not availability. Both
+features work on MySQL and MariaDB through emulation (see
+[Emulated features](#emulated-features)), so the table says `no` while
+`momo.ILike`, `NullsFirst` and `NullsLast` run.
+
 `Returning` is the UPDATE and DELETE form. MariaDB 11.8 can return rows from an
 INSERT only (`INSERT ... RETURNING`), which is why it has `InsertReturning`
 set while `Returning` stays false: `Returning` on an insert works on MariaDB,
 and on an update or delete it is `ErrUnsupported` on both servers. MySQL has
 no `RETURNING` at all.
+
+## Emulated features
+
+Three PostgreSQL features have no MySQL or MariaDB spelling. Momo renders an
+equivalent instead of returning `ErrUnsupported`.
+
+- **ILIKE.** `momo.ILike(col, pattern)` renders
+  `LOWER(col) LIKE LOWER(?) ESCAPE '!'`, and `momo.Not(momo.ILike(...))` negates
+  it. `LOWER` folds Unicode letters by the character set, but the `LIKE`
+  comparison follows the column collation. The default collations of MySQL 8.4
+  and 9.7 (`utf8mb4_0900_ai_ci`) and MariaDB 11.8 are accent-insensitive, so `a`
+  matches `ä`, which PostgreSQL `ILIKE` does not. Momo does not force a
+  collation, because the accent-insensitive `_ai_` family is the thing it must
+  not add. Because `LOWER` wraps the column, an index on the column is not
+  used. The column must be a character type: on `BINARY`, `VARBINARY` and `BLOB`
+  columns `LOWER` does nothing and `LIKE` is case-sensitive, so the match is
+  case-sensitive there (momo adds no `CONVERT`).
+- **NULLS FIRST and NULLS LAST.** `NullsFirst` renders
+  `(e IS NULL) DESC, e ASC|DESC` and `NullsLast` renders
+  `(e IS NULL) ASC, e ASC|DESC`, which orders exactly as PostgreSQL. `e` is
+  rendered twice, so values it binds appear twice among the arguments, in
+  order. `After` over a nullable key stays `ErrUnsupported`, and the outer
+  `OrderBy` of a union with a NULLS term is `ErrUnsupported`, and so is a window
+  with a `Range` frame that has an offset and a single `OrderBy` item with a
+  NULLS term (the emulation adds a second sort key, and the server rejects that
+  with error 3587).
+- **Aggregate FILTER.** `agg(x) FILTER (WHERE p)` renders
+  `agg(CASE WHEN p THEN x END)`, and `COUNT(*) FILTER (WHERE p)` renders
+  `COUNT(CASE WHEN p THEN 1 END)`. It is exact for `Sum`, `Avg`, `Min`, `Max`,
+  `CountOf`, `CountDistinct` and `agg.String`, and works with `Over`. A call
+  that keeps NULLs (`agg.JSONB`, any `agg.Func` outside `count`, `sum`, `avg`,
+  `min`, `max` and the `std` and `var` family, or one over a raw `*`) stays
+  `ErrUnsupported`; use `momo.CountAll().Filter(p)` for `COUNT(*)`.
 
 ## Writes
 
@@ -8122,32 +8203,32 @@ defaults to `CacheStatement` (not PgBouncer-safe), so set
 
 <!-- Generated by go generate ./internal/gendocs from the code. Do not edit by hand. -->
 
-| Item                             | PostgreSQL                                       | SQLite                                     | MySQL                | MariaDB              |
-| -------------------------------- | ------------------------------------------------ | ------------------------------------------ | -------------------- | -------------------- |
-| Usable (a driver package exists) | yes                                              | yes                                        | yes                  | yes                  |
-| Driver package                   | `driver/pgxdriver`                               | `driver/sqlitedriver`, `driver/sqlitepure` | `driver/mysqldriver` | `driver/mysqldriver` |
-| Migration dialect                | `migrate/postgres`                               | `migrate/sqlite`                           | `migrate/mysql`      | `migrate/mysql`      |
-| `momo migrate` runs it           | yes                                              | no                                         | no                   | no                   |
-| `MaxParams`                      | 65535                                            | 32766                                      | 65535                | 65535                |
-| `Returning`                      | yes                                              | yes                                        | no                   | no                   |
-| `InsertReturning`                | no                                               | no                                         | no                   | yes                  |
-| `OnConflict`                     | yes                                              | yes                                        | no                   | no                   |
-| `OnDuplicateKey`                 | no                                               | no                                         | yes                  | yes                  |
-| `Locking`                        | yes                                              | no                                         | yes                  | yes                  |
-| `NullsOrdering`                  | yes                                              | yes                                        | no                   | no                   |
-| `DefaultInUpdate`                | yes                                              | no                                         | yes                  | yes                  |
-| `DefaultInValues`                | yes                                              | no                                         | yes                  | yes                  |
-| `RecursiveCTE`                   | yes                                              | yes                                        | yes                  | yes                  |
-| `RowValues`                      | yes                                              | yes                                        | yes                  | yes                  |
-| `Savepoints`                     | yes                                              | yes                                        | yes                  | yes                  |
-| `IsolationLevels`                | yes                                              | no                                         | yes                  | yes                  |
-| `TransactionalDDL`               | yes                                              | yes                                        | no                   | no                   |
-| `ILike`                          | yes                                              | no                                         | no                   | no                   |
-| `Merge`                          | yes                                              | no                                         | no                   | no                   |
-| `WindowFunctions`                | yes                                              | yes                                        | yes                  | yes                  |
-| `Vector.Storage`                 | yes                                              | yes                                        | yes                  | yes                  |
-| `Vector.Metrics`                 | `l2`, `ip`, `cosine`, `l1`, `hamming`, `jaccard` | `l2`, `l1`, `cosine`, `hamming`            | none                 | `l2`, `cosine`       |
-| `Vector.Indexes`                 | `hnsw`, `ivfflat`                                | none                                       | none                 | `vector`             |
+| Item                                                            | PostgreSQL                                       | SQLite                                     | MySQL                | MariaDB              |
+| --------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------ | -------------------- | -------------------- |
+| Usable (a driver package exists)                                | yes                                              | yes                                        | yes                  | yes                  |
+| Driver package                                                  | `driver/pgxdriver`                               | `driver/sqlitedriver`, `driver/sqlitepure` | `driver/mysqldriver` | `driver/mysqldriver` |
+| Migration dialect                                               | `migrate/postgres`                               | `migrate/sqlite`                           | `migrate/mysql`      | `migrate/mysql`      |
+| `momo migrate` runs it                                          | yes                                              | no                                         | no                   | no                   |
+| `MaxParams`                                                     | 65535                                            | 32766                                      | 65535                | 65535                |
+| `Returning`                                                     | yes                                              | yes                                        | no                   | no                   |
+| `InsertReturning`                                               | no                                               | no                                         | no                   | yes                  |
+| `OnConflict`                                                    | yes                                              | yes                                        | no                   | no                   |
+| `OnDuplicateKey`                                                | no                                               | no                                         | yes                  | yes                  |
+| `Locking`                                                       | yes                                              | no                                         | yes                  | yes                  |
+| `NullsOrdering` (native NULLS FIRST or LAST; emulated on MySQL) | yes                                              | yes                                        | no                   | no                   |
+| `DefaultInUpdate`                                               | yes                                              | no                                         | yes                  | yes                  |
+| `DefaultInValues`                                               | yes                                              | no                                         | yes                  | yes                  |
+| `RecursiveCTE`                                                  | yes                                              | yes                                        | yes                  | yes                  |
+| `RowValues`                                                     | yes                                              | yes                                        | yes                  | yes                  |
+| `Savepoints`                                                    | yes                                              | yes                                        | yes                  | yes                  |
+| `IsolationLevels`                                               | yes                                              | no                                         | yes                  | yes                  |
+| `TransactionalDDL`                                              | yes                                              | yes                                        | no                   | no                   |
+| `ILike` (native ILIKE; emulated elsewhere)                      | yes                                              | no                                         | no                   | no                   |
+| `Merge`                                                         | yes                                              | no                                         | no                   | no                   |
+| `WindowFunctions`                                               | yes                                              | yes                                        | yes                  | yes                  |
+| `Vector.Storage`                                                | yes                                              | yes                                        | yes                  | yes                  |
+| `Vector.Metrics`                                                | `l2`, `ip`, `cosine`, `l1`, `hamming`, `jaccard` | `l2`, `l1`, `cosine`, `hamming`            | none                 | `l2`, `cosine`       |
+| `Vector.Indexes`                                                | `hnsw`, `ivfflat`                                | none                                       | none                 | `vector`             |
 
 <!-- /generated:capabilities -->
 
@@ -8191,7 +8272,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 | Streaming                                                         | yes                                                                                                                                                                                                                                                                                                                       | SQLite: yes, covered by the integration tests that run on SQLite; MySQL: not covered by a MySQL integration test yet                                                                                                                                                                                                                                                 | `Each(ctx, fn)`, `Iter(ctx)` (`iter.Seq2`); both `ErrUnsupported` when the query has `Preload`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Raw SQL                                                           | yes                                                                                                                                                                                                                                                                                                                       | SQLite and MySQL: yes, covered by the shared suite (`suite.RunAll`)                                                                                                                                                                                                                                                                                                  | `momo.Exec`, `momo.Scalars`, `momo.RawRows` (a `Scan(dest...)` cursor for a run-time shape), `momo.Query` and `momo.QueryRows` (into a model, a projection, `Row1`..`Row10` or a plain struct scanned by column name with no generated metadata, named by the `momo:"column:x"` tag or else by the `momo.WithNaming` preset (snake_case by default); an unmatched column or field is `ErrValidation` naming it), `momo.SQL`, `TypedSQL`, `RawSubquery`, `Named`, `In`, `Ident`                                                                                                                                                                                                                                                                   |
 | `EXPLAIN`                                                         | yes (`EXPLAIN`, never `ANALYZE`)                                                                                                                                                                                                                                                                                          | MySQL: `ErrUnsupported`                                                                                                                                                                                                                                                                                                                                              | `SelectQuery.Explain(ctx)`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `IndexedBy` hint                                                  | `ErrUnsupported`; SQLite syntax, run on SQLite in v0.11.0 through `sqlitedriver`                                                                                                                                                                                                                                           | MySQL: `ErrUnsupported`                                                                                                                                                                                                                                                                                                                                              | `SelectQuery.IndexedBy` <!-- x-release-please-version -->                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `IndexedBy` hint                                                  | `ErrUnsupported`; SQLite syntax, run on SQLite in v0.11.0 through `sqlitedriver`                                                                                                                                                                                                                                          | MySQL: `ErrUnsupported`                                                                                                                                                                                                                                                                                                                                              | `SelectQuery.IndexedBy` <!-- x-release-please-version -->                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ## Writes, transactions, drivers
 
@@ -8232,7 +8313,9 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 | `CURRENT_DATE`, `'infinity'` and `'-infinity'`                             | yes                                                                                                                                                    | `CURRENT_DATE` runs on SQLite (as text) and MySQL; infinity is PostgreSQL only, `ErrUnsupported` elsewhere                                                                                                                                                                                                | `sqlfn.CurrentDate()`, `sqlfn.Infinity()`, `sqlfn.NegInfinity()`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Raw fragment composition                                                   | yes                                                                                                                                                    | yes                                                                                                                                                                                                                                                                                                       | `JoinSQL`, `JoinTypedSQL`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Window functions                                                           | yes                                                                                                                                                    | SQLite: yes; MySQL: runs in the shared suite (`suite.RunAll`) only where that suite covers it                                                                                                                                                                                                             | `Over` builds the window: `PartitionBy`, `OrderBy`, frame methods `Rows`, `Range`, `Groups` with `UnboundedPreceding`, `Preceding`, `CurrentRow`, `Following`, `UnboundedFollowing`. Attach it with `Agg.Over`, `agg.Call.Over` (not with an inner ORDER BY or WITHIN GROUP) or `RowNumber`, `Rank`, `DenseRank`, `Lag`, `Lead`, `FirstValue`, `LastValue` followed by `.Over`. A missing ORDER BY on a ranking or offset function, a frame on a ranking function and a malformed frame fail with `ErrValidation`; `Groups` on MySQL fails with `ErrUnsupported`                                                 |
-| Aggregate `FILTER` clause                                                  | yes                                                                                                                                                    | SQLite: yes; MySQL: `ErrUnsupported`                                                                                                                                                                                                                                                                      | `Agg.Filter` returns a `FilteredAgg` usable in a select list, HAVING and `Over`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Aggregate `FILTER` clause                                                  | yes                                                                                                                                                    | SQLite: yes; MySQL and MariaDB: emulated as `agg(CASE WHEN p THEN x END)`, exact for the aggregates that skip NULLs; `ErrUnsupported` for those that keep NULLs (`agg.JSONB`, other `agg.Func`)                                                                                                           | `Agg.Filter` returns a `FilteredAgg` usable in a select list, HAVING and `Over`; `agg.Call.Filter` for the `agg` calls                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Case-insensitive `ILike`                                                   | native `ILIKE`                                                                                                                                         | SQLite, MySQL and MariaDB: emulated as `LOWER(x) LIKE LOWER(?) ESCAPE '!'`. SQLite folds ASCII only; MySQL follows the column collation; an index on `x` is not used; on MySQL and MariaDB `x` must be a character column (`BINARY`, `VARBINARY` and `BLOB` compare case-sensitively)                     | `ILike`, with `Not` for NOT ILIKE                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `NullsFirst` and `NullsLast`                                               | native                                                                                                                                                 | SQLite: native; MySQL and MariaDB: emulated as `(e IS NULL) DESC\|ASC, e ASC\|DESC`, exact; `After` over a nullable key, a union outer `OrderBy` and a `Range` frame with an offset over one NULLS-ordered item (the server needs one sort key, error 3587) are `ErrUnsupported`                          | `Order.NullsFirst`, `Order.NullsLast`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `DISTINCT ON`                                                              | yes                                                                                                                                                    | `ErrUnsupported`                                                                                                                                                                                                                                                                                          | `SelectQuery.DistinctOn`; the leading ORDER BY items must be the DISTINCT ON expressions in any order, and an OrderBy is required, otherwise `ErrValidation` at build time                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Set-returning FROM sources                                                 | yes                                                                                                                                                    | `ErrUnsupported`                                                                                                                                                                                                                                                                                          | `Unnest` over bound arrays built with `UnnestValues` or `UnnestValuesAs` (one column each, optional `WithOrdinality`); `UnnestColumn(col).As(alias, name)` expands an array column of an earlier source as `LATERAL unnest(col)`; `GenerateSeries` over integers and `GenerateTimeSeries` over timestamps. They work as FROM, as Join and inside a CTE body                                                                                                                                                                                                                                                      |
 | `LATERAL` joins                                                            | yes                                                                                                                                                    | MySQL 8: yes; SQLite and MariaDB: `ErrUnsupported`                                                                                                                                                                                                                                                        | `Lateral` wraps a subquery as a Join, LeftJoin (with `SQL` true as the ON condition) or CrossJoin source                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
@@ -8728,6 +8811,58 @@ the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
 ## Upgrading to 0.12.0
+
+Nothing needs an edit. Three calls that returned `ErrUnsupported` on some
+dialects now return results, so code that relied on the error (a fallback
+branch, a test that expects the refusal) now takes the success path. Check the
+semantic differences below before you drop a workaround.
+
+### `ILike` on SQLite, MySQL and MariaDB
+
+`momo.ILike` no longer fails on SQLite, MySQL and MariaDB. They render
+`LOWER(x) LIKE LOWER(?) ESCAPE '!'`; `momo.Not(momo.ILike(...))` is NOT ILIKE.
+PostgreSQL is unchanged. The results are not identical to PostgreSQL:
+
+- SQLite folds ASCII letters only, so `Ä` does not match `ä`. PostgreSQL folds
+  it. This is the reason the call was refused before.
+- MySQL and MariaDB fold with `LOWER`, but the comparison follows the column
+  collation. Momo does not add a `_ci` or `_ai` collation: the default
+  `_ai_ci` collations are accent-insensitive (`a` matches `ä`), which
+  PostgreSQL `ILIKE` is not.
+- An index on the column is not used, because the column is inside `LOWER`.
+- On MySQL and MariaDB the column must be a character type. On `BINARY`,
+  `VARBINARY` and `BLOB` columns `LOWER` does nothing and `LIKE` is
+  case-sensitive, so the match is case-sensitive there. Momo adds no `CONVERT`.
+
+The capability flags `dialect.Dialect.ILike` and `dialect.Dialect.NullsOrdering`
+keep meaning native syntax: they stay false on MySQL (and `ILike` on SQLite)
+while the features work.
+
+### `NullsFirst` and `NullsLast` on MySQL and MariaDB
+
+An explicit NULLS placement, on a column, an `Order` from `momo.Asc` or
+`momo.Desc`, or `momo.OrderByPredicate`, renders `(e IS NULL) DESC, e ASC` or
+`(e IS NULL) ASC, e ASC` (with the direction of the item), which orders exactly
+as PostgreSQL. The expression is rendered twice, so a value it binds appears
+twice among the arguments, in order. `After` over a nullable key was and is
+`ErrUnsupported`. The outer `OrderBy` of a `SelectUnion` with a NULLS term is
+`ErrUnsupported` on MySQL and MariaDB, and so is a window with a `Range` frame
+that has an offset and one `OrderBy` item with a NULLS term: the emulation adds
+a second sort key and the server needs exactly one (error 3587). Drop the NULLS
+term or use a `Rows` frame. If you wrote `OrderByPredicate` as a
+workaround, it still works and you can switch to `NullsLast`.
+
+### Aggregate `Filter` on MySQL and MariaDB
+
+`momo.Agg.Filter` and `agg.Call.Filter` render `agg(CASE WHEN p THEN x END)`,
+and `COUNT(*)` becomes `COUNT(CASE WHEN p THEN 1 END)`. This is exact for the
+aggregates that skip NULLs: `Sum`, `Avg`, `Min`, `Max`, `CountOf`,
+`CountDistinct`, `agg.String`, and `agg.Func` over `count`, `sum`, `avg`,
+`min`, `max` and the `std` and `var` family, also with `Over`. A call that
+keeps NULLs (`agg.JSONB`, any other `agg.Func`) is still `ErrUnsupported` there,
+with a message that says why; so is `agg.Func` over a raw `*` (use
+`momo.CountAll().Filter(p)`). `Builder.AppendFilter` itself still fails on
+MySQL: a custom aggregate rewrites its own arguments.
 
 ### `generate --from-db --check` compares the body, not only the header hash
 
@@ -9444,8 +9579,8 @@ interface, so it has no `Asc` method of its own: write
 `momo.OrderByPredicate(template.BuiltinKey.IsNotNull()).Desc()`. Nothing
 existing changes.
 
-Limits. `NullsFirst` and `NullsLast` on a predicate are `ErrUnsupported` on
-MySQL and MariaDB, as they are on a column, because momo does not emulate them.
+Limits. `NullsFirst` and `NullsLast` on a predicate were `ErrUnsupported` on
+MySQL and MariaDB in 0.11.0, as they were on a column; 0.12.0 emulates them.
 `After` over a predicate key is `ErrValidation`, because a cursor over a value
 that can be NULL skips or repeats rows. A predicate in the outer `OrderBy` of a
 `SelectUnion` is `ErrValidation`, because that clause allows unqualified result
@@ -10523,7 +10658,7 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.HybridSpec`                      | type   | HybridSpec describes a PostgreSQL hybrid search: a full-text leg and a vector leg over one model, fused by reciprocal rank fusion (RRF).                                                                                                                                          |
 | `momo.IDGen`                           | type   | IDGen declares a Go-side id generator for one column of a model: the generated code sets it from the idgen tag or the IDGen companion call.                                                                                                                                       |
 | `momo.IDs`                             | func   | IDs returns the primary-key value of every row sq matches, in the query's order.                                                                                                                                                                                                  |
-| `momo.ILike`                           | func   | ILike is PostgreSQL's case-insensitive LIKE.                                                                                                                                                                                                                                      |
+| `momo.ILike`                           | func   | ILike is a case-insensitive LIKE.                                                                                                                                                                                                                                                 |
 | `momo.Ident`                           | func   | Ident renders name as a quoted identifier in the dialect's style.                                                                                                                                                                                                                 |
 | `momo.ImmutableColumn`                 | type   | ImmutableColumn is the descriptor of a column that is set on insert and never changed.                                                                                                                                                                                            |
 | `momo.ImmutableColumn.As`              | method | As returns the same column qualified by a table alias.                                                                                                                                                                                                                            |
@@ -10684,7 +10819,7 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.Option`                          | type   | Option configures a DB.                                                                                                                                                                                                                                                           |
 | `momo.Or`                              | func   | Or joins predicates with OR; an empty Or is false.                                                                                                                                                                                                                                |
 | `momo.Order`                           | type   | Order is one ORDER BY item.                                                                                                                                                                                                                                                       |
-| `momo.Order.AppendOrder`               | method | AppendOrder renders the item as "expr ASC\|DESC \[NULLS FIRST\|LAST\]", failing the build with ErrUnsupported where the dialect has no NULLS ordering.                                                                                                                            |
+| `momo.Order.AppendOrder`               | method | AppendOrder renders the item as "expr ASC\|DESC \[NULLS FIRST\|LAST\]".                                                                                                                                                                                                           |
 | `momo.Order.NullsFirst`                | method | NullsFirst returns o with explicit NULLS FIRST.                                                                                                                                                                                                                                   |
 | `momo.Order.NullsLast`                 | method | NullsLast returns o with explicit NULLS LAST.                                                                                                                                                                                                                                     |
 | `momo.OrderByPredicate`                | func   | OrderByPredicate orders by the predicate p, rendered parenthesised as ORDER BY (p).                                                                                                                                                                                               |

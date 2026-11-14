@@ -1111,6 +1111,39 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#ilike-on-sqlite-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ILike on SQLite, MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nullsfirst-and-nullslast-on-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NullsFirst and NullsLast on MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aggregate-filter-on-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aggregate Filter on MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#generate-from-db-check-compares-the-body-not-only-the-header-hash" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1971,6 +2004,39 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#ilike-on-sqlite-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ILike on SQLite, MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nullsfirst-and-nullslast-on-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NullsFirst and NullsLast on MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aggregate-filter-on-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aggregate Filter on MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#generate-from-db-check-compares-the-body-not-only-the-header-hash" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2719,6 +2785,51 @@
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
 <h2 id="upgrading-to-0120">Upgrading to 0.12.0<a class="headerlink" href="#upgrading-to-0120" title="Permanent link">&para;</a></h2>
+<p>Nothing needs an edit. Three calls that returned <code>ErrUnsupported</code> on some
+dialects now return results, so code that relied on the error (a fallback
+branch, a test that expects the refusal) now takes the success path. Check the
+semantic differences below before you drop a workaround.</p>
+<h3 id="ilike-on-sqlite-mysql-and-mariadb"><code>ILike</code> on SQLite, MySQL and MariaDB<a class="headerlink" href="#ilike-on-sqlite-mysql-and-mariadb" title="Permanent link">&para;</a></h3>
+<p><code>momo.ILike</code> no longer fails on SQLite, MySQL and MariaDB. They render
+<code>LOWER(x) LIKE LOWER(?) ESCAPE '!'</code>; <code>momo.Not(momo.ILike(...))</code> is NOT ILIKE.
+PostgreSQL is unchanged. The results are not identical to PostgreSQL:</p>
+<ul>
+<li>SQLite folds ASCII letters only, so <code>Ä</code> does not match <code>ä</code>. PostgreSQL folds
+  it. This is the reason the call was refused before.</li>
+<li>MySQL and MariaDB fold with <code>LOWER</code>, but the comparison follows the column
+  collation. Momo does not add a <code>_ci</code> or <code>_ai</code> collation: the default
+  <code>_ai_ci</code> collations are accent-insensitive (<code>a</code> matches <code>ä</code>), which
+  PostgreSQL <code>ILIKE</code> is not.</li>
+<li>An index on the column is not used, because the column is inside <code>LOWER</code>.</li>
+<li>On MySQL and MariaDB the column must be a character type. On <code>BINARY</code>,
+  <code>VARBINARY</code> and <code>BLOB</code> columns <code>LOWER</code> does nothing and <code>LIKE</code> is
+  case-sensitive, so the match is case-sensitive there. Momo adds no <code>CONVERT</code>.</li>
+</ul>
+<p>The capability flags <code>dialect.Dialect.ILike</code> and <code>dialect.Dialect.NullsOrdering</code>
+keep meaning native syntax: they stay false on MySQL (and <code>ILike</code> on SQLite)
+while the features work.</p>
+<h3 id="nullsfirst-and-nullslast-on-mysql-and-mariadb"><code>NullsFirst</code> and <code>NullsLast</code> on MySQL and MariaDB<a class="headerlink" href="#nullsfirst-and-nullslast-on-mysql-and-mariadb" title="Permanent link">&para;</a></h3>
+<p>An explicit NULLS placement, on a column, an <code>Order</code> from <code>momo.Asc</code> or
+<code>momo.Desc</code>, or <code>momo.OrderByPredicate</code>, renders <code>(e IS NULL) DESC, e ASC</code> or
+<code>(e IS NULL) ASC, e ASC</code> (with the direction of the item), which orders exactly
+as PostgreSQL. The expression is rendered twice, so a value it binds appears
+twice among the arguments, in order. <code>After</code> over a nullable key was and is
+<code>ErrUnsupported</code>. The outer <code>OrderBy</code> of a <code>SelectUnion</code> with a NULLS term is
+<code>ErrUnsupported</code> on MySQL and MariaDB, and so is a window with a <code>Range</code> frame
+that has an offset and one <code>OrderBy</code> item with a NULLS term: the emulation adds
+a second sort key and the server needs exactly one (error 3587). Drop the NULLS
+term or use a <code>Rows</code> frame. If you wrote <code>OrderByPredicate</code> as a
+workaround, it still works and you can switch to <code>NullsLast</code>.</p>
+<h3 id="aggregate-filter-on-mysql-and-mariadb">Aggregate <code>Filter</code> on MySQL and MariaDB<a class="headerlink" href="#aggregate-filter-on-mysql-and-mariadb" title="Permanent link">&para;</a></h3>
+<p><code>momo.Agg.Filter</code> and <code>agg.Call.Filter</code> render <code>agg(CASE WHEN p THEN x END)</code>,
+and <code>COUNT(*)</code> becomes <code>COUNT(CASE WHEN p THEN 1 END)</code>. This is exact for the
+aggregates that skip NULLs: <code>Sum</code>, <code>Avg</code>, <code>Min</code>, <code>Max</code>, <code>CountOf</code>,
+<code>CountDistinct</code>, <code>agg.String</code>, and <code>agg.Func</code> over <code>count</code>, <code>sum</code>, <code>avg</code>,
+<code>min</code>, <code>max</code> and the <code>std</code> and <code>var</code> family, also with <code>Over</code>. A call that
+keeps NULLs (<code>agg.JSONB</code>, any other <code>agg.Func</code>) is still <code>ErrUnsupported</code> there,
+with a message that says why; so is <code>agg.Func</code> over a raw <code>*</code> (use
+<code>momo.CountAll().Filter(p)</code>). <code>Builder.AppendFilter</code> itself still fails on
+MySQL: a custom aggregate rewrites its own arguments.</p>
 <h3 id="generate-from-db-check-compares-the-body-not-only-the-header-hash"><code>generate --from-db --check</code> compares the body, not only the header hash<a class="headerlink" href="#generate-from-db-check-compares-the-body-not-only-the-header-hash" title="Permanent link">&para;</a></h3>
 <p>No change is needed. A model file written by <code>momo generate --from-db</code> that
 you edited by hand used to be reported as stale (<code>--check</code>) or as a conflict
@@ -3413,8 +3524,8 @@ SQLite and MySQL (a boolean is 0 or 1 in the last two). A predicate is an
 interface, so it has no <code>Asc</code> method of its own: write
 <code>momo.OrderByPredicate(template.BuiltinKey.IsNotNull()).Desc()</code>. Nothing
 existing changes.</p>
-<p>Limits. <code>NullsFirst</code> and <code>NullsLast</code> on a predicate are <code>ErrUnsupported</code> on
-MySQL and MariaDB, as they are on a column, because momo does not emulate them.
+<p>Limits. <code>NullsFirst</code> and <code>NullsLast</code> on a predicate were <code>ErrUnsupported</code> on
+MySQL and MariaDB in 0.11.0, as they were on a column; 0.12.0 emulates them.
 <code>After</code> over a predicate key is <code>ErrValidation</code>, because a cursor over a value
 that can be NULL skips or repeats rows. A predicate in the outer <code>OrderBy</code> of a
 <code>SelectUnion</code> is <code>ErrValidation</code>, because that clause allows unqualified result
