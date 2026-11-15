@@ -55,7 +55,7 @@ func dispatch(b *momo.Builder, what string, pg, sqlite, mysql func()) {
 
 // Search is the predicate that matches the rows whose searchable columns
 // match q: ts @@ tsquery on PostgreSQL, a MATCH on the FTS5 table on SQLite,
-// MATCH ... AGAINST in boolean mode on MySQL and MariaDB. The query text is a
+// MATCH AGAINST in boolean mode on MySQL and MariaDB. The query text is a
 // bound parameter. A query without a positive word
 // renders as a false predicate and sends no MATCH.
 func Search(t Target, q Query) momo.Predicate {

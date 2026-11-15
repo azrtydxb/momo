@@ -7,7 +7,7 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 )
 
-// MySQLMode is the search modifier of MATCH ... AGAINST on MySQL and MariaDB.
+// MySQLMode is the search modifier of MATCH AGAINST on MySQL and MariaDB.
 // It selects a fixed piece of SQL; no input ever becomes part of it.
 type MySQLMode uint8
 

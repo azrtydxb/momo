@@ -67,15 +67,22 @@ func mysqlWord(w string) string {
 }
 
 // mysqlTerm renders a term with the operator sign (+ required, - excluded).
-// A phrase is a quoted string. Boolean mode has no prefix phrase, so a prefix
-// term of several words keeps its leading words as a phrase and puts the
-// wildcard on the last word; an apostrophe at either end of that word is
-// dropped, because a quoted word cannot carry the wildcard.
+// A phrase is a quoted string. Boolean mode has no prefix phrase, so a required
+// prefix term of several words keeps its leading words as a phrase and puts the
+// wildcard on the last word (a row with the words apart also matches); an
+// apostrophe at either end of that word is dropped, because a quoted word
+// cannot carry the wildcard. An excluded prefix phrase is rendered as the
+// phrase without the wildcard, so it never excludes more than the phrase.
 func mysqlTerm(t Term, sign string) string {
 	words := strings.Fields(t.Text)
 	switch {
 	case len(words) == 0:
 		return ""
+	case t.Prefix && sign == "-" && len(words) > 1:
+		// Excluding the words one by one would drop every row that holds any
+		// of them. The phrase without its wildcard excludes at most the rows
+		// that hold the phrase.
+		return sign + `"` + strings.Join(words, " ") + `"`
 	case t.Prefix:
 		last := strings.Trim(words[len(words)-1], "'")
 		if last == "" {
@@ -97,7 +104,9 @@ func mysqlTerm(t Term, sign string) string {
 // MySQLBoolean renders the query as a MySQL or MariaDB boolean-mode string:
 // each term is required (+word, +"a phrase", +prefix*), several groups are
 // written (+a +b) (+c) so that any group may match, and each exclusion is a
-// top-level -term. No operator character reaches the string except those the
+// top-level -term; an excluded prefix phrase such as -well-kn* is -"well kn",
+// which excludes only the rows that hold the exact phrase, never more than
+// PostgreSQL and SQLite exclude. No operator character reaches the string except those the
 // renderer writes: words hold only letters, digits, underscores and
 // apostrophes. An empty query renders as the empty string.
 func (p Parsed) MySQLBoolean() string {

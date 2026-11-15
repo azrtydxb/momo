@@ -330,6 +330,45 @@ func TestFullTextNulls(t *testing.T) {
 	})
 }
 
+// Catches: a prefix phrase or an apostrophe word rendered so that a dialect
+// returns other rows than the rest. On the MySQL family a required prefix
+// phrase is a conjunction (+well +kn*), so the rows below never hold both words
+// apart.
+func TestFullTextPrefixPhraseAndApostrophe(t *testing.T) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		createArticles(t, db, d, [][3]string{
+			{"1", "well known", "a famous place"},
+			{"2", "well kneaded", "dough"},
+			{"3", "other", "unrelated text"},
+			{"4", "pet", "the dog's bone"},
+			{"5", "pet", "a cat"},
+		})
+		if got := searchIDs(t, db, fts.Web(`well-kn*`)); !reflect.DeepEqual(got, []int64{1, 2}) {
+			t.Fatalf("prefix phrase: %v, want [1 2]", got)
+		}
+		if got := searchIDs(t, db, fts.Web(`dog's`)); !reflect.DeepEqual(got, []int64{4}) {
+			t.Fatalf("apostrophe word: %v, want [4]", got)
+		}
+	})
+}
+
+// Catches: an excluded prefix phrase excluding every row that holds one of its
+// words, which PostgreSQL and SQLite never do. On the MySQL family the
+// exclusion is the exact phrase, so the rows below hold the phrase as a whole
+// word (kne) or not at all.
+func TestFullTextExcludedPrefixPhrase(t *testing.T) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		createArticles(t, db, d, [][3]string{
+			{"1", "well kne", "filler"},
+			{"2", "well done", "a kneaded loaf"},
+			{"3", "pet", "a cat"},
+		})
+		if got := searchIDs(t, db, fts.Web(`well -well-kne*`)); !reflect.DeepEqual(got, []int64{2}) {
+			t.Fatalf("excluded prefix phrase: %v, want [2]", got)
+		}
+	})
+}
+
 var errRollback = errors.New("rollback")
 
 // Catches: visibility differing from the documented table: MySQL and MariaDB

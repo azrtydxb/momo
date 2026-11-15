@@ -104,6 +104,7 @@ func TestMySQLBoolean(t *testing.T) {
 		`well-kn*`:           `+well +kn*`,
 		`a -"x y"`:           `+a -"x y"`,
 		`a -b*`:              `+a -b*`,
+		`x -well-kn*`:        `+x -"well kn"`,
 	}
 	for in, want := range cases {
 		if got := Parse(in, Web).MySQLBoolean(); got != want {

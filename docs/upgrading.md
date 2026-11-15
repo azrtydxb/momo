@@ -38,8 +38,9 @@ exactly the indexed columns in their order, and `fts.Snippet` fails with
 `momo.ErrUnsupported`. `fts.MySQLMatch` and `fts.MySQLRelevance` take a mode
 and a text of your own. A `MATCH` without a `FULLTEXT` index over exactly its
 columns is `momo.ErrValidation`. InnoDB does not index a word shorter than
-`innodb_ft_min_token_size` (3 by default), so a search for it finds nothing, and
-a row inserted in an open transaction is not found by a search until the
+`innodb_ft_min_token_size` (3 by default), and a stopword of its list (such as
+`the` or `it`) in a required term matches nothing, so a search that needs such a
+word finds nothing; a row inserted in an open transaction is not found by a search until the
 transaction commits.
 
 ### Declare full-text search on a model
@@ -60,9 +61,7 @@ index, recreates the generated column and creates the index again. The
 generated column is named `<index>_tsv`; a model column of that name, a source
 column the table does not have, an index name that makes the column name longer
 than 63 bytes, or a full-text index declared `Concurrently` fails with
-`ErrValidation`. SQLite refuses an index that carries a declaration with
-`ErrUnsupported` ("full-text declarations are not rendered yet"), so a model
-that declares it cannot produce or apply a migration there.
+`ErrValidation`.
 
 ## Upgrading to 0.14.0
 
