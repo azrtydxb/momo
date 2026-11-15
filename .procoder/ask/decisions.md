@@ -1033,6 +1033,56 @@ Decision (2026-11-14, integrator): as above.
 
 Decision (2026-11-14, integrator): as above.
 
+## Parity: BulkUpdate on SQLite, MySQL and MariaDB (2026-11-15, integrator)
+
+- **Finding:** `BulkUpdate` existed and was refused with `ErrUnsupported` outside
+  PostgreSQL (gated on `dialect.Merge`, with a single key column and no
+  chunking). It is extended, not redesigned.
+- **SQL:** PostgreSQL and SQLite render
+  `UPDATE t SET c = v.c FROM (SELECT k, c FROM t WHERE false UNION ALL SELECT ?, ? ...) AS v WHERE t.k = v.k`.
+  MySQL and MariaDB render
+  `UPDATE t JOIN (<same derived table>) AS v ON t.k = v.k SET t.c = v.c`. The
+  `UNION ALL` form is kept over `VALUES`/`VALUES ROW(...)` because it works on
+  all four servers (MariaDB has no `VALUES ROW`) and the empty first `SELECT`
+  gives the rows the table's column types and collation, so a NULL or a string
+  key compares correctly. A `UNION` derived table is materialized, so MySQL and
+  MariaDB accept it although it reads the table being updated. SQLite
+  needs 3.33 for `UPDATE ... FROM`, which `UpdateQuery.From` already relies on.
+- **Composite keys:** new `BulkUpdateKeys(q, keys, cols, rows)`; `BulkUpdate`
+  calls it with one key. Each row holds the key values first. A NULL key value
+  matches nothing; a key column listed twice or also as a value column is
+  `ErrValidation`. A key listed twice in the rows applies one of its rows (not
+  defined which), as before.
+- **updated_at and version:** unchanged from 0.11.0: updated_at is the
+  statement clock (one read for all chunks), an explicit updated_at is
+  `ErrValidation`, the version column is bumped, OnUpdate defaults and field
+  validators run per row.
+- **Soft delete:** like `Update`, soft-deleted rows match; the caller adds a
+  `Where` on the soft-delete column to leave them out. No implicit filter is
+  added, so `BulkUpdate` and `Update` agree.
+- **Chunking:** `Exec` sizes a chunk from the dialect's `MaxParams` after
+  measuring the fixed parameters (updated_at, OnUpdate values, Where) on a
+  one-row statement, and runs the chunks through `runAtomic` (a transaction on
+  a `DB`, a savepoint on a `Tx`, `ErrUnsupported` on a pinned `DB`), summing
+  `RowsAffected`. A row that cannot fit alone is `ErrLimitExceeded`. `SQL()` and
+  `Rows` still render one statement and return `ErrLimitExceeded` over the
+  limit, because RETURNING over several statements needs the chunked cursor that
+  only the insert path has.
+- **RETURNING:** PostgreSQL and SQLite return the updated rows; MySQL and
+  MariaDB have no `UPDATE ... RETURNING` and return `ErrUnsupported`.
+- **Affected rows:** every dialect counts the rows that match a listed key,
+  changed or not. The MySQL driver sets `clientFoundRows`, which makes MySQL
+  count matched rows instead of changed rows; a duplicate key counts the target
+  row once on all four.
+- **Verification:** golden SQL per dialect and flavor as unit tests;
+  integration tests with `testopen.EachWithMySQL` (PostgreSQL, SQLite, MySQL 8.4,
+  MySQL 9.7, MariaDB 11.8) with `WithMaxParams` set low, for composite keys,
+  NULLs, matched-row counts, chunk rollback on a `DB` and a `Tx`, RETURNING,
+  updated_at, version and the soft-delete scope; a NULL key; a duplicate key in
+  one statement; a chunked list on a pinned `DB`.
+
+Decision (2026-11-15, integrator): as above.
+
 ## Parity: MERGE on SQLite, MySQL and MariaDB (2026-11-14, integrator)
 
 - **What exists:** `momo.Merge` takes a `Subquery` source (named `src`) and has

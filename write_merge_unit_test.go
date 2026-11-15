@@ -267,21 +267,6 @@ func TestBulkUpdateRendersKeyedValuesList(t *testing.T) {
 	}
 }
 
-// Catches: BulkUpdate rendering on a dialect without it.
-func TestBulkUpdateUnsupportedOnSQLite(t *testing.T) {
-	drv := fakedriver.New(dialect.SQLite)
-	q := bulkQ(momo.New(drv), []any{int64(2), "new"})
-	if _, err := q.SQL(); !errors.Is(err, momo.ErrUnsupported) {
-		t.Fatalf("SQL = %v, want ErrUnsupported", err)
-	}
-	if _, err := q.Exec(t.Context()); !errors.Is(err, momo.ErrUnsupported) {
-		t.Fatalf("Exec = %v, want ErrUnsupported", err)
-	}
-	if len(drv.Calls()) != 0 {
-		t.Fatalf("calls = %v, want none", drv.Calls())
-	}
-}
-
 // Catches: malformed lists reaching the database, and BulkUpdate being allowed
 // to write the columns Update guards.
 func TestBulkUpdateValidation(t *testing.T) {

@@ -7,10 +7,39 @@ later releases can break more.
 
 ## Upgrading to 0.14.0
 
-No edit is needed in your code. Models can record a full-text search
-declaration, which migrations do not render yet, and `Merge` now runs on SQLite,
-MySQL and MariaDB, where it returned `ErrUnsupported`, so code that relied on the error (a
-fallback branch, a test that expects the refusal) now takes the success path.
+No edit is needed in your code. `Merge` and `BulkUpdate` now run on SQLite,
+MySQL and MariaDB, where they returned `ErrUnsupported`, so code that relied on
+the error (a fallback branch, a test that expects the refusal) now takes the
+success path. A long `BulkUpdate` list is also chunked instead of refused on
+every dialect. Models can also record a full-text search declaration, which
+migrations do not render yet.
+
+### `BulkUpdate` runs on every dialect
+
+SQLite renders `UPDATE ... FROM`, like PostgreSQL. MySQL and MariaDB render
+`UPDATE t JOIN (SELECT ... UNION ALL SELECT ...) AS v ON ... SET ...`.
+`RowsAffected` counts the rows that match a listed key on every dialect,
+whether or not a value changed (the MySQL driver sets `clientFoundRows`).
+`Returning` stays `ErrUnsupported` on MySQL and MariaDB, which have no
+`UPDATE ... RETURNING`.
+
+### A long list is chunked, not refused
+
+`BulkUpdate(...).Exec` used to fail with `ErrLimitExceeded` when the list bound
+more parameters than the dialect allows. It now splits the list into
+statements, run in order and summed, atomically: in one transaction on a `DB`,
+in a savepoint on a `Tx`. A `DB` pinned with `OnConn` cannot begin a
+transaction, so a chunked list there is `ErrUnsupported`; call it on a `Tx`.
+`SQL()` and `Rows` still render one statement and return `ErrLimitExceeded` over
+the limit. If you split lists by hand to stay under the limit, you can drop that
+code; a list split by hand and run in separate transactions stays valid.
+
+### `BulkUpdateKeys` for a composite key
+
+`BulkUpdateKeys(q, keys, cols, rows)` takes several key columns; each row holds
+the key values first, then one value per column. `BulkUpdate` is the
+single-key form and is unchanged. A NULL key value matches no row. A key listed
+twice applies one of its rows, and which one is not defined.
 
 ### Declare full-text search on a model
 

@@ -276,6 +276,16 @@ equivalent instead of returning `ErrUnsupported`.
   existing row that changed, and 1 for an existing row set to its current
   values. `DoNothing` also reports 1 for a skipped row. A count of 1 does not
   tell an insert from a skip.
+- `BulkUpdate` and `BulkUpdateKeys` render
+  `UPDATE t JOIN (SELECT k, c FROM t WHERE false UNION ALL SELECT ?, ? ...) AS momo_v ON t.k = momo_v.k SET t.c = momo_v.c`
+  on both servers, because MariaDB has no `VALUES ROW(...)` table constructor.
+  The empty first `SELECT` gives the rows the column types and collation of the
+  table. A derived table with a `UNION` is materialized, so the server accepts
+  the update of a table that the derived table also reads. `RowsAffected` counts
+  the rows that match a listed key, changed or not, because the driver sets
+  `clientFoundRows`. `Returning` is `ErrUnsupported`, as for any UPDATE. A list
+  over `MaxParams` is split into chunks that run in one transaction (a
+  savepoint on a `Tx`).
 - A bare `OFFSET` gets `LIMIT 18446744073709551615` in front of it, because
   MySQL and MariaDB reject an offset without a limit.
 
