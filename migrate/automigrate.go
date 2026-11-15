@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -177,6 +178,13 @@ func autoSkipReason(ch Change, desired *schema.Schema, created map[string]bool) 
 			return ""
 		}
 		return "change to an existing table requires a migration"
+	case CreateTrigger:
+		// The sync triggers of an FTS5 table are part of the full-text
+		// declaration: without them the table drifts from its content.
+		if isFTS5SyncTrigger(desired, ch) {
+			return ""
+		}
+		return "change requires a migration"
 	case AlterColumn:
 		if ch.Destructive {
 			return "type change requires a migration"
@@ -192,6 +200,26 @@ func autoSkipReason(ch Change, desired *schema.Schema, created map[string]bool) 
 		return "rename requires a migration"
 	}
 	return "change requires a migration"
+}
+
+// isFTS5SyncTrigger reports whether ch creates one of the three triggers that
+// keep the FTS5 table of a SQLite full-text declaration in step with its
+// content table.
+func isFTS5SyncTrigger(desired *schema.Schema, ch Change) bool {
+	if desired.Dialect != dialect.SQLite {
+		return false
+	}
+	for _, t := range desired.Tables {
+		if t.Schema != ch.Schema || t.Name != ch.Table {
+			continue
+		}
+		if _, ok := t.FullTextIndex(); !ok {
+			return false
+		}
+		fts := schema.FTS5Table(t.Name)
+		return ch.Name == fts+"_ai" || ch.Name == fts+"_ad" || ch.Name == fts+"_au"
+	}
+	return false
 }
 
 // declaredColumn returns the column of the desired schema that an add_column

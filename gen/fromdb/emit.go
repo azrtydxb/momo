@@ -398,6 +398,7 @@ func (g *generator) columnRule(table, col string) ColumnRule {
 // columns builds the fields of m.
 func (g *generator) columns(m *model) {
 	t := m.t
+	g.prepareFullText(m)
 	pk := map[string]bool{}
 	for _, c := range t.PrimaryKey {
 		pk[c] = true
@@ -915,6 +916,9 @@ func (g *generator) index(m *model, ix schema.Index) bool {
 	drop := func(why string) bool {
 		g.add(SevWarn, obj, "%s: the models cannot declare this index, so it is left out of the models and the snapshot and the baseline will report it", why)
 		return false
+	}
+	if ix.FullText != nil && ix.Method == "fulltext" {
+		return g.fullText(m, ix)
 	}
 	if len(ix.Parts) == 0 {
 		return drop("it has no key")
