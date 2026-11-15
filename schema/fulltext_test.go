@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/azrtydxb/momo/dialect"
 )
 
 // Catches: a FullText field lost by the JSON snapshot, and an old snapshot
@@ -58,6 +60,8 @@ func TestFullTextValidate(t *testing.T) {
 		{Columns: []string{"a"}, Weights: []string{"A", "B"}},
 		{Columns: []string{"a"}, Weights: []string{"E"}},
 		{Columns: []string{"a"}, Weights: []string{"A"}, Expression: true},
+		{Columns: []string{"a"}, Tokenizer: "ascii remove_diacritics 1"},          //nolint:gosec // invalid tokenizer, not a credential
+		{Columns: []string{"a"}, Tokenizer: "porter trigram remove_diacritics 2"}, //nolint:gosec // invalid tokenizer, not a credential
 	}
 	for i, f := range bad {
 		if err := f.Validate(); err == nil {
@@ -66,5 +70,30 @@ func TestFullTextValidate(t *testing.T) {
 	}
 	if FTS5Table("articles") != "articles_fts" || TSVectorColumn("articles_search") != "articles_search_tsv" {
 		t.Fatal("name functions drifted")
+	}
+}
+
+// Catches: an option a dialect ignores (including the PostgreSQL-only
+// Expression) surviving ForDialect, so a change to it would diff forever.
+func TestFullTextForDialect(t *testing.T) {
+	all := FullText{Columns: []string{"a"}, Config: "english", Weights: []string{"A"},
+		Tokenizer: "porter unicode61", Parser: "ngram", Expression: false}
+	expr := FullText{Columns: []string{"a"}, Config: "english", Expression: true}
+	for _, d := range []dialect.Name{dialect.SQLite, dialect.MySQL} {
+		if got := expr.ForDialect(d); got.Expression || got.Config != "" {
+			t.Errorf("%s kept PostgreSQL-only options: %+v", d, got)
+		}
+	}
+	if got := expr.ForDialect(dialect.Postgres); !got.Expression || got.Config != "english" {
+		t.Errorf("postgres lost its options: %+v", got)
+	}
+	if got := all.ForDialect(dialect.SQLite); got.Tokenizer != "porter unicode61" || got.Parser != "" || got.Weights != nil {
+		t.Errorf("sqlite = %+v", got)
+	}
+	if got := all.ForDialect(dialect.MySQL); got.Parser != "ngram" || got.Tokenizer != "" || got.Weights != nil {
+		t.Errorf("mysql = %+v", got)
+	}
+	if got := all.ForDialect(dialect.Postgres); got.Tokenizer != "" || got.Parser != "" || got.Config != "english" {
+		t.Errorf("postgres = %+v", got)
 	}
 }

@@ -7,8 +7,9 @@ later releases can break more.
 
 ## Upgrading to 0.14.0
 
-No edit is needed in your code. Models can declare full-text search, and `Merge` now runs on SQLite, MySQL and MariaDB,
-where it returned `ErrUnsupported`, so code that relied on the error (a
+No edit is needed in your code. Models can record a full-text search
+declaration, which migrations do not render yet, and `Merge` now runs on SQLite,
+MySQL and MariaDB, where it returned `ErrUnsupported`, so code that relied on the error (a
 fallback branch, a test that expects the refusal) now takes the success path.
 
 ### Declare full-text search on a model
@@ -19,8 +20,13 @@ fields in field order) or with `c.FullText(name, &m.A, &m.B)` in `MomoConfig`,
 chained with `Config`, `Weights`, `Tokenizer`, `Parser` or `Expression` for the
 options a dialect honours. `momo generate` rejects the tag on a column that is
 not text, a second declaration on one table, and a configuration, tokenizer or
-parser name outside a strict allowlist. The declaration is recorded in the
-schema snapshot; snapshots written before it load unchanged. Nothing is added to
+parser name outside a strict allowlist. The declaration is recorded in the model
+and in the schema snapshot; snapshots written before it load unchanged.
+
+Migrations do not render the declaration. Until a later release adds the
+rendering, every migration dialect refuses an index that carries one with
+`ErrUnsupported` ("full-text declarations are not rendered yet"), so a model
+that declares it cannot produce or apply a migration. Nothing is added to
 existing models, so no edit is needed.
 
 ### `Merge` runs on SQLite, MySQL and MariaDB

@@ -53,13 +53,22 @@ func TestGenerateFullTextDeclaration(t *testing.T) {
 // Catches: the tag accepted on a non-text field, a second declaration
 // accepted, and a diagnostic that does not name the field.
 func TestGenerateFullTextDeclarationRejected(t *testing.T) {
-	g, _, err := Load([]string{"./fulltextbad"}, Config{Dir: fixturesDir(t)})
+	g, loadDiags, err := Load([]string{"./fulltextbad"}, Config{Dir: fixturesDir(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, diags := BuildSchema(g.Models, Config{Dialects: []dialect.Name{dialect.Postgres}})
-	text := diagStrings(diags)
-	for _, want := range []string{"field Views", "search needs a text column", "one full-text declaration per table"} {
+	text := diagStrings(loadDiags) + "\n" + diagStrings(diags)
+	for _, want := range []string{
+		"field Views", "search needs a text column", "one full-text declaration per table",
+		"field Labels",
+		"is not a plain identifier",
+		`full-text tokenizer "unicode61`,
+		`full-text parser "ngram; x"`,
+		"duplicate Config",
+		"full-text weights: got 1, want one per column (2)",
+		"unsupported companion expression: &other.Views",
+	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("diagnostics lack %q:\n%s", want, text)
 		}

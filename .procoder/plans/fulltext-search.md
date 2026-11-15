@@ -15,7 +15,7 @@ Design decisions the spec leaves open, fixed here so every task agrees (each is 
 
 - D1. Engine hook. The spec says the snapshot records only the declaration and the dialect derives the rest (Q2), yet `Engine.Diff` compares two schemas that must both contain the derived objects. A new optional interface `migrate.SchemaExpander` (`ExpandSchema(s *schema.Schema) (*schema.Schema, error)`, pure, idempotent) is applied to the desired schema and to the snapshot schema at every place `SchemaValidator` is called and wherever a snapshot is compared with a live inspection (Diff, AutoMigrate, Drift, Baseline). PostgreSQL expansion adds the generated column; SQLite expansion adds the three sync triggers and renames the index to `<table>_fts`.
 - D2. Names. `schema.FTS5Table(table)` is `table + "_fts"`; `schema.TSVectorColumn(index)` is `index + "_tsv"`. Both the renderers and the query layer call these two functions, nothing else spells the names.
-- D3. Options a dialect ignores are dropped by `FullText.ForDialect(d)` before comparison: SQLite and MySQL ignore `Config`, PostgreSQL and MySQL ignore `Tokenizer`, PostgreSQL and SQLite ignore `Parser`, SQLite and MySQL ignore `Weights` (they are query-time on SQLite, a no-op on MySQL). So a changed weight on SQLite is no migration.
+- D3. Options a dialect ignores are dropped by `FullText.ForDialect(d)` before comparison: SQLite and MySQL ignore `Config`, PostgreSQL and MySQL ignore `Tokenizer`, PostgreSQL and SQLite ignore `Parser`, SQLite and MySQL ignore `Weights` (they are query-time on SQLite, a no-op on MySQL). PostgreSQL alone honours `Expression`, so SQLite and MySQL clear it too (else it would diff forever). So a changed weight on SQLite is no migration.
 - D4. One query parser. `internal/ftsquery.Parse(text, syntax)` produces `Parsed{Groups [][]Term, Excluded []Term}` where `Term{Text string, Phrase, Prefix bool}`; `Parsed.PostgresTSQuery()`, `Parsed.FTS5()`, `Parsed.MySQLBoolean()` render it. The PostgreSQL web form without a prefix term still binds the raw text to `websearch_to_tsquery` (spec Q5); only a query containing a prefix term is rendered as `to_tsquery` text with every lexeme quoted.
 - D5. On PostgreSQL a declared target writes the configuration as a quoted literal inside `CAST('english' AS regconfig)`, validated against `^[A-Za-z_][A-Za-z0-9_]*$` at declaration time, so the expression matches the generated column and the expression index textually. A caller-supplied `Query.Config(name)` that differs from the declared configuration is `ErrValidation`; a target over a hand-managed tsvector column (`fts.OverVector`) keeps the bound-parameter regconfig of the existing builders.
 - D6. Hybrid reads the declaration from `Meta.TableSchema` (already filled by generated code, `meta.go`). `HybridSpec.Text` is checked for membership in the declared columns; the text leg searches all declared columns (FTS5 `MATCH` on the table, `MATCH(c1, c2, ...)` on MariaDB), because the FULLTEXT index and the FTS5 table cover the whole declaration.
@@ -113,7 +113,7 @@ func TestSchemaFullTextSnapshotCompat(t *testing.T) {
 	if err := in.Write(&buf); err != nil {
 		t.Fatal(err)
 	}
-	out, err := Read(&buf)
+	out, err := Load(&buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestSchemaFullTextSnapshotCompat(t *testing.T) {
 		t.Fatalf("full-text description lost in the round trip: %+v", got)
 	}
 	old := `{"format_version":1,"dialect":"postgres","tables":[{"name":"t","columns":[{"name":"id","type":"bigint"}],"indexes":[{"name":"i","parts":[{"column":"id"}]}]}]}`
-	if _, err := Read(strings.NewReader(old)); err != nil {
+	if _, err := Load(strings.NewReader(old)); err != nil {
 		t.Fatalf("snapshot written before this change: %v", err)
 	}
 	if !json.Valid([]byte(old)) {
@@ -294,6 +294,8 @@ func TestGenerateFullTextDeclarationRejected(t *testing.T) {
 - [ ] Step 6. Commit in a separate call: `feat(schema): declare full-text search on a model`.
 
 ## Task 2: PostgreSQL declarative full-text (generated tsvector plus GIN)
+
+Review notes from Task 1: `ExpandSchema` must check that every `FullText.Columns` entry is a column of the table (`ErrValidation` naming table and column) and quote every identifier it writes; the generated column name `TSVectorColumn(index)` must not collide with an existing column and must fit PostgreSQL's 63-byte identifier limit (`ErrValidation`). Task 1 made the three renderers refuse an index with `FullText != nil` (`ErrUnsupported`, "full-text declarations are not rendered yet"); this task removes that refusal in `migrate/postgres` and replaces its test.
 
 Covers: S-5 (all three criteria: `TestFullTextPostgresMigrationRoundTrip`, `TestFullTextConfigChangeDiff` diff half, `TestTSVectorMigrationRoundTrip` unchanged); the lint half of the config-change criterion is Task 8.
 
@@ -510,6 +512,8 @@ If `migratetest` has no `DiffApply`/`Engine` helper of those names, use the help
 - [ ] Step 8. Commit in a separate call: `feat(migrate): declarative PostgreSQL full-text index`.
 
 ## Task 3: SQLite FTS5 table and sync triggers
+
+Review notes from Task 1: `ExpandSchema` must check that every `FullText.Columns` entry is a column of the table (`ErrValidation` naming table and column) and quote every identifier it writes, including the `content=` and `content_rowid=` values; this task removes the refusal Task 1 put in `createIndexSQL` (`migrate/sqlite/fulltext_refused_test.go` goes with it).
 
 Covers: S-6 (all six criteria: `TestFullTextSQLiteMigrationRoundTrip`, `TestFullTextSQLiteSync`, `TestFullTextSQLiteIntegrityAfterUpdateDelete`, `TestFullTextSQLiteNeedsIntegerKey`, `TestFullTextSQLiteDrop`, `TestFullTextSQLiteDriverSupport`).
 
@@ -734,6 +738,8 @@ Add `TestFullTextSQLiteSync` (the insert, update, delete assertions above as sep
 - [ ] Step 7. Commit in a separate call: `feat(migrate): FTS5 table and sync triggers on SQLite`.
 
 ## Task 4: MySQL and MariaDB FULLTEXT
+
+Review notes from Task 1: the generator checks that a `search` column is text against the primary dialect only (the first of `cfg.Dialects`); with several dialects configured, `ValidateSchema` here must repeat the text-column check per dialect. This task removes the refusal Task 1 put in `migrate/mysql` `createIndex` (`migrate/mysql/fulltext_refused_test.go` goes with it).
 
 Covers: S-7 (all three criteria: `TestFullTextMySQLMigrationRoundTrip`, `TestFullTextMySQLRenderValidation`; the match builder criterion is Task 7).
 

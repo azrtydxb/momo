@@ -26,7 +26,7 @@ type FullText struct {
 
 var (
 	ftsConfigRE    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	ftsTokenizerRE = regexp.MustCompile(`^(porter )?(unicode61|ascii|trigram)( remove_diacritics [0-2])?$`)
+	ftsTokenizerRE = regexp.MustCompile(`^(porter )?(unicode61( remove_diacritics [0-2])?|ascii|trigram)$`)
 )
 
 // FTS5Table is the name of the FTS5 virtual table that indexes table.
@@ -82,9 +82,9 @@ func (f FullText) Validate() error {
 func (f FullText) ForDialect(d dialect.Name) FullText {
 	switch d {
 	case dialect.SQLite:
-		f.Config, f.Parser, f.Weights = "", "", nil
+		f.Config, f.Parser, f.Weights, f.Expression = "", "", nil, false
 	case dialect.MySQL:
-		f.Config, f.Tokenizer, f.Weights = "", "", nil
+		f.Config, f.Tokenizer, f.Weights, f.Expression = "", "", nil, false
 	case dialect.Postgres:
 		f.Tokenizer, f.Parser = "", ""
 	}

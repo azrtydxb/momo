@@ -590,6 +590,9 @@ var safeValue = regexp.MustCompile(`^[A-Za-z0-9_.+-]+$`)
 var nullsOrder = map[string]string{"first": "NULLS FIRST", "last": "NULLS LAST"}
 
 func createIndex(schemaName, table string, ix schema.Index) (migrate.Statement, error) {
+	if ix.FullText != nil {
+		return migrate.Statement{}, &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate/postgres", Err: fmt.Errorf("index %q: full-text declarations are not rendered yet", ix.Name)}
+	}
 	var b strings.Builder
 	b.WriteString("CREATE ")
 	if ix.Unique {

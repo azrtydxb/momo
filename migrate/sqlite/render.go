@@ -700,6 +700,9 @@ func fkSQL(fk schema.ForeignKey) (string, error) {
 }
 
 func createIndexSQL(table string, ix schema.Index) (string, error) {
+	if ix.FullText != nil {
+		return "", unsupported("index %q: full-text declarations are not rendered yet", ix.Name)
+	}
 	if ix.Method != "" && !strings.EqualFold(ix.Method, "btree") {
 		return "", unsupported("index %q uses the access method %q; SQLite indexes are b-trees", ix.Name, ix.Method)
 	}

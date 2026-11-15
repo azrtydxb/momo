@@ -651,10 +651,15 @@ func (b *schemaBuilder) addIndex(t *schema.Table, ix schema.Index, pos token.Pos
 // read. typ is the dialect's own spelling; it is normalized first.
 func isTextType(d dialect.Name, typ string) bool {
 	typ = strings.ToLower(schema.NormalizeType(d, typ))
-	for _, p := range []string{"text", "varchar", "char", "character", "tinytext", "mediumtext", "longtext"} {
-		if strings.HasPrefix(typ, p) {
-			return true
-		}
+	if strings.HasSuffix(typ, "[]") {
+		return false // an array of text is not text
+	}
+	if i := strings.IndexByte(typ, '('); i >= 0 {
+		typ = strings.TrimSpace(typ[:i]) // drop the length or precision
+	}
+	switch typ {
+	case "text", "varchar", "char", "character", "character varying", "tinytext", "mediumtext", "longtext":
+		return true
 	}
 	return false
 }
