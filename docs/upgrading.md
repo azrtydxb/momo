@@ -30,7 +30,8 @@ it in step with the table, and the table is filled with the FTS5 `rebuild`
 command when it is created. The table needs a rowid table with a primary key of
 one `INTEGER` column; any other key is `ErrValidation` naming the table. Removing
 the declaration drops the triggers, then the FTS5 table. The cgo driver
-`sqlitedriver` compiles FTS5 only when you build with `-tags sqlite_fts5`; the
+`sqlitedriver` compiles FTS5 only when you build with `-tags sqlite_fts5` (or
+set `CGO_CFLAGS=-DSQLITE_ENABLE_FTS5` and `CGO_LDFLAGS=-lm`); the
 pure-Go `sqlitepure` driver includes it. A build without FTS5 fails the
 migration with `ErrUnsupported`. The other migration dialects still refuse an
 index that carries a declaration with `ErrUnsupported` ("full-text declarations

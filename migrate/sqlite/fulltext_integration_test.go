@@ -190,7 +190,7 @@ func TestFullTextSQLiteDriverSupport(t *testing.T) {
 	rows, err := db.Driver().Query(ctx, `SELECT bm25(p) FROM p WHERE p MATCH 'x'`, nil)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such module") {
-			t.Fatalf("the cgo SQLite build has no FTS5 (build with -tags sqlite_fts5): %v", err)
+			t.Fatalf("the cgo SQLite build has no FTS5 (build with -tags sqlite_fts5 or CGO_CFLAGS=-DSQLITE_ENABLE_FTS5 and CGO_LDFLAGS=-lm): %v", err)
 		}
 		t.Fatal(err)
 	}
