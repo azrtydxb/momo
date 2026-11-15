@@ -237,9 +237,15 @@ func TestBulkUpdateReturningUnsupportedOnMySQLFamily(t *testing.T) {
 
 // Catches: RETURNING dropped from the PostgreSQL and SQLite statements.
 func TestBulkUpdateReturningRendersOnPostgresAndSQLite(t *testing.T) {
-	for _, n := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
-		c, err := bulkQ(momo.New(fakedriver.New(n)), []any{int64(2), "new"}).Returning(suite.DocID).SQL()
-		if err != nil || !strings.HasSuffix(c.SQL, ` RETURNING "id"`) {
+	// PostgreSQL qualifies the list with the target: the derived table repeats
+	// the key and value column names, so a bare name is ambiguous (42702).
+	want := map[dialect.Name]string{
+		dialect.Postgres: ` RETURNING "documents"."id", "documents"."title"`,
+		dialect.SQLite:   ` RETURNING "id", "title"`,
+	}
+	for n, suffix := range want {
+		c, err := bulkQ(momo.New(fakedriver.New(n)), []any{int64(2), "new"}).Returning(suite.DocID, suite.DocTitle).SQL()
+		if err != nil || !strings.HasSuffix(c.SQL, suffix) {
 			t.Errorf("%s: %q, %v", n, c.SQL, err)
 		}
 	}

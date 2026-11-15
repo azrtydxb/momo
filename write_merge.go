@@ -780,7 +780,9 @@ func (u UpdateQuery[T]) bulkRender(p bulkPlan, rows [][]any, limit bool) (Compil
 				appendAnd(b, where)
 			}
 		})
-		renderReturning(b, u.meta, u.returning, func(name string) error {
+		// The derived table repeats the key and column names, so PostgreSQL
+		// needs RETURNING qualified with the target table (hasSources).
+		renderWriteReturning(b, u.meta, u.returning, true, false, func(name string) error {
 			return u.fail(ErrValidation, fmt.Errorf("Returning: column %q is not mapped by %s", name, u.meta.Table))
 		})
 	})
