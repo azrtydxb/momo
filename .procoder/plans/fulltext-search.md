@@ -29,11 +29,10 @@ Design decisions the spec leaves open, fixed here so every task agrees (each is 
 - Verification only on CI. Nothing is built or tested on the laptop.
 - Migrations stay forward-only and diff-clean: re-running `diff` after `apply` yields zero changes on every dialect.
 
-## Spec gaps found while planning (need a decision before Task 3, 4 and 8 are executed)
+## Spec gaps found while planning (decided 2026-11-15, accepted as written; the spec now matches)
 
 - G1. Spec Q6 asks `migrate lint` to warn "for a PostgreSQL search whose config differs from the index". `migrate lint` reads migration SQL and never sees a query, so it cannot know the search config. This plan covers the case at build time instead (an override that differs from the declaration is `ErrValidation`, Task 6) and writes no lint rule for it. No acceptance criterion exists for the lint rule.
-- G2. Spec S-7 asks `WITH PARSER ngram` on "MySQL/MariaDB" and the round trip "on both servers". MariaDB 11.8 InnoDB ships no ngram parser. This plan makes a declared `Parser` on MariaDB an `ErrUnsupported` at render time and runs the parser round trip on MySQL only (Task 4). CI must confirm the MariaDB behaviour.
-- G3. Spec S-7 asks a FULLTEXT on a non-InnoDB table to fail with `ErrValidation`, but `schema.Table` has no engine and momo creates only InnoDB tables, so the check has nothing to read. Task 4 adds `schema.Table.Engine` (set by the MySQL inspector for a non-InnoDB table, never by a declaration) and the validation rejects a table that carries an engine other than InnoDB and a FullText index.
+- G2. Spec S-7 asks `WITH PARSER ngram` on "MySQL/MariaDB" and the round trip "on both servers". MariaDB 11.8 InnoDB ships no ngram parser. This plan makes a declared `Parser` on MariaDB an `ErrUnsupported` at render time and runs the parser round trip on MySQL only (Task 4).- G3. Spec S-7 asks a FULLTEXT on a non-InnoDB table to fail with `ErrValidation`, but `schema.Table` has no engine and momo creates only InnoDB tables, so the check has nothing to read. Task 4 adds `schema.Table.Engine` (set by the MySQL inspector for a non-InnoDB table, never by a declaration) and the validation rejects a table that carries an engine other than InnoDB and a FullText index.
 - G4. Spec Q6 says lint warns "for adding the first InnoDB FULLTEXT index". The lint sees statements, not the table's existing indexes. Task 8 warns on every `CREATE FULLTEXT INDEX` on a table of the parent snapshot, which is a superset of the first-index case.
 - G5. Spec S-8 says a PostgreSQL tsvector generated column "maps to a read-only `*types.TSVector`". With D1 the generated column is implied by the declaration, so `--from-db` omits that field (Task 5) instead of emitting a field the expansion would then have to match textually.
 
@@ -858,7 +857,7 @@ func TestFullTextMySQLMigrationRoundTrip(t *testing.T) {
 
 Add `TestFullTextMariaDBParserRefused`: on `mariadb118` a declaration with `Parser: "ngram"` returns an error wrapping `momo.ErrUnsupported` from `Diff` and sends no statement (G2).
 
-- [ ] Step 4. Verify on CI: `unit`, `lint`, `integration-mysql` for `mysql84`, `mysql97` and `mariadb118`. Poll at most every 10 minutes. If MariaDB accepts `WITH PARSER ngram`, report it back before changing G2; do not remove the refusal on a guess.
+- [ ] Step 4. Verify on CI: `unit`, `lint`, `integration-mysql` for `mysql84`, `mysql97` and `mariadb118`. Poll at most every 10 minutes. The MariaDB refusal of a declared parser is the decided behaviour (G2).
 - [ ] Step 5. Commit in a separate call: `feat(migrate): FULLTEXT declaration on MySQL and MariaDB`.
 
 ## Task 5: Inspection and `--from-db`
