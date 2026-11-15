@@ -11,8 +11,10 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/migrate/migratetest"
+	mmysql "github.com/azrtydxb/momo/migrate/mysql"
 	mpg "github.com/azrtydxb/momo/migrate/postgres"
 	"github.com/azrtydxb/momo/schema"
 )
@@ -52,6 +54,21 @@ func (expandingDialect) ExpandSchema(s *schema.Schema) (*schema.Schema, error) {
 		})
 	}
 	return &out, nil
+}
+
+// Catches: a dialect that stops implementing SchemaExpander (a renamed method,
+// a flavor-bound copy that drops it), which would silently skip the expansion
+// in Diff, AutoMigrate, Drift and Baseline.
+var (
+	_ migrate.SchemaExpander = mpg.Dialect{}
+	_ migrate.SchemaExpander = mmysql.Dialect{}
+)
+
+func TestFlavorBoundMySQLDialectExpands(t *testing.T) {
+	bound := mmysql.New().WithFlavor(dialect.FlavorMariaDB)
+	if _, ok := bound.(migrate.SchemaExpander); !ok {
+		t.Fatalf("%T bound to a flavor does not implement SchemaExpander", bound)
+	}
 }
 
 // Catches: Engine.Diff comparing the declaration instead of the expanded

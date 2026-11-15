@@ -18,15 +18,36 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/migrate"
 )
 
 // Dialect is the MySQL and MariaDB implementation of migrate.Dialect. It holds
 // no state; every method works on the pinned connection it is given, and the
 // server flavor is read from VERSION() when a method needs it.
-type Dialect struct{}
+type Dialect struct {
+	// flavor is set by WithFlavor when the engine learns the driver's server
+	// flavor; the zero value means it is not known and nothing flavor
+	// specific is refused.
+	flavor dialect.Flavor
+}
 
 // New returns the MySQL dialect.
 func New() Dialect { return Dialect{} }
+
+// WithFlavor returns the dialect bound to a server flavor. migrate.NewEngine
+// calls it with the flavor of the driver, so that a declaration the server
+// cannot keep (a full-text parser on MariaDB) fails before any statement runs.
+//
+// An engine without a driver (migrate.NewEngine(nil, ...), which the offline
+// momo migrate commands use) cannot know the flavor: the project configures
+// the dialect "mysql" for both servers and the server, not the URL, decides
+// which one it is. A dialect with no flavor refuses nothing flavor specific, so
+// it renders WITH PARSER and a MariaDB server rejects the statement when the
+// migration is applied.
+func (d Dialect) WithFlavor(f dialect.Flavor) migrate.Dialect {
+	d.flavor = f
+	return d
+}
 
 // Dialect describes MySQL: identifier quoting, placeholders and types. The
 // flavor-specific capabilities of the connected server come from the driver.

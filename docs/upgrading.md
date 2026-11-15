@@ -8,9 +8,18 @@ later releases can break more.
 ## Upgrading to 0.15.0
 
 No edit is needed in your code. A model can now declare full-text search, and
-the declaration is recorded in the model and in the schema snapshot, and on
+the declaration is recorded in the model and in the schema snapshot. On
 PostgreSQL 12 or newer `momo migrate` renders it as a stored generated tsvector
-column with a GIN index.
+column with a GIN index. On MySQL
+and MariaDB a migration renders it as a `FULLTEXT` index, with `WITH PARSER`
+when a parser is declared. A unique index, a column that is not text, more than
+16 columns and a parser name other than `ngram` or `mecab` are refused with
+`ErrValidation`; `AutoMigrate` also refuses a declaration on a table the
+database holds with a storage engine other than InnoDB. A parser on MariaDB is
+refused with `ErrUnsupported` when the engine knows the server is MariaDB (any
+engine built on a driver); the offline `momo migrate` commands, which open no
+database, cannot know it and render the parser, so MariaDB rejects it when the
+migration is applied. Drift does not report a table for its storage engine.
 
 ### Declare full-text search on a model
 
@@ -30,9 +39,9 @@ index, recreates the generated column and creates the index again. The
 generated column is named `<index>_tsv`; a model column of that name, a source
 column the table does not have, an index name that makes the column name longer
 than 63 bytes, or a full-text index declared `Concurrently` fails with
-`ErrValidation`. SQLite, MySQL and MariaDB refuse an index that carries a
-declaration with `ErrUnsupported` ("full-text declarations are not rendered
-yet").
+`ErrValidation`. SQLite refuses an index that carries a declaration with
+`ErrUnsupported` ("full-text declarations are not rendered yet"), so a model
+that declares it cannot produce or apply a migration there.
 
 ## Upgrading to 0.14.0
 
