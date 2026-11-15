@@ -65,7 +65,8 @@ func TestMergeEmulationGoldenSQLite(t *testing.T) {
 		dropSrc,
 		dropPairs,
 		`CREATE TEMPORARY TABLE "momo_merge_src" AS SELECT "src".*, ROW_NUMBER() OVER () AS "momo_merge_row" FROM (SELECT id, k, val, n FROM mrg_src) AS "src"`,
-		`CREATE TEMPORARY TABLE "momo_merge_pairs" AS SELECT "src"."momo_merge_row" AS "src_row", "mrg_rows"."id" AS "k0", src.val AS "v0" FROM "mrg_rows", "momo_merge_src" AS "src" WHERE "mrg_rows"."k" = src.k`,
+		`CREATE TEMPORARY TABLE "momo_merge_pairs" AS SELECT "src"."momo_merge_row" AS "src_row", "mrg_rows"."id" AS "k0", src.val AS "v0" FROM "mrg_rows", "momo_merge_src" AS "src" WHERE 1 = 0`,
+		`INSERT INTO "momo_merge_pairs" SELECT "src"."momo_merge_row" AS "src_row", "mrg_rows"."id" AS "k0", src.val AS "v0" FROM "mrg_rows", "momo_merge_src" AS "src" WHERE "mrg_rows"."k" = src.k`,
 		`SELECT 1 FROM "momo_merge_pairs" GROUP BY "k0" HAVING COUNT(*) > 1 LIMIT 1`,
 		`SELECT COUNT(*) FROM "momo_merge_pairs"`,
 		`UPDATE "mrg_rows" SET "val" = "n"."v0", "version" = "mrg_rows"."version" + 1 FROM "momo_merge_pairs" AS "n" WHERE "mrg_rows"."id" = "n"."k0"`,
@@ -91,9 +92,9 @@ func TestMergeEmulationCompositeKeySQL(t *testing.T) {
 		}
 		return out
 	}()
-	hasAll(t, got[3], `"mrg_pairs"."a" AS "k0", "mrg_pairs"."b" AS "k1", src.v AS "v0"`)
-	hasAll(t, got[4], `GROUP BY "k0", "k1" HAVING COUNT(*) > 1`)
-	hasAll(t, got[6], `WHERE "mrg_pairs"."a" = "n"."k0" AND "mrg_pairs"."b" = "n"."k1"`)
+	hasAll(t, got[4], `"mrg_pairs"."a" AS "k0", "mrg_pairs"."b" AS "k1", src.v AS "v0"`)
+	hasAll(t, got[5], `GROUP BY "k0", "k1" HAVING COUNT(*) > 1`)
+	hasAll(t, got[7], `WHERE "mrg_pairs"."a" = "n"."k0" AND "mrg_pairs"."b" = "n"."k1"`)
 }
 
 // Catches: bound values lost or reordered between the statements: the source's
@@ -108,7 +109,7 @@ func TestMergeEmulationBindsItsArguments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[int][]any{2: {int64(7)}, 3: {"x", int64(0)}}
+	want := map[int][]any{2: {int64(7)}, 3: {"x"}, 4: {"x", int64(0)}}
 	for i, c := range cs {
 		if w := want[i]; !slices.Equal(c.Args, w) {
 			t.Errorf("statement %d args = %v, want %v:\n%s", i, c.Args, w, c.SQL)
@@ -126,7 +127,8 @@ func TestMergeEmulationGoldenMySQLAndMariaDB(t *testing.T) {
 		dropSrc,
 		dropPairs,
 		"CREATE TEMPORARY TABLE `momo_merge_src` AS SELECT `src`.*, ROW_NUMBER() OVER () AS `momo_merge_row` FROM (SELECT id, k, val, n FROM mrg_src) AS `src`",
-		"CREATE TEMPORARY TABLE `momo_merge_pairs` AS SELECT `src`.`momo_merge_row` AS `src_row`, `mrg_rows`.`id` AS `k0`, src.val AS `v0` FROM `mrg_rows`, `momo_merge_src` AS `src` WHERE `mrg_rows`.`k` = src.k FOR UPDATE",
+		"CREATE TEMPORARY TABLE `momo_merge_pairs` AS SELECT `src`.`momo_merge_row` AS `src_row`, `mrg_rows`.`id` AS `k0`, src.val AS `v0` FROM `mrg_rows`, `momo_merge_src` AS `src` WHERE 1 = 0",
+		"INSERT INTO `momo_merge_pairs` SELECT `src`.`momo_merge_row` AS `src_row`, `mrg_rows`.`id` AS `k0`, src.val AS `v0` FROM `mrg_rows`, `momo_merge_src` AS `src` WHERE `mrg_rows`.`k` = src.k FOR UPDATE",
 		"SELECT 1 FROM `momo_merge_pairs` GROUP BY `k0` HAVING COUNT(*) > 1 LIMIT 1",
 		"SELECT COUNT(*) FROM `momo_merge_pairs`",
 		"UPDATE `mrg_rows`, `momo_merge_pairs` AS `n` SET `mrg_rows`.`val` = `n`.`v0`, `mrg_rows`.`version` = `mrg_rows`.`version` + 1 WHERE `mrg_rows`.`id` = `n`.`k0`",
@@ -145,12 +147,12 @@ func TestMergeEmulationGoldenMySQLAndMariaDB(t *testing.T) {
 func TestMergeEmulationRunsOnlyTheClausesGiven(t *testing.T) {
 	db := momo.New(fakedriver.New(dialect.SQLite))
 	insOnly := statementSQL(t, mrgInsertClause(momo.Merge[mrgRow](db, mrgSource()).On(mrgOn())))
-	if len(insOnly) != 7 || !strings.HasPrefix(insOnly[4], "INSERT INTO") || strings.Contains(insOnly[3], `"k0"`) {
-		t.Errorf("insert only = %v, want 2 drops, 2 creates without a key or value column, insert, 2 drops", insOnly)
+	if len(insOnly) != 8 || !strings.HasPrefix(insOnly[5], "INSERT INTO") || strings.Contains(insOnly[3], `"k0"`) || strings.Contains(insOnly[4], `"k0"`) {
+		t.Errorf("insert only = %v, want 2 drops, 3 setups without a key or value column, insert, 2 drops", insOnly)
 	}
 	updOnly := statementSQL(t, momo.Merge[mrgRow](db, mrgSource()).On(mrgOn()).
 		WhenMatchedUpdate(mrgN.SetExpr(momo.TypedSQL[int64]("src.n"))))
-	if len(updOnly) != 9 || !strings.HasPrefix(updOnly[6], "UPDATE ") || slices.ContainsFunc(updOnly, func(s string) bool { return strings.HasPrefix(s, "INSERT") }) {
+	if len(updOnly) != 10 || !strings.HasPrefix(updOnly[7], "UPDATE ") || slices.ContainsFunc(updOnly, func(s string) bool { return strings.HasPrefix(s, "INSERT") }) {
 		t.Errorf("update only = %v, want 2 drops, 2 creates, check, count, update, 2 drops", updOnly)
 	}
 }
@@ -218,7 +220,7 @@ func TestMergeEmulationRunsInOneTransaction(t *testing.T) {
 	if _, err := mrgUpsert(momo.New(drv)).Exec(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	prefixes := []string{"DROP TABLE IF EXISTS temp.", "DROP TABLE IF EXISTS temp.", "CREATE TEMPORARY TABLE ", "CREATE TEMPORARY TABLE ", "SELECT 1 FROM ", "SELECT COUNT(*) FROM ", "INSERT INTO ", "DROP TABLE IF EXISTS temp.", "DROP TABLE IF EXISTS temp."}
+	prefixes := []string{"DROP TABLE IF EXISTS temp.", "DROP TABLE IF EXISTS temp.", "CREATE TEMPORARY TABLE ", "CREATE TEMPORARY TABLE ", "INSERT INTO ", "SELECT 1 FROM ", "SELECT COUNT(*) FROM ", "INSERT INTO ", "DROP TABLE IF EXISTS temp.", "DROP TABLE IF EXISTS temp."}
 	calls := drv.Calls()
 	if len(calls) != len(prefixes) {
 		t.Fatalf("%d statements ran, want %d (the UPDATE is skipped when nothing matched): %+v", len(calls), len(prefixes), calls)

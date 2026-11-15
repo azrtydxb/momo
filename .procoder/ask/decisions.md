@@ -1069,7 +1069,9 @@ Decision (2026-11-14, integrator): as above.
   old one. Staging every right-hand side in the pairs table makes the result
   order-independent. `SET col = DEFAULT` cannot be staged and is `ErrUnsupported`.
 - **Concurrency (not equivalent, documented):** on MySQL and MariaDB the pairs are
-  read with `FOR UPDATE`, which locks the matched target rows and reads their
+  read with `FOR UPDATE` (the table is created empty first and filled with
+  `INSERT ... SELECT`, because MySQL refuses `FOR UPDATE` inside
+  `CREATE TABLE ... SELECT` with error 1746), which locks the matched target rows and reads their
   latest committed version under repeatable read and read committed, so the
   update side cannot go stale; a target row committed after that read that
   would have matched is a phantom and counts as unmatched, so the insert writes

@@ -174,10 +174,12 @@ func (m MergeQuery[T]) emulation() ([]mergeStep, error) {
 		b.WriteString(" AS ")
 		b.Ident("src")
 	})
-	add(mergeStepSetup, func(b *Builder) {
-		b.WriteString("CREATE TEMPORARY TABLE ")
-		b.Ident(mergePairsTable)
-		b.WriteString(" AS SELECT ")
+	// pairsSelect writes the SELECT that fills the pairs table. It is used twice:
+	// with WHERE 1 = 0 to create the table (MySQL refuses FOR UPDATE inside
+	// CREATE TABLE ... SELECT), and with On, and FOR UPDATE where the dialect
+	// has it, to fill it.
+	pairsSelect := func(b *Builder, fill bool) {
+		b.WriteString("SELECT ")
 		b.QualifiedIdent("src", mergeRowColumn)
 		b.WriteString(" AS ")
 		b.Ident(mergePairRow)
@@ -206,11 +208,27 @@ func (m MergeQuery[T]) emulation() ([]mergeStep, error) {
 		target.appendFrom(b)
 		b.WriteString(", ")
 		from(b, mergeSnapshotTable, "src")
+		if !fill {
+			b.WriteString(" WHERE 1 = 0")
+			return
+		}
 		b.WriteString(" WHERE ")
 		appendAnd(b, m.on)
 		if mysql && m.hasMatched {
 			b.WriteString(" FOR UPDATE")
 		}
+	}
+	add(mergeStepSetup, func(b *Builder) {
+		b.WriteString("CREATE TEMPORARY TABLE ")
+		b.Ident(mergePairsTable)
+		b.WriteString(" AS ")
+		pairsSelect(b, false)
+	})
+	add(mergeStepSetup, func(b *Builder) {
+		b.WriteString("INSERT INTO ")
+		b.Ident(mergePairsTable)
+		b.writeByte(' ')
+		pairsSelect(b, true)
 	})
 	if m.hasMatched {
 		add(mergeStepCardinality, func(b *Builder) {
