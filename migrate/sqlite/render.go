@@ -151,6 +151,9 @@ func (r *renderer) planRebuilds(plan []migrate.Change) (*rebuildPlan, error) {
 				r.createdFKs[c.Table] = append(r.createdFKs[c.Table], fk)
 				rp.silent[i] = true
 			}
+		case isFTSChange(c):
+			// The FTS5 table is its own table: neither the drop of its content
+			// table nor a rebuild of it takes the virtual table along.
 		case tableKinds[c.Kind] && dropped[c.Table]:
 			// The table goes away with these: its foreign keys and indexes
 			// need no statement of their own.
@@ -171,7 +174,7 @@ func (r *renderer) planRebuilds(plan []migrate.Change) (*rebuildPlan, error) {
 		}
 	}
 	for i, c := range plan {
-		if tableKinds[c.Kind] && !rp.silent[i] {
+		if tableKinds[c.Kind] && !rp.silent[i] && !isFTSChange(c) {
 			if _, ok := anchor[c.Table]; ok {
 				rp.folded[i] = true
 			}
@@ -271,7 +274,15 @@ func (r *renderer) renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		}
 		return one(sql), nil
 	case migrate.DropTable:
-		return one("DROP TABLE " + ident(c.Table)), nil
+		drop := migrate.Statement{SQL: "DROP TABLE " + ident(c.Table)}
+		if t, err := get[schema.Table](c.Before); err == nil {
+			if _, ok := t.FullTextIndex(); ok {
+				// The FTS5 table is a table of its own: it does not go with its
+				// content table.
+				return []migrate.Statement{{SQL: dropFTS5SQL(schema.FTS5Table(c.Table), true)}, drop}, nil
+			}
+		}
+		return []migrate.Statement{drop}, nil
 	case migrate.RenameTable:
 		return one("ALTER TABLE " + ident(c.Table) + " RENAME TO " + ident(c.Name)), nil
 	case migrate.AddColumn:
@@ -297,12 +308,18 @@ func (r *renderer) renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		if err != nil {
 			return nil, err
 		}
+		if ix.FullText != nil {
+			return r.renderFTSChange(c, ix)
+		}
 		sql, err := createIndexSQL(c.Table, ix)
 		if err != nil {
 			return nil, err
 		}
 		return one(sql), nil
 	case migrate.DropIndex:
+		if ix, ok := ftsIndexChange(c); ok {
+			return r.renderFTSChange(c, ix)
+		}
 		sql := "DROP INDEX "
 		if c.IfExists {
 			sql += "IF EXISTS "
@@ -700,9 +717,6 @@ func fkSQL(fk schema.ForeignKey) (string, error) {
 }
 
 func createIndexSQL(table string, ix schema.Index) (string, error) {
-	if ix.FullText != nil {
-		return "", unsupported("index %q: full-text declarations are not rendered yet", ix.Name)
-	}
 	if ix.Method != "" && !strings.EqualFold(ix.Method, "btree") {
 		return "", unsupported("index %q uses the access method %q; SQLite indexes are b-trees", ix.Name, ix.Method)
 	}
