@@ -83,8 +83,11 @@ func (e *Engine) Baseline(ctx context.Context, version string, force bool) (err 
 	if err != nil {
 		return err
 	}
-	want, err := cloneSchema(e.hide(snap.Schema))
+	want, err := expand(e.opts.dialect, e.hide(snap.Schema))
 	if err != nil {
+		return err
+	}
+	if want, err = cloneSchema(want); err != nil {
 		return err
 	}
 	if cz, ok := e.opts.dialect.(Canonicalizer); ok {

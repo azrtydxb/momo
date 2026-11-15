@@ -25,9 +25,16 @@ var pg = dialect.For(dialect.Postgres)
 // identifier is quoted, every literal comes through quoteLiteral, and the
 // output depends only on the plan, never on map order.
 func (Dialect) Render(plan []migrate.Change) ([]migrate.Statement, error) {
+	ftCols := fullTextColumns(plan)
 	var out []migrate.Statement
 	for _, c := range plan {
-		stmts, err := renderChange(c)
+		var stmts []migrate.Statement
+		var err error
+		if c.Kind == migrate.AlterColumn && ftCols[[3]string{c.Schema, c.Table, c.Name}] {
+			stmts, err = renderRecreateGenerated(c)
+		} else {
+			stmts, err = renderChange(c)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("postgres render %s %s: %w", c.Kind, describe(c), err)
 		}
@@ -591,7 +598,7 @@ var nullsOrder = map[string]string{"first": "NULLS FIRST", "last": "NULLS LAST"}
 
 func createIndex(schemaName, table string, ix schema.Index) (migrate.Statement, error) {
 	if ix.FullText != nil {
-		return migrate.Statement{}, &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate/postgres", Err: fmt.Errorf("index %q: full-text declarations are not rendered yet", ix.Name)}
+		ix.Method = "gin"
 	}
 	var b strings.Builder
 	b.WriteString("CREATE ")
