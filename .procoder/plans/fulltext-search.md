@@ -868,6 +868,8 @@ Add `TestFullTextMariaDBParserRefused`: on `mariadb118` a declaration with `Pars
 
 ## Task 5: Inspection and `--from-db`
 
+Review notes from Task 2: a second `AutoMigrate` on a full-text model fails on PostgreSQL today, because the live inspected index is `Method: "gin"` with no `FullText`, so the index comparison differs from the declared one and `AutoMigrate` runs `CREATE INDEX` on an index that exists. The inspector fold below is the fix; no special case goes into `AutoMigrate` or `indexEqual`. The fold must turn a live GIN index over a generated tsvector column (named `schema.TSVectorColumn(index)`) into the declared index with `Method: "fulltext"` and `FullText` set, and must keep that generated column in the inspected table so the expanded declared schema compares equal. Add `TestFullTextAutoMigrateTwice` on PostgreSQL, SQLite and MySQL/MariaDB (each dialect through its own `testopen` helper, `testopen.EachMySQL` for MySQL and MariaDB) that applies a full-text declaration with `AutoMigrate` and asserts that a second `AutoMigrate` plans and runs nothing.
+
 Covers: S-8 (all three criteria: `TestFullTextInspectRoundTrip`, `TestSQLiteInspectIgnoresShadowTables`, `TestGenerateFromDBFullText`) and the Failure-modes drift line (`TestFullTextSQLiteDriftReportsTrigger`).
 
 Files:

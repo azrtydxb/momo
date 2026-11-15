@@ -107,6 +107,43 @@ func TestFullTextPostgresExpansionRefusals(t *testing.T) {
 	}
 }
 
+// Catches: a CONCURRENTLY full-text index, which the migration splitter would
+// move away from the generated-column recreation it depends on, being accepted.
+func TestFullTextPostgresRefusesConcurrently(t *testing.T) {
+	var d Dialect
+	s := articlesWithFullText(schema.FullText{Columns: []string{"title", "body"}, Config: "english"})
+	s.Tables[0].Indexes[0].Concurrently = true
+	_, err := d.ExpandSchema(s)
+	if err == nil || !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "CONCURRENTLY") {
+		t.Fatalf("err = %v, want ErrValidation naming CONCURRENTLY", err)
+	}
+}
+
+// Catches: the drop-and-add of a generated column leaking to columns that no
+// full-text index owns, where a changed expression must stay refused.
+func TestGeneratedColumnChangeStillRefused(t *testing.T) {
+	var d Dialect
+	table := func(expr string) *schema.Schema {
+		return &schema.Schema{Dialect: "postgres", Tables: []schema.Table{{
+			Name: "orders",
+			Columns: []schema.Column{
+				{Name: "id", Type: "bigint", Identity: "by_default"},
+				{Name: "price", Type: "integer"},
+				{Name: "total", Type: "integer", Generated: expr},
+			},
+			PrimaryKey: []string{"id"},
+		}}}
+	}
+	changes, _, err := migrate.Diff(table("price * 2"), table("price * 3"), migrate.DiffOptions{AllowDestructive: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = d.Render(changes)
+	if err == nil || !strings.Contains(err.Error(), "cannot be altered in place") {
+		t.Fatalf("err = %v, want the in-place refusal", err)
+	}
+}
+
 // Catches: an expression declaration that adds a generated column, and one that
 // leaves the index without its expression.
 func TestFullTextPostgresExpression(t *testing.T) {

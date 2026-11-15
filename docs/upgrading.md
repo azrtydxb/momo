@@ -9,9 +9,8 @@ later releases can break more.
 
 No edit is needed in your code. A model can now declare full-text search, and
 the declaration is recorded in the model and in the schema snapshot, and on
-PostgreSQL `momo migrate` now renders it as a stored generated tsvector column
-with a GIN index (PostgreSQL 12 or newer); SQLite, MySQL and MariaDB refuse it
-until a later release renders it there.
+PostgreSQL 12 or newer `momo migrate` renders it as a stored generated tsvector
+column with a GIN index.
 
 ### Declare full-text search on a model
 
@@ -25,15 +24,15 @@ parser name outside a strict allowlist. Snapshots written before the
 declaration load unchanged.
 
 On PostgreSQL the declaration needs a `Config` (the text search configuration,
-for example `english`), is pinned in the generation expression, and a change of
-`Config` or `Weights` drops the index, recreates the generated column and
-creates the index again. The generated column is named `<index>_tsv`; a model
-column of that name, a source column the table does not have, or an index name
-that makes the column name longer than 63 bytes fails with `ErrValidation`.
-Until a later release adds the rendering, SQLite, MySQL and MariaDB refuse an
-index that carries a declaration with `ErrUnsupported` ("full-text declarations
-are not rendered yet"), so a model that declares one cannot produce or apply a
-migration there.
+for example `english`), is pinned in the generation expression, and any change
+of the declaration (`Columns`, `Config`, `Weights` or `Expression`) drops the
+index, recreates the generated column and creates the index again. The
+generated column is named `<index>_tsv`; a model column of that name, a source
+column the table does not have, an index name that makes the column name longer
+than 63 bytes, or a full-text index declared `Concurrently` fails with
+`ErrValidation`. SQLite, MySQL and MariaDB refuse an index that carries a
+declaration with `ErrUnsupported` ("full-text declarations are not rendered
+yet").
 
 ## Upgrading to 0.14.0
 

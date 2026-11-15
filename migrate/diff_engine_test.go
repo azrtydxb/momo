@@ -74,6 +74,38 @@ func TestExpandSchemaHook(t *testing.T) {
 	}
 }
 
+// Catches: the snapshot side of Engine.Diff not being expanded. A snapshot
+// that holds a declaration without the derived objects (an unexpanded one)
+// must compare equal to the same declaration expanded on the desired side.
+func TestDiffExpandsSnapshotSide(t *testing.T) {
+	declared := func() *schema.Schema {
+		return &schema.Schema{Dialect: "postgres", Tables: []schema.Table{{
+			Name: "articles",
+			Columns: []schema.Column{
+				{Name: "id", Type: "bigint", Identity: "by_default"},
+				{Name: "title", Type: "text", Nullable: true},
+			},
+			PrimaryKey: []string{"id"},
+			Indexes: []schema.Index{{Name: "articles_search", Method: "fulltext",
+				Parts:    []schema.IndexPart{{Column: "title"}},
+				FullText: &schema.FullText{Columns: []string{"title"}, Config: "english"}}},
+		}}}
+	}
+	var snap bytes.Buffer
+	if err := migrate.WriteSnapshot(&snap, migrate.SnapshotFile{Version: "20260102030405", Schema: declared()}); err != nil {
+		t.Fatal(err)
+	}
+	dir := fstest.MapFS{
+		"20260102030405_init.up.sql":        &fstest.MapFile{Data: []byte("-- momo:generated\nSELECT 1;\n")},
+		"20260102030405_init.snapshot.json": &fstest.MapFile{Data: snap.Bytes()},
+	}
+	e := offlineEngine(t, dir, time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC))
+	mig, err := e.Diff(context.Background(), declared(), "again", migrate.DiffOptions{})
+	if err != nil || mig != nil {
+		t.Fatalf("diff against an unexpanded snapshot of the same declaration = %v, %v; want none", mig, err)
+	}
+}
+
 func mapFS(files map[string][]byte) fstest.MapFS {
 	dir := fstest.MapFS{}
 	for k, v := range files {

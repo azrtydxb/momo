@@ -48,6 +48,11 @@ func expandTable(t *schema.Table, ix *schema.Index) error {
 	if err := ix.FullText.Validate(); err != nil {
 		return ftError(t.Name, "table %q index %q: %w", t.Name, ix.Name, err)
 	}
+	if ix.Concurrently {
+		// A concurrent build runs outside the transaction that recreates the
+		// generated column, so the drop and the add could not be kept together.
+		return ftError(t.Name, "table %q index %q: a full-text index cannot be created CONCURRENTLY", t.Name, ix.Name)
+	}
 	ft := ix.FullText.ForDialect(dialect.Postgres)
 	if ft.Config == "" {
 		return ftError(t.Name, "table %q index %q: a PostgreSQL full-text declaration needs Config", t.Name, ix.Name)
