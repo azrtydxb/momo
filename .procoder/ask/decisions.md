@@ -1171,3 +1171,14 @@ Decision (2026-11-14, the user, via AskUserQuestion): start BulkUpdate, MERGE
 emulation and a full-text search design spec (no FTS code until the spec is
 approved). Delete the agent worktrees whose branch is merged or gone from
 GitHub, and list any with unmerged commits.
+
+## Full-text search plan: spec gaps G1-G5 and the SchemaExpander hook
+
+- G1: a PostgreSQL search config that differs from the index cannot be a migrate lint (lint reads migration SQL); check it at build time with ErrValidation (recommended); add a lint rule anyway
+- G2: a declared parser on MariaDB is ErrUnsupported and the parser round trip runs on MySQL only (recommended); assume MariaDB accepts WITH PARSER ngram
+- G3: add schema.Table.Engine, set only by the MySQL inspector, so a non-InnoDB FULLTEXT table is ErrValidation (recommended); drop the criterion
+- G4: lint warns on every CREATE FULLTEXT INDEX on an existing table (recommended); only the first one
+- G5: --from-db writes no field for the generated tsvector column (recommended); emit a read-only field
+- SchemaExpander: an optional migrate hook expands derived objects on both sides before diffing, so snapshots keep only the declaration (recommended); store the derived objects in the snapshot
+
+Decision (2026-11-15, the user, via AskUserQuestion): accept all fallbacks and the hook.
