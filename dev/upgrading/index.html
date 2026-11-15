@@ -3308,7 +3308,8 @@ later releases can break more.</p>
 <p>No edit is needed in your code. A model can now declare full-text search, and
 the declaration is recorded in the model and in the schema snapshot. On
 PostgreSQL 12 or newer <code>momo migrate</code> renders it as a stored generated tsvector
-column with a GIN index. On MySQL
+column with a GIN index. On SQLite it renders an external-content FTS5 table
+with sync triggers. On MySQL
 and MariaDB a migration renders it as a <code>FULLTEXT</code> index, with <code>WITH PARSER</code>
 when a parser is declared. A unique index, a column that is not text, more than
 16 columns and a parser name other than <code>ngram</code> or <code>mecab</code> are refused with
@@ -3345,9 +3346,19 @@ index, recreates the generated column and creates the index again. The
 generated column is named <code>&lt;index&gt;_tsv</code>; a model column of that name, a source
 column the table does not have, an index name that makes the column name longer
 than 63 bytes, or a full-text index declared <code>Concurrently</code> fails with
-<code>ErrValidation</code>. SQLite refuses an index that carries a declaration with
-<code>ErrUnsupported</code> ("full-text declarations are not rendered yet"), so a model
-that declares it cannot produce or apply a migration there.</p>
+<code>ErrValidation</code>.</p>
+<p>On SQLite the declaration becomes an external-content FTS5 table named
+<code>&lt;table&gt;_fts</code> plus three triggers (<code>&lt;table&gt;_fts_ai</code>, <code>_ad</code> and <code>_au</code>) that keep
+it in step with the table, and the table is filled with the FTS5 <code>rebuild</code>
+command when it is created. The table needs a rowid table with a primary key of
+one <code>INTEGER</code> column; any other key, or a declared column the table lacks, is
+<code>ErrValidation</code> naming the table. Removing the declaration, or the table, drops
+the triggers, then the FTS5 table. Renaming the table drops and re-creates the
+FTS5 table and the triggers under the new name. A build without FTS5 fails the
+migration with <code>ErrUnsupported</code>. <code>INSERT OR REPLACE</code> and <code>ON CONFLICT REPLACE</code>
+do not fire the delete trigger unless <code>PRAGMA recursive_triggers = ON</code>, which
+leaves stale tokens in the FTS5 table; repair it with
+<code>INSERT INTO &lt;table&gt;_fts(&lt;table&gt;_fts) VALUES('rebuild')</code>.</p>
 <h2 id="upgrading-to-0140">Upgrading to 0.14.0<a class="headerlink" href="#upgrading-to-0140" title="Permanent link">&para;</a></h2>
 <p>No edit is needed in your code. <code>Merge</code> and <code>BulkUpdate</code> now run on SQLite,
 MySQL and MariaDB, where they returned <code>ErrUnsupported</code>, so code that relied on
