@@ -9,7 +9,14 @@ later releases can break more.
 
 No edit is needed in your code. A model can now declare full-text search, and
 the declaration is recorded in the model and in the schema snapshot, but
-migrations refuse it until a later release renders it.
+migrations refuse it until a later release renders it. Package `fts` also gains
+a query layer that reads the declaration: `fts.Over` names the searched
+columns, and `fts.Search`, `fts.Score` and `fts.Snippet` render a match, a
+relevance score and an excerpt on PostgreSQL and SQLite, with the text of a
+`fts.Web`, `fts.Plain` or `fts.Raw` query bound as a parameter. The existing
+`fts` builders keep their signatures and their PostgreSQL SQL. A search on SQLite
+whose FTS5 table does not exist fails with `momo.ErrUnsupported` naming the
+table.
 
 ### Declare full-text search on a model
 

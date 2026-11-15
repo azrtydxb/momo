@@ -126,6 +126,17 @@ func metaOf[T any, PT Modeler[T]]() *Meta[T] {
 	return p.MomoMeta()
 }
 
+// MetaTableSchema returns the normalized table definition of model T from its
+// generated metadata, or nil for a projection. Package fts reads the model's
+// full-text declaration through it.
+func MetaTableSchema[T any, PT Modeler[T]]() *schema.Table {
+	m := metaOf[T, PT]()
+	if m == nil {
+		return nil
+	}
+	return m.TableSchema
+}
+
 // TableRef names a table source in FROM and JOIN clauses, optionally
 // aliased. Generated per-model packages embed it in their Table type.
 //
