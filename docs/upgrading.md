@@ -5,14 +5,35 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.15.0
+
+No edit is needed in your code. A model can now declare full-text search, and
+the declaration is recorded in the model and in the schema snapshot, but
+migrations refuse it until a later release renders it.
+
+### Declare full-text search on a model
+
+A model can declare one full-text search index, either with the `search` tag on
+each text field (the index is named `<table>_search` and covers the tagged
+fields in field order) or with `c.FullText(name, &m.A, &m.B)` in `MomoConfig`,
+chained with `Config`, `Weights`, `Tokenizer`, `Parser` or `Expression` for the
+options a dialect honours. `momo generate` rejects the tag on a column that is
+not text, a second declaration on one table, and a configuration, tokenizer or
+parser name outside a strict allowlist. Snapshots written before the
+declaration load unchanged.
+
+Migrations do not render the declaration. Until a later release adds the
+rendering, every migration dialect refuses an index that carries one with
+`ErrUnsupported` ("full-text declarations are not rendered yet"), so a model
+that declares it cannot produce or apply a migration.
+
 ## Upgrading to 0.14.0
 
 No edit is needed in your code. `Merge` and `BulkUpdate` now run on SQLite,
 MySQL and MariaDB, where they returned `ErrUnsupported`, so code that relied on
 the error (a fallback branch, a test that expects the refusal) now takes the
 success path. A long `BulkUpdate` list is also chunked instead of refused on
-every dialect. Models can also record a full-text search declaration, which
-migrations do not render yet.
+every dialect.
 
 ### `BulkUpdate` runs on every dialect
 
@@ -40,23 +61,6 @@ code; a list split by hand and run in separate transactions stays valid.
 the key values first, then one value per column. `BulkUpdate` is the
 single-key form and is unchanged. A NULL key value matches no row. A key listed
 twice applies one of its rows, and which one is not defined.
-
-### Declare full-text search on a model
-
-A model can now declare one full-text search index, either with the `search` tag
-on each text field (the index is named `<table>_search` and covers the tagged
-fields in field order) or with `c.FullText(name, &m.A, &m.B)` in `MomoConfig`,
-chained with `Config`, `Weights`, `Tokenizer`, `Parser` or `Expression` for the
-options a dialect honours. `momo generate` rejects the tag on a column that is
-not text, a second declaration on one table, and a configuration, tokenizer or
-parser name outside a strict allowlist. The declaration is recorded in the model
-and in the schema snapshot; snapshots written before it load unchanged.
-
-Migrations do not render the declaration. Until a later release adds the
-rendering, every migration dialect refuses an index that carries one with
-`ErrUnsupported` ("full-text declarations are not rendered yet"), so a model
-that declares it cannot produce or apply a migration. Nothing is added to
-existing models, so no edit is needed.
 
 ### `Merge` runs on SQLite, MySQL and MariaDB
 
