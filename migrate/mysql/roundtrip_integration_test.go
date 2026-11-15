@@ -65,7 +65,7 @@ func exampleSchema(mariadb bool) *schema.Schema {
 			{Name: "items_title_desc", Parts: []schema.IndexPart{{Column: "title", Desc: true}}},
 			{Name: "items_body_prefix", Parts: []schema.IndexPart{{Column: "body(10)"}}},
 			{Name: "items_slug_prefix", Unique: true, Parts: []schema.IndexPart{{Column: "slug(20)"}}},
-			{Name: "items_ft", Method: "fulltext", Parts: []schema.IndexPart{{Column: "title"}, {Column: "body"}}, FullText: &schema.FullText{Columns: []string{"title", "body"}}},
+			{Name: "items_ft", Method: "fulltext", Parts: []schema.IndexPart{{Column: "title"}, {Column: "body"}}},
 		},
 	}
 	if !mariadb {
