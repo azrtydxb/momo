@@ -57,6 +57,7 @@ var kinds = map[uint16]error{
 	4025: momo.ErrCheckViolation,      // ER_CONSTRAINT_FAILED (MariaDB)
 	1213: momo.ErrSerialization,       // ER_LOCK_DEADLOCK
 	1020: momo.ErrSerialization,       // ER_CHECKREAD (MariaDB innodb_snapshot_isolation: the row changed after the snapshot)
+	1191: momo.ErrValidation,          // ER_FT_MATCHING_KEY_NOT_FOUND (MATCH without a FULLTEXT index over exactly its columns)
 	1205: momo.ErrBusy,                // ER_LOCK_WAIT_TIMEOUT
 	3572: momo.ErrBusy,                // ER_LOCK_NOWAIT
 }

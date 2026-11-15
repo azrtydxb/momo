@@ -72,6 +72,16 @@ func (q Query) pg() pgQuery {
 	return pgQuery{fn: "websearch_to_tsquery", arg: q.text}
 }
 
+// mysql returns the boolean-mode string and whether the query is empty. A Raw
+// query is passed on as given: the caller writes boolean-mode syntax.
+func (q Query) mysql() (string, bool) {
+	if q.syntax == ftsquery.Raw {
+		return q.text, strings.TrimSpace(q.text) == ""
+	}
+	p := ftsquery.Parse(q.text, q.syntax)
+	return p.MySQLBoolean(), p.Empty()
+}
+
 // fts5 returns the FTS5 MATCH text and whether the query is empty.
 func (q Query) fts5() (string, bool) {
 	switch q.syntax {

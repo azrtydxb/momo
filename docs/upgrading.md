@@ -28,7 +28,17 @@ exist fails with `momo.ErrUnsupported` naming the table. The existing `fts`
 builders keep their signatures and their PostgreSQL SQL. On the cgo SQLite
 driver FTS5 needs the build flag `-tags sqlite_fts5` (or
 `CGO_CFLAGS=-DSQLITE_ENABLE_FTS5`); the pure-Go driver `driver/sqlitepure`
-includes FTS5.
+includes FTS5. On MySQL and MariaDB the same functions render
+`MATCH(...) AGAINST (? IN BOOLEAN MODE)` over the `FULLTEXT` index of the
+declaration, with a boolean-mode string built from the parsed words only, so
+no typed character acts as an operator; the columns given to `fts.Over` must be
+exactly the indexed columns in their order, and `fts.Snippet` fails with
+`momo.ErrUnsupported`. `fts.MySQLMatch` and `fts.MySQLRelevance` take a mode
+and a text of your own. A `MATCH` without a `FULLTEXT` index over exactly its
+columns is `momo.ErrValidation`. InnoDB does not index a word shorter than
+`innodb_ft_min_token_size` (3 by default), so a search for it finds nothing, and
+a row inserted in an open transaction is not found by a search until the
+transaction commits.
 
 ### Declare full-text search on a model
 

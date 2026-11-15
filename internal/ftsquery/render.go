@@ -56,6 +56,80 @@ func (p Parsed) FTS5() string {
 	return sb.String()
 }
 
+// mysqlWord renders one word for boolean mode. A word with an apostrophe is
+// quoted, so the apostrophe is never read next to an operator. Words hold only
+// letters, digits, underscores and apostrophes, so a quote cannot occur in one.
+func mysqlWord(w string) string {
+	if strings.Contains(w, "'") {
+		return `"` + w + `"`
+	}
+	return w
+}
+
+// mysqlTerm renders a term with the operator sign (+ required, - excluded).
+// A phrase is a quoted string. Boolean mode has no prefix phrase, so a prefix
+// term of several words keeps its leading words as a phrase and puts the
+// wildcard on the last word; an apostrophe at either end of that word is
+// dropped, because a quoted word cannot carry the wildcard.
+func mysqlTerm(t Term, sign string) string {
+	words := strings.Fields(t.Text)
+	switch {
+	case len(words) == 0:
+		return ""
+	case t.Prefix:
+		last := strings.Trim(words[len(words)-1], "'")
+		if last == "" {
+			return ""
+		}
+		var out string
+		if lead := words[:len(words)-1]; len(lead) == 1 {
+			out = sign + mysqlWord(lead[0]) + " "
+		} else if len(lead) > 1 {
+			out = sign + `"` + strings.Join(lead, " ") + `" `
+		}
+		return out + sign + last + "*"
+	case t.Phrase && len(words) > 1:
+		return sign + `"` + strings.Join(words, " ") + `"`
+	}
+	return sign + mysqlWord(words[0])
+}
+
+// MySQLBoolean renders the query as a MySQL or MariaDB boolean-mode string:
+// each term is required (+word, +"a phrase", +prefix*), several groups are
+// written (+a +b) (+c) so that any group may match, and each exclusion is a
+// top-level -term. No operator character reaches the string except those the
+// renderer writes: words hold only letters, digits, underscores and
+// apostrophes. An empty query renders as the empty string.
+func (p Parsed) MySQLBoolean() string {
+	if p.Empty() {
+		return ""
+	}
+	multi := len(p.Groups) > 1
+	var parts []string
+	for _, g := range p.Groups {
+		var terms []string
+		for _, t := range g {
+			if s := mysqlTerm(t, "+"); s != "" {
+				terms = append(terms, s)
+			}
+		}
+		if len(terms) == 0 {
+			continue
+		}
+		s := strings.Join(terms, " ")
+		if multi {
+			s = "(" + s + ")"
+		}
+		parts = append(parts, s)
+	}
+	for _, t := range p.Excluded {
+		if s := mysqlTerm(t, "-"); s != "" {
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 // pgLexeme quotes one lexeme for to_tsquery, doubling ' and \.
 func pgLexeme(w string) string {
 	w = strings.ReplaceAll(w, `\`, `\\`)

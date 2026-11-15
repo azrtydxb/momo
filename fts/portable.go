@@ -34,34 +34,42 @@ const (
 	maxTokens       = 64
 )
 
-// dispatch runs the renderer of the dialect being built. MySQL and MariaDB
-// have no portable rendering yet and fail the build with ErrUnsupported.
-func dispatch(b *momo.Builder, what string, pg, sqlite func()) {
+// dispatch runs the renderer of the dialect being built. A nil renderer, or a
+// dialect without one, fails the build with ErrUnsupported.
+func dispatch(b *momo.Builder, what string, pg, sqlite, mysql func()) {
 	switch b.Dialect().Name {
 	case dialect.Postgres:
 		pg()
 	case dialect.SQLite:
 		sqlite()
+	case dialect.MySQL:
+		if mysql != nil {
+			mysql()
+			return
+		}
+		b.Unsupported("full-text search (" + what + ")")
 	default:
 		b.Unsupported("full-text search (" + what + ")")
 	}
 }
 
 // Search is the predicate that matches the rows whose searchable columns
-// match q: ts @@ tsquery on PostgreSQL, a MATCH on the FTS5 table on SQLite.
-// The query text is a bound parameter. A query without a positive word
+// match q: ts @@ tsquery on PostgreSQL, a MATCH on the FTS5 table on SQLite,
+// MATCH ... AGAINST in boolean mode on MySQL and MariaDB. The query text is a
+// bound parameter. A query without a positive word
 // renders as a false predicate and sends no MATCH.
 func Search(t Target, q Query) momo.Predicate {
 	return momo.PredicateFunc(func(b *momo.Builder) {
 		if !t.check(b) {
 			return
 		}
-		dispatch(b, "Search", func() { pgSearch(b, t, q) }, func() { sqliteSearch(b, t, q) })
+		dispatch(b, "Search", func() { pgSearch(b, t, q) }, func() { sqliteSearch(b, t, q) }, func() { mysqlSearch(b, t, q) })
 	})
 }
 
 // Score is the relevance of a row for q: higher is better on every dialect
-// (ts_rank_cd on PostgreSQL, the negated bm25 on SQLite). Scores are
+// (ts_rank_cd on PostgreSQL, the negated bm25 on SQLite, the MATCH relevance
+// on MySQL and MariaDB). Scores are
 // comparable only within one dialect and one query; use them to order, never
 // against a threshold. A query without a positive word scores 0.
 func Score(t Target, q Query) Expr[float64] {
@@ -69,13 +77,14 @@ func Score(t Target, q Query) Expr[float64] {
 		if !t.check(b) {
 			return
 		}
-		dispatch(b, "Score", func() { pgScore(b, t, q) }, func() { sqliteScore(b, t, q) })
+		dispatch(b, "Score", func() { pgScore(b, t, q) }, func() { sqliteScore(b, t, q) }, func() { mysqlScore(b, t, q) })
 	})
 }
 
 // Snippet is the excerpt of o.Column with the matched words marked
 // (ts_headline on PostgreSQL, snippet() on SQLite). It is NULL for a query
-// without a positive word.
+// without a positive word. MySQL and MariaDB have no excerpt function and fail
+// the build with ErrUnsupported.
 func Snippet(t Target, q Query, o SnippetOpts) Expr[string] {
 	return newPortableExpr[string]("Snippet", func(b *momo.Builder) {
 		if !t.check(b) {
@@ -89,7 +98,7 @@ func Snippet(t Target, q Query, o SnippetOpts) Expr[string] {
 			b.SetErr(validationError("snippet column %q is not a declared full-text column of table %s", o.Column.ColumnName(), t.tbl.Name))
 			return
 		}
-		dispatch(b, "Snippet", func() { pgSnippet(b, t, q, o) }, func() { sqliteSnippet(b, t, q, o) })
+		dispatch(b, "Snippet", func() { pgSnippet(b, t, q, o) }, func() { sqliteSnippet(b, t, q, o) }, nil)
 	})
 }
 
