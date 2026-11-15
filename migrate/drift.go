@@ -521,6 +521,9 @@ func (e *Engine) DriftWith(ctx context.Context, o DriftOptions) (*DriftReport, e
 			return nil, fmt.Errorf("%w: applied version %s has no snapshot at or before it; run momo migrate diff", ErrNoSnapshot, latest)
 		}
 		from = e.hide(snap.Schema)
+		if from, err = expand(e.opts.dialect, from); err != nil {
+			return nil, err
+		}
 		if cz, ok := e.opts.dialect.(Canonicalizer); ok && hasBodyText(from) {
 			want, err := cloneSchema(from)
 			if err != nil {

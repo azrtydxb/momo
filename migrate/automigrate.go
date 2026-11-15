@@ -71,6 +71,11 @@ func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *
 			return nil, err
 		}
 	}
+	expanded, err := expand(e.opts.dialect, &to)
+	if err != nil {
+		return nil, err
+	}
+	to = *expanded
 	c, err := e.pin(ctx)
 	if err != nil {
 		return nil, err

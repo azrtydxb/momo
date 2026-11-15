@@ -843,12 +843,20 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 			return nil, err
 		}
 	}
+	expanded, err := expand(e.opts.dialect, &to)
+	if err != nil {
+		return nil, err
+	}
+	to = *expanded
 	from := &schema.Schema{Dialect: to.Dialect}
 	parent := ""
 	snap, err := LatestSnapshot(e.dir)
 	switch {
 	case err == nil:
 		from = applyOnly(dropExternalExtensions(snap.Schema, e.opts.config.ExternalExtensions), e.opts.config.OnlyTables)
+		if from, err = expand(e.opts.dialect, from); err != nil {
+			return nil, err
+		}
 		parent = snap.Version
 	case !errors.Is(err, ErrNoSnapshot):
 		return nil, err
