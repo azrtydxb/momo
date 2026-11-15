@@ -84,6 +84,7 @@ func TestFullTextInspectRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			expanded.Extensions = nil // ftInspected holds the table only
 			got := ftInspected(t, db)
 			if ix, ok := got.Tables[0].FullTextIndex(); !ok || ix.FullText == nil || ix.FullText.Config != ft.Config {
 				t.Fatalf("inspection misses the full-text structure: %+v", got.Tables[0].Indexes)
