@@ -3264,11 +3264,24 @@ only on a table of the parent snapshot (<code>TestMigrateLint</code>,
 <td>a statement with the SQLite <code>rebuild</code> hint (<code>LintSQL</code> callers)</td>
 <td>batch the data copy or split the table</td>
 </tr>
+<tr>
+<td><code>fulltext-column-rewrite</code></td>
+<td>warning</td>
+<td>stored generated <code>to_tsvector</code> column added to an existing table</td>
+<td>build it in a maintenance window; the table rewrite cannot be avoided</td>
+</tr>
+<tr>
+<td><code>fulltext-first-index</code></td>
+<td>warning</td>
+<td><code>CREATE FULLTEXT INDEX</code> on an existing table (MySQL and MariaDB)</td>
+<td>add the index in a low-traffic window; the table is copied once</td>
+</tr>
 </tbody>
 </table>
 <p>The rules are text heuristics on the comment-free statement. The PostgreSQL
 rules (the first six) run for the <code>postgres</code> dialect only; the destructive rule
-runs for every dialect. A statement built inside a <code>DO</code> block or a function is
+runs for every dialect. <code>fulltext-column-rewrite</code> runs for <code>postgres</code> and
+<code>fulltext-first-index</code> for <code>mysql</code>, which includes MariaDB. A statement built inside a <code>DO</code> block or a function is
 not seen, and a keyword inside a string literal can cause a false report.
 <code>SET NOT NULL</code> is a warning, not an error, because the staged flow (below) ends
 with it. The plan also sketches a <code>--db</code> row count rule for SQLite rebuilds; it is not
