@@ -117,7 +117,7 @@ func TestFullTextSearchGolden(t *testing.T) {
 func TestFullTextQueryIsBound(t *testing.T) {
 	target := fts.Over[article](artTitle, artBody)
 	const hostile = `x') OR 1=1 --`
-	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
+	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
 		got, err := compileFor(t, d, momo.CountAll(), fts.Search(target, fts.Web(hostile)))
 		if err != nil {
 			t.Fatal(err)
@@ -131,7 +131,7 @@ func TestFullTextQueryIsBound(t *testing.T) {
 // Catches: a MATCH sent for an empty query, and a row returned for it.
 func TestFullTextEmptyQuery(t *testing.T) {
 	target := fts.Over[article](artTitle, artBody)
-	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
+	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
 		for _, text := range []string{"", "   ", "-spam", "NEAR( ("} {
 			got, err := compileFor(t, d, momo.CountAll(), fts.Search(target, fts.Web(text)))
 			if err != nil {
@@ -180,6 +180,19 @@ func TestFullTextTargetValidation(t *testing.T) {
 	if !errors.Is(err, momo.ErrValidation) {
 		t.Errorf("undeclared column set: err = %v, want ErrValidation", err)
 	}
+	_, err = compileFor(t, dialect.MySQL, momo.CountAll(), fts.Search(fts.Over[article](artBody, artTitle), fts.Web("x")))
+	if !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("reordered column set on MySQL: err = %v, want ErrValidation", err)
+	}
+}
+
+// Catches: a MySQL search that fails on a config override it must ignore (the
+// FULLTEXT index has no configuration).
+func TestFullTextMySQLIgnoresConfig(t *testing.T) {
+	target := fts.Over[article](artTitle, artBody)
+	if _, err := compileFor(t, dialect.MySQL, momo.CountAll(), fts.Search(target, fts.Web("x").Config("simple"))); err != nil {
+		t.Errorf("config override on MySQL: %v", err)
+	}
 }
 
 // Catches: the portable calls binding the query text on the plain argument
@@ -195,7 +208,7 @@ func TestFullTextHooksSeeMaskedArgsPortable(t *testing.T) {
 		{"sensitive title", fts.Over[article](secretTitle, artBody), true},
 		{"plain columns", fts.Over[article](artTitle, artBody), false},
 	}
-	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
+	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
 		for _, c := range cases {
 			t.Run(string(d)+" "+c.name, func(t *testing.T) {
 				q := fts.Web("hunter2 sensitive")
@@ -270,6 +283,69 @@ func TestFullTextSnippetNeedsColumn(t *testing.T) {
 	got, err := compileFor(t, dialect.Postgres, fts.Snippet(target, fts.Web("fox"), fts.SnippetOpts{Column: artBody}).As("s"), nil)
 	if err != nil || !strings.Contains(got.SQL, `ts_headline(CAST($1 AS regconfig), "articles"."body"`) {
 		t.Errorf("snippet over a tsvector column: %v %v", got.SQL, err)
+	}
+}
+
+// Catches: the MySQL boolean-mode shape changing, the query text leaving the
+// bound argument, a score that is not the MATCH value, and a snippet building
+// on a server without one.
+func TestFullTextMySQLGolden(t *testing.T) {
+	target := fts.Over[article](artTitle, artBody)
+	got, err := compileFor(t, dialect.MySQL, momo.CountAll(), fts.Search(target, fts.Web(`red fox -hen`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "WHERE MATCH(`articles`.`title`, `articles`.`body`) AGAINST (? IN BOOLEAN MODE)"
+	if !strings.Contains(got.SQL, want) || !reflect.DeepEqual(got.Args, []any{`+red +fox -hen`}) {
+		t.Fatalf("SQL %s args %v", got.SQL, got.Args)
+	}
+	sc, err := compileFor(t, dialect.MySQL, fts.Score(target, fts.Web(`red fox`)).As("score"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantScore := "SELECT MATCH(`articles`.`title`, `articles`.`body`) AGAINST (? IN BOOLEAN MODE) AS `score` FROM `articles`"
+	if sc.SQL != wantScore || !reflect.DeepEqual(sc.Args, []any{`+red +fox`}) {
+		t.Fatalf("score SQL %s args %v", sc.SQL, sc.Args)
+	}
+	raw, err := compileFor(t, dialect.MySQL, momo.CountAll(), fts.Search(target, fts.Raw(`+go -orm`)))
+	if err != nil || !reflect.DeepEqual(raw.Args, []any{`+go -orm`}) {
+		t.Fatalf("raw: %v %v", err, raw.Args)
+	}
+	sn := fts.Snippet(target, fts.Web("x"), fts.SnippetOpts{Column: artTitle})
+	if _, err := compileFor(t, dialect.MySQL, sn.As("s"), nil); !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("snippet on MySQL: err = %v, want ErrUnsupported", err)
+	}
+	if _, err := compileFor(t, dialect.MySQL, momo.CountAll(), fts.Search(fts.OverVector(tsv, "english"), fts.Web("x"))); !errors.Is(err, momo.ErrUnsupported) {
+		t.Fatalf("tsvector target on MySQL: err = %v, want ErrUnsupported", err)
+	}
+}
+
+// Catches: the mode text or the bound query changing, and the mode taken from
+// input.
+func TestFullTextMySQLMatchGolden(t *testing.T) {
+	cols := []momo.Column[string]{artTitle, artBody}
+	for mode, want := range map[fts.MySQLMode]string{
+		fts.NaturalLanguage:              "MATCH(`articles`.`title`, `articles`.`body`) AGAINST (? IN NATURAL LANGUAGE MODE)",
+		fts.Boolean:                      "MATCH(`articles`.`title`, `articles`.`body`) AGAINST (? IN BOOLEAN MODE)",
+		fts.NaturalLanguageWithExpansion: "MATCH(`articles`.`title`, `articles`.`body`) AGAINST (? IN NATURAL LANGUAGE MODE WITH QUERY EXPANSION)",
+	} {
+		got, err := compileFor(t, dialect.MySQL, momo.CountAll(), fts.MySQLMatch(cols, "+go -orm", mode))
+		if err != nil || !strings.Contains(got.SQL, want) || !reflect.DeepEqual(got.Args, []any{"+go -orm"}) {
+			t.Errorf("mode %d: %v\n%s\n%v", mode, err, got.SQL, got.Args)
+		}
+		rel, err := compileFor(t, dialect.MySQL, fts.MySQLRelevance(cols, "go", mode).As("r"), nil)
+		if err != nil || !strings.Contains(rel.SQL, want) || !reflect.DeepEqual(rel.Args, []any{"go"}) {
+			t.Errorf("relevance mode %d: %v\n%s\n%v", mode, err, rel.SQL, rel.Args)
+		}
+	}
+	if _, err := compileFor(t, dialect.MySQL, momo.CountAll(), fts.MySQLMatch(cols, "x", fts.MySQLMode(9))); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("unknown mode: err = %v, want ErrValidation", err)
+	}
+	if _, err := compileFor(t, dialect.MySQL, momo.CountAll(), fts.MySQLMatch(nil, "x", fts.Boolean)); !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("no columns: err = %v, want ErrValidation", err)
+	}
+	if _, err := compileFor(t, dialect.Postgres, momo.CountAll(), fts.MySQLMatch(cols, "x", fts.Boolean)); !errors.Is(err, momo.ErrUnsupported) {
+		t.Errorf("MySQLMatch on PostgreSQL: err = %v, want ErrUnsupported", err)
 	}
 }
 

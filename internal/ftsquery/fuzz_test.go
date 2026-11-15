@@ -13,6 +13,10 @@ import (
 // string is removed: only the fixed tokens may remain.
 var fts5Rest = regexp.MustCompile(`^[ ()*]*((OR|NOT)[ ()*]*)*$`)
 
+// mysqlRest matches what is left of a boolean-mode string once every quoted
+// phrase is removed: the operators + - ( ) * and bare words.
+var mysqlRest = regexp.MustCompile(`^[ ()+*\-\p{L}\p{N}_']*$`)
+
 // stripQuoted removes every "..." span of s, with "" as an escaped quote, and
 // reports false when a span is not closed.
 func stripQuoted(s string) (string, bool) {
@@ -70,6 +74,14 @@ func FuzzFullTextWebQuery(f *testing.F) {
 			}
 			if n := strings.Count(p.PostgresTSQuery(), "'"); n%2 != 0 {
 				t.Fatalf("%q: PostgresTSQuery() = %q has unbalanced quotes", s, p.PostgresTSQuery())
+			}
+			my := p.MySQLBoolean()
+			if p.Empty() != (my == "") {
+				t.Fatalf("%q: Empty() = %v but MySQLBoolean() = %q", s, p.Empty(), my)
+			}
+			rest, ok = stripQuoted(my)
+			if !ok || !mysqlRest.MatchString(rest) {
+				t.Fatalf("%q: MySQLBoolean() = %q leaves %q outside phrases", s, my, rest)
 			}
 		}
 		for _, r := range Parse(s, Web).PostgresTSQuery() {

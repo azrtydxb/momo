@@ -123,6 +123,15 @@ func TestConfigureDSN(t *testing.T) {
 	}
 }
 
+// Catches: a MATCH without a FULLTEXT index over exactly its columns (server
+// error 1191) surfacing as a raw driver error instead of ErrValidation.
+func TestClassify1191(t *testing.T) {
+	err := classify(&mysql.MySQLError{Number: 1191, Message: "Can't find FULLTEXT index matching the column list"}, "")
+	if !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("1191 is not ErrValidation: %v", err)
+	}
+}
+
 // Catches: the table of a schema-qualified statement being read as the schema.
 func TestTableOfSchemaQualifiedStatement(t *testing.T) {
 	cases := map[string]string{

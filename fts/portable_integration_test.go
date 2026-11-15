@@ -92,7 +92,20 @@ func createArticles(t *testing.T, db *momo.DB, d dialect.Name, rows [][3]string)
 	case dialect.SQLite:
 		execAll(t, db,
 			`CREATE TABLE articles (id INTEGER PRIMARY KEY, title TEXT, body TEXT)`,
-			`CREATE VIRTUAL TABLE articles_fts USING fts5(title, body, content='articles', content_rowid='id')`)
+			`CREATE VIRTUAL TABLE articles_fts USING fts5(title, body, content='articles', content_rowid='id')`,
+			`CREATE TRIGGER articles_ai AFTER INSERT ON articles BEGIN
+				INSERT INTO articles_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
+			END`,
+			`CREATE TRIGGER articles_ad AFTER DELETE ON articles BEGIN
+				INSERT INTO articles_fts(articles_fts, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);
+			END`,
+			`CREATE TRIGGER articles_au AFTER UPDATE ON articles BEGIN
+				INSERT INTO articles_fts(articles_fts, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);
+				INSERT INTO articles_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
+			END`)
+	case dialect.MySQL:
+		execAll(t, db,
+			"CREATE TABLE articles (id BIGINT PRIMARY KEY, title TEXT, body TEXT, FULLTEXT KEY articles_search (title, body)) ENGINE=InnoDB")
 	default:
 		t.Fatalf("dialect %s is not covered here", d)
 	}
@@ -138,10 +151,19 @@ func searchIDs(t *testing.T, db *momo.DB, q fts.Query) []int64 {
 	return ids
 }
 
+// prefixWant is the rows a two-letter prefix finds: on the MySQL family the
+// prefix is shorter than innodb_ft_min_token_size (3), so it finds none.
+func prefixWant(d dialect.Name, all []int64) []int64 {
+	if d == dialect.MySQL {
+		return []int64{}
+	}
+	return all
+}
+
 // Catches: a dialect returning a row that misses a word, or omitting a row that
 // has all of them (S-1), and the portable score ordering being inverted (S-2).
 func TestFullTextSearchAllDialects(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedArticles(t, db, d)
 		if got := searchIDs(t, db, fts.Web(`red fox`)); !reflect.DeepEqual(got, []int64{1, 3, 4}) {
 			t.Fatalf("all words: %v, want [1 3 4]", got)
@@ -149,8 +171,11 @@ func TestFullTextSearchAllDialects(t *testing.T) {
 		if got := searchIDs(t, db, fts.Web(`"red fox" -hen`)); !reflect.DeepEqual(got, []int64{1}) {
 			t.Fatalf("phrase and exclusion: %v, want [1]", got)
 		}
-		if got := searchIDs(t, db, fts.Web(`fo*`)); !reflect.DeepEqual(got, []int64{1, 3, 4, 5}) {
-			t.Fatalf("prefix: %v, want [1 3 4 5]", got)
+		if got := searchIDs(t, db, fts.Web(`fo*`)); !reflect.DeepEqual(got, prefixWant(d, []int64{1, 3, 4, 5})) {
+			t.Fatalf("prefix: %v, want %v", got, prefixWant(d, []int64{1, 3, 4, 5}))
+		}
+		if got := searchIDs(t, db, fts.Web(`fox*`)); !reflect.DeepEqual(got, []int64{1, 3, 4, 5}) {
+			t.Fatalf("three-letter prefix: %v, want [1 3 4 5]", got)
 		}
 		if got := searchIDs(t, db, fts.Plain(`red fox`)); !reflect.DeepEqual(got, []int64{1, 3, 4}) {
 			t.Fatalf("plain: %v, want [1 3 4]", got)
@@ -161,7 +186,7 @@ func TestFullTextSearchAllDialects(t *testing.T) {
 // Catches: a score that does not order the row with the most occurrences first
 // (bm25 not negated, or the order inverted).
 func TestFullTextScoreOrdering(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		createArticles(t, db, d, [][3]string{
 			{"1", "note", "fox cat dog"},
 			{"2", "note", "fox fox dog"},
@@ -190,7 +215,7 @@ func TestFullTextScoreOrdering(t *testing.T) {
 // Catches: a row the query does not match scoring NULL on SQLite, which sorts
 // below every score on one dialect and above it on another, instead of 0.
 func TestFullTextScoreWithoutSearch(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		createArticles(t, db, d, [][3]string{
 			{"1", "note", "fox cat dog"},
 			{"2", "note", "fox fox dog"},
@@ -223,7 +248,7 @@ func TestFullTextScoreWithoutSearch(t *testing.T) {
 
 // Catches: a database syntax error for user text on any dialect.
 func TestFullTextWebQueryNeverErrors(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedArticles(t, db, d)
 		inputs := []string{`a OR b -c "d e" NEAR( (`, `"`, `((`, `-`, `*`, `\`, `'`, ``, `  `, `OR`, `-"`, `"*`, `a*b`}
 		rng := rand.New(rand.NewSource(7))
@@ -247,7 +272,7 @@ func TestFullTextWebQueryNeverErrors(t *testing.T) {
 
 // Catches: a phrase matching non-adjacent words, and a prefix missing a row.
 func TestFullTextPhraseAndPrefix(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedArticles(t, db, d)
 		if got := searchIDs(t, db, fts.Web(`"red fox"`)); !reflect.DeepEqual(got, []int64{1}) {
 			t.Fatalf("phrase: %v, want [1]", got)
@@ -255,8 +280,8 @@ func TestFullTextPhraseAndPrefix(t *testing.T) {
 		if got := searchIDs(t, db, fts.Web(`"fox red"`)); !reflect.DeepEqual(got, []int64{4}) {
 			t.Fatalf("reversed phrase: %v, want [4]", got)
 		}
-		if got := searchIDs(t, db, fts.Web(`fo*`)); !reflect.DeepEqual(got, []int64{1, 3, 4, 5}) {
-			t.Fatalf("prefix: %v, want [1 3 4 5]", got)
+		if got := searchIDs(t, db, fts.Web(`fo*`)); !reflect.DeepEqual(got, prefixWant(d, []int64{1, 3, 4, 5})) {
+			t.Fatalf("prefix: %v, want %v", got, prefixWant(d, []int64{1, 3, 4, 5}))
 		}
 	})
 }
@@ -264,7 +289,7 @@ func TestFullTextPhraseAndPrefix(t *testing.T) {
 // Catches: an excluded row returned, and a negation-only query erroring or
 // matching rows.
 func TestFullTextExclusion(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seedArticles(t, db, d)
 		if got := searchIDs(t, db, fts.Web(`fox -hen`)); !reflect.DeepEqual(got, []int64{1, 4}) {
 			t.Fatalf("exclusion: %v, want [1 4]", got)
@@ -296,7 +321,7 @@ func TestFullTextSnippet(t *testing.T) {
 // Catches: a NULL source column hiding a row that has text in the other, and a
 // row with every searchable column NULL being returned.
 func TestFullTextNulls(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		createArticles(t, db, d, [][3]string{
 			{"1", "green frog", ""},
 			{"2", "", "a frog sits"},
@@ -308,6 +333,94 @@ func TestFullTextNulls(t *testing.T) {
 		}
 		if got := searchIDs(t, db, fts.Web("plain OR frog OR text")); !reflect.DeepEqual(got, []int64{1, 2, 4}) {
 			t.Fatalf("any word: %v, want [1 2 4]", got)
+		}
+	})
+}
+
+var errRollback = errors.New("rollback")
+
+// Catches: visibility differing from the documented table: MySQL and MariaDB
+// do not see an uncommitted row, PostgreSQL and SQLite do, rollback removes it
+// everywhere.
+func TestFullTextTransactionVisibility(t *testing.T) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		seedArticles(t, db, d)
+		target := fts.Over[article](artTitle, artBody)
+		count := func(q momo.Querier) int {
+			n, err := momo.Select[article](q).From(momo.TableRef{Name: "articles"}).
+				Where(fts.Search(target, fts.Web("zebra"))).Count(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			return int(n)
+		}
+		// dialect.MySQL is the dialect name of MariaDB too, and both run InnoDB
+		// FULLTEXT with the same visibility.
+		visibleInTx := d != dialect.MySQL
+		err := db.Tx(context.Background(), momo.TxOptions{}, func(tx *momo.Tx) error {
+			if _, err := momo.Insert[article](tx).Model(&article{ID: 100, Title: "zebra", Body: "stripes"}).Exec(context.Background()); err != nil {
+				return err
+			}
+			if got := count(tx); (got == 1) != visibleInTx {
+				t.Errorf("%s: inside the transaction count = %d, visible = %v", d, got, visibleInTx)
+			}
+			return errRollback
+		})
+		if !errors.Is(err, errRollback) || count(db) != 0 {
+			t.Fatalf("%s: rollback left the row searchable (err %v)", d, err)
+		}
+		if _, err := momo.Insert[article](db).Model(&article{ID: 101, Title: "zebra", Body: "stripes"}).Exec(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if count(db) != 1 {
+			t.Fatalf("%s: committed row not found", d)
+		}
+	})
+}
+
+// Catches: a word shorter than innodb_ft_min_token_size being found, so the
+// documented limit of the MySQL family is not what the server does.
+func TestFullTextMySQLMinTokenSize(t *testing.T) {
+	testopen.EachMySQL(t, func(t *testing.T, db *momo.DB) {
+		rows, err := db.Driver().Query(context.Background(), `SELECT @@innodb_ft_min_token_size`, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var size int64
+		if !rows.Next() {
+			t.Fatalf("no innodb_ft_min_token_size row (err %v)", rows.Err())
+		}
+		if err := rows.Scan(&size); err != nil {
+			t.Fatal(err)
+		}
+		if err := rows.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if size != 3 {
+			t.Skipf("innodb_ft_min_token_size overridden: %d", size)
+		}
+		createArticles(t, db, dialect.MySQL, [][3]string{
+			{"1", "go language", "go is small"},
+			{"2", "rust language", "rust is safe"},
+		})
+		if got := searchIDs(t, db, fts.Web("go")); len(got) != 0 {
+			t.Fatalf("two-character word found %v, want no rows", got)
+		}
+		if got := searchIDs(t, db, fts.Web("language")); !reflect.DeepEqual(got, []int64{1, 2}) {
+			t.Fatalf("language: %v, want [1 2]", got)
+		}
+	})
+}
+
+// Catches: a MATCH over columns the FULLTEXT index does not cover surfacing as
+// a raw driver error instead of ErrValidation.
+func TestFullTextMySQLMissingIndex(t *testing.T) {
+	testopen.EachMySQL(t, func(t *testing.T, db *momo.DB) {
+		seedArticles(t, db, dialect.MySQL)
+		_, err := momo.Select[artIDRow](db).From(momo.TableRef{Name: "articles"}).Columns(artID).
+			Where(fts.MySQLMatch([]momo.Column[string]{artBody}, "x", fts.Boolean)).All(context.Background())
+		if !errors.Is(err, momo.ErrValidation) {
+			t.Fatalf("err = %v, want ErrValidation", err)
 		}
 	})
 }

@@ -88,3 +88,32 @@ func TestRenderCombinations(t *testing.T) {
 		t.Errorf("plain syntax kept an exclusion or a prefix: %+v", p)
 	}
 }
+
+// Catches: a boolean-mode operator of MySQL surviving into the string, the
+// exclusion attached to the wrong group, an OR written without its groups, and
+// an apostrophe word left bare.
+func TestMySQLBoolean(t *testing.T) {
+	cases := map[string]string{
+		`red fox`:            `+red +fox`,
+		`"red fox" -hen`:     `+"red fox" -hen`,
+		`fox OR hound`:       `(+fox) (+hound)`,
+		`a b OR c -d`:        `(+a +b) (+c) -d`,
+		`fo*`:                `+fo*`,
+		`+x >y <z ~w (v) @u`: `+x +y +z +w +v +u`,
+		`it's`:               `+"it's"`,
+		`well-kn*`:           `+well +kn*`,
+		`a -"x y"`:           `+a -"x y"`,
+		`a -b*`:              `+a -b*`,
+	}
+	for in, want := range cases {
+		if got := Parse(in, Web).MySQLBoolean(); got != want {
+			t.Errorf("%q: %s, want %s", in, got, want)
+		}
+	}
+	if got := Parse(`go orm`, Plain).MySQLBoolean(); got != `+go +orm` {
+		t.Errorf("plain: %s", got)
+	}
+	if got := Parse(`-spam`, Web).MySQLBoolean(); got != "" {
+		t.Errorf("empty query rendered %q", got)
+	}
+}
