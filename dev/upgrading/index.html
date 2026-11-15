@@ -1111,6 +1111,39 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#bulkupdate-runs-on-every-dialect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BulkUpdate runs on every dialect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-long-list-is-chunked-not-refused" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A long list is chunked, not refused
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bulkupdatekeys-for-a-composite-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BulkUpdateKeys for a composite key
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#merge-runs-on-sqlite-mysql-and-mariadb" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2203,6 +2236,39 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#bulkupdate-runs-on-every-dialect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BulkUpdate runs on every dialect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-long-list-is-chunked-not-refused" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A long list is chunked, not refused
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bulkupdatekeys-for-a-composite-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BulkUpdateKeys for a composite key
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#merge-runs-on-sqlite-mysql-and-mariadb" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3183,9 +3249,32 @@
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
 <h2 id="upgrading-to-0140">Upgrading to 0.14.0<a class="headerlink" href="#upgrading-to-0140" title="Permanent link">&para;</a></h2>
-<p>No edit is needed in your code. <code>Merge</code> now runs on SQLite, MySQL and MariaDB,
-where it returned <code>ErrUnsupported</code>, so code that relied on the error (a
-fallback branch, a test that expects the refusal) now takes the success path.</p>
+<p>No edit is needed in your code. <code>Merge</code> and <code>BulkUpdate</code> now run on SQLite,
+MySQL and MariaDB, where they returned <code>ErrUnsupported</code>, so code that relied on
+the error (a fallback branch, a test that expects the refusal) now takes the
+success path. A long <code>BulkUpdate</code> list is also chunked instead of refused on
+every dialect.</p>
+<h3 id="bulkupdate-runs-on-every-dialect"><code>BulkUpdate</code> runs on every dialect<a class="headerlink" href="#bulkupdate-runs-on-every-dialect" title="Permanent link">&para;</a></h3>
+<p>SQLite renders <code>UPDATE ... FROM</code>, like PostgreSQL. MySQL and MariaDB render
+<code>UPDATE t JOIN (SELECT ... UNION ALL SELECT ...) AS v ON ... SET ...</code>.
+<code>RowsAffected</code> counts the rows that match a listed key on every dialect,
+whether or not a value changed (the MySQL driver sets <code>clientFoundRows</code>).
+<code>Returning</code> stays <code>ErrUnsupported</code> on MySQL and MariaDB, which have no
+<code>UPDATE ... RETURNING</code>.</p>
+<h3 id="a-long-list-is-chunked-not-refused">A long list is chunked, not refused<a class="headerlink" href="#a-long-list-is-chunked-not-refused" title="Permanent link">&para;</a></h3>
+<p><code>BulkUpdate(...).Exec</code> used to fail with <code>ErrLimitExceeded</code> when the list bound
+more parameters than the dialect allows. It now splits the list into
+statements, run in order and summed, atomically: in one transaction on a <code>DB</code>,
+in a savepoint on a <code>Tx</code>. A <code>DB</code> pinned with <code>OnConn</code> cannot begin a
+transaction, so a chunked list there is <code>ErrUnsupported</code>; call it on a <code>Tx</code>.
+<code>SQL()</code> and <code>Rows</code> still render one statement and return <code>ErrLimitExceeded</code> over
+the limit. If you split lists by hand to stay under the limit, you can drop that
+code; a list split by hand and run in separate transactions stays valid.</p>
+<h3 id="bulkupdatekeys-for-a-composite-key"><code>BulkUpdateKeys</code> for a composite key<a class="headerlink" href="#bulkupdatekeys-for-a-composite-key" title="Permanent link">&para;</a></h3>
+<p><code>BulkUpdateKeys(q, keys, cols, rows)</code> takes several key columns; each row holds
+the key values first, then one value per column. <code>BulkUpdate</code> is the
+single-key form and is unchanged. A NULL key value matches no row. A key listed
+twice applies one of its rows, and which one is not defined.</p>
 <h3 id="merge-runs-on-sqlite-mysql-and-mariadb"><code>Merge</code> runs on SQLite, MySQL and MariaDB<a class="headerlink" href="#merge-runs-on-sqlite-mysql-and-mariadb" title="Permanent link">&para;</a></h3>
 <p><code>Merge(...).Exec</code> on a dialect without <code>MERGE</code> runs the same clauses as a
 sequence of statements in one transaction (a savepoint on a <code>Tx</code>). It copies the

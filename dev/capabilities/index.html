@@ -2076,10 +2076,16 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td><code>CreateGraph</code>, <code>FindOrCreate</code> (<code>ON CONFLICT</code>; on MySQL and MariaDB a transaction with a plain insert and a shared-lock select), <code>UpsertByPK</code></td>
 </tr>
 <tr>
-<td><code>Merge</code>, <code>BulkUpdate</code>, <code>Truncate</code></td>
-<td>yes: <code>Merge</code> is PostgreSQL 15 or later and <code>.Returning</code> needs 17 or later (<code>ErrUnsupported</code> on an older server or a driver without <code>ServerVersioner</code>); <code>BulkUpdate</code> updates only the listed keys (PostgreSQL); <code>Truncate</code> is <code>TRUNCATE TABLE</code></td>
-<td><code>Merge</code>: emulated, see below. <code>BulkUpdate</code>: <code>ErrUnsupported</code>. <code>Truncate</code>: SQLite runs <code>DELETE FROM</code> and resets the autoincrement counter; MySQL runs <code>TRUNCATE TABLE</code> (refused inside a transaction)</td>
+<td><code>Merge</code>, <code>Truncate</code></td>
+<td>yes: <code>Merge</code> is PostgreSQL 15 or later and <code>.Returning</code> needs 17 or later (<code>ErrUnsupported</code> on an older server or a driver without <code>ServerVersioner</code>); <code>Truncate</code> is <code>TRUNCATE TABLE</code></td>
+<td><code>Merge</code>: emulated, see below. <code>Truncate</code>: SQLite runs <code>DELETE FROM</code> and resets the autoincrement counter; MySQL runs <code>TRUNCATE TABLE</code> (refused inside a transaction)</td>
 <td><code>Merge</code> returns <code>ErrValidation</code> when an interceptor adds predicates (deny the kind instead). <code>MergeQuery.Statements</code> lists the statements <code>Exec</code> runs. <code>Truncate</code> runs interceptors with the kind <code>truncate</code>, has no <code>RESTART IDENTITY</code> or <code>CASCADE</code>, and is refused inside a MySQL transaction. <code>Merge</code> does not run field validators on the inserted values</td>
+</tr>
+<tr>
+<td><code>BulkUpdate</code>, <code>BulkUpdateKeys</code></td>
+<td>yes: one <code>UPDATE ... FROM (SELECT ... UNION ALL SELECT ...)</code> over a list of rows (one per key), keys first; <code>BulkUpdateKeys</code> takes a composite key; <code>Returning</code> works; <code>Exec</code> splits a list over the bind-parameter limit into atomic chunks.</td>
+<td>SQLite: <code>UPDATE ... FROM</code>, same rules. MySQL and MariaDB: <code>UPDATE ... JOIN (SELECT ... UNION ALL ...) ... SET</code>; <code>Returning</code> is <code>ErrUnsupported</code> there (no <code>UPDATE ... RETURNING</code>)</td>
+<td><code>BulkUpdate(q, key, cols, rows)</code> and <code>BulkUpdateKeys(q, keys, cols, rows)</code>: each row holds the key values, then one value per column. Only listed keys change; a key outside the table changes nothing and a NULL key matches nothing. A NULL value sets NULL. The version and updated_at columns are maintained (updated_at from the statement clock; an explicit one is <code>ErrValidation</code>). Using With, From, Set, or Model gives <code>ErrValidation</code>. Soft-deleted rows match as in <code>Update</code>: add a <code>Where</code> to leave them out. <code>RowsAffected</code> counts matched rows on every dialect (the MySQL driver sets clientFoundRows). <code>Exec</code> chunks and is atomic (a DB pinned by <code>OnConn</code> is <code>ErrUnsupported</code>); <code>SQL</code> and <code>Rows</code> render one statement and return <code>ErrLimitExceeded</code> over the limit.</td>
 </tr>
 <tr>
 <td>Bulk <code>COPY</code></td>
