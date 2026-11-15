@@ -61,6 +61,7 @@ func TestClassifyMapping(t *testing.T) {
 		"40001": momo.ErrSerialization,
 		"40P01": momo.ErrSerialization,
 		"55P03": momo.ErrBusy,
+		"21000": momo.ErrTooManyRows,
 	}
 	for code, kind := range cases {
 		wrapped := fmt.Errorf("exec: %w", &pgconn.PgError{Code: code, Message: "m"})

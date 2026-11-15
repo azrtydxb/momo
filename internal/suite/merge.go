@@ -29,8 +29,8 @@ func countTitle(t *testing.T, db *momo.DB, title string) int64 {
 }
 
 // MergeAndBulkUpdate runs MERGE, the bulk update from a VALUES list and
-// Truncate. On a dialect without Merge it asserts ErrUnsupported for MERGE and
-// the bulk update; on PostgreSQL it asserts the row results and the server
+// Truncate. The bulk update runs on every dialect. On a dialect without Merge
+// it asserts ErrUnsupported for the single MERGE text; on PostgreSQL it asserts the row results and the server
 // version gate (RETURNING on MERGE needs PostgreSQL 17). Truncate runs on every
 // dialect.
 func MergeAndBulkUpdate(t *testing.T, db *momo.DB, caps Caps) {
@@ -75,11 +75,10 @@ func MergeAndBulkUpdate(t *testing.T, db *momo.DB, caps Caps) {
 	}
 
 	if !caps.Merge {
-		if _, err := merged(3, "merged").Exec(ctx); !errors.Is(err, momo.ErrUnsupported) {
-			t.Fatalf("suite: Merge.Exec on %s = %v, want ErrUnsupported", caps.Dialect, err)
-		}
-		if n := countTitle(t, db, "merged"); n != 0 {
-			t.Fatalf("suite: an unsupported MERGE inserted %d rows", n)
+		// Merge has no single statement here; its emulation is covered by the
+		// merge integration tests, which run on every dialect.
+		if _, err := merged(3, "merged").SQL(); !errors.Is(err, momo.ErrUnsupported) {
+			t.Fatalf("suite: Merge.SQL on %s = %v, want ErrUnsupported", caps.Dialect, err)
 		}
 		truncateAndCount(t, db)
 		return

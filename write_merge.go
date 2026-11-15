@@ -78,12 +78,36 @@ type MergeQuery[T any] struct {
 }
 
 // Merge starts a MERGE into T from a source, which the statement names src.
-// PostgreSQL 15 or later only (dialect.Merge); RETURNING on MERGE needs
-// PostgreSQL 17 or later. The dialect is checked when the statement is built,
-// before any server call, and the server version is read through
-// ServerVersioner (or, on a Tx or an OnConn handle, on that connection) just
-// before the statement runs. A driver that cannot report its version fails
-// with ErrUnsupported. The version is read on every Exec or Rows call.
+// A dialect with MERGE (dialect.Merge) needs PostgreSQL 15 or later, and
+// RETURNING on MERGE needs PostgreSQL 17 or later. The dialect is checked when
+// the statement is built, before any server call, and the server version is
+// read through ServerVersioner (or, on a Tx or an OnConn handle, on that
+// connection) just before the statement runs. A driver that cannot report its
+// version fails with ErrUnsupported. The version is read on every Exec or Rows
+// call.
+//
+// SQLite, MySQL and MariaDB have no MERGE. Exec runs the same clauses there as
+// a sequence of statements in one transaction (a savepoint on a Tx): the source
+// is copied once into a temporary table, the pairs of target and source rows
+// that On joins are computed once, with the new value of every assigned column
+// taken from the target row as it was before any write, and the UPDATE and the
+// INSERT then read only those two tables. So the match does not depend on what
+// the UPDATE changed, and an assignment that reads another assigned column sees
+// the old value. A target row that more than one source row matches fails with
+// ErrTooManyRows before anything is written, as in PostgreSQL, when there is a
+// WhenMatchedUpdate clause. Returning, SET col = DEFAULT, a model without a
+// primary key combined with WhenMatchedUpdate, and a pinned DB are refused with
+// ErrUnsupported. Under concurrent writers the sequence is not equivalent to
+// the single statement: it takes no lock that stops a matching target row from
+// being committed between its steps, so a row that starts to match
+// mid-sequence is seen as unmatched (the INSERT then writes it again, or fails
+// on a unique key), and the affected-row count is taken before the UPDATE. On
+// MySQL and MariaDB the matched target rows are locked and read at their
+// latest committed version; SQLite's single writer turns a race into a busy
+// error. The emulation needs the privilege to create temporary tables, a source
+// with distinct column names, and a connection that survives the call (a
+// canceled context can leave the temporary tables until the connection's next
+// Merge). SQL has no single text there: read the statements with Statements.
 //
 // Matched rows are updated through WhenMatchedUpdate, which keeps the
 // updated-at and version columns up to date like Update does; the values of
@@ -246,45 +270,68 @@ func (m MergeQuery[T]) planMatched(upd UpdateQuery[T]) ([]Assignment, error) {
 	return sets, nil
 }
 
-func (m MergeQuery[T]) render(b *Builder) {
-	d := b.Dialect()
+// check reports the structural errors every dialect shares: a view model, no
+// table, no source, no On or no clause.
+func (m MergeQuery[T]) check() error {
 	switch {
-	case !d.Merge:
-		b.unsupported("MERGE")
-		return
 	case viewWriteErr("merge", m.meta) != nil:
-		b.SetErr(viewWriteErr("merge", m.meta))
-		return
+		return viewWriteErr("merge", m.meta)
 	case m.meta.Table == "":
-		b.SetErr(m.verr("", "%T has no table", *new(T)))
-		return
+		return m.verr("", "%T has no table", *new(T))
 	case m.source == nil:
-		b.SetErr(m.verr("", "Merge needs a source"))
-		return
+		return m.verr("", "Merge needs a source")
 	case len(m.on) == 0:
-		b.SetErr(m.verr("", "Merge needs On: a MERGE without a join condition is refused"))
-		return
+		return m.verr("", "Merge needs On: a MERGE without a join condition is refused")
 	case !m.hasMatched && !m.hasInsert:
-		b.SetErr(m.verr("", "Merge needs WhenMatchedUpdate or WhenNotMatchedInsert"))
-		return
+		return m.verr("", "Merge needs WhenMatchedUpdate or WhenNotMatchedInsert")
 	}
-	upd := UpdateQuery[T]{q: m.q, meta: m.meta, assigns: m.matched}
-	ins := InsertQuery[T]{q: m.q, meta: m.meta}
-	var sets []Assignment
-	var ip mergeInsert
+	return nil
+}
+
+// mergePlan is the validated clauses of a MERGE.
+type mergePlan[T any] struct {
+	upd  UpdateQuery[T]
+	ins  InsertQuery[T]
+	sets []Assignment
+	ip   mergeInsert
+}
+
+// plan validates the structure and both clauses.
+func (m MergeQuery[T]) plan() (mergePlan[T], error) {
+	p := mergePlan[T]{
+		upd: UpdateQuery[T]{q: m.q, meta: m.meta, assigns: m.matched},
+		ins: InsertQuery[T]{q: m.q, meta: m.meta},
+	}
+	if err := m.check(); err != nil {
+		return p, err
+	}
 	var err error
 	if m.hasMatched {
-		if sets, err = m.planMatched(upd); err != nil {
-			b.SetErr(err)
-			return
+		if p.sets, err = m.planMatched(p.upd); err != nil {
+			return p, err
 		}
 	}
 	if m.hasInsert {
-		if ip, err = m.planInsert(ins); err != nil {
-			b.SetErr(err)
-			return
+		if p.ip, err = m.planInsert(p.ins); err != nil {
+			return p, err
 		}
 	}
+	return p, nil
+}
+
+func (m MergeQuery[T]) render(b *Builder) {
+	d := b.Dialect()
+	if !d.Merge {
+		b.SetErr(&Error{Kind: ErrUnsupported, Op: "merge", Table: m.meta.Table,
+			Err: fmt.Errorf("%s has no MERGE statement, so there is no single SQL text: Exec runs it as several statements, which Statements lists", d.Name)})
+		return
+	}
+	mp, err := m.plan()
+	if err != nil {
+		b.SetErr(err)
+		return
+	}
+	upd, ins, sets, ip := mp.upd, mp.ins, mp.sets, mp.ip
 	target := TableRef{Name: m.meta.Table, Schema: m.meta.Schema}
 	b.withScope([]string{target.Qualifier(), "src"}, func() {
 		b.WriteString("MERGE INTO ")
@@ -395,8 +442,12 @@ func (m MergeQuery[T]) prepare(ctx context.Context) (Compiled, error) {
 	return c, nil
 }
 
-// Exec runs the MERGE and reports the rows it inserted or updated.
+// Exec runs the MERGE and reports the rows it inserted or updated. On SQLite,
+// MySQL and MariaDB it runs the emulation described at Merge.
 func (m MergeQuery[T]) Exec(ctx context.Context) (Result, error) {
+	if m.emulated() {
+		return m.execEmulated(ctx)
+	}
 	c, err := m.prepare(ctx)
 	if err != nil {
 		return Result{}, err
@@ -417,6 +468,10 @@ func (m MergeQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	}
 	if !m.returning.active() {
 		return nil, m.verr("", "Rows needs a Returning list")
+	}
+	if m.emulated() {
+		_, err := m.emulation()
+		return nil, err // RETURNING is always refused on an emulated dialect
 	}
 	c, err := m.prepare(ctx)
 	if err != nil {

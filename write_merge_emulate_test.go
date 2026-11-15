@@ -1,0 +1,239 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package momo_test
+
+import (
+	"errors"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/fakedriver"
+)
+
+// mrgNoPK has no primary key, so a matched update cannot be emulated.
+type mrgNoPK struct{ K, V string }
+
+var mrgNoPKMeta = momo.Meta[mrgNoPK]{
+	Table:    "mrg_nopk",
+	Columns:  []momo.ColumnMeta{{Name: "k"}, {Name: "v"}},
+	Ptr:      func(m *mrgNoPK, i int) any { return [...]any{&m.K, &m.V}[i] },
+	Value:    func(m *mrgNoPK, i int) any { return [...]any{m.K, m.V}[i] },
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+}
+
+func (*mrgNoPK) MomoMeta() *momo.Meta[mrgNoPK] { return &mrgNoPKMeta }
+
+func statementSQL(t *testing.T, q momo.MergeQuery[mrgRow]) []string {
+	t.Helper()
+	cs, err := q.Statements()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := make([]string, len(cs))
+	for i, c := range cs {
+		if len(c.Args) != 0 {
+			t.Errorf("statement %d binds %v, want no arguments", i, c.Args)
+		}
+		out[i] = c.SQL
+	}
+	return out
+}
+
+func assertStatements(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("%d statements, want %d:\n%s", len(got), len(want), strings.Join(got, "\n"))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("statement %d:\n got %s\nwant %s", i, got[i], want[i])
+		}
+	}
+}
+
+// Catches: a wrong statement order (the INSERT must read the flag the snapshot
+// holds, and the UPDATE must come after the cardinality check), an UPDATE that
+// qualifies the SET target where SQLite refuses it, or a lost version bump.
+func TestMergeEmulationGoldenSQLite(t *testing.T) {
+	db := momo.New(fakedriver.New(dialect.SQLite))
+	const dropSrc = `DROP TABLE IF EXISTS temp."momo_merge_src"`
+	const dropPairs = `DROP TABLE IF EXISTS temp."momo_merge_pairs"`
+	assertStatements(t, statementSQL(t, mrgUpsert(db)), []string{
+		dropSrc,
+		dropPairs,
+		`CREATE TEMPORARY TABLE "momo_merge_src" AS SELECT "src".*, ROW_NUMBER() OVER () AS "momo_merge_row" FROM (SELECT id, k, val, n FROM mrg_src) AS "src"`,
+		`CREATE TEMPORARY TABLE "momo_merge_pairs" AS SELECT "src"."momo_merge_row" AS "src_row", "mrg_rows"."id" AS "k0", src.val AS "v0" FROM "mrg_rows", "momo_merge_src" AS "src" WHERE 1 = 0`,
+		`INSERT INTO "momo_merge_pairs" SELECT "src"."momo_merge_row" AS "src_row", "mrg_rows"."id" AS "k0", src.val AS "v0" FROM "mrg_rows", "momo_merge_src" AS "src" WHERE "mrg_rows"."k" = src.k`,
+		`SELECT 1 FROM "momo_merge_pairs" GROUP BY "k0" HAVING COUNT(*) > 1 LIMIT 1`,
+		`SELECT COUNT(*) FROM "momo_merge_pairs"`,
+		`UPDATE "mrg_rows" SET "val" = "momo_merge_p"."v0", "version" = "mrg_rows"."version" + 1 FROM "momo_merge_pairs" AS "momo_merge_p" WHERE "mrg_rows"."id" = "momo_merge_p"."k0"`,
+		`INSERT INTO "mrg_rows" ("id", "k", "val") SELECT src.id, src.k, src.val FROM "momo_merge_src" AS "src" WHERE NOT EXISTS (SELECT 1 FROM "momo_merge_pairs" AS "momo_merge_p" WHERE "momo_merge_p"."src_row" = "src"."momo_merge_row")`,
+		dropSrc,
+		dropPairs,
+	})
+}
+
+// Catches: only the first primary-key column being carried through the pairs
+// table, which would let a composite key update the wrong rows or miss a
+// duplicate.
+func TestMergeEmulationCompositeKeySQL(t *testing.T) {
+	db := momo.New(fakedriver.New(dialect.SQLite))
+	got := func() []string {
+		cs, err := mrgPairMerge(db).Statements()
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make([]string, len(cs))
+		for i, c := range cs {
+			out[i] = c.SQL
+		}
+		return out
+	}()
+	hasAll(t, got[4], `"mrg_pairs"."a" AS "k0", "mrg_pairs"."b" AS "k1", src.v AS "v0"`)
+	hasAll(t, got[5], `GROUP BY "k0", "k1" HAVING COUNT(*) > 1`)
+	hasAll(t, got[7], `WHERE "mrg_pairs"."a" = "momo_merge_p"."k0" AND "mrg_pairs"."b" = "momo_merge_p"."k1"`)
+}
+
+// Catches: bound values lost or reordered between the statements: the source's
+// argument belongs to the snapshot, the assigned value and the On argument to
+// the pairs table (select list first, then WHERE), and no later statement may
+// bind anything.
+func TestMergeEmulationBindsItsArguments(t *testing.T) {
+	db := momo.New(fakedriver.New(dialect.SQLite))
+	src := momo.RawSubquery("SELECT id, k, val, n FROM mrg_src WHERE n >= ?", int64(7))
+	cs, err := momo.Merge[mrgRow](db, src).On(mrgOn(), mrgN.Eq(0)).
+		WhenMatchedUpdate(mrgVal.Set("x")).Statements()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[int][]any{2: {int64(7)}, 3: {"x"}, 4: {"x", int64(0)}}
+	for i, c := range cs {
+		if w := want[i]; !slices.Equal(c.Args, w) {
+			t.Errorf("statement %d args = %v, want %v:\n%s", i, c.Args, w, c.SQL)
+		}
+	}
+}
+
+// Catches: the SQLite UPDATE ... FROM form on MySQL, which has the multi-table
+// form, or an unqualified SET target there; and MariaDB rendering differently
+// from MySQL.
+func TestMergeEmulationGoldenMySQLAndMariaDB(t *testing.T) {
+	const dropSrc = "DROP TEMPORARY TABLE IF EXISTS `momo_merge_src`"
+	const dropPairs = "DROP TEMPORARY TABLE IF EXISTS `momo_merge_pairs`"
+	want := []string{
+		dropSrc,
+		dropPairs,
+		"CREATE TEMPORARY TABLE `momo_merge_src` AS SELECT `src`.*, ROW_NUMBER() OVER () AS `momo_merge_row` FROM (SELECT id, k, val, n FROM mrg_src) AS `src`",
+		"CREATE TEMPORARY TABLE `momo_merge_pairs` AS SELECT `src`.`momo_merge_row` AS `src_row`, `mrg_rows`.`id` AS `k0`, src.val AS `v0` FROM `mrg_rows`, `momo_merge_src` AS `src` WHERE 1 = 0",
+		"INSERT INTO `momo_merge_pairs` SELECT `src`.`momo_merge_row` AS `src_row`, `mrg_rows`.`id` AS `k0`, src.val AS `v0` FROM `mrg_rows`, `momo_merge_src` AS `src` WHERE `mrg_rows`.`k` = src.k FOR UPDATE",
+		"SELECT 1 FROM `momo_merge_pairs` GROUP BY `k0` HAVING COUNT(*) > 1 LIMIT 1",
+		"SELECT COUNT(*) FROM `momo_merge_pairs`",
+		"UPDATE `mrg_rows`, `momo_merge_pairs` AS `momo_merge_p` SET `mrg_rows`.`val` = `momo_merge_p`.`v0`, `mrg_rows`.`version` = `mrg_rows`.`version` + 1 WHERE `mrg_rows`.`id` = `momo_merge_p`.`k0`",
+		"INSERT INTO `mrg_rows` (`id`, `k`, `val`) SELECT src.id, src.k, src.val FROM `momo_merge_src` AS `src` WHERE NOT EXISTS (SELECT 1 FROM `momo_merge_pairs` AS `momo_merge_p` WHERE `momo_merge_p`.`src_row` = `src`.`momo_merge_row`)",
+		dropSrc,
+		dropPairs,
+	}
+	for _, f := range []dialect.Flavor{dialect.FlavorMySQL, dialect.FlavorMariaDB} {
+		assertStatements(t, statementSQL(t, mrgUpsert(flavorDB(f))), want)
+	}
+}
+
+// Catches: a clause that is not asked for still running: no cardinality check,
+// count or UPDATE without WhenMatchedUpdate, and no INSERT without
+// WhenNotMatchedInsert.
+func TestMergeEmulationRunsOnlyTheClausesGiven(t *testing.T) {
+	db := momo.New(fakedriver.New(dialect.SQLite))
+	insOnly := statementSQL(t, mrgInsertClause(momo.Merge[mrgRow](db, mrgSource()).On(mrgOn())))
+	if len(insOnly) != 8 || !strings.HasPrefix(insOnly[5], "INSERT INTO") || strings.Contains(insOnly[3], `"k0"`) || strings.Contains(insOnly[4], `"k0"`) {
+		t.Errorf("insert only = %v, want 2 drops, 3 setups without a key or value column, insert, 2 drops", insOnly)
+	}
+	updOnly := statementSQL(t, momo.Merge[mrgRow](db, mrgSource()).On(mrgOn()).
+		WhenMatchedUpdate(mrgN.SetExpr(momo.TypedSQL[int64]("src.n"))))
+	if len(updOnly) != 10 || !strings.HasPrefix(updOnly[7], "UPDATE ") || slices.ContainsFunc(updOnly, func(s string) bool { return strings.HasPrefix(s, `INSERT INTO "mrg_rows"`) }) {
+		t.Errorf("update only = %v, want 2 drops, 3 setups, check, count, update, 2 drops and no insert into the target", updOnly)
+	}
+	// The assigned column is named n: the pairs table keeps its reserved alias,
+	// so "n" never means two things.
+	hasAll(t, updOnly[7], `SET "n" = "momo_merge_p"."v0"`, `FROM "momo_merge_pairs" AS "momo_merge_p" WHERE "mrg_rows"."id" = "momo_merge_p"."k0"`)
+}
+
+// Catches: RETURNING being emulated from a pre-update snapshot (wrong rows) or
+// reaching the server, and a matched update on a keyless table, where a target
+// row matched twice cannot be detected.
+func TestMergeEmulationRefusals(t *testing.T) {
+	for _, db := range []*momo.DB{momo.New(fakedriver.New(dialect.SQLite)), flavorDB(dialect.FlavorMySQL), flavorDB(dialect.FlavorMariaDB)} {
+		_, err := mrgUpsert(db).Returning(mrgID).Rows(t.Context())
+		if !errors.Is(err, momo.ErrUnsupported) || !strings.Contains(err.Error(), "RETURNING") {
+			t.Errorf("%s Rows with Returning = %v, want ErrUnsupported naming RETURNING", db.Dialect().Name, err)
+		}
+		_, err = mrgUpsert(db).Returning(mrgID).Statements()
+		if !errors.Is(err, momo.ErrUnsupported) {
+			t.Errorf("%s Statements with Returning = %v, want ErrUnsupported", db.Dialect().Name, err)
+		}
+		_, err = mrgUpsert(db).Returning(mrgID).Exec(t.Context())
+		if !errors.Is(err, momo.ErrUnsupported) {
+			t.Errorf("%s Exec with Returning = %v, want ErrUnsupported", db.Dialect().Name, err)
+		}
+
+		src := momo.RawSubquery("SELECT k, v FROM mrg_nopk_src")
+		on := momo.NewColumn[string]("mrg_nopk", "k", 0).EqExpr(momo.TypedSQL[string]("src.k"))
+		_, err = momo.Merge[mrgNoPK](db, src).On(on).
+			WhenMatchedUpdate(momo.NewColumn[string]("mrg_nopk", "v", 0).SetExpr(momo.TypedSQL[string]("src.v"))).Statements()
+		if !errors.Is(err, momo.ErrUnsupported) || !strings.Contains(err.Error(), "primary key") {
+			t.Errorf("%s matched update without a primary key = %v, want ErrUnsupported naming the primary key", db.Dialect().Name, err)
+		}
+		_, err = momo.Merge[mrgNoPK](db, src).On(on).
+			WhenNotMatchedInsert([]momo.ColumnRef{momo.NewColumn[string]("mrg_nopk", "k", 0)}, momo.TypedSQL[string]("src.k")).Statements()
+		if err != nil {
+			t.Errorf("%s insert only without a primary key = %v, want it accepted", db.Dialect().Name, err)
+		}
+	}
+}
+
+// Catches: the structural checks of MERGE (no On, no clause, a column Update
+// refuses) being skipped on the emulated dialects, and the emulation writing
+// before it validated.
+func TestMergeEmulationValidatesBeforeRunning(t *testing.T) {
+	drv := fakedriver.New(dialect.SQLite)
+	db := momo.New(drv)
+	cases := map[string]momo.MergeQuery[mrgRow]{
+		"no on":     momo.Merge[mrgRow](db, mrgSource()).WhenMatchedUpdate(mrgVal.Set("x")),
+		"no clause": momo.Merge[mrgRow](db, mrgSource()).On(mrgOn()),
+		"no source": momo.Merge[mrgRow](db, nil).On(mrgOn()).WhenMatchedUpdate(mrgVal.Set("x")),
+		"pk update": momo.Merge[mrgRow](db, mrgSource()).On(mrgOn()).WhenMatchedUpdate(mrgID.Set(1)),
+	}
+	for name, q := range cases {
+		if _, err := q.Exec(t.Context()); !errors.Is(err, momo.ErrValidation) {
+			t.Errorf("%s: Exec = %v, want ErrValidation", name, err)
+		}
+	}
+	if len(drv.Calls()) != 0 {
+		t.Fatalf("calls = %v, want none", drv.Calls())
+	}
+}
+
+// Catches: the emulation running outside one transaction (a partial result
+// after a failure), the UPDATE running when no source row matched, and the
+// snapshot table being left behind.
+func TestMergeEmulationRunsInOneTransaction(t *testing.T) {
+	drv := fakedriver.New(dialect.SQLite)
+	if _, err := mrgUpsert(momo.New(drv)).Exec(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	prefixes := []string{"DROP TABLE IF EXISTS temp.", "DROP TABLE IF EXISTS temp.", "CREATE TEMPORARY TABLE ", "CREATE TEMPORARY TABLE ", "INSERT INTO ", "SELECT 1 FROM ", "SELECT COUNT(*) FROM ", "INSERT INTO ", "DROP TABLE IF EXISTS temp.", "DROP TABLE IF EXISTS temp."}
+	calls := drv.Calls()
+	if len(calls) != len(prefixes) {
+		t.Fatalf("%d statements ran, want %d (the UPDATE is skipped when nothing matched): %+v", len(calls), len(prefixes), calls)
+	}
+	for i, p := range prefixes {
+		if !strings.HasPrefix(calls[i].SQL, p) {
+			t.Errorf("statement %d = %s, want prefix %q", i, calls[i].SQL, p)
+		}
+	}
+	if drv.Commits() != 1 {
+		t.Fatalf("commits = %d, want the whole sequence in one transaction", drv.Commits())
+	}
+}

@@ -55,6 +55,10 @@ func ClassifyError(err error) error {
 		kind = momo.ErrSerialization
 	case "55P03":
 		kind = momo.ErrBusy
+	case "21000":
+		// Cardinality violation: a MERGE that would change a target row twice,
+		// or a scalar subquery that returned several rows.
+		kind = momo.ErrTooManyRows
 	default:
 		// Data exceptions (class 22, e.g. 22P02) quote the offending bound
 		// value in Message, so keep the server text out of the rendered error.

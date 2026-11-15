@@ -127,10 +127,10 @@ The rows below are checked against `dialect.MySQLFlavor` by
 | Vector.Metrics   | none  | l2, cosine |
 | Vector.Indexes   | none  | vector     |
 
-`NullsOrdering` and `ILike` mean native syntax, not availability. Both
-features work on MySQL and MariaDB through emulation (see
+`NullsOrdering`, `ILike` and `Merge` mean native syntax, not availability. All
+three work on MySQL and MariaDB through emulation (see
 [Emulated features](#emulated-features)), so the table says `no` while
-`momo.ILike`, `NullsFirst` and `NullsLast` run.
+`momo.ILike`, `NullsFirst`, `NullsLast` and `momo.Merge` run.
 
 `Returning` is the form every statement has. MariaDB returns rows from an
 INSERT (`InsertReturning`, 10.5 or later) and from a single-table DELETE
@@ -143,7 +143,7 @@ error for a delete names MariaDB as the alternative.
 
 ## Emulated features
 
-Three PostgreSQL features have no MySQL or MariaDB spelling. Momo renders an
+Four PostgreSQL features have no MySQL or MariaDB spelling. Momo renders an
 equivalent instead of returning `ErrUnsupported`.
 
 - **ILIKE.** `momo.ILike(col, pattern)` renders
@@ -173,6 +173,38 @@ equivalent instead of returning `ErrUnsupported`.
   that keeps NULLs (`agg.JSONB`, any `agg.Func` outside `count`, `sum`, `avg`,
   `min`, `max` and the `std` and `var` family, or one over a raw `*`) stays
   `ErrUnsupported`; use `momo.CountAll().Filter(p)` for `COUNT(*)`.
+- **MERGE.** `momo.Merge` has no MySQL or MariaDB spelling, so `Exec` runs a
+  sequence in one transaction (a savepoint inside a `Tx`). It copies the source
+  into a temporary table, creates a second temporary table of the (target row,
+  source row) pairs that `On` joins, read with `FOR UPDATE` so the matched
+  target rows are locked and read at their latest committed version, checks
+  that no target row is matched by two source rows (`ErrTooManyRows`), runs the
+  multi-table `UPDATE target, pairs AS n SET target.c = n.v0 ...`, runs an
+  `INSERT ... SELECT` of the source rows that have no pair, and drops both
+  tables. Every new value is computed into the pairs table from the row as it
+  was before the statement, because a multi-table `UPDATE` assigns left to
+  right and `SET a = x, b = target.a` would otherwise read the new `a`; the
+  match is decided before any write, so the result matches PostgreSQL even when
+  the update changes a column that `On` reads. `ON DUPLICATE KEY UPDATE` is not
+  used: it matches on any unique key, not on `On`. Not equivalent under
+  concurrent writers: a row committed between the steps that starts to match is
+  not seen (no gap or phantom protection, under repeatable read or read
+  committed), and the affected-row count is taken before the `UPDATE`; see
+  [capabilities](capabilities.md#merge-on-sqlite-mysql-and-mariadb). The account
+  needs the `CREATE TEMPORARY TABLES` privilege. The temporary tables take the
+  column types and collations the server derives for them, so a source built
+  from literals or bind parameters can meet a different collation than the
+  target column, and the comparison then fails with an error (read the source
+  from a table, or cast it); a source with duplicate column names (a join
+  selecting `a.id` and `b.id`) fails, so alias them. A server with
+  `enforce_gtid_consistency` on refuses `CREATE TEMPORARY TABLE` inside a
+  transaction when `binlog_format` is `STATEMENT` or `MIXED` (and older MySQL
+  servers refuse it whatever the format); the error reaches you and nothing is
+  written. `Returning` is `ErrUnsupported`. Read the statements with
+  `MergeQuery.Statements`. MySQL does not roll a temporary table back, so the
+  sequence drops both itself, also after a failure; a canceled context or a
+  lost connection can leave them on that pooled connection until its next
+  `Merge`, which drops them first.
 
 ## Writes
 

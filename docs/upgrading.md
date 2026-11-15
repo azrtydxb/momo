@@ -7,10 +7,11 @@ later releases can break more.
 
 ## Upgrading to 0.14.0
 
-No edit is needed in your code. `BulkUpdate` now runs on SQLite, MySQL and
-MariaDB, so code that relied on its `ErrUnsupported` there (a fallback branch, a
-test that expects the refusal) now takes the success path. Two behaviors differ
-from before on PostgreSQL too.
+No edit is needed in your code. `Merge` and `BulkUpdate` now run on SQLite,
+MySQL and MariaDB, where they returned `ErrUnsupported`, so code that relied on
+the error (a fallback branch, a test that expects the refusal) now takes the
+success path. A long `BulkUpdate` list is also chunked instead of refused on
+every dialect.
 
 ### `BulkUpdate` runs on every dialect
 
@@ -38,6 +39,47 @@ code; a list split by hand and run in separate transactions stays valid.
 the key values first, then one value per column. `BulkUpdate` is the
 single-key form and is unchanged. A NULL key value matches no row. A key listed
 twice applies one of its rows, and which one is not defined.
+
+### `Merge` runs on SQLite, MySQL and MariaDB
+
+`Merge(...).Exec` on a dialect without `MERGE` runs the same clauses as a
+sequence of statements in one transaction (a savepoint on a `Tx`). It copies the
+source into a temporary table, computes once the pairs of target and source rows
+that `On` joins, with the new value of every assigned column taken from the
+target row as it was before the statement, and then updates and inserts from
+those two tables. Without concurrent writers the final table and the
+affected-row count (rows updated plus rows inserted) are those of PostgreSQL,
+also when the update changes a column that `On` reads or an assignment reads
+another assigned column. A `NULL` key matches nothing. A target row that two
+source rows match fails with `ErrTooManyRows` before anything is written when
+there is a `WhenMatchedUpdate` clause. PostgreSQL's cardinality violation
+(SQLSTATE 21000) is now `ErrTooManyRows` as well, so `errors.Is` agrees across
+dialects; before, it had no momo kind.
+
+Things that differ from PostgreSQL, and are refused or reported instead of
+guessed:
+
+- Under concurrent writers the sequence is not the single statement: a target
+  row committed between its steps that starts to match is not seen, so the
+  insert writes it again (or fails on a unique key), and the affected-row count
+  is taken before the update. MySQL and MariaDB lock and re-read the matched
+  target rows; SQLite fails with a busy error instead of reading stale data.
+  See [capabilities](capabilities.md#merge-on-sqlite-mysql-and-mariadb).
+- `Returning` (and `Rows`) is `ErrUnsupported`: the rows would come from a
+  snapshot, not from the statement. `SET col = DEFAULT` in the update is
+  `ErrUnsupported` too.
+- `WhenMatchedUpdate` on a model without a primary key is `ErrUnsupported`,
+  because a target row matched twice could not be detected.
+- A `Merge` on a pinned `DB` is `ErrUnsupported`: it needs a transaction.
+- `MergeQuery.SQL` has no single text on these dialects and returns
+  `ErrUnsupported`; `MergeQuery.Statements` lists the statements `Exec` runs.
+- The server account needs the privilege to create temporary tables, and the
+  source needs distinct column names (alias `a.id` and `b.id`). On MySQL and
+  MariaDB the temporary tables take the types and collations the server derives
+  for them, so read the source from a table rather than from literals when a
+  text key is compared with a column of another collation; a canceled context
+  can leave the tables on that connection until its next `Merge`. See
+  [MySQL and MariaDB](mysql.md#emulated-features).
 
 ## Upgrading to 0.13.0
 
