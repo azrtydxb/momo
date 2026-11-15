@@ -446,9 +446,6 @@ func renderAlterColumn(c migrate.Change) ([]migrate.Statement, error) {
 // ----------------------------------------------------------------- indexes
 
 func createIndex(schemaName, table string, ix schema.Index) (migrate.Statement, error) {
-	if ix.FullText != nil {
-		return migrate.Statement{}, &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate/mysql", Err: fmt.Errorf("index %q: full-text declarations are not rendered yet", ix.Name)}
-	}
 	if ix.Where != "" {
 		return migrate.Statement{}, fmt.Errorf("index %q: partial indexes do not exist on MySQL", ix.Name)
 	}
@@ -505,5 +502,13 @@ func createIndex(schemaName, table string, ix schema.Index) (migrate.Statement, 
 		parts[i] = s
 	}
 	b.WriteString(" (" + strings.Join(parts, ", ") + ")")
+	if ix.FullText != nil && ix.FullText.Parser != "" {
+		// The parser is one of the two names the allowlist of
+		// FullText.Validate admits, never free text.
+		if ix.FullText.Parser != "ngram" && ix.FullText.Parser != "mecab" {
+			return migrate.Statement{}, &momo.Error{Kind: momo.ErrValidation, Op: "migrate/mysql", Err: fmt.Errorf("index %q: the full-text parser %q is not ngram or mecab", ix.Name, ix.FullText.Parser)}
+		}
+		b.WriteString(" WITH PARSER " + ix.FullText.Parser)
+	}
 	return migrate.Statement{SQL: b.String()}, nil
 }

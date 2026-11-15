@@ -37,6 +37,11 @@ func NewEngine(drv momo.Driver, dir fs.FS, opts ...Option) (*Engine, error) {
 	if o.dialect == nil {
 		return nil, errors.New("migrate: NewEngine requires migrate.WithDialect(...)")
 	}
+	if fa, ok := o.dialect.(interface {
+		WithFlavor(dialect.Flavor) Dialect
+	}); ok && drv != nil && drv.Dialect() != nil {
+		o.dialect = fa.WithFlavor(drv.Dialect().Flavor)
+	}
 	if o.lockTimeout != nil && *o.lockTimeout < 0 || o.statementTimeout != nil && *o.statementTimeout < 0 {
 		return nil, errors.New("migrate: a lock or statement timeout cannot be negative")
 	}

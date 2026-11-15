@@ -11,6 +11,15 @@ import (
 	"github.com/azrtydxb/momo/schema"
 )
 
+// LiveValidator is implemented by dialects that refuse a declaration because
+// of what the live database holds, which a desired schema alone cannot show
+// (a full-text index on a MySQL table that is not InnoDB). AutoMigrate calls
+// ValidateAgainstLive with the desired schema and the inspected database
+// before it plans anything.
+type LiveValidator interface {
+	ValidateAgainstLive(desired, live *schema.Schema) error
+}
+
 // AutoMigrate brings the live database up to desired by additive changes only
 // and reports every change it left alone. It is meant for development and
 // tests, and for apps that accept additive-only automatic migration; it writes
@@ -76,6 +85,11 @@ func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *
 	live, _, err := e.inspectOn(ctx, c)
 	if err != nil {
 		return nil, err
+	}
+	if v, ok := e.opts.dialect.(LiveValidator); ok {
+		if err := v.ValidateAgainstLive(&to, live); err != nil {
+			return nil, err
+		}
 	}
 	// Destructive and staged changes are requested so that Diff reports them
 	// instead of refusing; the filter below decides what runs.

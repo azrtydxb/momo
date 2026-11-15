@@ -15,9 +15,10 @@ import (
 // the table is created, and Inspect cannot tell a declared index from the one
 // the server built (it hides the latter). Give the index another name. Diff and
 // AutoMigrate call it on the desired schema.
-func (Dialect) ValidateSchema(s *schema.Schema) error {
+func (d Dialect) ValidateSchema(s *schema.Schema) error {
 	var errs []error
 	for _, t := range s.Tables {
+		errs = append(errs, d.validateFullText(t)...)
 		keys := make(map[string]bool, len(t.ForeignKeys))
 		for _, fk := range t.ForeignKeys {
 			keys[fk.Name] = true
