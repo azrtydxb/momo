@@ -26,7 +26,7 @@ func TestSchemaFullTextSnapshotCompat(t *testing.T) {
 	if err := in.Write(&buf); err != nil {
 		t.Fatal(err)
 	}
-	out, err := Read(&buf)
+	out, err := Load(&buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestSchemaFullTextSnapshotCompat(t *testing.T) {
 		t.Fatalf("full-text description lost in the round trip: %+v", got)
 	}
 	old := `{"format_version":1,"dialect":"postgres","tables":[{"name":"t","columns":[{"name":"id","type":"bigint"}],"indexes":[{"name":"i","parts":[{"column":"id"}]}]}]}`
-	if _, err := Read(strings.NewReader(old)); err != nil {
+	if _, err := Load(strings.NewReader(old)); err != nil {
 		t.Fatalf("snapshot written before this change: %v", err)
 	}
 	if !json.Valid([]byte(old)) {
@@ -53,7 +53,7 @@ func TestFullTextValidate(t *testing.T) {
 		{},
 		{Columns: []string{"a", "a"}},
 		{Columns: []string{"a"}, Config: "english'); DROP TABLE x;--"},
-		{Columns: []string{"a"}, Tokenizer: "unicode61'); DROP TABLE x;--"},
+		{Columns: []string{"a"}, Tokenizer: "unicode61'); DROP TABLE x;--"}, //nolint:gosec // hostile tokenizer name, not a credential
 		{Columns: []string{"a"}, Parser: "ngram; x"},
 		{Columns: []string{"a"}, Weights: []string{"A", "B"}},
 		{Columns: []string{"a"}, Weights: []string{"E"}},

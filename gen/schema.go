@@ -621,6 +621,16 @@ func unwrapNull(core string) string {
 // addIndex appends ix to t unless its name is already taken in the table's
 // index and unique namespace.
 func (b *schemaBuilder) addIndex(t *schema.Table, ix schema.Index, pos token.Position, who string) {
+	if ix.FullText != nil {
+		if _, dup := t.FullTextIndex(); dup {
+			b.diag(pos, fmt.Sprintf("table %s: one full-text declaration per table (%s declares %q as a second)", t.Name, who, ix.Name))
+			return
+		}
+		if err := ix.FullText.Validate(); err != nil {
+			b.diag(pos, fmt.Sprintf("full-text index %q: %v", ix.Name, err))
+			return
+		}
+	}
 	if !b.claimName(ix.Name, pos, who) {
 		return
 	}
@@ -635,6 +645,60 @@ func (b *schemaBuilder) addIndex(t *schema.Table, ix schema.Index, pos token.Pos
 			}
 		}
 	}
+}
+
+// isTextType reports whether a column type holds text a full-text index can
+// read. typ is the dialect's own spelling; it is normalized first.
+func isTextType(d dialect.Name, typ string) bool {
+	typ = strings.ToLower(schema.NormalizeType(d, typ))
+	for _, p := range []string{"text", "varchar", "char", "character", "tinytext", "mediumtext", "longtext"} {
+		if strings.HasPrefix(typ, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// searchTextProblem returns the type of column col of t when it is not a text
+// column, and "" when it is one (or is not found).
+func (b *schemaBuilder) searchTextProblem(t *schema.Table, col string) string {
+	c, ok := t.Column(col)
+	if !ok || isTextType(b.primary, c.Type) {
+		return ""
+	}
+	return schema.NormalizeType(b.primary, c.Type)
+}
+
+// applySearchTags adds the one full-text index declared by the search tag: its
+// columns are the tagged fields in field order.
+func (b *schemaBuilder) applySearchTags(m *Model, t *schema.Table) {
+	var cols []string
+	var parts []schema.IndexPart
+	var first token.Position
+	bad := false
+	for _, f := range m.Fields {
+		if !f.Tags.Search {
+			continue
+		}
+		if len(cols) == 0 {
+			first = f.Pos
+		}
+		if typ := b.searchTextProblem(t, f.Column); typ != "" {
+			b.diag(f.Pos, fmt.Sprintf("field %s: search needs a text column, it is %s", f.GoName, typ))
+			bad = true
+		}
+		cols = append(cols, f.Column)
+		parts = append(parts, schema.IndexPart{Column: f.Column})
+	}
+	if len(cols) == 0 || bad {
+		return
+	}
+	b.addIndex(t, schema.Index{
+		Name:     m.Table + "_search",
+		Method:   "fulltext",
+		Parts:    parts,
+		FullText: &schema.FullText{Columns: cols},
+	}, first, "the search tag")
 }
 
 // defaultIndexName is the name of an index or unique index that a tag does
@@ -661,6 +725,7 @@ func (b *schemaBuilder) claimName(name string, pos token.Position, who string) b
 // mixin) already contributed an index through Model.Indexes; that entry is
 // kept and receives the field's sort, nulls and method.
 func (b *schemaBuilder) applyIndexTags(m *Model, t *schema.Table) {
+	b.applySearchTags(m, t)
 	byColumn := map[string]*Field{}
 	for _, f := range m.Fields {
 		byColumn[f.Column] = f
@@ -750,6 +815,18 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 		}
 		if missing("index", ix.Name, cols) {
 			continue
+		}
+		if ix.FullText != nil {
+			bad := false
+			for _, col := range cols {
+				if typ := b.searchTextProblem(t, col); typ != "" {
+					b.diag(m.Pos, fmt.Sprintf("MomoConfig: full-text index %q: column %q: search needs a text column, it is %s", ix.Name, col, typ))
+					bad = true
+				}
+			}
+			if bad {
+				continue
+			}
 		}
 		b.addIndex(t, ix, m.Pos, "MomoConfig")
 	}

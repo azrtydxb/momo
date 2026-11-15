@@ -14,6 +14,10 @@ type Config struct{}
 // are read statically by the generator and are no-ops at runtime.
 type IndexOpts struct{}
 
+// FullTextOpts carries the optional parts of a full-text search declaration.
+// Its methods are read statically by the generator and are no-ops at runtime.
+type FullTextOpts struct{}
+
 // ForeignKeyOpts carries the optional referential actions of a foreign key
 // declaration. Its methods are read statically by the generator and are
 // no-ops at runtime.
@@ -29,6 +33,12 @@ func (c *Config) Index(name string, cols ...any) *IndexOpts { return &IndexOpts{
 // two). Chain Unique for a unique index and Where for a partial one. Read
 // statically by the generator; never executed for its effect.
 func (c *Config) IndexExpr(name string, exprs ...string) *IndexOpts { return &IndexOpts{} }
+
+// FullText declares the table's full-text search index over the given field
+// references, in order. Chain Config, Weights, Tokenizer, Parser or Expression
+// for the options a dialect honours. Read statically by the generator; never
+// executed for its effect.
+func (c *Config) FullText(name string, cols ...any) *FullTextOpts { return &FullTextOpts{} }
 
 // Unique declares a unique index over the given field references. Read
 // statically by the generator; never executed for its effect.
@@ -150,6 +160,26 @@ func (o *IndexOpts) Nulls(field any, order string) *IndexOpts { return o }
 // Concurrently marks the index to be built concurrently. Read statically;
 // no-op at runtime.
 func (o *IndexOpts) Concurrently() *IndexOpts { return o }
+
+// Config sets the PostgreSQL text search configuration. Read statically;
+// no-op at runtime.
+func (o *FullTextOpts) Config(regconfig string) *FullTextOpts { return o }
+
+// Weights sets one weight ("A" to "D") per column. Read statically; no-op at
+// runtime.
+func (o *FullTextOpts) Weights(w ...string) *FullTextOpts { return o }
+
+// Tokenizer sets the SQLite FTS5 tokenize clause. Read statically; no-op at
+// runtime.
+func (o *FullTextOpts) Tokenizer(t string) *FullTextOpts { return o }
+
+// Parser sets the MySQL full-text parser ("ngram" or "mecab"). Read
+// statically; no-op at runtime.
+func (o *FullTextOpts) Parser(p string) *FullTextOpts { return o }
+
+// Expression declares a PostgreSQL expression index instead of a generated
+// tsvector column. Read statically; no-op at runtime.
+func (o *FullTextOpts) Expression() *FullTextOpts { return o }
 
 // OnDelete sets the ON DELETE action of a foreign key ("CASCADE", "RESTRICT",
 // "SET NULL", "SET DEFAULT" or "NO ACTION"). Read statically; no-op at runtime.

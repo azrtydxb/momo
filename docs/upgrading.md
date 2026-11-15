@@ -7,9 +7,21 @@ later releases can break more.
 
 ## Upgrading to 0.14.0
 
-No edit is needed in your code. `Merge` now runs on SQLite, MySQL and MariaDB,
+No edit is needed in your code. Models can declare full-text search, and `Merge` now runs on SQLite, MySQL and MariaDB,
 where it returned `ErrUnsupported`, so code that relied on the error (a
 fallback branch, a test that expects the refusal) now takes the success path.
+
+### Declare full-text search on a model
+
+A model can now declare one full-text search index, either with the `search` tag
+on each text field (the index is named `<table>_search` and covers the tagged
+fields in field order) or with `c.FullText(name, &m.A, &m.B)` in `MomoConfig`,
+chained with `Config`, `Weights`, `Tokenizer`, `Parser` or `Expression` for the
+options a dialect honours. `momo generate` rejects the tag on a column that is
+not text, a second declaration on one table, and a configuration, tokenizer or
+parser name outside a strict allowlist. The declaration is recorded in the
+schema snapshot; snapshots written before it load unchanged. Nothing is added to
+existing models, so no edit is needed.
 
 ### `Merge` runs on SQLite, MySQL and MariaDB
 

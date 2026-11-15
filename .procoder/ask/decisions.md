@@ -1182,3 +1182,10 @@ GitHub, and list any with unmerged commits.
 - SchemaExpander: an optional migrate hook expands derived objects on both sides before diffing, so snapshots keep only the declaration (recommended); store the derived objects in the snapshot
 
 Decision (2026-11-15, the user, via AskUserQuestion): accept all fallbacks and the hook.
+
+## Full-text search Task 1: choices the plan leaves open (2026-11-15, integrator)
+
+- `schema.FullText.Validate` returns plain errors, not `momo.ErrValidation`: package `schema` is standard-library only and cannot import the root package. The generator turns the error into a positioned diagnostic and the dialect expansions of later tasks wrap it in `ErrValidation`.
+- The one-declaration-per-table check and `Validate` run in the generator's `addIndex`, before the name-collision check, so a `search` tag and a `c.FullText` call of the same name report "one full-text declaration per table" rather than a name clash.
+- The `search` tag form is checked per field (`field <GoName>: search needs a text column, it is <type>`); the call form is checked per column in `applyCompanion`, because a column has no Go field name there.
+- The companion reader does not seed the tag-built `<table>_search` name into its index namespace; the builder reports the second declaration.

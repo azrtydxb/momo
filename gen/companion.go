@@ -270,8 +270,11 @@ func (r *companionReader) readStmt(s ast.Stmt) {
 	// call is on the IndexOpts returned by the one before it.
 	for i, c := range calls {
 		want := "IndexOpts"
-		if calls[0].name == "ForeignKey" {
+		switch calls[0].name {
+		case "ForeignKey":
 			want = "ForeignKeyOpts"
+		case "FullText":
+			want = "FullTextOpts"
 		}
 		if i == 0 {
 			want = "Config"
@@ -285,6 +288,9 @@ func (r *companionReader) readStmt(s ast.Stmt) {
 	switch first.name {
 	case "Index", "Unique", "IndexExpr":
 		r.index(calls)
+		return
+	case "FullText":
+		r.fullText(calls)
 		return
 	case "ForeignKey":
 		r.foreignKey(calls)
@@ -467,6 +473,89 @@ func (r *companionReader) index(calls []call) {
 		return
 	}
 	// A unique with options is a unique index: constraints cannot be partial.
+	r.res.Indexes = append(r.res.Indexes, ix)
+}
+
+// fullText reads c.FullText(name, &m.A, &m.B) with its optional Config,
+// Weights, Tokenizer, Parser and Expression.
+func (r *companionReader) fullText(calls []call) {
+	first := calls[0]
+	args := first.expr.Args
+	if len(args) < 2 {
+		r.unsupported(first.expr)
+		return
+	}
+	startDiags := len(r.diags)
+	r.optSeen = map[string]bool{}
+	name, _ := r.str(args[0])
+	ft := schema.FullText{}
+	ix := schema.Index{Name: name, Method: "fulltext"}
+	for _, a := range args[1:] {
+		if f, ok := r.field(a); ok {
+			ix.Parts = append(ix.Parts, schema.IndexPart{Column: f.Column})
+			ft.Columns = append(ft.Columns, f.Column)
+		}
+	}
+	once := func(c call, key string, dst *string, v string) {
+		if r.optSeen[key] {
+			r.diag(c.expr.Pos(), fmt.Sprintf("duplicate %s on full-text index %q", c.name, name))
+			return
+		}
+		r.optSeen[key] = true
+		*dst = v
+	}
+	for _, c := range calls[1:] {
+		cargs := c.expr.Args
+		switch c.name {
+		case "Config", "Tokenizer", "Parser":
+			if len(cargs) != 1 {
+				r.unsupported(c.expr)
+				continue
+			}
+			s, ok := r.str(cargs[0])
+			if !ok {
+				continue
+			}
+			switch c.name {
+			case "Config":
+				once(c, "Config", &ft.Config, s)
+			case "Tokenizer":
+				once(c, "Tokenizer", &ft.Tokenizer, s)
+			default:
+				once(c, "Parser", &ft.Parser, s)
+			}
+		case "Weights":
+			if r.optSeen["Weights"] {
+				r.diag(c.expr.Pos(), fmt.Sprintf("duplicate Weights on full-text index %q", name))
+				continue
+			}
+			r.optSeen["Weights"] = true
+			for _, a := range cargs {
+				if s, ok := r.str(a); ok {
+					ft.Weights = append(ft.Weights, s)
+				}
+			}
+		case "Expression":
+			if len(cargs) != 0 {
+				r.unsupported(c.expr)
+				continue
+			}
+			if ft.Expression {
+				r.diag(c.expr.Pos(), fmt.Sprintf("duplicate Expression on full-text index %q", name))
+				continue
+			}
+			ft.Expression = true
+		default:
+			r.unsupported(c.expr)
+		}
+	}
+	if len(r.diags) != startDiags {
+		return
+	}
+	if !r.declare(r.indexAt, "index", name, args[0].Pos()) {
+		return
+	}
+	ix.FullText = &ft
 	r.res.Indexes = append(r.res.Indexes, ix)
 }
 
