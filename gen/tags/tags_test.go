@@ -26,6 +26,11 @@ func TestParseTags(t *testing.T) {
 				t.Fatalf("got %+v", g)
 			}
 		}},
+		{name: "search", raw: "search", check: func(t *testing.T, g Tags) {
+			if !g.Search {
+				t.Fatalf("got %+v", g)
+			}
+		}},
 		{name: "skip", raw: "-", check: func(t *testing.T, g Tags) {
 			if !g.Skip {
 				t.Fatalf("got %+v", g)
