@@ -107,15 +107,87 @@ func TestFullTextPostgresExpansionRefusals(t *testing.T) {
 	}
 }
 
-// Catches: a CONCURRENTLY full-text index, which the migration splitter would
-// move away from the generated-column recreation it depends on, being accepted.
-func TestFullTextPostgresRefusesConcurrently(t *testing.T) {
+// concurrentSQL renders each change of a plan on its own, the way the
+// no-transaction split does, and returns the statements.
+func concurrentSQL(t *testing.T, plan []migrate.Change) []migrate.Statement {
+	t.Helper()
 	var d Dialect
-	s := articlesWithFullText(schema.FullText{Columns: []string{"title", "body"}, Config: "english"})
+	var out []migrate.Statement
+	for _, c := range plan {
+		stmts, err := d.Render([]migrate.Change{c})
+		if err != nil {
+			t.Fatalf("render %s %s on its own: %v", c.Kind, c.Name, err)
+		}
+		out = append(out, stmts...)
+	}
+	return out
+}
+
+func concurrentArticles(config string, weights []string) *schema.Schema {
+	s := articlesWithFullText(schema.FullText{Columns: []string{"title", "body"}, Config: config, Weights: weights})
 	s.Tables[0].Indexes[0].Concurrently = true
-	_, err := d.ExpandSchema(s)
-	if err == nil || !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "CONCURRENTLY") {
-		t.Fatalf("err = %v, want ErrValidation naming CONCURRENTLY", err)
+	return s
+}
+
+// Catches: a CONCURRENTLY full-text declaration being refused, and one that
+// expands without the generated column or loses the flag the index build needs.
+func TestFullTextPostgresAcceptsConcurrently(t *testing.T) {
+	var d Dialect
+	s, err := d.ExpandSchema(concurrentArticles("english", nil))
+	if err != nil {
+		t.Fatalf("a CONCURRENTLY full-text index must expand: %v", err)
+	}
+	tbl := s.Tables[0]
+	if _, ok := tbl.Column("articles_search_tsv"); !ok || !tbl.Indexes[0].Concurrently {
+		t.Fatalf("want the generated column and a concurrent index: %+v", tbl)
+	}
+	changes, _, err := migrate.Diff(&schema.Schema{Dialect: "postgres"}, s, migrate.DiffOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var create *migrate.Statement
+	for _, st := range concurrentSQL(t, changes) {
+		if strings.HasPrefix(st.SQL, "CREATE INDEX") {
+			create = &st
+		}
+	}
+	if create == nil || !create.NoTx || create.SQL != `CREATE INDEX CONCURRENTLY "articles_search" ON "articles" USING gin ("articles_search_tsv")` {
+		t.Fatalf("index statement = %+v", create)
+	}
+}
+
+// Catches: the generated column being recreated only when the index change
+// shares the plan (so the no-transaction split, which renders change by change,
+// hits the in-place refusal), and the old index being dropped CONCURRENTLY,
+// which would split the drop away from the transaction that drops its column.
+func TestFullTextPostgresConcurrentConfigChange(t *testing.T) {
+	var d Dialect
+	from, _ := d.ExpandSchema(concurrentArticles("english", nil))
+	to, _ := d.ExpandSchema(concurrentArticles("simple", []string{"A", "B"}))
+	changes, _, err := migrate.Diff(from, to, migrate.DiffOptions{AllowDestructive: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordered, err := migrate.OrderErr(changes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sql []string
+	for _, st := range concurrentSQL(t, ordered) {
+		tag := "tx: "
+		if st.NoTx {
+			tag = "notx: "
+		}
+		sql = append(sql, tag+st.SQL)
+	}
+	want := []string{
+		`tx: DROP INDEX "articles_search"`,
+		`tx: ALTER TABLE "articles" DROP COLUMN "articles_search_tsv"`,
+		`tx: ALTER TABLE "articles" ADD COLUMN "articles_search_tsv" tsvector GENERATED ALWAYS AS (setweight(to_tsvector('simple', coalesce("title", '')), 'A') || setweight(to_tsvector('simple', coalesce("body", '')), 'B')) STORED`,
+		`notx: CREATE INDEX CONCURRENTLY "articles_search" ON "articles" USING gin ("articles_search_tsv")`,
+	}
+	if strings.Join(sql, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("statements:\n%s\nwant:\n%s", strings.Join(sql, "\n"), strings.Join(want, "\n"))
 	}
 }
 
