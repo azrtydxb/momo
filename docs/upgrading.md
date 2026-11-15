@@ -8,10 +8,19 @@ later releases can break more.
 ## Upgrading to 0.15.0
 
 No edit is needed in your code. A model can now declare full-text search, and
-the declaration is recorded in the model and in the schema snapshot. Package
-`fts` also gains a query layer that reads the declaration: `fts.Over` names the
-searched columns, and `fts.Search`, `fts.Score` and `fts.Snippet` render a
-match, a relevance score and an excerpt, with the text of a `fts.Web`,
+the declaration is recorded in the model and in the schema snapshot. On MySQL
+and MariaDB a migration renders it as a `FULLTEXT` index, with `WITH PARSER`
+when a parser is declared. A unique index, a column that is not text, more than
+16 columns and a parser name other than `ngram` or `mecab` are refused with
+`ErrValidation`; `AutoMigrate` also refuses a declaration on a table the
+database holds with a storage engine other than InnoDB. A parser on MariaDB is
+refused with `ErrUnsupported` when the engine knows the server is MariaDB (any
+engine built on a driver); the offline `momo migrate` commands, which open no
+database, cannot know it and render the parser, so MariaDB rejects it when the
+migration is applied. Drift does not report a table for its storage engine.
+Package `fts` also gains a query layer that reads the declaration: `fts.Over`
+names the searched columns, and `fts.Search`, `fts.Score` and `fts.Snippet`
+render a match, a relevance score and an excerpt, with the text of a `fts.Web`,
 `fts.Plain` or `fts.Raw` query bound as a parameter. On PostgreSQL they search
 the generated tsvector column `<index>_tsv` of the declaration; on SQLite they
 search the FTS5 table `<table>_fts`, and a search whose FTS5 table does not
@@ -32,10 +41,9 @@ not text, a second declaration on one table, and a configuration, tokenizer or
 parser name outside a strict allowlist. Snapshots written before the
 declaration load unchanged.
 
-Migrations do not render the declaration. Until a later release adds the
-rendering, every migration dialect refuses an index that carries one with
+PostgreSQL and SQLite refuse an index that carries a declaration with
 `ErrUnsupported` ("full-text declarations are not rendered yet"), so a model
-that declares it cannot produce or apply a migration.
+that declares it cannot produce or apply a migration there.
 
 ## Upgrading to 0.14.0
 
