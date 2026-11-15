@@ -648,6 +648,17 @@ func Equal(a, b *Schema) bool {
 		return false
 	}
 	na.FormatVersion, nb.FormatVersion = 0, 0
+	// A table's storage engine counts only when both schemas set it: a
+	// declaration never does, the MySQL inspector sets it for a table that is
+	// not InnoDB.
+	for i := range na.Tables {
+		for j := range nb.Tables {
+			x, y := &na.Tables[i], &nb.Tables[j]
+			if x.Schema == y.Schema && x.Name == y.Name && (x.Engine == "" || y.Engine == "") {
+				x.Engine, y.Engine = "", ""
+			}
+		}
+	}
 	for i := range na.Extensions {
 		for j := range nb.Extensions {
 			x, y := &na.Extensions[i], &nb.Extensions[j]

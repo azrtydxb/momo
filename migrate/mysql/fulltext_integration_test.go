@@ -97,3 +97,46 @@ func TestFullTextMariaDBParserRefused(t *testing.T) {
 		}
 	})
 }
+
+// Catches: a full-text index declared on a table the database holds as MyISAM
+// reaching the server, and an error that is not ErrValidation naming the
+// table. AutoMigrate is the engine path that sees the live database; Diff
+// reads no database.
+func TestFullTextRefusedOnNonInnoDBTable(t *testing.T) {
+	testopen.EachMySQL(t, func(t *testing.T, db *momo.DB) {
+		ctx := context.Background()
+		mustExec(t, db, "CREATE TABLE ft_legacy (id bigint NOT NULL, title varchar(255) NOT NULL, body text NOT NULL, PRIMARY KEY (id)) ENGINE=MyISAM")
+		want := ftDeclared("")
+		want.Tables[0].Name = "ft_legacy"
+		eng := migratetest.NewEngine(t, mmysql.New(), db.Driver(), os.DirFS(t.TempDir()))
+		_, err := eng.AutoMigrate(ctx, want)
+		if !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "ft_legacy") {
+			t.Fatalf("err = %v, want ErrValidation naming ft_legacy", err)
+		}
+		var typ string
+		if err := scanOne(ctx, db, `SELECT INDEX_TYPE FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ft_legacy' AND INDEX_NAME = 'articles_search' LIMIT 1`, &typ); err == nil {
+			t.Fatalf("the index was created anyway (%s)", typ)
+		}
+	})
+}
+
+// Catches: a live MyISAM table reported as drift against a snapshot that never
+// records a storage engine.
+func TestDriftIgnoresNonInnoDBEngine(t *testing.T) {
+	testopen.EachMySQL(t, func(t *testing.T, db *momo.DB) {
+		ctx := context.Background()
+		want := ftDeclared("")
+		want.Tables[0].Indexes = nil
+		dir := t.TempDir()
+		eng := migratetest.NewEngine(t, mmysql.New(), db.Driver(), os.DirFS(dir))
+		applyExample(t, dir, eng, want, "plain")
+		mustExec(t, db, "ALTER TABLE articles ENGINE=MyISAM")
+		rep, err := eng.Drift(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !rep.Clean() {
+			t.Fatalf("a non-InnoDB table is reported as drift: %+v", rep.Changed)
+		}
+	})
+}

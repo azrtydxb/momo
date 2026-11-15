@@ -3,6 +3,7 @@
 package mysql
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -49,6 +50,26 @@ func isTextType(typ string) bool {
 		return true
 	}
 	return false
+}
+
+// ValidateAgainstLive refuses a full-text declaration on a table that exists
+// in the database with a storage engine other than InnoDB (ErrValidation naming
+// the table). A desired schema never carries an engine, so this is the check
+// that can fire on a normal path; AutoMigrate calls it with the inspected
+// database.
+func (Dialect) ValidateAgainstLive(desired, live *schema.Schema) error {
+	var errs []error
+	for _, t := range desired.Tables {
+		if _, ok := t.FullTextIndex(); !ok {
+			continue
+		}
+		for _, lt := range live.Tables {
+			if lt.Schema == t.Schema && lt.Name == t.Name && lt.Engine != "" && !strings.EqualFold(lt.Engine, "InnoDB") {
+				errs = append(errs, ftErr(momo.ErrValidation, "table %s: a full-text index needs an InnoDB table, the table in the database uses %s", t.Name, lt.Engine))
+			}
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // validateFullText checks the full-text indexes of a table: the engine, the

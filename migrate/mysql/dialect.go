@@ -37,6 +37,13 @@ func New() Dialect { return Dialect{} }
 // WithFlavor returns the dialect bound to a server flavor. migrate.NewEngine
 // calls it with the flavor of the driver, so that a declaration the server
 // cannot keep (a full-text parser on MariaDB) fails before any statement runs.
+//
+// An engine without a driver (migrate.NewEngine(nil, ...), which the offline
+// momo migrate commands use) cannot know the flavor: the project configures
+// the dialect "mysql" for both servers and the server, not the URL, decides
+// which one it is. A dialect with no flavor refuses nothing flavor specific, so
+// it renders WITH PARSER and a MariaDB server rejects the statement when the
+// migration is applied.
 func (d Dialect) WithFlavor(f dialect.Flavor) migrate.Dialect {
 	d.flavor = f
 	return d
