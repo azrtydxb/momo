@@ -1138,6 +1138,21 @@ Decision (2026-11-14, integrator): as above.
 
 Decision (2026-11-14, integrator): as above.
 
+## Full-text search design (spec fulltext-search, PR #159)
+
+Ten open questions of `.procoder/specs/fulltext-search.md`, each put to the user with a recommendation and alternatives:
+
+- Q1: a portable layer plus first-class dialect builders (recommended); per-dialect builders only; portable layer only
+- Q2: a full-text description on `schema.Index`, the SQLite FTS5 table and triggers derived by the renderer (recommended); a virtual `schema.Table`; `Index.Method` plus `With` pairs only
+- Q3 and Q10: a stored generated tsvector column plus GIN by default with an expression index as an option, PostgreSQL 12+ for the declarative feature, config as a literal in the expression (recommended); expression index only; trigger recipe only; PostgreSQL 11 via a generated trigger
+- Q4: external-content FTS5 with momo-generated triggers (recommended); standalone table; contentless table; no triggers
+- Q5: websearch-style syntax translated and escaped per dialect plus a Raw escape hatch (recommended); raw only; plain only
+- Q6: a portable higher-is-better score (bm25 negated), comparable only within one query on one dialect, no thresholds, migrate lint warnings (recommended); no portable ranking; scores normalised to 0..1; lint errors
+- Q7 and Q8: BOOLEAN MODE for the portable web-style query with natural language mode and query expansion only through the MySQL builder, and one search declaration per table covering one or more columns (recommended); NATURAL LANGUAGE for the plain query; several declarations per table
+- Q9: keep `momo.HybridSearch` PostgreSQL only for now (recommended); extend it to SQLite and MySQL/MariaDB in this feature
+
+Decision (2026-11-15, the user, via AskUserQuestion): Q1 to Q8 and Q10 as recommended. Q9 is NOT the recommendation: hybrid (text plus vector) search is in scope for SQLite and MySQL/MariaDB, as reciprocal rank fusion over the FTS5 or MATCH text leg and the existing cosine vector leg (sqlite-vec on SQLite, VECTOR on MariaDB 11.8). MySQL 9.x has no vector distance function, so hybrid there stays `ErrUnsupported`. The spec records all ten as decisions and is complete.
+
 ## Next parity work after 0.13.0, and stale agent worktrees
 
 Which of the remaining design-dependent parity items to start next:
