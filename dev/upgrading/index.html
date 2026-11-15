@@ -1099,6 +1099,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0140" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.14.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.14.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#merge-runs-on-sqlite-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge runs on SQLite, MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0130" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2163,6 +2191,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0140" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.14.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.14.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#merge-runs-on-sqlite-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge runs on SQLite, MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0130" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3126,6 +3182,49 @@
 <a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
+<h2 id="upgrading-to-0140">Upgrading to 0.14.0<a class="headerlink" href="#upgrading-to-0140" title="Permanent link">&para;</a></h2>
+<p>No edit is needed in your code. <code>Merge</code> now runs on SQLite, MySQL and MariaDB,
+where it returned <code>ErrUnsupported</code>, so code that relied on the error (a
+fallback branch, a test that expects the refusal) now takes the success path.</p>
+<h3 id="merge-runs-on-sqlite-mysql-and-mariadb"><code>Merge</code> runs on SQLite, MySQL and MariaDB<a class="headerlink" href="#merge-runs-on-sqlite-mysql-and-mariadb" title="Permanent link">&para;</a></h3>
+<p><code>Merge(...).Exec</code> on a dialect without <code>MERGE</code> runs the same clauses as a
+sequence of statements in one transaction (a savepoint on a <code>Tx</code>). It copies the
+source into a temporary table, computes once the pairs of target and source rows
+that <code>On</code> joins, with the new value of every assigned column taken from the
+target row as it was before the statement, and then updates and inserts from
+those two tables. Without concurrent writers the final table and the
+affected-row count (rows updated plus rows inserted) are those of PostgreSQL,
+also when the update changes a column that <code>On</code> reads or an assignment reads
+another assigned column. A <code>NULL</code> key matches nothing. A target row that two
+source rows match fails with <code>ErrTooManyRows</code> before anything is written when
+there is a <code>WhenMatchedUpdate</code> clause. PostgreSQL's cardinality violation
+(SQLSTATE 21000) is now <code>ErrTooManyRows</code> as well, so <code>errors.Is</code> agrees across
+dialects; before, it had no momo kind.</p>
+<p>Things that differ from PostgreSQL, and are refused or reported instead of
+guessed:</p>
+<ul>
+<li>Under concurrent writers the sequence is not the single statement: a target
+  row committed between its steps that starts to match is not seen, so the
+  insert writes it again (or fails on a unique key), and the affected-row count
+  is taken before the update. MySQL and MariaDB lock and re-read the matched
+  target rows; SQLite fails with a busy error instead of reading stale data.
+  See <a href="../capabilities/#merge-on-sqlite-mysql-and-mariadb">capabilities</a>.</li>
+<li><code>Returning</code> (and <code>Rows</code>) is <code>ErrUnsupported</code>: the rows would come from a
+  snapshot, not from the statement. <code>SET col = DEFAULT</code> in the update is
+  <code>ErrUnsupported</code> too.</li>
+<li><code>WhenMatchedUpdate</code> on a model without a primary key is <code>ErrUnsupported</code>,
+  because a target row matched twice could not be detected.</li>
+<li>A <code>Merge</code> on a pinned <code>DB</code> is <code>ErrUnsupported</code>: it needs a transaction.</li>
+<li><code>MergeQuery.SQL</code> has no single text on these dialects and returns
+  <code>ErrUnsupported</code>; <code>MergeQuery.Statements</code> lists the statements <code>Exec</code> runs.</li>
+<li>The server account needs the privilege to create temporary tables, and the
+  source needs distinct column names (alias <code>a.id</code> and <code>b.id</code>). On MySQL and
+  MariaDB the temporary tables take the types and collations the server derives
+  for them, so read the source from a table rather than from literals when a
+  text key is compared with a column of another collation; a canceled context
+  can leave the tables on that connection until its next <code>Merge</code>. See
+  <a href="../mysql/#emulated-features">MySQL and MariaDB</a>.</li>
+</ul>
 <h2 id="upgrading-to-0130">Upgrading to 0.13.0<a class="headerlink" href="#upgrading-to-0130" title="Permanent link">&para;</a></h2>
 <p>No edit is needed in your code. Several calls that returned <code>ErrUnsupported</code> on
 some dialects now return results (<code>DistinctOn</code> on SQLite, MySQL and MariaDB,

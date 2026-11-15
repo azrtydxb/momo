@@ -1815,7 +1815,7 @@ Bulk and set-based writes (PostgreSQL):
 
 - `InsertQuery[T].Copy` streams models through the driver COPY path. It returns `ErrUnsupported` on SQLite and MySQL and through `FromSQLDB` (the driver must offer a COPY path). It runs the insert interceptors (deny only, a predicate they add is ignored) and the `BeforeInsert` hook over a copy of the models, validates fields like `Models`, and counts as a write for `NewUnitOfWork`. It skips `OnConflict`, `Returning` and chunking, and it cannot be combined with `Model`, `Models`, `InsertQuery.Values`, `FromSelect`, `OnConflict` or `Upsert` (`ErrValidation`). On a `*DB` with `WithImplicitTx` it runs in its own transaction, so `WithTxSetup` applies; on a pinned `OnConn` handle with `WithTxSetup` it fails closed with `ErrUnsupported`.
 - `InsertQuery[T].Unnest()` (the method, not the package-level FROM source `momo.Unnest`) renders a `Model` or `Models` insert as `INSERT ... SELECT * FROM unnest($1::bigint[], $2::text[])`: one array parameter per written column, one statement. The bind count does not depend on the row count, so it bypasses `MaxParams` and `WithMaxParams` and never chunks (and is not split into a transaction of several statements). Other dialects return `ErrUnsupported`. `InsertQuery.Values`, `InsertQuery.ValuesRows` and `FromSelect` return `ErrValidation`, and so does a model without a table schema in its generated metadata (the array types come from it). Int, float, bool, string, `time.Time` and `[]byte` columns bind as typed slices (`[]*T` when a value is NULL); any other element type (uuid, json, decimal, named enums) falls back to `[]any`, which pgx may reject for an array type, so use plain `Models` for such a model. `OnConflict`, `Upsert` and `Returning` work as for `Models`; interceptors, `BeforeInsert`, field validators, automatic timestamps and id generators run as for `Models`. A `FlagSensitive` column's array shows as `RedactedArg` in `QueryEvent.Args`.
-- `Merge` is PostgreSQL 15 or later; `.Returning` needs 17 or later. An older server, a driver without `ServerVersioner`, or a dialect other than PostgreSQL returns `ErrUnsupported` before the statement runs. It needs `On` and at least one WHEN clause (`ErrValidation`). An interceptor that adds predicates makes it fail with `ErrValidation`, because they cannot be applied to a MERGE; deny the kind instead. Field validators do not run on the values inserted from the source.
+- `Merge` is PostgreSQL 15 or later; `.Returning` needs 17 or later. An older server or a driver without `ServerVersioner` returns `ErrUnsupported` before the statement runs. SQLite, MySQL and MariaDB have no MERGE: `Exec` runs the clauses as temporary-table copies of the source and of the matched pairs, an `UPDATE` and an `INSERT` in one transaction (a savepoint inside a `Tx`), which gives PostgreSQL's final table and affected-row count without concurrent writers (it takes no lock against a matching row committed between its steps); a target row that two source rows match is `ErrTooManyRows` (on PostgreSQL too), `Returning`, `SET col = DEFAULT` and a matched update on a model without a primary key are `ErrUnsupported`, and `MergeQuery.Statements` lists the statements because `SQL` has no single text there. It needs `On` and at least one WHEN clause (`ErrValidation`). An interceptor that adds predicates makes it fail with `ErrValidation`, because they cannot be applied to a MERGE; deny the kind instead. Field validators do not run on the values inserted from the source.
 - `BulkUpdate` updates only the keys in its row list, binds one parameter per value (over the limit is `ErrLimitExceeded`, it does not chunk), and keeps the version and updated-at columns current.
 - `Truncate` is `TRUNCATE TABLE` (no `RESTART IDENTITY`, no `CASCADE`), and `DELETE FROM` plus a sequence reset on SQLite. It runs the interceptors with the kind `truncate`, which a tenant-scoped handle should deny, and MySQL refuses it inside a transaction.
 
@@ -4805,10 +4805,10 @@ The rows below are checked against `dialect.MySQLFlavor` by
 | Vector.Metrics   | none  | l2, cosine |
 | Vector.Indexes   | none  | vector     |
 
-`NullsOrdering` and `ILike` mean native syntax, not availability. Both
-features work on MySQL and MariaDB through emulation (see
+`NullsOrdering`, `ILike` and `Merge` mean native syntax, not availability. All
+three work on MySQL and MariaDB through emulation (see
 [Emulated features](#emulated-features)), so the table says `no` while
-`momo.ILike`, `NullsFirst` and `NullsLast` run.
+`momo.ILike`, `NullsFirst`, `NullsLast` and `momo.Merge` run.
 
 `Returning` is the form every statement has. MariaDB returns rows from an
 INSERT (`InsertReturning`, 10.5 or later) and from a single-table DELETE
@@ -4821,7 +4821,7 @@ error for a delete names MariaDB as the alternative.
 
 ## Emulated features
 
-Three PostgreSQL features have no MySQL or MariaDB spelling. Momo renders an
+Four PostgreSQL features have no MySQL or MariaDB spelling. Momo renders an
 equivalent instead of returning `ErrUnsupported`.
 
 - **ILIKE.** `momo.ILike(col, pattern)` renders
@@ -4851,6 +4851,38 @@ equivalent instead of returning `ErrUnsupported`.
   that keeps NULLs (`agg.JSONB`, any `agg.Func` outside `count`, `sum`, `avg`,
   `min`, `max` and the `std` and `var` family, or one over a raw `*`) stays
   `ErrUnsupported`; use `momo.CountAll().Filter(p)` for `COUNT(*)`.
+- **MERGE.** `momo.Merge` has no MySQL or MariaDB spelling, so `Exec` runs a
+  sequence in one transaction (a savepoint inside a `Tx`). It copies the source
+  into a temporary table, creates a second temporary table of the (target row,
+  source row) pairs that `On` joins, read with `FOR UPDATE` so the matched
+  target rows are locked and read at their latest committed version, checks
+  that no target row is matched by two source rows (`ErrTooManyRows`), runs the
+  multi-table `UPDATE target, pairs AS n SET target.c = n.v0 ...`, runs an
+  `INSERT ... SELECT` of the source rows that have no pair, and drops both
+  tables. Every new value is computed into the pairs table from the row as it
+  was before the statement, because a multi-table `UPDATE` assigns left to
+  right and `SET a = x, b = target.a` would otherwise read the new `a`; the
+  match is decided before any write, so the result matches PostgreSQL even when
+  the update changes a column that `On` reads. `ON DUPLICATE KEY UPDATE` is not
+  used: it matches on any unique key, not on `On`. Not equivalent under
+  concurrent writers: a row committed between the steps that starts to match is
+  not seen (no gap or phantom protection, under repeatable read or read
+  committed), and the affected-row count is taken before the `UPDATE`; see
+  [capabilities](capabilities.md#merge-on-sqlite-mysql-and-mariadb). The account
+  needs the `CREATE TEMPORARY TABLES` privilege. The temporary tables take the
+  column types and collations the server derives for them, so a source built
+  from literals or bind parameters can meet a different collation than the
+  target column, and the comparison then fails with an error (read the source
+  from a table, or cast it); a source with duplicate column names (a join
+  selecting `a.id` and `b.id`) fails, so alias them. A server with
+  `enforce_gtid_consistency` on refuses `CREATE TEMPORARY TABLE` inside a
+  transaction when `binlog_format` is `STATEMENT` or `MIXED` (and older MySQL
+  servers refuse it whatever the format); the error reaches you and nothing is
+  written. `Returning` is `ErrUnsupported`. Read the statements with
+  `MergeQuery.Statements`. MySQL does not roll a temporary table back, so the
+  sequence drops both itself, also after a failure; a canceled context or a
+  lost connection can leave them on that pooled connection until its next
+  `Merge`, which drops them first.
 
 ## Writes
 
@@ -8816,13 +8848,51 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 | `INSERT ... SELECT`                        | yes: `InsertQuery[T].FromSelect` with `SelectExprs` (FROM-less or one source, with `Where`, joins, `GroupBy`, `Having`, `OrderBy`) or `Select[T]` as the source; composes with `OnConflict`, `Returning`, `Upsert[T]`                         | SQLite yes (`WHERE true` is added to a `SelectExprs` or `Select[T]` source with FROM and no WHERE before `ON CONFLICT`); MySQL plain insert only (no `ON CONFLICT`; FROM-less with WHERE renders `FROM DUAL`)                                                              | Target columns are explicit typed columns of T; a select-list count mismatch is `ErrValidation`. No model hooks, automatic timestamps, Go-side defaults or validators are applied: list those columns yourself. The soft-delete filter on a `SelectExprs` source needs a `TableRef` that carries the soft-delete marker.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Upsert / `ON CONFLICT`                     | yes (`OnConflict: true`)                                                                                                                                                                                                                      | MySQL and MariaDB: `ON DUPLICATE KEY UPDATE` through the same calls, with the conflict target a unique key and no other unique key able to conflict (an auto-increment key left out of the insert does not count; otherwise `ErrUnsupported`); see [mysql.md](mysql.md)    | `Upsert[T]` (target = primary key) or `InsertQuery[T].OnConflict(cols...).DoNothing()` / `.DoUpdate(assigns...)` with `SetExcluded`. Upsert neither advances nor checks the version column. `OnConflict(...).Where(preds)` (partial-index target) and `.DoUpdate(...).Where(preds)` (conditional update, `col.Excluded()`): PostgreSQL yes; SQLite: bool, integer, finite float and string values in the target predicate render inline so they match the index expression (golden-tested and run against a real SQLite partial unique index written as `WHERE live = 1`; the values show up in logs and traces; write index literals as Momo renders them, integers as `2` and floats in plain decimal with `.0` for whole numbers for magnitudes from 1e-6 up to 1e21 and exponent form (`1e-07`, `1e+21`) outside that range, otherwise use `momo.SQL`), any other value or `Excluded()` there is `ErrValidation`; MySQL `ErrUnsupported`. |
 | Graph writes                               | yes                                                                                                                                                                                                                                           | SQLite: yes, covered by the integration tests that run on SQLite; MySQL 8.4, MySQL 9.7 and MariaDB 11.8: covered by the `integration-mysql` tests (MySQL reads keys with `LAST_INSERT_ID`, MariaDB with `INSERT ... RETURNING`)                                            | `CreateGraph`, `FindOrCreate` (`ON CONFLICT`; on MySQL and MariaDB a transaction with a plain insert and a shared-lock select), `UpsertByPK`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `Merge`, `BulkUpdate`, `Truncate`          | yes: `Merge` is PostgreSQL 15 or later and `.Returning` needs 17 or later (`ErrUnsupported` on an older server or a driver without `ServerVersioner`); `BulkUpdate` updates only the listed keys (PostgreSQL); `Truncate` is `TRUNCATE TABLE` | `Merge` and `BulkUpdate`: `ErrUnsupported`. `Truncate`: SQLite runs `DELETE FROM` and resets the autoincrement counter; MySQL runs `TRUNCATE TABLE` (refused inside a transaction)                                                                                         | `Merge` returns `ErrValidation` when an interceptor adds predicates (deny the kind instead). `Truncate` runs interceptors with the kind `truncate`, has no `RESTART IDENTITY` or `CASCADE`, and is refused inside a MySQL transaction. `Merge` does not run field validators on the inserted values                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `Merge`, `BulkUpdate`, `Truncate`          | yes: `Merge` is PostgreSQL 15 or later and `.Returning` needs 17 or later (`ErrUnsupported` on an older server or a driver without `ServerVersioner`); `BulkUpdate` updates only the listed keys (PostgreSQL); `Truncate` is `TRUNCATE TABLE` | `Merge`: emulated, see below. `BulkUpdate`: `ErrUnsupported`. `Truncate`: SQLite runs `DELETE FROM` and resets the autoincrement counter; MySQL runs `TRUNCATE TABLE` (refused inside a transaction)                                                                       | `Merge` returns `ErrValidation` when an interceptor adds predicates (deny the kind instead). `MergeQuery.Statements` lists the statements `Exec` runs. `Truncate` runs interceptors with the kind `truncate`, has no `RESTART IDENTITY` or `CASCADE`, and is refused inside a MySQL transaction. `Merge` does not run field validators on the inserted values                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Bulk `COPY`                                | yes: `InsertQuery[T].Copy` (after `Omit`, with the models as its argument) on the pgx driver; also `momo.CopierOf(querier)` for the driver call                                                                                               | SQLite and MySQL: `Copy` returns `ErrUnsupported` (neither `sqlitedriver` nor `mysqldriver` has a `Copier`)                                                                                                                                                                | `Copy` runs the insert interceptors (deny only) and `BeforeInsert` over a copy of the models; it skips `OnConflict`, `Returning` and chunking, and it counts as a write for `NewUnitOfWork`. On a `*DB` with `WithImplicitTx` it runs in its own transaction; on a pinned handle with `WithTxSetup` it fails closed. Not available through `FromSQLDB`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Batch (several statements, one round trip) | driver level: `momo.BatcherOf(querier)`; relation loading uses it automatically                                                                                                                                                               | SQLite: no (`sqlitedriver` has no `Batcher`); MySQL: no (`mysqldriver` has no `Batcher`)                                                                                                                                                                                   | not available through `FromSQLDB`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | Transactions                               | yes: `db.Tx(ctx, opts, fn)`, `db.Begin`; read uncommitted, read committed, repeatable read, serializable; read-only                                                                                                                           | SQLite and MySQL: commit, rollback and panic cases run in the shared suite (`suite.RunAll`); SQLite accepts the default and serializable isolation only (other levels `ErrUnsupported`) and runs read-only transactions through `PRAGMA query_only` (`sqlitedriver` tests) | any other `sql.IsolationLevel`: `ErrUnsupported` (Op "begin")                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Savepoints                                 | yes: `Tx.Savepoint`, `RollbackTo`, `Release`                                                                                                                                                                                                  | SQLite and MySQL: yes, covered by the shared suite (`suite.RunAll`)                                                                                                                                                                                                        | a dialect without savepoints: `ErrUnsupported` (Op "savepoint")                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Pinned connection                          | yes: `db.OnConn(pc)`                                                                                                                                                                                                                          | SQLite and MySQL: the drivers implement `Pinner` (driver tests); `db.OnConn` itself is exercised by a MySQL test (generated keys) and not by a SQLite test                                                                                                                 | no transactions on a pinned `*DB`: `Begin`, `Tx`, `Replace` and `CreateGraph` fail with `ErrUnsupported` (Op "begin"), chunked `Insert` with Op "insert"; `Link`, `Unlink` and `Count` work                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `SET col = DEFAULT`, `VALUES (DEFAULT)`    | yes                                                                                                                                                                                                                                           | SQLite: no `DEFAULT` in `VALUES`; `Exec` and `Rows` insert a multi-row insert that is default in some rows only as one statement per run of consecutive rows that agree, in one transaction                                                                                | `SQL` of such a multi-row insert fails with `ErrUnsupported` on SQLite, which renders one statement; `Unnest` and `Copy` refuse a per-row default                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+
+### `Merge` on SQLite, MySQL and MariaDB
+
+These dialects have no `MERGE`, so `MergeQuery.Exec` runs the same clauses as a
+sequence of statements in one transaction (a savepoint on a `Tx`; a pinned `DB`
+is `ErrUnsupported`). Without concurrent writers the final table and the
+affected-row count (rows updated plus rows inserted) are those of PostgreSQL.
+The match is decided once, before any write: the source is copied into a
+temporary table, the pairs of target and source rows that `On` joins are
+computed once, with the new value of every assigned column taken from the
+target row as it was before the statement, and the `UPDATE` and the `INSERT`
+read only those two tables. So an update of a column that `On` reads does not
+change the match, and an assignment that reads another assigned column sees the
+old value, as in PostgreSQL. A `NULL` key matches nothing. A target row that two
+source rows match fails with `ErrTooManyRows` before anything is written when
+there is a `WhenMatchedUpdate` clause, and on PostgreSQL the server's
+cardinality violation is `ErrTooManyRows` too; without that clause the
+duplicates are harmless. Refused with `ErrUnsupported`: `Returning`,
+`SET col = DEFAULT` in the update, and `WhenMatchedUpdate` on a model without a
+primary key. The statements are listed by `MergeQuery.Statements`;
+`MergeQuery.SQL` has no single text there.
+
+Not equivalent to the single PostgreSQL statement:
+
+- **Concurrent writers.** The sequence holds no lock that stops a matching
+  target row from being committed between its steps. A row that starts to match
+  mid-sequence counts as unmatched, so the `INSERT` writes it again (or fails
+  with `ErrUniqueViolation` on a unique key), and the affected-row count is taken
+  before the `UPDATE`. On MySQL and MariaDB the matched target rows are locked
+  (`FOR UPDATE`) and read at their latest committed version, so the update side
+  does not go stale under repeatable read or read committed; the insert side has
+  no phantom protection. SQLite has one writer, so a race there ends in a busy
+  error rather than a stale read. No test covers concurrent writers.
+- **Environment.** The account needs the privilege to create temporary tables.
+  A source needs distinct column names (alias `a.id` and `b.id` in a join), or
+  the copy fails. A canceled context or a lost connection can leave the
+  temporary tables on that pooled connection until its next `Merge`, which
+  drops them first. See [mysql.md](mysql.md) for the MySQL and MariaDB notes.
 
 ## Row locking, CTEs, subqueries, window functions
 
@@ -9343,6 +9413,53 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 [stability policy](supported-versions.md#stability-policy). Read this page and
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
+
+## Upgrading to 0.14.0
+
+No edit is needed in your code. `Merge` now runs on SQLite, MySQL and MariaDB,
+where it returned `ErrUnsupported`, so code that relied on the error (a
+fallback branch, a test that expects the refusal) now takes the success path.
+
+### `Merge` runs on SQLite, MySQL and MariaDB
+
+`Merge(...).Exec` on a dialect without `MERGE` runs the same clauses as a
+sequence of statements in one transaction (a savepoint on a `Tx`). It copies the
+source into a temporary table, computes once the pairs of target and source rows
+that `On` joins, with the new value of every assigned column taken from the
+target row as it was before the statement, and then updates and inserts from
+those two tables. Without concurrent writers the final table and the
+affected-row count (rows updated plus rows inserted) are those of PostgreSQL,
+also when the update changes a column that `On` reads or an assignment reads
+another assigned column. A `NULL` key matches nothing. A target row that two
+source rows match fails with `ErrTooManyRows` before anything is written when
+there is a `WhenMatchedUpdate` clause. PostgreSQL's cardinality violation
+(SQLSTATE 21000) is now `ErrTooManyRows` as well, so `errors.Is` agrees across
+dialects; before, it had no momo kind.
+
+Things that differ from PostgreSQL, and are refused or reported instead of
+guessed:
+
+- Under concurrent writers the sequence is not the single statement: a target
+  row committed between its steps that starts to match is not seen, so the
+  insert writes it again (or fails on a unique key), and the affected-row count
+  is taken before the update. MySQL and MariaDB lock and re-read the matched
+  target rows; SQLite fails with a busy error instead of reading stale data.
+  See [capabilities](capabilities.md#merge-on-sqlite-mysql-and-mariadb).
+- `Returning` (and `Rows`) is `ErrUnsupported`: the rows would come from a
+  snapshot, not from the statement. `SET col = DEFAULT` in the update is
+  `ErrUnsupported` too.
+- `WhenMatchedUpdate` on a model without a primary key is `ErrUnsupported`,
+  because a target row matched twice could not be detected.
+- A `Merge` on a pinned `DB` is `ErrUnsupported`: it needs a transaction.
+- `MergeQuery.SQL` has no single text on these dialects and returns
+  `ErrUnsupported`; `MergeQuery.Statements` lists the statements `Exec` runs.
+- The server account needs the privilege to create temporary tables, and the
+  source needs distinct column names (alias `a.id` and `b.id`). On MySQL and
+  MariaDB the temporary tables take the types and collations the server derives
+  for them, so read the source from a table rather than from literals when a
+  text key is compared with a column of another collation; a canceled context
+  can leave the tables on that connection until its next `Merge`. See
+  [MySQL and MariaDB](mysql.md#emulated-features).
 
 ## Upgrading to 0.13.0
 
@@ -11617,6 +11734,7 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.MergeQuery.Returning`            | method | Returning appends a RETURNING list; read the rows with Rows.                                                                                                                                                                                                                      |
 | `momo.MergeQuery.Rows`                 | method | Rows runs the MERGE and returns its RETURNING rows.                                                                                                                                                                                                                               |
 | `momo.MergeQuery.SQL`                  | method | SQL renders the statement without executing it.                                                                                                                                                                                                                                   |
+| `momo.MergeQuery.Statements`           | method | Statements returns the statements Exec runs, in order.                                                                                                                                                                                                                            |
 | `momo.MergeQuery.WhenMatchedUpdate`    | method | WhenMatchedUpdate adds WHEN MATCHED THEN UPDATE SET with the assignments.                                                                                                                                                                                                         |
 | `momo.MergeQuery.WhenNotMatchedInsert` | method | WhenNotMatchedInsert adds WHEN NOT MATCHED THEN INSERT with one value expression per column.                                                                                                                                                                                      |
 | `momo.Meta`                            | type   | Meta is the generated, reflection-free description of a model or projection type T.                                                                                                                                                                                               |

@@ -1744,10 +1744,10 @@ unknown flavor, because it has no error to return.)</p>
 </tr>
 </tbody>
 </table>
-<p><code>NullsOrdering</code> and <code>ILike</code> mean native syntax, not availability. Both
-features work on MySQL and MariaDB through emulation (see
+<p><code>NullsOrdering</code>, <code>ILike</code> and <code>Merge</code> mean native syntax, not availability. All
+three work on MySQL and MariaDB through emulation (see
 <a href="#emulated-features">Emulated features</a>), so the table says <code>no</code> while
-<code>momo.ILike</code>, <code>NullsFirst</code> and <code>NullsLast</code> run.</p>
+<code>momo.ILike</code>, <code>NullsFirst</code>, <code>NullsLast</code> and <code>momo.Merge</code> run.</p>
 <p><code>Returning</code> is the form every statement has. MariaDB returns rows from an
 INSERT (<code>InsertReturning</code>, 10.5 or later) and from a single-table DELETE
 (<code>DeleteReturning</code>, 10.0.5 or later), but not from an UPDATE, which is why
@@ -1757,7 +1757,7 @@ and on an update it is <code>ErrUnsupported</code> on both servers. A <code>Dele
 that combination is <code>ErrUnsupported</code> too. MySQL has no <code>RETURNING</code> at all; the
 error for a delete names MariaDB as the alternative.</p>
 <h2 id="emulated-features">Emulated features<a class="headerlink" href="#emulated-features" title="Permanent link">&para;</a></h2>
-<p>Three PostgreSQL features have no MySQL or MariaDB spelling. Momo renders an
+<p>Four PostgreSQL features have no MySQL or MariaDB spelling. Momo renders an
 equivalent instead of returning <code>ErrUnsupported</code>.</p>
 <ul>
 <li><strong>ILIKE.</strong> <code>momo.ILike(col, pattern)</code> renders
@@ -1787,6 +1787,38 @@ equivalent instead of returning <code>ErrUnsupported</code>.</p>
   that keeps NULLs (<code>agg.JSONB</code>, any <code>agg.Func</code> outside <code>count</code>, <code>sum</code>, <code>avg</code>,
   <code>min</code>, <code>max</code> and the <code>std</code> and <code>var</code> family, or one over a raw <code>*</code>) stays
   <code>ErrUnsupported</code>; use <code>momo.CountAll().Filter(p)</code> for <code>COUNT(*)</code>.</li>
+<li><strong>MERGE.</strong> <code>momo.Merge</code> has no MySQL or MariaDB spelling, so <code>Exec</code> runs a
+  sequence in one transaction (a savepoint inside a <code>Tx</code>). It copies the source
+  into a temporary table, creates a second temporary table of the (target row,
+  source row) pairs that <code>On</code> joins, read with <code>FOR UPDATE</code> so the matched
+  target rows are locked and read at their latest committed version, checks
+  that no target row is matched by two source rows (<code>ErrTooManyRows</code>), runs the
+  multi-table <code>UPDATE target, pairs AS n SET target.c = n.v0 ...</code>, runs an
+  <code>INSERT ... SELECT</code> of the source rows that have no pair, and drops both
+  tables. Every new value is computed into the pairs table from the row as it
+  was before the statement, because a multi-table <code>UPDATE</code> assigns left to
+  right and <code>SET a = x, b = target.a</code> would otherwise read the new <code>a</code>; the
+  match is decided before any write, so the result matches PostgreSQL even when
+  the update changes a column that <code>On</code> reads. <code>ON DUPLICATE KEY UPDATE</code> is not
+  used: it matches on any unique key, not on <code>On</code>. Not equivalent under
+  concurrent writers: a row committed between the steps that starts to match is
+  not seen (no gap or phantom protection, under repeatable read or read
+  committed), and the affected-row count is taken before the <code>UPDATE</code>; see
+  <a href="../capabilities/#merge-on-sqlite-mysql-and-mariadb">capabilities</a>. The account
+  needs the <code>CREATE TEMPORARY TABLES</code> privilege. The temporary tables take the
+  column types and collations the server derives for them, so a source built
+  from literals or bind parameters can meet a different collation than the
+  target column, and the comparison then fails with an error (read the source
+  from a table, or cast it); a source with duplicate column names (a join
+  selecting <code>a.id</code> and <code>b.id</code>) fails, so alias them. A server with
+  <code>enforce_gtid_consistency</code> on refuses <code>CREATE TEMPORARY TABLE</code> inside a
+  transaction when <code>binlog_format</code> is <code>STATEMENT</code> or <code>MIXED</code> (and older MySQL
+  servers refuse it whatever the format); the error reaches you and nothing is
+  written. <code>Returning</code> is <code>ErrUnsupported</code>. Read the statements with
+  <code>MergeQuery.Statements</code>. MySQL does not roll a temporary table back, so the
+  sequence drops both itself, also after a failure; a canceled context or a
+  lost connection can leave them on that pooled connection until its next
+  <code>Merge</code>, which drops them first.</li>
 </ul>
 <h2 id="writes">Writes<a class="headerlink" href="#writes" title="Permanent link">&para;</a></h2>
 <ul>

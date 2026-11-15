@@ -1063,6 +1063,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Writes, transactions, drivers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#merge-on-sqlite-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge on SQLite, MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1440,6 +1457,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Writes, transactions, drivers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#merge-on-sqlite-mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Merge on SQLite, MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2044,8 +2078,8 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <tr>
 <td><code>Merge</code>, <code>BulkUpdate</code>, <code>Truncate</code></td>
 <td>yes: <code>Merge</code> is PostgreSQL 15 or later and <code>.Returning</code> needs 17 or later (<code>ErrUnsupported</code> on an older server or a driver without <code>ServerVersioner</code>); <code>BulkUpdate</code> updates only the listed keys (PostgreSQL); <code>Truncate</code> is <code>TRUNCATE TABLE</code></td>
-<td><code>Merge</code> and <code>BulkUpdate</code>: <code>ErrUnsupported</code>. <code>Truncate</code>: SQLite runs <code>DELETE FROM</code> and resets the autoincrement counter; MySQL runs <code>TRUNCATE TABLE</code> (refused inside a transaction)</td>
-<td><code>Merge</code> returns <code>ErrValidation</code> when an interceptor adds predicates (deny the kind instead). <code>Truncate</code> runs interceptors with the kind <code>truncate</code>, has no <code>RESTART IDENTITY</code> or <code>CASCADE</code>, and is refused inside a MySQL transaction. <code>Merge</code> does not run field validators on the inserted values</td>
+<td><code>Merge</code>: emulated, see below. <code>BulkUpdate</code>: <code>ErrUnsupported</code>. <code>Truncate</code>: SQLite runs <code>DELETE FROM</code> and resets the autoincrement counter; MySQL runs <code>TRUNCATE TABLE</code> (refused inside a transaction)</td>
+<td><code>Merge</code> returns <code>ErrValidation</code> when an interceptor adds predicates (deny the kind instead). <code>MergeQuery.Statements</code> lists the statements <code>Exec</code> runs. <code>Truncate</code> runs interceptors with the kind <code>truncate</code>, has no <code>RESTART IDENTITY</code> or <code>CASCADE</code>, and is refused inside a MySQL transaction. <code>Merge</code> does not run field validators on the inserted values</td>
 </tr>
 <tr>
 <td>Bulk <code>COPY</code></td>
@@ -2085,6 +2119,42 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 </tr>
 </tbody>
 </table>
+<h3 id="merge-on-sqlite-mysql-and-mariadb"><code>Merge</code> on SQLite, MySQL and MariaDB<a class="headerlink" href="#merge-on-sqlite-mysql-and-mariadb" title="Permanent link">&para;</a></h3>
+<p>These dialects have no <code>MERGE</code>, so <code>MergeQuery.Exec</code> runs the same clauses as a
+sequence of statements in one transaction (a savepoint on a <code>Tx</code>; a pinned <code>DB</code>
+is <code>ErrUnsupported</code>). Without concurrent writers the final table and the
+affected-row count (rows updated plus rows inserted) are those of PostgreSQL.
+The match is decided once, before any write: the source is copied into a
+temporary table, the pairs of target and source rows that <code>On</code> joins are
+computed once, with the new value of every assigned column taken from the
+target row as it was before the statement, and the <code>UPDATE</code> and the <code>INSERT</code>
+read only those two tables. So an update of a column that <code>On</code> reads does not
+change the match, and an assignment that reads another assigned column sees the
+old value, as in PostgreSQL. A <code>NULL</code> key matches nothing. A target row that two
+source rows match fails with <code>ErrTooManyRows</code> before anything is written when
+there is a <code>WhenMatchedUpdate</code> clause, and on PostgreSQL the server's
+cardinality violation is <code>ErrTooManyRows</code> too; without that clause the
+duplicates are harmless. Refused with <code>ErrUnsupported</code>: <code>Returning</code>,
+<code>SET col = DEFAULT</code> in the update, and <code>WhenMatchedUpdate</code> on a model without a
+primary key. The statements are listed by <code>MergeQuery.Statements</code>;
+<code>MergeQuery.SQL</code> has no single text there.</p>
+<p>Not equivalent to the single PostgreSQL statement:</p>
+<ul>
+<li><strong>Concurrent writers.</strong> The sequence holds no lock that stops a matching
+  target row from being committed between its steps. A row that starts to match
+  mid-sequence counts as unmatched, so the <code>INSERT</code> writes it again (or fails
+  with <code>ErrUniqueViolation</code> on a unique key), and the affected-row count is taken
+  before the <code>UPDATE</code>. On MySQL and MariaDB the matched target rows are locked
+  (<code>FOR UPDATE</code>) and read at their latest committed version, so the update side
+  does not go stale under repeatable read or read committed; the insert side has
+  no phantom protection. SQLite has one writer, so a race there ends in a busy
+  error rather than a stale read. No test covers concurrent writers.</li>
+<li><strong>Environment.</strong> The account needs the privilege to create temporary tables.
+  A source needs distinct column names (alias <code>a.id</code> and <code>b.id</code> in a join), or
+  the copy fails. A canceled context or a lost connection can leave the
+  temporary tables on that pooled connection until its next <code>Merge</code>, which
+  drops them first. See <a href="../mysql/">mysql.md</a> for the MySQL and MariaDB notes.</li>
+</ul>
 <h2 id="row-locking-ctes-subqueries-window-functions">Row locking, CTEs, subqueries, window functions<a class="headerlink" href="#row-locking-ctes-subqueries-window-functions" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
