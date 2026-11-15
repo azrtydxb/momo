@@ -721,6 +721,7 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 		normalizeIndexes(d, t.Columns, t.Indexes)
 		if d == dialect.MySQL {
 			foldMySQLUniques(t)
+			describeLegacyFullText(t)
 		}
 		if d == dialect.SQLite {
 			normalizeSQLiteIdentity(t)
@@ -746,6 +747,31 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 	}
 	c.Sort()
 	return &c, nil
+}
+
+// describeLegacyFullText gives a FULLTEXT index that was declared before the
+// full-text description existed (Method "fulltext", no FullText) the
+// description inspection reports for it: its plain columns, in order. Without
+// it such an index would differ from its own inspection. It is idempotent.
+func describeLegacyFullText(t *Table) {
+	for i := range t.Indexes {
+		ix := &t.Indexes[i]
+		if ix.FullText != nil || !strings.EqualFold(ix.Method, "fulltext") || len(ix.Parts) == 0 {
+			continue
+		}
+		cols := make([]string, 0, len(ix.Parts))
+		for _, p := range ix.Parts {
+			if p.Column == "" || p.Expr != "" {
+				cols = nil
+				break
+			}
+			cols = append(cols, p.Column)
+		}
+		if cols != nil {
+			ix.Method = "fulltext"
+			ix.FullText = &FullText{Columns: cols}
+		}
+	}
 }
 
 // foldMySQLUniques gives a unique key of MySQL and MariaDB one spelling. The
