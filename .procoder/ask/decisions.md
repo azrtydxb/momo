@@ -1033,6 +1033,111 @@ Decision (2026-11-14, integrator): as above.
 
 Decision (2026-11-14, integrator): as above.
 
+## Parity: MERGE on SQLite, MySQL and MariaDB (2026-11-14, integrator)
+
+- **What exists:** `momo.Merge` takes a `Subquery` source (named `src`) and has
+  `On`, one unconditional `WhenMatchedUpdate`, one unconditional
+  `WhenNotMatchedInsert` and `Returning`. It has no clause conditions, no
+  DELETE action, no DO NOTHING and no WHEN NOT MATCHED BY SOURCE. The emulation
+  therefore covers exactly the clause combinations the API can express: update
+  only, insert only, update plus insert.
+- **Why the naive sequence is wrong:** in a native MERGE every source row is
+  matched once against the target as it was before any action. UPDATE then
+  INSERT ... WHERE NOT EXISTS re-evaluates `On` after the update, so an update
+  of a column `On` reads moves rows in or out of the match (a matched source row
+  is inserted again, an unmatched one is skipped). INSERT then UPDATE is wrong
+  the other way: the update joins the rows just inserted. The source is also
+  evaluated more than once, which is wrong for a volatile source or one that
+  reads the target.
+- **Design:** one atomic scope (a transaction on a `DB`, a savepoint on a
+  `Tx`; a pinned `DB` is `ErrUnsupported`), then: drop stale tables; copy the
+  source into the temporary table `momo_merge_src` with a row number; create
+  `momo_merge_pairs`, one row per (target row, source row) pair that `On` joins,
+  holding the source row number, the target primary key and the new value of
+  every assigned column, computed from the target row before any write; with a
+  matched clause, a cardinality check on the pairs and the pair count; the
+  UPDATE, which assigns from the pairs table only; the INSERT of the source rows
+  that have no pair; drop both tables. The match and the source are computed
+  once, before any write, so the order of the UPDATE and the INSERT no longer
+  matters and every `On` and every assigned column is safe. SQLite renders
+  `UPDATE t SET ... FROM pairs AS n WHERE <pk match>`, MySQL and MariaDB the
+  multi-table `UPDATE t, pairs AS n SET t.c = n.v0 ... WHERE <pk match>` with
+  qualified targets. The tables are dropped in a deferred step, because MySQL
+  does not roll a temporary table back.
+- **Assignment order:** a MySQL multi-table UPDATE assigns left to right, so
+  `SET a = src.x, b = t.a` would read the new `a` where PostgreSQL reads the
+  old one. Staging every right-hand side in the pairs table makes the result
+  order-independent. `SET col = DEFAULT` cannot be staged and is `ErrUnsupported`.
+- **Concurrency (not equivalent, documented):** on MySQL and MariaDB the pairs are
+  read with `FOR UPDATE` (the table is created empty first and filled with
+  `INSERT ... SELECT`, because MySQL refuses `FOR UPDATE` inside
+  `CREATE TABLE ... SELECT` with error 1746), which locks the matched target rows and reads their
+  latest committed version under repeatable read and read committed, so the
+  update side cannot go stale; a target row committed after that read that
+  would have matched is a phantom and counts as unmatched, so the insert writes
+  it again or fails on a unique key (PostgreSQL has the same window for a
+  concurrent insert). The affected-row count is the pair count read under those
+  locks. SQLite has one writer: a deferred transaction that read and then
+  writes after another commit fails with a busy error, never stale. No test
+  covers concurrent writers, and the docs say so.
+- **PostgreSQL error kind:** SQLSTATE 21000 (cardinality violation) now maps to
+  `ErrTooManyRows`, so `errors.Is` agrees on every dialect.
+- **No ON DUPLICATE KEY UPDATE:** it matches on any unique key, not on `On`, and
+  has no way to count inserted plus updated rows like MERGE. The sequence is
+  used for every `On`.
+- **Cardinality:** a target row that more than one source row matches is an
+  error in PostgreSQL ("MERGE command cannot affect row a second time"), raised
+  only for a row an action would change. The emulation checks it with a
+  `GROUP BY <primary key> HAVING COUNT(*) > 1` over the pairs table, before the
+  UPDATE, only when there is a `WhenMatchedUpdate`, and fails with
+  `ErrTooManyRows` with nothing written. Without that clause duplicates are
+  harmless, as in PostgreSQL. A model without a primary key cannot be checked,
+  so `WhenMatchedUpdate` there is `ErrUnsupported`.
+- **Affected rows:** the number of (target, source) pairs the UPDATE changes plus
+  the rows the INSERT wrote, counted from the snapshot, so it does not depend on
+  MySQL reporting changed or found rows. A source row matching several target
+  rows updates each of them, as in PostgreSQL.
+- **NULL keys:** `t.k = src.k` is unknown for a NULL, so the row is unmatched and
+  inserted, as in PostgreSQL.
+- **Safe, emulated exactly:** WHEN MATCHED UPDATE alone; WHEN NOT MATCHED INSERT
+  alone; both together with any `On` and any assigned column, including an
+  update of the column `On` reads, because the match is decided before any
+  write; two source rows for one target row when there is no update (no error and
+  no action, as in PostgreSQL).
+- **Refused:** two source rows for one target row with an update
+  (`ErrTooManyRows`, nothing written); WHEN MATCHED UPDATE on a model without a
+  primary key; `Returning` and `Rows` (the rows would come from a snapshot); a
+  pinned `DB`, which has no transaction; `SQL()`, which has no single text
+  (`Statements()` lists the sequence). All but the first are `ErrUnsupported`.
+- **Not expressible today:** WHEN MATCHED AND condition, a DELETE action, DO
+  NOTHING and WHEN NOT MATCHED BY SOURCE are not in the API. If they are added,
+  each needs the same snapshot, matched clauses with overlapping conditions must
+  be refused until the first-match order can be kept, and BY SOURCE needs its own
+  snapshot flag on the target side.
+
+- **Cost and limits:** the account needs the temporary-table privilege; MySQL
+  derives the temporary tables' column types and collations (a literal or
+  bind-parameter source can meet a different collation and fail loudly, never
+  match wrongly); a source with duplicate column names fails and must be
+  aliased; a server with `enforce_gtid_consistency` on refuses the temporary
+  table in a transaction when `binlog_format` is `STATEMENT` or `MIXED` (older
+  MySQL servers whatever the format); a canceled context or lost connection can
+  leave the tables on the pooled connection until its next Merge, which drops
+  them first. Each is an error, not a wrong result.
+- **Tests:** golden SQL for SQLite and for MySQL and MariaDB, the refusals and the
+  one-transaction run as unit tests; `testopen.EachWithMySQL` (PostgreSQL native,
+  SQLite, MySQL 8.4, MySQL 9.7, MariaDB 11.8) asserts the same final table and
+  count for update plus insert, update only, insert only, NULL keys, an update of
+  the `On` column, an assignment that reads another assigned column, bound
+  arguments in the source and in an extra `On` predicate, one source row for
+  several target rows, duplicate source rows with and without an update, an
+  empty source, a unique violation after the update and a composite primary
+  key; the goldens assert the bound arguments of each statement; the
+  transaction tests (savepoint rollback, two Merges in one Tx, caller rollback,
+  `ErrTooManyRows` inside a Tx) run on the emulated dialects.
+
+Decision (2026-11-14, integrator): as above.
+
 ## Full-text search design (spec fulltext-search, PR #159)
 
 Ten open questions of `.procoder/specs/fulltext-search.md`, each put to the user with a recommendation and alternatives:

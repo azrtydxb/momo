@@ -67,19 +67,36 @@ func TestMergeRendersMatchedAndNotMatched(t *testing.T) {
 	}
 }
 
-// Catches: MERGE rendering on a dialect without it, or a server call before
-// the dialect check.
-func TestMergeUnsupportedOnSQLite(t *testing.T) {
+// Catches: a single MERGE text rendered for a dialect without MERGE, or a
+// server call made while only rendering.
+func TestMergeHasNoSingleSQLOnSQLite(t *testing.T) {
 	drv := fakedriver.New(dialect.SQLite)
 	db := momo.New(drv)
 	if _, err := mergeInsertQuery(db).SQL(); !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("SQL = %v, want ErrUnsupported", err)
 	}
-	if _, err := mergeInsertQuery(db).Exec(t.Context()); !errors.Is(err, momo.ErrUnsupported) {
-		t.Fatalf("Exec = %v, want ErrUnsupported", err)
+	if _, err := mergeInsertQuery(db).Statements(); err != nil {
+		t.Fatalf("Statements = %v", err)
 	}
 	if len(drv.Calls()) != 0 {
 		t.Fatalf("calls = %v, want none", drv.Calls())
+	}
+}
+
+// Catches: the emulation running on a dialect that has MERGE, or Statements
+// returning something other than the MERGE there.
+func TestMergeStatementsIsTheMergeOnPostgres(t *testing.T) {
+	db := momo.New(fakedriver.New(dialect.Postgres))
+	got, err := mergeInsertQuery(db).Statements()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := mergeInsertQuery(db).SQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].SQL != want.SQL {
+		t.Fatalf("Statements = %+v, want the single MERGE %q", got, want.SQL)
 	}
 }
 
