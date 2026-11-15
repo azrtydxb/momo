@@ -8,8 +8,10 @@ later releases can break more.
 ## Upgrading to 0.15.0
 
 No edit is needed in your code. A model can now declare full-text search, and
-the declaration is recorded in the model and in the schema snapshot, but
-migrations refuse it until a later release renders it.
+the declaration is recorded in the model and in the schema snapshot. SQLite
+migrations render it as an FTS5 table with sync triggers, which needs a SQLite
+build that includes the FTS5 module; the other migration dialects refuse it
+until a later release renders it.
 
 ### Declare full-text search on a model
 
@@ -22,10 +24,18 @@ not text, a second declaration on one table, and a configuration, tokenizer or
 parser name outside a strict allowlist. Snapshots written before the
 declaration load unchanged.
 
-Migrations do not render the declaration. Until a later release adds the
-rendering, every migration dialect refuses an index that carries one with
-`ErrUnsupported` ("full-text declarations are not rendered yet"), so a model
-that declares it cannot produce or apply a migration.
+On SQLite the declaration becomes an external-content FTS5 table named
+`<table>_fts` plus three triggers (`<table>_fts_ai`, `_ad` and `_au`) that keep
+it in step with the table, and the table is filled with the FTS5 `rebuild`
+command when it is created. The table needs a rowid table with a primary key of
+one `INTEGER` column; any other key is `ErrValidation` naming the table. Removing
+the declaration drops the triggers, then the FTS5 table. The cgo driver
+`sqlitedriver` compiles FTS5 only when you build with `-tags sqlite_fts5`; the
+pure-Go `sqlitepure` driver includes it. A build without FTS5 fails the
+migration with `ErrUnsupported`. The other migration dialects still refuse an
+index that carries a declaration with `ErrUnsupported` ("full-text declarations
+are not rendered yet"), so a model that declares it cannot produce or apply a
+migration there.
 
 ## Upgrading to 0.14.0
 

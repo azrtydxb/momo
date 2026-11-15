@@ -255,6 +255,10 @@ func execStatement(ctx context.Context, x execer, s Statement) error {
 	}
 	_, err := x.Exec(ctx, s.SQL, nil)
 	if err != nil {
+		// A migration file carries no hint, so the statement text counts too.
+		if (s.Hint == "requires:fts5" || strings.Contains(strings.ToLower(s.SQL), "using fts5(")) && strings.Contains(err.Error(), "no such module: fts5") {
+			return &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate", Err: errors.New("SQLite was built without the FTS5 module; full-text search needs FTS5")}
+		}
 		if rest, ok := strings.CutPrefix(s.Hint, "dependent:"); ok {
 			return fmt.Errorf("%w: %s: %w", ErrRebuildBlocked, strings.Replace(rest, ":", " ", 1), err)
 		}
