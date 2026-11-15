@@ -24,14 +24,33 @@ func (Dialect) ExpandSchema(s *schema.Schema) (*schema.Schema, error) {
 	for i, t := range s.Tables {
 		t.Indexes = append([]schema.Index(nil), t.Indexes...)
 		for j := range t.Indexes {
-			if ft := t.Indexes[j].FullText; ft != nil {
+			ix := &t.Indexes[j]
+			if ft := ix.FullText; ft != nil {
 				c := ft.ForDialect(dialect.MySQL)
-				t.Indexes[j].FullText = &c
+				ix.FullText = &c
+			} else if strings.EqualFold(ix.Method, "fulltext") {
+				// A FULLTEXT index declared before the description existed (a
+				// c.Index(...).Method("fulltext")): inspection reports its columns,
+				// so the declaration carries them too.
+				if cols := plainColumns(ix.Parts); len(cols) == len(ix.Parts) && len(cols) > 0 {
+					ix.FullText = &schema.FullText{Columns: cols}
+				}
 			}
 		}
 		out.Tables[i] = t
 	}
 	return &out, nil
+}
+
+// plainColumns lists the column of every part that is a plain column.
+func plainColumns(parts []schema.IndexPart) []string {
+	var cols []string
+	for _, p := range parts {
+		if p.Column != "" && p.Expr == "" {
+			cols = append(cols, p.Column)
+		}
+	}
+	return cols
 }
 
 func ftErr(kind error, format string, args ...any) error {

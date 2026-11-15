@@ -93,13 +93,13 @@ func TestGenerateFromDBFullTextSearchTag(t *testing.T) {
 			FullText: &schema.FullText{Columns: []string{"title", "body"}}}},
 	}}}
 	src, _ := fullTextSource(t, my, dialect.MySQL)
-	if strings.Count(src, `momo:"search"`) != 2 || strings.Contains(src, "c.FullText") {
+	if strings.Count(src, "search`") != 2 || strings.Contains(src, "c.FullText") {
 		t.Fatalf("want the search tag on both fields:\n%s", src)
 	}
 
 	my.Tables[0].Indexes[0].FullText.Parser = "ngram"
 	src, _ = fullTextSource(t, my, dialect.MySQL)
-	if strings.Contains(src, `momo:"search"`) || !strings.Contains(src, `.Parser("ngram")`) {
+	if strings.Contains(src, "search`") || !strings.Contains(src, `.Parser("ngram")`) {
 		t.Fatalf("a parser needs the call form:\n%s", src)
 	}
 

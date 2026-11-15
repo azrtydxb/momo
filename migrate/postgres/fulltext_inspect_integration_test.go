@@ -18,18 +18,19 @@ import (
 
 // ftModel is the declaration only, as a model produces it.
 func ftModel(ft schema.FullText) *schema.Schema {
-	return &schema.Schema{Dialect: "postgres", Tables: []schema.Table{{
-		Name: "articles",
-		Columns: []schema.Column{
-			{Name: "id", Type: "bigint", Identity: "by_default"},
-			{Name: "title", Type: "text", Nullable: true},
-			{Name: "body", Type: "text", Nullable: true},
-		},
-		PrimaryKey: []string{"id"},
-		Indexes: []schema.Index{{Name: "articles_search", Method: "fulltext",
-			Parts:    []schema.IndexPart{{Column: "title"}, {Column: "body"}},
-			FullText: &ft}},
-	}}}
+	return &schema.Schema{Dialect: "postgres", Extensions: []schema.Extension{{Name: "vector"}}, // installed in the test database; inspection reports every extension
+		Tables: []schema.Table{{
+			Name: "articles",
+			Columns: []schema.Column{
+				{Name: "id", Type: "bigint", Identity: "by_default"},
+				{Name: "title", Type: "text", Nullable: true},
+				{Name: "body", Type: "text", Nullable: true},
+			},
+			PrimaryKey: []string{"id"},
+			Indexes: []schema.Index{{Name: "articles_search", Method: "fulltext",
+				Parts:    []schema.IndexPart{{Column: "title"}, {Column: "body"}},
+				FullText: &ft}},
+		}}}
 }
 
 var ftForms = map[string]schema.FullText{
