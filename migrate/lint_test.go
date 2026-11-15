@@ -102,3 +102,25 @@ func TestMigrateLintSQLiteRebuildAndEnum(t *testing.T) {
 		t.Fatalf("mysql destructive: %+v", got)
 	}
 }
+
+// Catches: a table rewrite or a table rebuild passing lint silently, and a
+// warning on a table created in the same migration.
+func TestLintFullText(t *testing.T) {
+	parents := map[string]bool{"articles": true}
+	pg := []Statement{
+		{SQL: `ALTER TABLE "articles" ADD COLUMN "articles_search_tsv" tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce("title", ''))) STORED`},
+		{SQL: `CREATE TABLE "notes" ("id" bigint, "v" tsvector GENERATED ALWAYS AS (to_tsvector('simple', 'x')) STORED)`},
+	}
+	got := LintSQL("20260101000000", pg, parents, "postgres")
+	if len(got) != 1 || got[0].Rule != RuleFullTextRewrite || got[0].Severity != SeverityWarning || got[0].Statement != 1 {
+		t.Fatalf("postgres findings = %+v", got)
+	}
+	my := []Statement{{SQL: "CREATE FULLTEXT INDEX `articles_search` ON `articles` (`title`, `body`)"}}
+	got = LintSQL("20260101000000", my, parents, "mysql")
+	if len(got) != 1 || got[0].Rule != RuleFullTextFirstIndex || got[0].Alternative == "" {
+		t.Fatalf("mysql findings = %+v", got)
+	}
+	if got := LintSQL("20260101000000", my, map[string]bool{}, "mysql"); len(got) != 0 {
+		t.Fatalf("a table created in the same migration was flagged: %+v", got)
+	}
+}

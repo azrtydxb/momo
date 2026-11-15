@@ -44,6 +44,32 @@ func TestFullTextMySQLRender(t *testing.T) {
 	}
 }
 
+// Catches: the lint rule drifting from the CREATE FULLTEXT INDEX statement the
+// renderer emits, with and without the parser clause.
+func TestFullTextRenderedSQLIsLinted(t *testing.T) {
+	for _, parser := range []string{"", "ngram"} {
+		plain := ftTable("varchar(255)", "", false, parser)
+		plain.Tables[0].Indexes = nil
+		changes, _, err := migrate.Diff(plain, ftTable("varchar(255)", "", false, parser), migrate.DiffOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		stmts, err := Dialect{}.Render(changes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := 0
+		for _, f := range migrate.LintSQL("20260101000000", stmts, map[string]bool{"articles": true}, "mysql") {
+			if f.Rule == migrate.RuleFullTextFirstIndex && f.Severity == migrate.SeverityWarning {
+				found++
+			}
+		}
+		if found != 1 {
+			t.Errorf("parser %q: %d first-index warnings for %+v, want 1", parser, found, stmts)
+		}
+	}
+}
+
 // Catches: a non-text column, a unique FULLTEXT and a non-InnoDB table
 // reaching the server.
 func TestFullTextMySQLRenderValidation(t *testing.T) {
