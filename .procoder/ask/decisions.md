@@ -1047,3 +1047,22 @@ Ten open questions of `.procoder/specs/fulltext-search.md`, each put to the user
 - Q9: keep `momo.HybridSearch` PostgreSQL only for now (recommended); extend it to SQLite and MySQL/MariaDB in this feature
 
 Decision (2026-11-15, the user, via AskUserQuestion): Q1 to Q8 and Q10 as recommended. Q9 is NOT the recommendation: hybrid (text plus vector) search is in scope for SQLite and MySQL/MariaDB, as reciprocal rank fusion over the FTS5 or MATCH text leg and the existing cosine vector leg (sqlite-vec on SQLite, VECTOR on MariaDB 11.8). MySQL 9.x has no vector distance function, so hybrid there stays `ErrUnsupported`. The spec records all ten as decisions and is complete.
+
+## Next parity work after 0.13.0, and stale agent worktrees
+
+Which of the remaining design-dependent parity items to start next:
+
+- BulkUpdate: one statement that updates many rows with per-row values (UPDATE ... FROM (VALUES ...) on PostgreSQL and SQLite, a CASE or joined derived table on MySQL)
+- MERGE emulation: `Merge` on SQLite, MySQL and MariaDB through upsert plus delete, with the combinations that cannot be emulated refused
+- Full-text search: a design spec first (PostgreSQL tsvector, SQLite FTS5, MySQL FULLTEXT) before any code
+- None for now
+
+And whether to clean up the ~150 unlocked agent worktrees under momo/.claude/worktrees from earlier sprints:
+
+- Delete those whose branch is merged or gone from GitHub, list the rest
+- Leave them
+
+Decision (2026-11-14, the user, via AskUserQuestion): start BulkUpdate, MERGE
+emulation and a full-text search design spec (no FTS code until the spec is
+approved). Delete the agent worktrees whose branch is merged or gone from
+GitHub, and list any with unmerged commits.
