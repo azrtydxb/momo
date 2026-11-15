@@ -186,6 +186,9 @@ func flatten(s *schema.Schema, exact bool) map[string]object {
 	for _, t := range n.Tables {
 		cols, uqs, ixs, fks, chs := t.Columns, t.Uniques, t.Indexes, t.ForeignKeys, t.Checks
 		t.Columns, t.Uniques, t.Indexes, t.ForeignKeys, t.Checks = nil, nil, nil, nil, nil
+		// The storage engine is what the inspector found, never a declaration:
+		// a snapshot has none, so a live MyISAM table is not a change.
+		t.Engine = ""
 		tbl := object{ref: ObjectRef{Kind: "table", Schema: t.Schema, Name: t.Name}, body: mustJSON(t)}
 		add(tbl)
 		for _, c := range cols {
@@ -518,6 +521,9 @@ func (e *Engine) DriftWith(ctx context.Context, o DriftOptions) (*DriftReport, e
 			return nil, fmt.Errorf("%w: applied version %s has no snapshot at or before it; run momo migrate diff", ErrNoSnapshot, latest)
 		}
 		from = e.hide(snap.Schema)
+		if from, err = expand(e.opts.dialect, from); err != nil {
+			return nil, err
+		}
 		if cz, ok := e.opts.dialect.(Canonicalizer); ok && hasBodyText(from) {
 			want, err := cloneSchema(from)
 			if err != nil {

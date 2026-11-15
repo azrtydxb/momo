@@ -180,6 +180,46 @@ func TestFullTextSQLiteBaseTableRebuild(t *testing.T) {
 	}
 }
 
+// Catches: a dropped source column of the declaration leaving the old FTS5
+// table behind (the index drop skipped as if the column drop took it along),
+// so the re-create fails; and triggers that still name the dropped column.
+func TestFullTextSQLiteDropSourceColumn(t *testing.T) {
+	ctx := context.Background()
+	db := testopen.SQLite(t)
+	eng, files := ftsMigrate(t, db, ftsDeclared())
+	ftsExec(t, db, `INSERT INTO articles (id, title, body) VALUES (1, 'red fox', 'quick')`)
+
+	next := ftsDeclared()
+	next.Tables[0].Columns = next.Tables[0].Columns[:2] // body is gone
+	ix := &next.Tables[0].Indexes[0]
+	ix.Parts = []schema.IndexPart{{Column: "title"}}
+	ix.FullText.Columns = []string{"title"}
+	m, err := eng.Diff(ctx, next, "drop_body", migrate.DiffOptions{AllowDestructive: true})
+	if err != nil || m == nil {
+		t.Fatalf("diff = %v, %v", m, err)
+	}
+	up := upFile(t, m.Files)
+	if !strings.Contains(up, `DROP TABLE "articles_fts"`) || !strings.Contains(up, `CREATE VIRTUAL TABLE "articles_fts"`) {
+		t.Fatalf("the FTS5 table must be dropped and created again:\n%s", up)
+	}
+	e3 := newEngine(t, db, migratetest.FS(mergeFiles(files, m.Files)), "20260103000000")
+	if _, err := e3.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatalf("apply: %v\n%s", err, up)
+	}
+	if got := ftsSearch(t, db, `"fox"`); len(got) != 1 {
+		t.Fatalf("existing row missing from the new FTS5 table: %v", got)
+	}
+	ftsExec(t, db, `INSERT INTO articles (id, title) VALUES (2, 'blue whale')`)
+	ftsExec(t, db, `UPDATE articles SET title = 'green frog' WHERE id = 2`)
+	if got := ftsSearch(t, db, `"frog"`); len(got) != 1 {
+		t.Fatalf("triggers do not keep the new FTS5 table in step: %v", got)
+	}
+	ftsExec(t, db, `INSERT INTO articles_fts(articles_fts) VALUES('integrity-check')`)
+	if again, err := e3.Diff(ctx, next, "again", migrate.DiffOptions{}); err != nil || again != nil {
+		t.Fatalf("diff after the change = %v, %v; want none", again, err)
+	}
+}
+
 // Catches: a cgo SQLite build without FTS5 or bm25, reported as the raw driver
 // string. The pure-Go driver runs the same probe in driver/sqlitepure.
 func TestFullTextSQLiteDriverSupport(t *testing.T) {

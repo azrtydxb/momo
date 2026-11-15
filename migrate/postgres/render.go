@@ -25,9 +25,16 @@ var pg = dialect.For(dialect.Postgres)
 // identifier is quoted, every literal comes through quoteLiteral, and the
 // output depends only on the plan, never on map order.
 func (Dialect) Render(plan []migrate.Change) ([]migrate.Statement, error) {
+	ftCols := fullTextColumns(plan)
 	var out []migrate.Statement
 	for _, c := range plan {
-		stmts, err := renderChange(c)
+		var stmts []migrate.Statement
+		var err error
+		if c.Kind == migrate.AlterColumn && ftCols[[3]string{c.Schema, c.Table, c.Name}] {
+			stmts, err = renderRecreateGenerated(c)
+		} else {
+			stmts, err = renderChange(c)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("postgres render %s %s: %w", c.Kind, describe(c), err)
 		}
@@ -590,9 +597,6 @@ var safeValue = regexp.MustCompile(`^[A-Za-z0-9_.+-]+$`)
 var nullsOrder = map[string]string{"first": "NULLS FIRST", "last": "NULLS LAST"}
 
 func createIndex(schemaName, table string, ix schema.Index) (migrate.Statement, error) {
-	if ix.FullText != nil {
-		return migrate.Statement{}, &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate/postgres", Err: fmt.Errorf("index %q: full-text declarations are not rendered yet", ix.Name)}
-	}
 	var b strings.Builder
 	b.WriteString("CREATE ")
 	if ix.Unique {
@@ -603,7 +607,11 @@ func createIndex(schemaName, table string, ix schema.Index) (migrate.Statement, 
 		b.WriteString("CONCURRENTLY ")
 	}
 	b.WriteString(ident(ix.Name) + " ON " + tableRef(schemaName, table))
-	if ix.Method != "" {
+	switch {
+	case ix.FullText != nil:
+		// A full-text declaration is always a GIN index, whatever Method says.
+		b.WriteString(" USING gin")
+	case ix.Method != "":
 		b.WriteString(" USING " + ident(ix.Method))
 	}
 	parts := make([]string, len(ix.Parts))

@@ -11,8 +11,10 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/migrate/migratetest"
+	mmysql "github.com/azrtydxb/momo/migrate/mysql"
 	mpg "github.com/azrtydxb/momo/migrate/postgres"
 	"github.com/azrtydxb/momo/schema"
 )
@@ -31,6 +33,94 @@ func docsSchema() *schema.Schema {
 func offlineEngine(t *testing.T, fsys fstest.MapFS, now time.Time) *migrate.Engine {
 	t.Helper()
 	return migratetest.NewEngine(t, mpg.New(), nil, fsys, migrate.WithClock(func() time.Time { return now }))
+}
+
+// expandingDialect is the PostgreSQL dialect plus a SchemaExpander that adds a
+// table the declaration implies.
+type expandingDialect struct{ pgBase }
+
+// pgBase names the embedded dialect so that its field does not shadow the
+// Dialect method.
+type pgBase = mpg.Dialect
+
+func (expandingDialect) ExpandSchema(s *schema.Schema) (*schema.Schema, error) {
+	out := *s
+	out.Tables = append([]schema.Table(nil), s.Tables...)
+	if _, ok := out.Table("derived"); !ok {
+		out.Tables = append(out.Tables, schema.Table{
+			Name:       "derived",
+			Columns:    []schema.Column{{Name: "id", Type: "INTEGER"}},
+			PrimaryKey: []string{"id"},
+		})
+	}
+	return &out, nil
+}
+
+// Catches: a dialect that stops implementing SchemaExpander (a renamed method,
+// a flavor-bound copy that drops it), which would silently skip the expansion
+// in Diff, AutoMigrate, Drift and Baseline.
+var (
+	_ migrate.SchemaExpander = mpg.Dialect{}
+	_ migrate.SchemaExpander = mmysql.Dialect{}
+)
+
+func TestFlavorBoundMySQLDialectExpands(t *testing.T) {
+	bound := mmysql.New().WithFlavor(dialect.FlavorMariaDB)
+	if _, ok := bound.(migrate.SchemaExpander); !ok {
+		t.Fatalf("%T bound to a flavor does not implement SchemaExpander", bound)
+	}
+}
+
+// Catches: Engine.Diff comparing the declaration instead of the expanded
+// schema, so objects a dialect derives are never planned.
+func TestExpandSchemaHook(t *testing.T) {
+	e := migratetest.NewEngine(t, expandingDialect{pgBase: mpg.New()}, nil, fstest.MapFS{},
+		migrate.WithClock(func() time.Time { return time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC) }))
+	mig, err := e.Diff(context.Background(), docsSchema(), "init", migrate.DiffOptions{})
+	if err != nil || mig == nil {
+		t.Fatalf("diff: %v %v", mig, err)
+	}
+	var created []string
+	for _, c := range mig.Changes {
+		if c.Kind == migrate.CreateTable {
+			created = append(created, c.Name)
+		}
+	}
+	if len(created) != 2 || created[0] != "derived" && created[1] != "derived" {
+		t.Fatalf("create_table changes = %v, want docs and derived", created)
+	}
+}
+
+// Catches: the snapshot side of Engine.Diff not being expanded. A snapshot
+// that holds a declaration without the derived objects (an unexpanded one)
+// must compare equal to the same declaration expanded on the desired side.
+func TestDiffExpandsSnapshotSide(t *testing.T) {
+	declared := func() *schema.Schema {
+		return &schema.Schema{Dialect: "postgres", Tables: []schema.Table{{
+			Name: "articles",
+			Columns: []schema.Column{
+				{Name: "id", Type: "bigint", Identity: "by_default"},
+				{Name: "title", Type: "text", Nullable: true},
+			},
+			PrimaryKey: []string{"id"},
+			Indexes: []schema.Index{{Name: "articles_search", Method: "fulltext",
+				Parts:    []schema.IndexPart{{Column: "title"}},
+				FullText: &schema.FullText{Columns: []string{"title"}, Config: "english"}}},
+		}}}
+	}
+	var snap bytes.Buffer
+	if err := migrate.WriteSnapshot(&snap, migrate.SnapshotFile{Version: "20260102030405", Schema: declared()}); err != nil {
+		t.Fatal(err)
+	}
+	dir := fstest.MapFS{
+		"20260102030405_init.up.sql":        &fstest.MapFile{Data: []byte("-- momo:generated\nSELECT 1;\n")},
+		"20260102030405_init.snapshot.json": &fstest.MapFile{Data: snap.Bytes()},
+	}
+	e := offlineEngine(t, dir, time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC))
+	mig, err := e.Diff(context.Background(), declared(), "again", migrate.DiffOptions{})
+	if err != nil || mig != nil {
+		t.Fatalf("diff against an unexpanded snapshot of the same declaration = %v, %v; want none", mig, err)
+	}
 }
 
 func mapFS(files map[string][]byte) fstest.MapFS {

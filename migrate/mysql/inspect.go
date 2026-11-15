@@ -20,7 +20,7 @@ import (
 // Every query is a constant that binds the schema name: no identifier or value
 // is spliced into SQL text. The history table is left out.
 const (
-	qTables = `SELECT TABLE_NAME, TABLE_COLLATION FROM information_schema.TABLES
+	qTables = `SELECT TABLE_NAME, TABLE_COLLATION, ENGINE FROM information_schema.TABLES
 WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME <> 'momo_migrations' ORDER BY TABLE_NAME`
 	qColumns = `SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, GENERATION_EXPRESSION, COLUMN_COMMENT, COLLATION_NAME
 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, ORDINAL_POSITION`
@@ -122,13 +122,19 @@ func (in *inspector) table(s *schema.Schema, name string) *schema.Table {
 func (in *inspector) tables(ctx context.Context, out *schema.Schema) error {
 	return forEach(ctx, in.c, qTables, []any{in.db}, func(r momo.Rows) error {
 		var name string
-		var coll sql.NullString
-		if err := r.Scan(&name, &coll); err != nil {
+		var coll, engine sql.NullString
+		if err := r.Scan(&name, &coll, &engine); err != nil {
 			return err
 		}
 		in.tableColl[name] = coll.String
 		in.byName[name] = len(out.Tables)
-		out.Tables = append(out.Tables, schema.Table{Name: name})
+		t := schema.Table{Name: name}
+		// Only a table that is not InnoDB records its engine: momo creates
+		// InnoDB tables, so the empty value stands for it.
+		if engine.Valid && engine.String != "" && !strings.EqualFold(engine.String, "InnoDB") {
+			t.Engine = engine.String
+		}
+		out.Tables = append(out.Tables, t)
 		return nil
 	})
 }

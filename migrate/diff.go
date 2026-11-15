@@ -650,6 +650,11 @@ func (d *differ) indexes(fn, tn, fo, to *schema.Table) {
 	start := len(d.changes)
 	diffNamed(d, fn.Indexes, tn.Indexes, to, func(i schema.Index) string { return i.Name },
 		indexEqual, DropIndex, CreateIndex, func(i schema.Index) goneUse {
+			if i.FullText != nil && d.d == dialect.SQLite {
+				// The FTS5 table is a table of its own: dropping a source
+				// column does not remove it, so its drop stays in the plan.
+				return goneNo
+			}
 			cols, exprs := []string{}, []string{i.Where}
 			for _, p := range i.Parts {
 				cols, exprs = append(cols, p.Column), append(exprs, p.Expr)

@@ -37,6 +37,26 @@ type SchemaValidator interface {
 	ValidateSchema(s *schema.Schema) error
 }
 
+// SchemaExpander is implemented by dialects that derive objects from a
+// declaration the snapshot records only once (a full-text index becomes a
+// generated column, a virtual table or triggers). Diff, AutoMigrate, Drift and
+// Baseline apply it to the desired schema and to the snapshot schema before
+// comparing them, so both sides carry the derived objects.
+type SchemaExpander interface {
+	// ExpandSchema returns a copy of s with the objects the dialect derives
+	// from declarations added. It is pure and idempotent.
+	ExpandSchema(s *schema.Schema) (*schema.Schema, error)
+}
+
+// expand returns s expanded by d when d implements SchemaExpander, and s
+// itself otherwise.
+func expand(d Dialect, s *schema.Schema) (*schema.Schema, error) {
+	if x, ok := d.(SchemaExpander); ok {
+		return x.ExpandSchema(s)
+	}
+	return s, nil
+}
+
 // InvalidInspector is implemented by dialects whose Inspect hides objects left
 // in an invalid state. InspectWithInvalid is Inspect plus the names of the
 // invalid indexes (a failed CREATE INDEX CONCURRENTLY leaves one behind), spelled

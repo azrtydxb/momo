@@ -8,10 +8,30 @@ later releases can break more.
 ## Upgrading to 0.15.0
 
 No edit is needed in your code. A model can now declare full-text search, and
-the declaration is recorded in the model and in the schema snapshot. SQLite
-migrations render it as an FTS5 table with sync triggers, which needs a SQLite
-build that includes the FTS5 module; the other migration dialects refuse it
-until a later release renders it.
+the declaration is recorded in the model and in the schema snapshot. On
+PostgreSQL 12 or newer `momo migrate` renders it as a stored generated tsvector
+column with a GIN index. On SQLite it renders an external-content FTS5 table
+with sync triggers. On MySQL
+and MariaDB a migration renders it as a `FULLTEXT` index, with `WITH PARSER`
+when a parser is declared. A unique index, a column that is not text, more than
+16 columns and a parser name other than `ngram` or `mecab` are refused with
+`ErrValidation`; `AutoMigrate` also refuses a declaration on a table the
+database holds with a storage engine other than InnoDB. A parser on MariaDB is
+refused with `ErrUnsupported` when the engine knows the server is MariaDB (any
+engine built on a driver); the offline `momo migrate` commands, which open no
+database, cannot know it and render the parser, so MariaDB rejects it when the
+migration is applied. Drift does not report a table for its storage engine.
+Package `fts` also gains a query layer that reads the declaration: `fts.Over`
+names the searched columns, and `fts.Search`, `fts.Score` and `fts.Snippet`
+render a match, a relevance score and an excerpt, with the text of a `fts.Web`,
+`fts.Plain` or `fts.Raw` query bound as a parameter. On PostgreSQL they search
+the generated tsvector column `<index>_tsv` of the declaration; on SQLite they
+search the FTS5 table `<table>_fts`, and a search whose FTS5 table does not
+exist fails with `momo.ErrUnsupported` naming the table. The existing `fts`
+builders keep their signatures and their PostgreSQL SQL. On the cgo SQLite
+driver FTS5 needs the build flag `-tags sqlite_fts5` (or
+`CGO_CFLAGS=-DSQLITE_ENABLE_FTS5`); the pure-Go driver `driver/sqlitepure`
+includes FTS5.
 
 ### Declare full-text search on a model
 
@@ -24,19 +44,23 @@ not text, a second declaration on one table, and a configuration, tokenizer or
 parser name outside a strict allowlist. Snapshots written before the
 declaration load unchanged.
 
+On PostgreSQL the declaration needs a `Config` (the text search configuration,
+for example `english`), is pinned in the generation expression, and any change
+of the declaration (`Columns`, `Config`, `Weights` or `Expression`) drops the
+index, recreates the generated column and creates the index again. The
+generated column is named `<index>_tsv`; a model column of that name, a source
+column the table does not have, an index name that makes the column name longer
+than 63 bytes, or a full-text index declared `Concurrently` fails with
+`ErrValidation`.
+
 On SQLite the declaration becomes an external-content FTS5 table named
 `<table>_fts` plus three triggers (`<table>_fts_ai`, `_ad` and `_au`) that keep
 it in step with the table, and the table is filled with the FTS5 `rebuild`
 command when it is created. The table needs a rowid table with a primary key of
-one `INTEGER` column; any other key is `ErrValidation` naming the table. Removing
-the declaration drops the triggers, then the FTS5 table. The cgo driver
-`sqlitedriver` compiles FTS5 only when you build with `-tags sqlite_fts5` (or
-set `CGO_CFLAGS=-DSQLITE_ENABLE_FTS5` and `CGO_LDFLAGS=-lm`); the
-pure-Go `sqlitepure` driver includes it. A build without FTS5 fails the
-migration with `ErrUnsupported`. The other migration dialects still refuse an
-index that carries a declaration with `ErrUnsupported` ("full-text declarations
-are not rendered yet"), so a model that declares it cannot produce or apply a
-migration there.
+one `INTEGER` column; any other key, or a declared column the table lacks, is
+`ErrValidation` naming the table. Removing the declaration, or the table, drops
+the triggers, then the FTS5 table. A build without FTS5 fails the migration with
+`ErrUnsupported`.
 
 ## Upgrading to 0.14.0
 

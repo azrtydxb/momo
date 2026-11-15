@@ -75,6 +75,15 @@ func classifyOp(op string, err error) error {
 		kind = sqlshared.ConstraintKind(msg)
 	}
 	if kind == nil {
+		// A search over a model whose FTS5 table was never created.
+		if name, ok := sqlshared.MissingFTSTable(msg); ok {
+			return &momo.Error{
+				Kind:  momo.ErrUnsupported,
+				Op:    op,
+				Table: name,
+				Err:   sqlshared.DriverError{Cause: err, Msg: msg + ": full-text search needs the FTS5 table " + name + "; run the migration that creates it"},
+			}
+		}
 		return err
 	}
 	if kind == momo.ErrUnsupported {
