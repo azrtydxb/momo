@@ -257,3 +257,74 @@ func TestBulkUpdateTimestampVersionAndSoftDeleteIntegration(t *testing.T) {
 		}
 	})
 }
+
+// Catches: a composite key listed twice counting or applying differently per
+// server (two rows applied, a count of 2, or a lost row).
+func TestBulkUpdateDuplicateKeyIntegration(t *testing.T) {
+	// No parameter limit override: both rows must share one statement.
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, _ dialect.Name) {
+		createBulkStock(t, db)
+		keys := []momo.ColumnRef{bulkRegion, bulkSKU}
+		// One statement holds both rows of the duplicate key.
+		res, err := momo.BulkUpdateKeys[bulkStock](db, keys, []momo.ColumnRef{bulkQty}, [][]any{
+			{"eu", int64(1), int64(111)},
+			{"eu", int64(1), int64(222)},
+		}).Exec(context.Background())
+		if err != nil || res.RowsAffected != 1 {
+			t.Fatalf("BulkUpdateKeys with a duplicate key = %+v, %v, want 1 row", res, err)
+		}
+		got := readStock(t, db)
+		if q := got["eu1"].qty; q != 111 && q != 222 {
+			t.Errorf("eu/1 qty = %d, want one of the two listed values", q)
+		}
+		wantStock(t, got, "eu2", 20, strp("b"))
+	})
+}
+
+// Catches: a NULL key value matching a row (NULL = NULL is not true), on a
+// table whose key column allows NULL.
+func TestBulkUpdateNullKeyMatchesNothingIntegration(t *testing.T) {
+	eachBulk(t, func(t *testing.T, db *momo.DB) {
+		createBulkStock(t, db)
+		res, err := momo.BulkUpdate[bulkStock](db, bulkNote, []momo.ColumnRef{bulkQty}, [][]any{{nil, int64(999)}}).Exec(context.Background())
+		if err != nil || res.RowsAffected != 0 {
+			t.Fatalf("BulkUpdate on a NULL key = %+v, %v, want 0 rows", res, err)
+		}
+		got := readStock(t, db)
+		wantStock(t, got, "us1", 30, nil) // its note is NULL and must not match
+		wantStock(t, got, "eu1", 10, strp("a"))
+	})
+}
+
+// Catches: a chunked list on a pinned connection running without the atomic
+// scope it needs (a partial update), instead of ErrUnsupported before any
+// statement runs.
+func TestBulkUpdateChunkedOnPinnedConnIntegration(t *testing.T) {
+	eachBulk(t, func(t *testing.T, db *momo.DB) {
+		createBulkStock(t, db)
+		ctx := context.Background()
+		pinner, ok := db.Driver().(momo.Pinner)
+		if !ok {
+			t.Fatal("the driver must support Pin")
+		}
+		pc, err := pinner.Pin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = pc.Release() }()
+		pinned := db.OnConn(pc)
+		keys := []momo.ColumnRef{bulkRegion, bulkSKU}
+		_, err = momo.BulkUpdateKeys[bulkStock](pinned, keys, []momo.ColumnRef{bulkQty},
+			[][]any{{"eu", int64(1), int64(5)}, {"eu", int64(2), int64(6)}}).Exec(ctx)
+		if !errors.Is(err, momo.ErrUnsupported) {
+			t.Fatalf("chunked list on a pinned DB = %v, want ErrUnsupported", err)
+		}
+		wantStock(t, readStock(t, db), "eu1", 10, strp("a"))
+		// A list that fits one statement needs no transaction.
+		res, err := momo.BulkUpdateKeys[bulkStock](pinned, keys, []momo.ColumnRef{bulkQty},
+			[][]any{{"eu", int64(1), int64(5)}}).Exec(ctx)
+		if err != nil || res.RowsAffected != 1 {
+			t.Fatalf("single statement on a pinned DB = %+v, %v, want 1 row", res, err)
+		}
+	})
+}

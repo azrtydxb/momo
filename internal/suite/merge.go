@@ -28,9 +28,10 @@ func countTitle(t *testing.T, db *momo.DB, title string) int64 {
 	return n
 }
 
-// MergeAndBulkUpdate runs MERGE, the bulk update from a VALUES list and
-// Truncate. The bulk update runs on every dialect. On a dialect without Merge
-// it asserts ErrUnsupported for the single MERGE text; on PostgreSQL it asserts the row results and the server
+// MergeAndBulkUpdate runs MERGE, the bulk update from a list of keyed rows
+// (a UNION ALL derived table) and Truncate. The bulk update runs on every
+// dialect. On a dialect without Merge it asserts ErrUnsupported for the single
+// MERGE text; on PostgreSQL it asserts the row results and the server
 // version gate (RETURNING on MERGE needs PostgreSQL 17). Truncate runs on every
 // dialect.
 func MergeAndBulkUpdate(t *testing.T, db *momo.DB, caps Caps) {
@@ -58,7 +59,7 @@ func MergeAndBulkUpdate(t *testing.T, db *momo.DB, caps Caps) {
 		t.Fatalf("suite: BulkUpdate = %+v, %v, want 1 row", res, err)
 	}
 	if title, version := titleOf(t, db, 1); title != "one" || version != 1 {
-		t.Fatalf("suite: row 1 outside the VALUES list changed: %q v%d", title, version)
+		t.Fatalf("suite: row 1 outside the row list changed: %q v%d", title, version)
 	}
 	if title, version := titleOf(t, db, 2); title != "new" || version != 2 {
 		t.Fatalf("suite: row 2 = %q v%d, want new v2", title, version)

@@ -1033,7 +1033,7 @@ Decision (2026-11-14, integrator): as above.
 
 Decision (2026-11-14, integrator): as above.
 
-## Parity: BulkUpdate on SQLite, MySQL and MariaDB (2026-11-14, integrator)
+## Parity: BulkUpdate on SQLite, MySQL and MariaDB (2026-11-15, integrator)
 
 - **Finding:** `BulkUpdate` existed and was refused with `ErrUnsupported` outside
   PostgreSQL (gated on `dialect.Merge`, with a single key column and no
@@ -1078,9 +1078,10 @@ Decision (2026-11-14, integrator): as above.
   integration tests with `testopen.EachWithMySQL` (PostgreSQL, SQLite, MySQL 8.4,
   MySQL 9.7, MariaDB 11.8) with `WithMaxParams` set low, for composite keys,
   NULLs, matched-row counts, chunk rollback on a `DB` and a `Tx`, RETURNING,
-  updated_at, version and the soft-delete scope.
+  updated_at, version and the soft-delete scope; a NULL key; a duplicate key in
+  one statement; a chunked list on a pinned `DB`.
 
-Decision (2026-11-14, integrator): as above.
+Decision (2026-11-15, integrator): as above.
 
 ## Parity: MERGE on SQLite, MySQL and MariaDB (2026-11-14, integrator)
 

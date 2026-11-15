@@ -42,7 +42,7 @@ type UpdateQuery[T any] struct {
 	// softDelete marks the query as a SoftDelete statement.
 	softDelete bool
 	count      func(ctx context.Context, q Querier, ps []Predicate) (int64, error)
-	// bulk is the VALUES list of BulkUpdate; nil for every other update.
+	// bulk is the row list of BulkUpdate; nil for every other update.
 	bulk *bulkSpec
 	// extra holds the predicates interceptors added; plan appends them after
 	// the unfiltered-mutation guard, so they never count as a caller filter.
