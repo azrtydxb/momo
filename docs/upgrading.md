@@ -8,8 +8,12 @@ later releases can break more.
 ## Upgrading to 0.15.0
 
 No edit is needed in your code. A model can now declare full-text search, and
-the declaration is recorded in the model and in the schema snapshot, but
-migrations refuse it until a later release renders it.
+the declaration is recorded in the model and in the schema snapshot. On MySQL
+and MariaDB a migration renders it as a `FULLTEXT` index (with `WITH PARSER`
+when a parser is declared, on MySQL only), and a `FULLTEXT` index on a table
+that is not InnoDB, on a column that is not text, or that is unique is refused
+with `ErrValidation`. The other dialects refuse it until a later release
+renders it.
 
 ### Declare full-text search on a model
 
@@ -22,10 +26,10 @@ not text, a second declaration on one table, and a configuration, tokenizer or
 parser name outside a strict allowlist. Snapshots written before the
 declaration load unchanged.
 
-Migrations do not render the declaration. Until a later release adds the
-rendering, every migration dialect refuses an index that carries one with
+PostgreSQL and SQLite do not render the declaration yet. Until a later release
+adds the rendering, those dialects refuse an index that carries one with
 `ErrUnsupported` ("full-text declarations are not rendered yet"), so a model
-that declares it cannot produce or apply a migration.
+that declares it cannot produce or apply a migration there.
 
 ## Upgrading to 0.14.0
 

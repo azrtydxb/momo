@@ -79,6 +79,10 @@ type Table struct {
 	// Autoincrement marks a SQLite table whose INTEGER PRIMARY KEY is
 	// declared AUTOINCREMENT (row ids are never reused).
 	Autoincrement bool `json:"autoincrement,omitempty"`
+	// Engine is the storage engine of a MySQL table that is not InnoDB. The
+	// MySQL inspector sets it; a declaration never does, because momo creates
+	// only InnoDB tables.
+	Engine string `json:"engine,omitempty"`
 	// RLS is nil when row-level security is off.
 	RLS *RLS `json:"rls,omitempty"`
 	// Partition is set on the parent of a partitioned table.
