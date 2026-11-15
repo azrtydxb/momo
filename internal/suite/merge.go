@@ -28,9 +28,10 @@ func countTitle(t *testing.T, db *momo.DB, title string) int64 {
 	return n
 }
 
-// MergeAndBulkUpdate runs MERGE, the bulk update from a VALUES list and
-// Truncate. On a dialect without Merge it asserts ErrUnsupported for the bulk
-// update and for the single MERGE text; on PostgreSQL it asserts the row results and the server
+// MergeAndBulkUpdate runs MERGE, the bulk update from a list of keyed rows
+// (a UNION ALL derived table) and Truncate. The bulk update runs on every
+// dialect. On a dialect without Merge it asserts ErrUnsupported for the single
+// MERGE text; on PostgreSQL it asserts the row results and the server
 // version gate (RETURNING on MERGE needs PostgreSQL 17). Truncate runs on every
 // dialect.
 func MergeAndBulkUpdate(t *testing.T, db *momo.DB, caps Caps) {
@@ -51,33 +52,14 @@ func MergeAndBulkUpdate(t *testing.T, db *momo.DB, caps Caps) {
 				momo.TypedSQL[int64]("src.id"), momo.TypedSQL[int64]("src.tenant_id"), momo.TypedSQL[string]("src.title"))
 	}
 
-	if !caps.Merge {
-		if _, err := bulk([]any{int64(2), "new"}).SQL(); !errors.Is(err, momo.ErrUnsupported) {
-			t.Fatalf("suite: BulkUpdate.SQL on %s = %v, want ErrUnsupported", caps.Dialect, err)
-		}
-		if _, err := bulk([]any{int64(2), "new"}).Exec(ctx); !errors.Is(err, momo.ErrUnsupported) {
-			t.Fatalf("suite: BulkUpdate.Exec on %s = %v, want ErrUnsupported", caps.Dialect, err)
-		}
-		// Merge has no single statement here; its emulation is covered by the
-		// merge integration tests, which run on every dialect.
-		if _, err := merged(3, "merged").SQL(); !errors.Is(err, momo.ErrUnsupported) {
-			t.Fatalf("suite: Merge.SQL on %s = %v, want ErrUnsupported", caps.Dialect, err)
-		}
-		if title, _ := titleOf(t, db, 2); title != "two" {
-			t.Fatalf("suite: an unsupported statement changed row 2 to %q", title)
-		}
-		truncateAndCount(t, db)
-		return
-	}
-
-	// Bulk update: only the listed keys change, a key that is not in the table
-	// changes nothing.
+	// Bulk update runs on every dialect: only the listed keys change, a key
+	// that is not in the table changes nothing.
 	res, err := bulk([]any{int64(2), "new"}).Exec(ctx)
 	if err != nil || res.RowsAffected != 1 {
 		t.Fatalf("suite: BulkUpdate = %+v, %v, want 1 row", res, err)
 	}
 	if title, version := titleOf(t, db, 1); title != "one" || version != 1 {
-		t.Fatalf("suite: row 1 outside the VALUES list changed: %q v%d", title, version)
+		t.Fatalf("suite: row 1 outside the row list changed: %q v%d", title, version)
 	}
 	if title, version := titleOf(t, db, 2); title != "new" || version != 2 {
 		t.Fatalf("suite: row 2 = %q v%d, want new v2", title, version)
@@ -91,6 +73,16 @@ func MergeAndBulkUpdate(t *testing.T, db *momo.DB, caps Caps) {
 	}
 	if n := countTitle(t, db, "ghost"); n != 0 {
 		t.Fatalf("suite: a key outside the table created %d rows", n)
+	}
+
+	if !caps.Merge {
+		// Merge has no single statement here; its emulation is covered by the
+		// merge integration tests, which run on every dialect.
+		if _, err := merged(3, "merged").SQL(); !errors.Is(err, momo.ErrUnsupported) {
+			t.Fatalf("suite: Merge.SQL on %s = %v, want ErrUnsupported", caps.Dialect, err)
+		}
+		truncateAndCount(t, db)
+		return
 	}
 
 	// MERGE: the version the driver reports decides what the server accepts.
