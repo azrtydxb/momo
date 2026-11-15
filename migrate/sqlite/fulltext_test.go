@@ -164,7 +164,7 @@ func TestFullTextSQLiteDropContentTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := renderPlan(t, from, &schema.Schema{Dialect: "sqlite"}, migrate.DiffOptions{AllowDestructive: true})
-	if !strings.Contains(all, `DROP TABLE "articles_fts"`) || !strings.Contains(all, `DROP TABLE "articles"`) {
+	if !strings.Contains(all, `DROP TABLE IF EXISTS "articles_fts"`) || !strings.Contains(all, `DROP TABLE "articles"`) {
 		t.Fatalf("both tables must be dropped:\n%s", all)
 	}
 }

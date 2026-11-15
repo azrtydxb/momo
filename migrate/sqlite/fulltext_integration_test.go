@@ -146,7 +146,7 @@ func TestFullTextSQLiteIntegrityAfterUpdateDelete(t *testing.T) {
 }
 
 // Catches: the FTS5 triggers lost, or the table left unsynchronised, when the
-// content table is rebuilt (alter_column rebuilds it and drops its triggers).
+// content table is rebuilt (adding a CHECK rebuilds it and drops its triggers).
 func TestFullTextSQLiteBaseTableRebuild(t *testing.T) {
 	ctx := context.Background()
 	db := testopen.SQLite(t)
@@ -155,7 +155,8 @@ func TestFullTextSQLiteBaseTableRebuild(t *testing.T) {
 	ftsExec(t, db, `INSERT INTO articles (id, title, body) VALUES (1, 'red fox', 'quick')`)
 
 	next := ftsDeclared()
-	next.Tables[0].Columns[1].Nullable = false // title NOT NULL: SQLite rebuilds the table
+	// A CHECK constraint cannot be added in place: SQLite rebuilds the table.
+	next.Tables[0].Checks = []schema.Check{{Name: "title_short", Expr: "length(title) < 1000"}}
 	m, err := eng.Diff(ctx, next, "title_not_null", migrate.DiffOptions{})
 	if err != nil || m == nil {
 		t.Fatalf("diff = %v, %v", m, err)
