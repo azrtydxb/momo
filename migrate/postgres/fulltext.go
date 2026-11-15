@@ -48,11 +48,6 @@ func expandTable(t *schema.Table, ix *schema.Index) error {
 	if err := ix.FullText.Validate(); err != nil {
 		return ftError(t.Name, "table %q index %q: %w", t.Name, ix.Name, err)
 	}
-	if ix.Concurrently {
-		// A concurrent build runs outside the transaction that recreates the
-		// generated column, so the drop and the add could not be kept together.
-		return ftError(t.Name, "table %q index %q: a full-text index cannot be created CONCURRENTLY", t.Name, ix.Name)
-	}
 	ft := ix.FullText.ForDialect(dialect.Postgres)
 	if ft.Config == "" {
 		return ftError(t.Name, "table %q index %q: a PostgreSQL full-text declaration needs Config", t.Name, ix.Name)
@@ -87,30 +82,21 @@ func expandTable(t *schema.Table, ix *schema.Index) error {
 	return nil
 }
 
-// fullTextColumns returns the (schema, table, column) of every generated
-// tsvector column that a full-text index created in plan depends on.
-func fullTextColumns(plan []migrate.Change) map[[3]string]bool {
-	var out map[[3]string]bool
-	for _, c := range plan {
-		if c.Kind != migrate.CreateIndex {
-			continue
-		}
-		ix, err := get[schema.Index](c.After)
-		if err != nil || ix.FullText == nil || ix.FullText.Expression {
-			continue
-		}
-		if out == nil {
-			out = map[[3]string]bool{}
-		}
-		out[[3]string{c.Schema, c.Table, schema.TSVectorColumn(ix.Name)}] = true
-	}
-	return out
+// dropsWithColumn reports whether ix is a full-text index on a generated
+// tsvector column. Dropping it goes together with dropping or recreating that
+// column, so the drop is never CONCURRENTLY.
+func dropsWithColumn(ix schema.Index) bool {
+	return ix.FullText != nil && !ix.FullText.Expression
 }
 
 // renderRecreateGenerated changes the generation expression of the generated
 // column of a full-text index. PostgreSQL cannot alter such an expression in
-// place, so the column is dropped and added again; the plan already drops the
-// index that depends on it first and creates it again afterwards.
+// place, so the column is dropped and added again. The change is marked by the
+// diff (migrate.Change.FullTextColumn) from the desired schema, so it renders
+// the same whether or not the index change shares its plan or its migration:
+// the plan drops the index that depends on it first, in the same transaction
+// (see dropsWithColumn), and creates it again afterwards, which may be a
+// CONCURRENTLY build in a later no-transaction migration.
 func renderRecreateGenerated(c migrate.Change) ([]migrate.Statement, error) {
 	after, err := get[schema.Column](c.After)
 	if err != nil {

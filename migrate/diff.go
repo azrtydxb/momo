@@ -595,7 +595,10 @@ func (d *differ) alterColumn(t *schema.Table, a, b *schema.Column, ao, bo *schem
 			}
 		}
 	}
-	d.emit(Change{Kind: AlterColumn, Schema: t.Schema, Table: t.Name, Name: b.Name, Before: cp(*ao), After: &after, Destructive: na.Type != nb.Type})
+	ftCol := na.Generated != nb.Generated && slices.ContainsFunc(t.Indexes, func(ix schema.Index) bool {
+		return ix.FullText != nil && !ix.FullText.Expression && schema.TSVectorColumn(ix.Name) == b.Name
+	})
+	d.emit(Change{Kind: AlterColumn, Schema: t.Schema, Table: t.Name, Name: b.Name, Before: cp(*ao), After: &after, Destructive: na.Type != nb.Type, FullTextColumn: ftCol})
 }
 
 // ------------------------------------------------------------ constraints

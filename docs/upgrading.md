@@ -49,8 +49,11 @@ of the declaration (`Columns`, `Config`, `Weights` or `Expression`) drops the
 index, recreates the generated column and creates the index again. The
 generated column is named `<index>_tsv`; a model column of that name, a source
 column the table does not have, an index name that makes the column name longer
-than 63 bytes, or a full-text index declared `Concurrently` fails with
-`ErrValidation`. SQLite refuses an index that carries a declaration with
+than 63 bytes fails with `ErrValidation`. A full-text index declared
+`Concurrently` is built with `CREATE INDEX CONCURRENTLY` in the trailing
+`-- momo:no-transaction` migration; the generated column, and the drop of the
+old index when the declaration changes, stay in the transactional migration
+before it. SQLite refuses an index that carries a declaration with
 `ErrUnsupported` ("full-text declarations are not rendered yet"), so a model
 that declares it cannot produce or apply a migration there.
 

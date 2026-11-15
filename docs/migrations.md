@@ -895,7 +895,9 @@ built.
   no-transaction migration, so the build does not block writes. Without
   `Concurrently()` the index is a plain `CREATE INDEX` that blocks writes while
   it builds. Set a role without `statement_timeout` for the run. A hand-written
-  alternative: `examples/custom-sql-migration`.
+  alternative: `examples/custom-sql-migration`. A full-text index on an existing
+  PostgreSQL table is such an index: declare it `Concurrently()` too, or the
+  generated `CREATE INDEX ... USING gin` fails `blocking-index` in lint.
 - **Lock timeout**: the default 5 s lock wait fails fast instead of queuing
   behind a long transaction. A retry is safe for transactional migrations.
 - **Deploy order**: migrate first, then roll out code, with every migration
