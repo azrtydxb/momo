@@ -342,6 +342,7 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.MergeQuery.WhenMatchedUpdate`    | method | WhenMatchedUpdate adds WHEN MATCHED THEN UPDATE SET with the assignments.                                                                                                                                                                                                         |
 | `momo.MergeQuery.WhenNotMatchedInsert` | method | WhenNotMatchedInsert adds WHEN NOT MATCHED THEN INSERT with one value expression per column.                                                                                                                                                                                      |
 | `momo.Meta`                            | type   | Meta is the generated, reflection-free description of a model or projection type T.                                                                                                                                                                                               |
+| `momo.MetaTableSchema`                 | func   | MetaTableSchema returns the normalized table definition of model T from its generated metadata, or nil for a projection.                                                                                                                                                          |
 | `momo.Min`                             | func   | Min is MIN(expr) (NULL over zero rows).                                                                                                                                                                                                                                           |
 | `momo.Model`                           | type   | Model is embedded in a struct to declare it a Momo model.                                                                                                                                                                                                                         |
 | `momo.ModelRows`                       | type   | ModelRows is the cursor of a write statement with a RETURNING list.                                                                                                                                                                                                               |
@@ -1162,20 +1163,34 @@ Import path: `github.com/azrtydxb/momo/cli`
 
 Import path: `github.com/azrtydxb/momo/fts`
 
-| Identifier             | Kind   | Synopsis                                                                                                                                        |
-| ---------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fts.Expr`             | type   | Expr is a full-text function call whose SQL result type corresponds to T.                                                                       |
-| `fts.Expr.AppendSQL`   | method | AppendSQL renders the call, or records a build error on a dialect without full-text search or for an invalid argument.                          |
-| `fts.Expr.As`          | method | As names the expression in a select list.                                                                                                       |
-| `fts.Headline`         | func   | Headline is ts_headline(config, doc, q \[, options\]): doc with the query matches marked up.                                                    |
-| `fts.Match`            | func   | Match is vec @@ q: true when the document matches the query.                                                                                    |
-| `fts.PhraseToQuery`    | func   | PhraseToQuery is phraseto_tsquery(config, query): the words of query as one phrase.                                                             |
-| `fts.PlainToQuery`     | func   | PlainToQuery is plainto_tsquery(config, query): the words of query ANDed together, punctuation ignored.                                         |
-| `fts.Rank`             | func   | Rank is ts_rank(vec, q \[, normalization\]): a relevance score from how often the query terms occur.                                            |
-| `fts.RankCD`           | func   | RankCD is ts_rank_cd(vec, q \[, normalization\]): the cover-density score, which also rewards query terms that sit close together.              |
-| `fts.ToQuery`          | func   | ToQuery is to_tsquery(config, query): query must already be in tsquery syntax (& \| ! <-> and prefix:*); a malformed query is a database error. |
-| `fts.ToVector`         | func   | ToVector is to_tsvector(config, doc): doc parsed into a tsvector with the text search configuration config.                                     |
-| `fts.WebsearchToQuery` | func   | WebsearchToQuery is websearch_to_tsquery(config, query): the query in the forgiving web-search syntax (quoted phrases, or, a leading minus).    |
+| Identifier             | Kind   | Synopsis                                                                                                                                                                                   |
+| ---------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `fts.BM25`             | func   | BM25 is bm25("table", weights...) over an FTS5 table, the relevance of the row matched in the same query; lower (more negative) is better.                                                 |
+| `fts.Expr`             | type   | Expr is a full-text function call whose SQL result type corresponds to T.                                                                                                                  |
+| `fts.Expr.AppendSQL`   | method | AppendSQL renders the call, or records a build error on a dialect without full-text search or for an invalid argument.                                                                     |
+| `fts.Expr.As`          | method | As names the expression in a select list.                                                                                                                                                  |
+| `fts.FTS5Match`        | func   | FTS5Match is the SQLite predicate "table" MATCH q over an FTS5 table, with q in FTS5 query syntax bound as a parameter.                                                                    |
+| `fts.Headline`         | func   | Headline is ts_headline(config, doc, q \[, options\]): doc with the query matches marked up.                                                                                               |
+| `fts.Match`            | func   | Match is vec @@ q: true when the document matches the query.                                                                                                                               |
+| `fts.Over`             | func   | Over is the target of the full-text declaration of model T.                                                                                                                                |
+| `fts.OverVector`       | func   | OverVector is the target of a tsvector column the application maintains itself (a trigger, or a generated column it declared by hand), searched with the text search configuration config. |
+| `fts.PhraseToQuery`    | func   | PhraseToQuery is phraseto_tsquery(config, query): the words of query as one phrase.                                                                                                        |
+| `fts.Plain`            | func   | Plain reads text as words that must all match; punctuation is ignored.                                                                                                                     |
+| `fts.PlainToQuery`     | func   | PlainToQuery is plainto_tsquery(config, query): the words of query ANDed together, punctuation ignored.                                                                                    |
+| `fts.Query`            | type   | Query is the user's search text plus how to read it.                                                                                                                                       |
+| `fts.Query.Config`     | method | Config sets the PostgreSQL text search configuration for this query.                                                                                                                       |
+| `fts.Rank`             | func   | Rank is ts_rank(vec, q \[, normalization\]): a relevance score from how often the query terms occur.                                                                                       |
+| `fts.RankCD`           | func   | RankCD is ts_rank_cd(vec, q \[, normalization\]): the cover-density score, which also rewards query terms that sit close together.                                                         |
+| `fts.Raw`              | func   | Raw passes text to the database in its own query syntax: tsquery text on PostgreSQL, an FTS5 query on SQLite.                                                                              |
+| `fts.Score`            | func   | Score is the relevance of a row for q: higher is better on every dialect (ts_rank_cd on PostgreSQL, the negated bm25 on SQLite).                                                           |
+| `fts.Search`           | func   | Search is the predicate that matches the rows whose searchable columns match q: ts @@ tsquery on PostgreSQL, a MATCH on the FTS5 table on SQLite.                                          |
+| `fts.Snippet`          | func   | Snippet is the excerpt of o.Column with the matched words marked (ts_headline on PostgreSQL, snippet() on SQLite).                                                                         |
+| `fts.SnippetOpts`      | type   | SnippetOpts configures Snippet.                                                                                                                                                            |
+| `fts.Target`           | type   | Target is what Search, Score and Snippet search.                                                                                                                                           |
+| `fts.ToQuery`          | func   | ToQuery is to_tsquery(config, query): query must already be in tsquery syntax (& \| ! <-> and prefix:*); a malformed query is a database error.                                            |
+| `fts.ToVector`         | func   | ToVector is to_tsvector(config, doc): doc parsed into a tsvector with the text search configuration config.                                                                                |
+| `fts.Web`              | func   | Web reads text like a search box: "quoted phrases", -exclusions, OR between words and a trailing * for a prefix.                                                                           |
+| `fts.WebsearchToQuery` | func   | WebsearchToQuery is websearch_to_tsquery(config, query): the query in the forgiving web-search syntax (quoted phrases, or, a leading minus).                                               |
 
 ## jsonop
 
