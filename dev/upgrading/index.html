@@ -1099,6 +1099,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0150" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.15.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.15.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#declare-full-text-search-on-a-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Declare full-text search on a model
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0140" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2224,6 +2252,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0150" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.15.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.15.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#declare-full-text-search-on-a-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Declare full-text search on a model
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0140" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3248,6 +3304,23 @@
 <a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
+<h2 id="upgrading-to-0150">Upgrading to 0.15.0<a class="headerlink" href="#upgrading-to-0150" title="Permanent link">&para;</a></h2>
+<p>No edit is needed in your code. A model can now declare full-text search, and
+the declaration is recorded in the model and in the schema snapshot, but
+migrations refuse it until a later release renders it.</p>
+<h3 id="declare-full-text-search-on-a-model">Declare full-text search on a model<a class="headerlink" href="#declare-full-text-search-on-a-model" title="Permanent link">&para;</a></h3>
+<p>A model can declare one full-text search index, either with the <code>search</code> tag on
+each text field (the index is named <code>&lt;table&gt;_search</code> and covers the tagged
+fields in field order) or with <code>c.FullText(name, &amp;m.A, &amp;m.B)</code> in <code>MomoConfig</code>,
+chained with <code>Config</code>, <code>Weights</code>, <code>Tokenizer</code>, <code>Parser</code> or <code>Expression</code> for the
+options a dialect honours. <code>momo generate</code> rejects the tag on a column that is
+not text, a second declaration on one table, and a configuration, tokenizer or
+parser name outside a strict allowlist. Snapshots written before the
+declaration load unchanged.</p>
+<p>Migrations do not render the declaration. Until a later release adds the
+rendering, every migration dialect refuses an index that carries one with
+<code>ErrUnsupported</code> ("full-text declarations are not rendered yet"), so a model
+that declares it cannot produce or apply a migration.</p>
 <h2 id="upgrading-to-0140">Upgrading to 0.14.0<a class="headerlink" href="#upgrading-to-0140" title="Permanent link">&para;</a></h2>
 <p>No edit is needed in your code. <code>Merge</code> and <code>BulkUpdate</code> now run on SQLite,
 MySQL and MariaDB, where they returned <code>ErrUnsupported</code>, so code that relied on

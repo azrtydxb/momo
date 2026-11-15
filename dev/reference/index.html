@@ -2037,6 +2037,11 @@
 <td>ForeignKey declares a named foreign key over one or more fields of the model: cols is a []any literal of field references, refTable the referenced table and refColumns its columns, which must be its primary key or the columns of a unique constraint or unique index on it.</td>
 </tr>
 <tr>
+<td><code>momo.Config.FullText</code></td>
+<td>method</td>
+<td>FullText declares the table's full-text search index over the given field references, in order.</td>
+</tr>
+<tr>
 <td><code>momo.Config.Function</code></td>
 <td>method</td>
 <td>Function declares a function.</td>
@@ -2780,6 +2785,36 @@
 <td><code>momo.FromSubquery</code></td>
 <td>func</td>
 <td>FromSubquery uses a subquery as a FROM/JOIN source under alias.</td>
+</tr>
+<tr>
+<td><code>momo.FullTextOpts</code></td>
+<td>type</td>
+<td>FullTextOpts carries the optional parts of a full-text search declaration.</td>
+</tr>
+<tr>
+<td><code>momo.FullTextOpts.Config</code></td>
+<td>method</td>
+<td>Config sets the PostgreSQL text search configuration.</td>
+</tr>
+<tr>
+<td><code>momo.FullTextOpts.Expression</code></td>
+<td>method</td>
+<td>Expression declares a PostgreSQL expression index instead of a generated tsvector column.</td>
+</tr>
+<tr>
+<td><code>momo.FullTextOpts.Parser</code></td>
+<td>method</td>
+<td>Parser sets the MySQL full-text parser ("ngram" or "mecab").</td>
+</tr>
+<tr>
+<td><code>momo.FullTextOpts.Tokenizer</code></td>
+<td>method</td>
+<td>Tokenizer sets the SQLite FTS5 tokenize clause.</td>
+</tr>
+<tr>
+<td><code>momo.FullTextOpts.Weights</code></td>
+<td>method</td>
+<td>Weights sets one weight ("A" to "D") per column.</td>
 </tr>
 <tr>
 <td><code>momo.Func</code></td>
@@ -5178,6 +5213,11 @@
 <td>Extension is a PostgreSQL extension such as "vector".</td>
 </tr>
 <tr>
+<td><code>schema.FTS5Table</code></td>
+<td>func</td>
+<td>FTS5Table is the name of the FTS5 virtual table that indexes table.</td>
+</tr>
+<tr>
 <td><code>schema.ForeignKey</code></td>
 <td>type</td>
 <td>ForeignKey is a FOREIGN KEY constraint.</td>
@@ -5186,6 +5226,21 @@
 <td><code>schema.FormatVersion</code></td>
 <td>const</td>
 <td>FormatVersion is the version of the schema snapshot JSON format.</td>
+</tr>
+<tr>
+<td><code>schema.FullText</code></td>
+<td>type</td>
+<td>FullText describes a full-text search declaration on an index whose Method is "fulltext".</td>
+</tr>
+<tr>
+<td><code>schema.FullText.ForDialect</code></td>
+<td>method</td>
+<td>ForDialect returns f with the options the dialect ignores cleared, so a change to an option that has no effect on d is no migration there.</td>
+</tr>
+<tr>
+<td><code>schema.FullText.Validate</code></td>
+<td>method</td>
+<td>Validate checks the description against the allowlists that keep a configuration, tokenizer or parser name from reaching rendered SQL.</td>
 </tr>
 <tr>
 <td><code>schema.Function</code></td>
@@ -5283,6 +5338,11 @@
 <td>SchemaNamespace is a PostgreSQL schema (namespace) managed by Momo.</td>
 </tr>
 <tr>
+<td><code>schema.TSVectorColumn</code></td>
+<td>func</td>
+<td>TSVectorColumn is the name of the generated tsvector column of the full-text index named index.</td>
+</tr>
+<tr>
 <td><code>schema.Table</code></td>
 <td>type</td>
 <td>Table is a base table.</td>
@@ -5291,6 +5351,11 @@
 <td><code>schema.Table.Column</code></td>
 <td>method</td>
 <td>Column returns the column with the given name.</td>
+</tr>
+<tr>
+<td><code>schema.Table.FullTextIndex</code></td>
+<td>method</td>
+<td>FullTextIndex returns the table's full-text index, if it declares one.</td>
 </tr>
 <tr>
 <td><code>schema.Table.Index</code></td>
