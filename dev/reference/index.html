@@ -6492,6 +6492,11 @@
 <td>RunStatements runs stmts in one transaction on c and rolls it back on the first error.</td>
 </tr>
 <tr>
+<td><code>migrate.SchemaExpander</code></td>
+<td>type</td>
+<td>SchemaExpander is implemented by dialects that derive objects from a declaration the snapshot records only once (a full-text index becomes a generated column, a virtual table or triggers).</td>
+</tr>
+<tr>
 <td><code>migrate.SchemaRenderer</code></td>
 <td>type</td>
 <td>SchemaRenderer is implemented by dialects that need more than the change list to render it.</td>
