@@ -3306,8 +3306,16 @@ the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect 
 later releases can break more.</p>
 <h2 id="upgrading-to-0150">Upgrading to 0.15.0<a class="headerlink" href="#upgrading-to-0150" title="Permanent link">&para;</a></h2>
 <p>No edit is needed in your code. A model can now declare full-text search, and
-the declaration is recorded in the model and in the schema snapshot, but
-migrations refuse it until a later release renders it.</p>
+the declaration is recorded in the model and in the schema snapshot. On MySQL
+and MariaDB a migration renders it as a <code>FULLTEXT</code> index, with <code>WITH PARSER</code>
+when a parser is declared. A unique index, a column that is not text, more than
+16 columns and a parser name other than <code>ngram</code> or <code>mecab</code> are refused with
+<code>ErrValidation</code>; <code>AutoMigrate</code> also refuses a declaration on a table the
+database holds with a storage engine other than InnoDB. A parser on MariaDB is
+refused with <code>ErrUnsupported</code> when the engine knows the server is MariaDB (any
+engine built on a driver); the offline <code>momo migrate</code> commands, which open no
+database, cannot know it and render the parser, so MariaDB rejects it when the
+migration is applied. Drift does not report a table for its storage engine.</p>
 <h3 id="declare-full-text-search-on-a-model">Declare full-text search on a model<a class="headerlink" href="#declare-full-text-search-on-a-model" title="Permanent link">&para;</a></h3>
 <p>A model can declare one full-text search index, either with the <code>search</code> tag on
 each text field (the index is named <code>&lt;table&gt;_search</code> and covers the tagged
@@ -3317,10 +3325,9 @@ options a dialect honours. <code>momo generate</code> rejects the tag on a colum
 not text, a second declaration on one table, and a configuration, tokenizer or
 parser name outside a strict allowlist. Snapshots written before the
 declaration load unchanged.</p>
-<p>Migrations do not render the declaration. Until a later release adds the
-rendering, every migration dialect refuses an index that carries one with
+<p>PostgreSQL and SQLite refuse an index that carries a declaration with
 <code>ErrUnsupported</code> ("full-text declarations are not rendered yet"), so a model
-that declares it cannot produce or apply a migration.</p>
+that declares it cannot produce or apply a migration there.</p>
 <h2 id="upgrading-to-0140">Upgrading to 0.14.0<a class="headerlink" href="#upgrading-to-0140" title="Permanent link">&para;</a></h2>
 <p>No edit is needed in your code. <code>Merge</code> and <code>BulkUpdate</code> now run on SQLite,
 MySQL and MariaDB, where they returned <code>ErrUnsupported</code>, so code that relied on

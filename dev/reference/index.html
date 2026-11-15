@@ -6292,6 +6292,11 @@
 <td>LintSQL checks the statements of one migration for operations that lock a table for long, rewrite it, or lose data, and reports each with a severity and a safer alternative.</td>
 </tr>
 <tr>
+<td><code>migrate.LiveValidator</code></td>
+<td>type</td>
+<td>LiveValidator is implemented by dialects that refuse a declaration because of what the live database holds, which a desired schema alone cannot show (a full-text index on a MySQL table that is not InnoDB).</td>
+</tr>
+<tr>
 <td><code>migrate.MatchObject</code></td>
 <td>func</td>
 <td>MatchObject reports whether any glob matches the object name, or schema.name when schemaName is not empty (the current schema is spelled with an empty one).</td>
