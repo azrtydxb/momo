@@ -204,6 +204,9 @@ func rebuildScript(table string, desired schema.Table, indexes []schema.Index, c
 		migrate.Statement{SQL: "ALTER TABLE " + ident(tmp) + " RENAME TO " + ident(table)},
 	)
 	for _, ix := range indexes {
+		if ix.FullText != nil {
+			continue // the FTS5 table is a table of its own and survives the rebuild
+		}
 		s, err := createIndexSQL(table, ix)
 		if err != nil {
 			return nil, err

@@ -267,3 +267,36 @@ func TestFullTextConfigChangeDiff(t *testing.T) {
 		t.Fatalf("statements:\n%s\nwant:\n%s", strings.Join(sql, "\n"), strings.Join(want, "\n"))
 	}
 }
+
+// Catches: the lint rule drifting from what the renderer emits, for a new
+// declaration and for a configuration change that re-adds the column.
+func TestFullTextRenderedSQLIsLinted(t *testing.T) {
+	var d Dialect
+	plain := articlesWithFullText(schema.FullText{Columns: []string{"title", "body"}})
+	plain.Tables[0].Indexes = nil
+	english, _ := d.ExpandSchema(articlesWithFullText(schema.FullText{Columns: []string{"title", "body"}, Config: "english"}))
+	simple, _ := d.ExpandSchema(articlesWithFullText(schema.FullText{Columns: []string{"title", "body"}, Config: "simple"}))
+	for name, pair := range map[string][2]*schema.Schema{"new declaration": {plain, english}, "config change": {english, simple}} {
+		changes, _, err := migrate.Diff(pair[0], pair[1], migrate.DiffOptions{AllowDestructive: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ordered, err := migrate.OrderErr(changes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stmts, err := d.Render(ordered)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := 0
+		for _, f := range migrate.LintSQL("20260101000000", stmts, map[string]bool{"articles": true}, "postgres") {
+			if f.Rule == migrate.RuleFullTextRewrite && f.Severity == migrate.SeverityWarning {
+				found++
+			}
+		}
+		if found != 1 {
+			t.Errorf("%s: %d full-text rewrite warnings for %+v, want 1", name, found, stmts)
+		}
+	}
+}

@@ -875,10 +875,13 @@ only on a table of the parent snapshot (`TestMigrateLint`,
 | `enum-add-and-use`              | error    | `ALTER TYPE ... ADD VALUE 'x'` and a later statement that mentions `'x'`  | use the value in a later migration                                      |
 | `destructive-without-directive` | error    | `DROP TABLE`, `DROP COLUMN`, `DROP SCHEMA`, `DROP TYPE`, `TRUNCATE`       | add `-- momo:destructive` after a review                                |
 | `sqlite-rebuild`                | warning  | a statement with the SQLite `rebuild` hint (`LintSQL` callers)            | batch the data copy or split the table                                  |
+| `fulltext-column-rewrite`       | warning  | stored generated `to_tsvector` column added to an existing table          | build it in a maintenance window; the table rewrite cannot be avoided   |
+| `fulltext-first-index`          | warning  | `CREATE FULLTEXT INDEX` on an existing table (MySQL and MariaDB)          | add the index in a low-traffic window; the table is copied once         |
 
 The rules are text heuristics on the comment-free statement. The PostgreSQL
 rules (the first six) run for the `postgres` dialect only; the destructive rule
-runs for every dialect. A statement built inside a `DO` block or a function is
+runs for every dialect. `fulltext-column-rewrite` runs for `postgres` and
+`fulltext-first-index` for `mysql`, which includes MariaDB. A statement built inside a `DO` block or a function is
 not seen, and a keyword inside a string literal can cause a false report.
 `SET NOT NULL` is a warning, not an error, because the staged flow (below) ends
 with it. The plan also sketches a `--db` row count rule for SQLite rebuilds; it is not
