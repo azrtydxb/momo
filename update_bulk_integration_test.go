@@ -319,7 +319,8 @@ func TestBulkUpdateChunkedOnPinnedConnIntegration(t *testing.T) {
 		if !errors.Is(err, momo.ErrUnsupported) {
 			t.Fatalf("chunked list on a pinned DB = %v, want ErrUnsupported", err)
 		}
-		wantStock(t, readStock(t, db), "eu1", 10, strp("a"))
+		// Read on the pinned handle: SQLite's pool may hold one connection only.
+		wantStock(t, readStock(t, pinned), "eu1", 10, strp("a"))
 		// A list that fits one statement needs no transaction.
 		res, err := momo.BulkUpdateKeys[bulkStock](pinned, keys, []momo.ColumnRef{bulkQty},
 			[][]any{{"eu", int64(1), int64(5)}}).Exec(ctx)
