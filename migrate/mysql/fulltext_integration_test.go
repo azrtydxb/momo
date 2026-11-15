@@ -35,6 +35,26 @@ func ftDeclared(parser string) *schema.Schema {
 	}}}
 }
 
+// scanOne runs q through the driver and scans its first row into dest.
+func scanOne(ctx context.Context, db *momo.DB, q string, dest ...any) (err error) {
+	rows, err := db.Driver().Query(ctx, q, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := rows.Close(); err == nil {
+			err = cerr
+		}
+	}()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		return errors.New("the query returned no row")
+	}
+	return rows.Scan(dest...)
+}
+
 // Catches: the index missing on the server after apply, and the parser lost on
 // MySQL. MariaDB runs without a parser (no ngram plugin).
 func TestFullTextMySQLMigrationRoundTrip(t *testing.T) {
@@ -48,13 +68,12 @@ func TestFullTextMySQLMigrationRoundTrip(t *testing.T) {
 		eng := migratetest.NewEngine(t, mmysql.New(), db.Driver(), os.DirFS(dir))
 		applyExample(t, dir, eng, ftDeclared(parser), "fulltext")
 		var typ string
-		row := db.QueryRow(ctx, `SELECT INDEX_TYPE FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'articles' AND INDEX_NAME = 'articles_search' LIMIT 1`)
-		if err := row.Scan(&typ); err != nil || typ != "FULLTEXT" {
+		if err := scanOne(ctx, db, `SELECT INDEX_TYPE FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'articles' AND INDEX_NAME = 'articles_search' LIMIT 1`, &typ); err != nil || typ != "FULLTEXT" {
 			t.Fatalf("index type = %q (%v), want FULLTEXT", typ, err)
 		}
 		if parser == "ngram" {
 			var ddl, name string
-			if err := db.QueryRow(ctx, "SHOW CREATE TABLE articles").Scan(&name, &ddl); err != nil || !strings.Contains(ddl, "WITH PARSER `ngram`") {
+			if err := scanOne(ctx, db, "SHOW CREATE TABLE articles", &name, &ddl); err != nil || !strings.Contains(ddl, "WITH PARSER `ngram`") {
 				t.Fatalf("parser missing from SHOW CREATE TABLE: %v\n%s", err, ddl)
 			}
 		}
