@@ -1,6 +1,6 @@
 # fulltext-search
 
-Status: draft
+Status: complete
 
 ## Problem
 
@@ -25,18 +25,19 @@ Why now: the three dialect families are all supported for migrations and the typ
 
 ## In scope
 
-Full-text search is in scope for all three dialect families: PostgreSQL, SQLite and MySQL/MariaDB. Whether it is one portable API, per-dialect APIs, or both is an open decision (see Open questions); the items below hold either way.
+Full-text search is in scope for all three dialect families: PostgreSQL, SQLite and MySQL/MariaDB. The API is a portable layer for the common subset plus first-class dialect builders (decision Q1); the portable layer covers all-words, phrase, exclusion, prefix, ranking and snippets, and anything beyond that is dialect-specific.
 
 - [S-1] Query predicates: a match predicate usable in Where on PostgreSQL, SQLite and MySQL/MariaDB, rendering `@@` with tsvector/tsquery, FTS5 `MATCH`, and `MATCH(cols) AGAINST(? ...)` respectively.
 - [S-2] Rank expressions: a relevance expression usable in OrderBy and Columns on each dialect (ts_rank, ts_rank_cd, bm25, and the MATCH relevance value), with the documented rule that scores are only comparable within one dialect and one query.
 - [S-3] Query text handling: user input is always a bound parameter, and a documented translation (or deliberate non-translation) from the user's query text to each dialect's syntax, so that raw user input never raises a driver syntax error unless the caller chose the raw syntax.
 - [S-4] Schema declaration: a way to declare on the model that a column (or set of columns) is searchable, and the `schema.Index` / `schema.Table` representation that carries it (`schema/schema.go`).
 - [S-5] PostgreSQL migrations: from the declaration, render a GIN index (on a stored tsvector generated column, or on an expression), with the text search configuration pinned, diffing and applying with no drift.
-- [S-6] SQLite migrations: from the declaration, create, alter, drop and keep in sync an FTS5 virtual table for the model table, with the sync mechanism chosen under Open questions.
+- [S-6] SQLite migrations: from the declaration, create, alter, drop and keep in sync an FTS5 virtual table for the model table, with the sync mechanism decided in Q4 (external content with triggers).
 - [S-7] MySQL/MariaDB migrations: from the declaration, render `FULLTEXT` indexes (single and multi-column), with `WITH PARSER ngram` where requested.
 - [S-8] Inspection: `momo migrate` inspection and `generate --from-db` recognise these structures on each dialect and report zero diff against the declaration; the FTS5 virtual table stops being invisible, while its shadow tables stay hidden.
 - [S-9] Query features the common subset covers: phrase, prefix, boolean exclusion, and (per dialect) a snippet or highlight expression.
 - [S-10] Documentation: `docs/fulltext.md` covers all three dialects with a comparison table, and `docs/capabilities.md` and `docs/migrations.md` are updated, with the limits below written down.
+- [S-12] Hybrid search on SQLite and MySQL/MariaDB: `momo.HybridSearch` runs there too, fusing a text leg (FTS5 `MATCH` ordered by bm25 on SQLite, `MATCH ... AGAINST` on MySQL/MariaDB) with a cosine-distance vector leg by reciprocal rank fusion, with the same `HybridSpec` knobs and tie-breaks as on PostgreSQL. The vector leg exists on SQLite (sqlite-vec) and MariaDB 11.8; MySQL 9.x has no distance function, so hybrid there is `ErrUnsupported`.
 - [S-11] Test coverage: unit goldens on every dialect, and integration tests on PostgreSQL, SQLite and MySQL/MariaDB that run real searches (CI only; nothing is run locally).
 
 ## Out of scope
@@ -46,7 +47,7 @@ Full-text search is in scope for all three dialect families: PostgreSQL, SQLite 
 - Making relevance scores comparable across dialects: not possible, and not attempted.
 - Typo tolerance and fuzzy search beyond what the dialect's own full text gives (PostgreSQL `pg_trgm` similarity is a separate feature).
 - A portable tsvector value type on SQLite or MySQL: `types.TSVector` stays a PostgreSQL type (TEXT elsewhere, as today).
-- Hybrid (vector plus text) search on SQLite and MySQL: `momo.HybridSearch` stays PostgreSQL only in this change (see Open questions).
+- A vector leg on MySQL 9.x: the server stores `VECTOR` values but has no distance function (`docs/vectors.md`), so this change adds none. Weighted fusion other than RRF, and fusing more than two legs, are also out.
 - Changing existing `fts` behaviour on PostgreSQL. Existing builders keep their names, signatures and SQL (the goldens in `fts/fts_test.go` pin them).
 - Writing any library code before this spec is approved.
 
@@ -61,7 +62,7 @@ Full-text search is in scope for all three dialect families: PostgreSQL, SQLite 
 
 ## Interfaces
 
-The proposed shape below is the recommendation. Choices inside it that are real design decisions are listed under Open questions (Q1 to Q10) and are not decided by this section. All names below are proposals; none exist yet.
+The shape below follows the decisions Q1 to Q10 recorded under Decisions. The identifiers are proposals; none exist yet.
 
 ### Go query API
 
@@ -164,6 +165,25 @@ MySQL/MariaDB (S-7). `CREATE FULLTEXT INDEX <name> ON <table> (c1, c2) [WITH PAR
 - MySQL: `INDEX_TYPE = 'FULLTEXT'` (already selected in `qIndexesMySQL` and `qIndexesMariaDB` in `migrate/mysql/inspect.go`) maps to `Method: "fulltext"` and to the full-text description; a parser name is read from `SHOW CREATE TABLE`.
 - `generate --from-db` emits the config call (or the search tag when defaults suffice), and the `fulltext`/`spatial` skip in `gen/schema.go` still applies to the index-column check.
 
+### Hybrid search on SQLite and MySQL/MariaDB (S-12)
+
+Vector backends that exist today (`docs/vectors.md`, `docs/capabilities.md`):
+
+- PostgreSQL: pgvector, cosine through `vecop.Cosine`; the existing `momo.HybridSearch` (`select_hybrid.go`).
+- SQLite: sqlite-vec v0.1.6 through `driver/sqlitedriver` (cgo, not Windows); float32 `vector.Vector` stored as a BLOB, `vec_distance_cosine`, brute-force scan (no ANN index), `SQLiteVectorType` for the column.
+- MariaDB 11.8: `VECTOR(N)` column (from 11.7), Euclidean and cosine distance, `VECTOR INDEX`.
+- MySQL 9.x: `VECTOR` storage only; distance is `ErrUnsupported`, so there is no vector leg.
+
+Fusion method: the existing reciprocal rank fusion, unchanged. Each leg picks its own candidates (`TextCandidates` by text rank, `VectorCandidates` by cosine distance), ranks them, and a row scores the sum of `1/(RRFK + rank)` over the legs it appears in. Defaults (100 candidates, `RRFK` 60, limit 1 to 1000) and the tie-break (score then primary key ascending, within each leg and in the final order) are the same as on PostgreSQL, so the same `HybridSpec` gives the same fused order for the same per-leg rankings on every dialect. The statement is one SQL statement of CTEs with `row_number()` and a full outer join emulation, as on PostgreSQL. MySQL 8.0, MariaDB 11.8 and SQLite 3.25 or newer have CTEs and window functions. SQLite and MySQL have no `FULL OUTER JOIN`, so the fusion is a `UNION ALL` of the two legs grouped by primary key, summing the per-leg terms.
+
+Per-dialect legs:
+
+- SQLite: text leg is the FTS5 table of the model's search declaration, `MATCH` with the translated web-style query, ordered by bm25 ascending (best first) then primary key; vector leg is `vec_distance_cosine(col, ?)` ordered ascending then primary key, limited to the candidate count.
+- MariaDB: text leg is `MATCH(cols) AGAINST(? IN BOOLEAN MODE)` ordered by the MATCH relevance descending then primary key; vector leg is the cosine distance builder ordered ascending, which the `VECTOR INDEX` can serve.
+- MySQL 9.x: `ErrUnsupported` at build time naming the missing vector distance (the text leg alone is a plain search, not hybrid).
+
+API: `HybridSpec` keeps its fields. `Query` is read as the web-style query on every dialect (on PostgreSQL it is already `websearch_to_tsquery` input). `TextConfig` stays required on PostgreSQL and is ignored on the other dialects (a value there is not an error). `Text` must be a column covered by the model's search declaration (or, on PostgreSQL, any text column, as now). `Vector` is the dense vector column. The column types are `vector.Vector` on all dialects. `HybridSearch` stops returning `ErrUnsupported` on SQLite and MariaDB; it keeps doing so on MySQL, and on any dialect where the text declaration or the vector backend is missing.
+
 ## Data
 
 Where the index data lives, per dialect:
@@ -188,6 +208,12 @@ Where the index data lives, per dialect:
 - Size limits: a PostgreSQL tsvector is limited to 1 MB per value (an oversized value is a database error, not silent truncation); a MySQL FULLTEXT index covers at most 16 columns.
 - Collation and case. FTS5 `unicode61` is case-insensitive and removes diacritics by default; PostgreSQL uses the dictionary's folding (`english` lowercases but keeps diacritics unless `unaccent` is added); MySQL follows the column collation. The same text therefore matches differently across dialects; documented, not normalised.
 - Repeated use of one call: each use of a search expression in one statement binds its own arguments, the existing `fts` limit with GROUP BY and DISTINCT documented in `docs/fulltext.md`; the portable score carries the same note.
+- Hybrid, text rank scales. RRF uses ranks, not scores, so bm25 (negative, lower is better), MATCH relevance and `ts_rank_cd` need no normalisation to fuse; this is why RRF is kept as the only method. Ties within a leg break by primary key, so the fused order is stable across runs.
+- Hybrid, cut-off ties. The vector leg orders by distance alone, so when rows tie on distance at the candidate cut-off, which become candidates is not defined; sqlite-vec brute force has no ANN recall loss, MariaDB `VECTOR INDEX` is approximate, so the same data can fuse differently on the two.
+- Hybrid, empty legs. A query that matches no text (or is empty after escaping) leaves the text leg empty and the result is the vector leg alone with scores `1/(RRFK + rank)`; a NULL embedding or a row whose cosine distance is NULL or NaN (a zero vector) is skipped by the vector leg. A row in only one leg still appears.
+- Hybrid, MySQL FULLTEXT limits. The text leg inherits the stop-word and minimum-token-size limits of MATCH, and InnoDB FULLTEXT sees only committed rows, so a row inserted in the same transaction appears in the vector leg only.
+- Hybrid, soft deletes and keys. Soft-deleted rows are excluded from both legs, as on PostgreSQL; the model needs a single-column primary key (the FTS5 content rowid needs an integer one, S-6).
+- Hybrid, dimension and types. A query vector whose length differs from the column dimension is `ErrValidation`, as on PostgreSQL; on SQLite the column's length CHECK (`SQLiteVectorType`) keeps stored vectors the right size.
 - Soft deletes and tenancy: the search predicate composes with the soft-delete filter and tenant scope like any predicate. Soft-deleted rows stay in the index; the filter on the base table hides them.
 
 ## Failure modes
@@ -200,6 +226,8 @@ Where the index data lives, per dialect:
 - Index out of sync (SQLite external content with a missing or bypassed trigger): queries return stale or missing rows, and a delete of a base row can raise `database disk image is malformed` on the next FTS5 delete. Recovery is the `'rebuild'` command, and `'integrity-check'` detects it. `momo migrate drift` reports a missing or altered sync trigger as drift.
 - Migration that cannot be applied in place: a changed tokenizer on SQLite, a changed config on PostgreSQL (the generated column expression changes, forcing a column rewrite and an index rebuild under an `ACCESS EXCLUSIVE` lock), a parser change on MySQL (index rebuild with table copy). The diff marks these and `migrate lint` flags them; on PostgreSQL index creation can use `CONCURRENTLY` with `-- momo:no-transaction` through the existing `Concurrently` index option.
 - Large rebuilds: a first FULLTEXT or GIN index on a big table blocks or is slow; documented, with `-- momo:no-transaction` and `CONCURRENTLY` as the mitigations.
+- Hybrid without the pieces: `HybridSearch` on MySQL 9.x, on SQLite without sqlite-vec loaded, on MariaDB before 11.7, or against a text column with no search declaration returns `ErrUnsupported` (or `ErrValidation` for the missing declaration) naming the missing piece; it never degrades silently to a text-only or vector-only search.
+- Hybrid statement size: the fused statement binds the query text, the query vector, the candidate counts, `RRFK` and the limit; the vector bind is one parameter, so `MaxParams` is not a concern. A SQLite build that lacks window functions is not supported (SQLite 3.25 or newer is required, which every driver in `driver/` ships).
 - Replica lag: MySQL FULLTEXT on a replica sees data only after replication commit, the same as any other data.
 
 ## Acceptance criteria
@@ -242,15 +270,36 @@ The criteria are written against the recommended design. An answer to an open qu
 - [ ] [S-10] `docs/fulltext.md` contains a per-dialect comparison table (index type, query syntax, ranking direction, stop words, minimum token length, phrase, prefix, snippet, transaction visibility), and the full-text row of `docs/capabilities.md` shows support on all three dialects. Proved by the docs check job (`docscheck` fragments and `internal/gendocs`); fails if a fragment does not compile or the generated capabilities table is stale.
 - [ ] [S-10] `docs/migrations.md` describes the declaration, the structures each dialect creates, the SQLite rebuild command and the MySQL `FTS_DOC_ID` table rebuild. Proved by the docs check job; fails if the section is missing or a fragment fails to compile.
 
+- [ ] [S-12] On SQLite (sqlite-vec) and MariaDB 11.8, `momo.HybridSearch` over a fixed seed returns rows ordered by the RRF score, where a row in both legs outranks a row in one, and the scores equal the sum of `1/(RRFK + rank)` computed independently in the test from each leg's ranking. Proved by `TestHybridSearchFusionSQLiteMariaDB` (integration, both dialects); fails if the order or any score differs from the independent computation.
+- [ ] [S-12] Ties break by primary key ascending in each leg and in the final order, and the result is identical for the same data inserted in two different orders. Proved by `TestHybridSearchTieBreakPortable`; fails if the order depends on insertion order.
+- [ ] [S-12] A query that matches no text returns the vector leg alone with scores `1/(RRFK + rank)`, and a row with a NULL embedding is never returned from the vector leg. Proved by `TestHybridSearchEmptyTextLegPortable`; fails if the result is empty or a NULL-embedding row appears through the vector leg.
+- [ ] [S-12] `HybridSearch` on MySQL 9.x returns an error wrapping `ErrUnsupported` that names the missing vector distance, and sends no SQL; it never returns a text-only result. Proved by `TestHybridSearchMySQLUnsupported`; fails if any statement is sent or another error kind is returned.
+- [ ] [S-12] Hybrid on a text column with no search declaration returns `ErrValidation` naming the column on SQLite and MariaDB, and the `HybridSpec` validation of candidates (1 to 1000), `RRFK` (at least 1), `Limit` (1 to 1000) and query vector dimension gives the same errors as on PostgreSQL. Proved by `TestHybridSpecValidationPortable`; fails if any case builds SQL or returns a different kind.
+- [ ] [S-12] The rendered SQL and argument list of the hybrid statement are pinned for SQLite and MariaDB, and the existing PostgreSQL statement is unchanged. Proved by `TestHybridSearchGoldenPortable` plus the existing `select_hybrid_test.go` goldens staying green; fails if the PostgreSQL SQL text changes.
+- [ ] [S-12] Soft-deleted rows are excluded from both legs on SQLite and MariaDB. Proved by `TestHybridSearchSoftDeletePortable`; fails if a soft-deleted row is returned through either leg.
+- [ ] [S-12] `docs/vectors.md` and `docs/fulltext.md` describe hybrid on the three dialects, and `docs/capabilities.md` shows hybrid as supported on SQLite and MariaDB and unsupported on MySQL. Proved by the docs check job; fails if the generated capabilities table is stale or a fragment does not compile.
+
+## Decisions
+
+Decision (2026-11-15, the user, via AskUserQuestion; Q2 to Q10 below were answered the same way). Q1: a portable layer (search predicate, score, snippet, and web/plain/raw query constructors) for the common subset, plus first-class dialect builders for everything beyond it. See Interfaces, Go query API.
+
+Q2 (decided): the declaration is a full-text description on `schema.Index` (Method `"fulltext"` plus config, weights, tokenizer, parser). The SQLite FTS5 table and triggers are derived by the SQLite renderer, not stored as tables in the snapshot. See Interfaces, Schema declaration and Migrations.
+
+Q3 and Q10 (decided): PostgreSQL gets a stored generated tsvector column plus GIN by default, with an expression index as an option. PostgreSQL 12 or newer is required for the declarative feature only; the existing `fts` builders keep working on older versions. The config is pinned as a literal in the generated expression. See Constraints and Interfaces, Migrations.
+
+Q4 (decided): SQLite uses an external-content FTS5 table (`content='<table>', content_rowid='<pk>'`) with momo-generated insert, update and delete triggers. See Interfaces, Migrations and Edge cases.
+
+Q5 (decided): the portable layer translates a websearch-style syntax per dialect with escaping, and offers the raw form as the escape hatch. See Interfaces, Go query API.
+
+Q6 (decided): the portable score is higher-is-better (bm25 negated), comparable only within one query on one dialect, with no numeric threshold and weights as a per-column option. `migrate lint` warns (not errors) for adding the first InnoDB FULLTEXT index, for a changed PostgreSQL config, and for a PostgreSQL search whose config differs from the index. See Edge cases and Failure modes.
+
+Q7 (decided): the portable web-style query uses BOOLEAN MODE on MySQL/MariaDB; natural language mode and query expansion are reachable only through the MySQL-specific builder.
+
+Q8 (decided): one search declaration per table, covering one or more text columns. Extra independent indexes on the same table are allowed only through the explicit dialect forms (`Method("fulltext")`).
+
+Q9 (decided, overriding the proposal to defer it): hybrid (text plus vector) search is in scope for SQLite and MySQL/MariaDB in this feature, as fusion over the FTS5 or MATCH text leg and the existing vector builders. See In scope [S-12], Interfaces, Hybrid search on SQLite and MySQL/MariaDB, and the criteria citing S-12.
+
 ## Open questions
 
-- OPEN: Q1. Portable API or dialect-specific escape hatches? Recommendation: both. A small portable layer (search predicate, score, snippet, and web/plain/raw query constructors) for the common subset (all-words, phrase, exclusion, prefix, ranking), plus first-class dialect builders for everything beyond it (the existing PostgreSQL `fts.*`, new FTS5 match and bm25, new MySQL match with modes). Alternatives: (a) per-dialect builders only, no portable layer: simplest and exact, but multi-dialect apps and `testopen.Each` suites cannot write one search; (b) portable layer only: hides the knobs users need (MySQL modes, bm25 weights, PostgreSQL normalization).
-- OPEN: Q2. Where does the declaration live in the schema model? Recommendation: a new full-text description on `schema.Index` (Method `"fulltext"` plus config, weights, tokenizer, parser), with the SQLite virtual table and triggers derived by the SQLite renderer from it, not stored as separate tables in the snapshot. Alternatives: (a) model the FTS5 virtual table as a `schema.Table` with a virtual flag and its own columns and triggers (more general, would also fit other virtual tables, but the snapshot duplicates content columns and the diff must understand two tables); (b) keep only the existing `Index.Method` strings and put everything in `With` key/value pairs (no schema change, but weights and the SQLite virtual table do not fit, and typos are not caught).
-- OPEN: Q3. On PostgreSQL, generated tsvector column or expression GIN index? Recommendation: stored generated column plus GIN on it as the default (fast recheck, rank and headline can reuse the stored vector, replaces the hand-written trigger), with an option for an expression index when the extra column cost matters. Requires PostgreSQL 12 or newer. Alternatives: (a) expression index only (no extra column and no table rewrite on adding, but `to_tsvector` is recomputed for rank and recheck, and the query expression must match the index text exactly); (b) keep the trigger recipe as the only way, no declarative feature on PostgreSQL.
-- OPEN: Q4. SQLite FTS5 sync mechanism: external-content table with triggers, or a standalone or contentless table? Recommendation: external content (`content='<table>', content_rowid='<pk>'`) with momo-generated insert, update and delete triggers, because it does not duplicate the text, stays in sync under any write path including raw SQL, and keeps `snippet()` and `highlight()` working. Alternatives: (a) standalone FTS5 table that stores its own copy of the text (simplest sync, doubles storage, can drift on bypass); (b) contentless (`content=''`): smallest, but no `snippet()` or `highlight()`, rows cannot be deleted or updated by value, and a different delete protocol; (c) no triggers, the application calls a sync helper (no schema objects to diff, but easy to forget, so it drifts).
-- OPEN: Q5. Query syntax: translate a websearch-style syntax on every dialect, or pass raw per-dialect syntax? Recommendation: translate in the portable layer (words ANDed, `"phrase"`, `OR`, `-exclude`, trailing `*`) with escaping per dialect so user input never errors, and offer the raw form as the escape hatch. Alternatives: (a) raw only: transparent and no translation bugs, but a search box on FTS5 or MySQL BOOLEAN MODE gets syntax errors and operator injection from user input; (b) plain only (words ANDed): safest and tiny, but no phrase or exclusion.
-- OPEN: Q6. Is ranking exposed portably, and how are index-build costs flagged? Recommendation: expose a portable score as "higher is better, comparable only within one query on one dialect" (bm25 negated), with weights as a per-column option, and no numeric threshold. For build cost, add `migrate lint` warnings (not errors) for adding the first InnoDB FULLTEXT index (table rebuild), for a changed PostgreSQL config (column rewrite) and for a PostgreSQL search whose config differs from the index. Alternatives: (a) no portable ranking, only the dialect functions (honest, but a multi-dialect app cannot order by relevance once); (b) normalise scores to 0..1 per query (false precision, hides bm25 and MATCH differences, costs a window function); (c) make the lint rules errors that need an `--allow-slow-index` flag.
-- OPEN: Q7. Which MySQL/MariaDB mode does the portable API use? Recommendation: BOOLEAN MODE for the web-style query (the only mode with phrase, exclusion and prefix), with NATURAL LANGUAGE MODE and query expansion reachable only through the MySQL-specific builder. Alternatives: (a) NATURAL LANGUAGE for the plain query so it gets natural-language relevance, so plain and web queries differ in mode on MySQL; (b) expose the modes in the portable API (leaks a MySQL concept into code meant to be portable).
-- OPEN: Q8. How many search declarations per table, and may one cover several columns? Recommendation: one declaration per table covering one or more text columns (one tsvector column, one FTS5 table, one FULLTEXT index over those columns), because FTS5 and the generated column are per-table structures; extra independent indexes on the same table (a title-only FULLTEXT index on MySQL, say) are allowed only through the explicit dialect forms (`Method("fulltext")`). Alternatives: (a) several named declarations per table, each producing its own structure (more flexible, multiplies FTS5 tables and triggers); (b) one declaration per column (simple, but a cross-column match needs a join or concatenation).
-- OPEN: Q9. Should hybrid search (text plus vector) extend to SQLite and MySQL/MariaDB in this change? Recommendation: no. Keep `momo.HybridSearch` PostgreSQL only and revisit after this lands, since the SQLite (sqlite-vec) and MariaDB vector legs have different distance semantics and need a fusion implementation of their own. Alternative: include an RRF fusion across FTS5 or MATCH and the existing vector builders now (a bigger change that deserves its own spec).
-- OPEN: Q10. PostgreSQL minimum version and the config pinned in the declaration. Recommendation: require PostgreSQL 12 or newer for the declarative feature only (the existing `fts` builders keep working on older versions) and pin the config as a literal in the generated column expression, so the migration is deterministic. Alternatives: (a) support PostgreSQL 11 by generating the trigger form from the declaration (more code paths, and it is what users write by hand today); (b) take the config from a database or role default (non-deterministic, not allowed in a generated column).
+<!-- All ten questions are resolved; see Decisions above. -->
+
