@@ -24,6 +24,8 @@ import (
 // stored generated tsvector column with a GIN index on PostgreSQL, an
 // external-content FTS5 table on SQLite.
 
+var artID = momo.NewColumn[int64]("articles", "id", 0)
+
 // artIDRow projects the id of an article.
 type artIDRow struct{ ID int64 }
 

@@ -42,15 +42,26 @@ var articleMeta = momo.Meta[article]{
 func (a *article) MomoMeta() *momo.Meta[article] { return &articleMeta }
 
 var (
-	artID    = momo.NewColumn[int64]("articles", "id", 0)
 	artTitle = momo.NewColumn[string]("articles", "title", 0)
 	artBody  = momo.NewColumn[string]("articles", "body", 0)
 )
 
+// oneValue projects a single select-list expression.
+type oneValue struct{ V any }
+
+var oneValueMeta = momo.Meta[oneValue]{
+	Columns:  []momo.ColumnMeta{{Name: "v"}},
+	Ptr:      func(m *oneValue, i int) any { return &m.V },
+	Value:    func(m *oneValue, i int) any { return m.V },
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+}
+
+func (*oneValue) MomoMeta() *momo.Meta[oneValue] { return &oneValueMeta }
+
 func compileFor(t *testing.T, d dialect.Name, e momo.Expr, p momo.Predicate) (momo.Compiled, error) {
 	t.Helper()
 	db := momo.New(fakedriver.New(d))
-	q := momo.Select[article](db).From(momo.TableRef{Name: "articles"}).Columns(e)
+	q := momo.Select[oneValue](db).From(momo.TableRef{Name: "articles"}).Columns(e)
 	if p != nil {
 		q = q.Where(p)
 	}
