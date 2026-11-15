@@ -69,8 +69,8 @@ func TestMergeEmulationGoldenSQLite(t *testing.T) {
 		`INSERT INTO "momo_merge_pairs" SELECT "src"."momo_merge_row" AS "src_row", "mrg_rows"."id" AS "k0", src.val AS "v0" FROM "mrg_rows", "momo_merge_src" AS "src" WHERE "mrg_rows"."k" = src.k`,
 		`SELECT 1 FROM "momo_merge_pairs" GROUP BY "k0" HAVING COUNT(*) > 1 LIMIT 1`,
 		`SELECT COUNT(*) FROM "momo_merge_pairs"`,
-		`UPDATE "mrg_rows" SET "val" = "n"."v0", "version" = "mrg_rows"."version" + 1 FROM "momo_merge_pairs" AS "n" WHERE "mrg_rows"."id" = "n"."k0"`,
-		`INSERT INTO "mrg_rows" ("id", "k", "val") SELECT src.id, src.k, src.val FROM "momo_merge_src" AS "src" WHERE NOT EXISTS (SELECT 1 FROM "momo_merge_pairs" AS "n" WHERE "n"."src_row" = "src"."momo_merge_row")`,
+		`UPDATE "mrg_rows" SET "val" = "momo_merge_p"."v0", "version" = "mrg_rows"."version" + 1 FROM "momo_merge_pairs" AS "momo_merge_p" WHERE "mrg_rows"."id" = "momo_merge_p"."k0"`,
+		`INSERT INTO "mrg_rows" ("id", "k", "val") SELECT src.id, src.k, src.val FROM "momo_merge_src" AS "src" WHERE NOT EXISTS (SELECT 1 FROM "momo_merge_pairs" AS "momo_merge_p" WHERE "momo_merge_p"."src_row" = "src"."momo_merge_row")`,
 		dropSrc,
 		dropPairs,
 	})
@@ -94,7 +94,7 @@ func TestMergeEmulationCompositeKeySQL(t *testing.T) {
 	}()
 	hasAll(t, got[4], `"mrg_pairs"."a" AS "k0", "mrg_pairs"."b" AS "k1", src.v AS "v0"`)
 	hasAll(t, got[5], `GROUP BY "k0", "k1" HAVING COUNT(*) > 1`)
-	hasAll(t, got[7], `WHERE "mrg_pairs"."a" = "n"."k0" AND "mrg_pairs"."b" = "n"."k1"`)
+	hasAll(t, got[7], `WHERE "mrg_pairs"."a" = "momo_merge_p"."k0" AND "mrg_pairs"."b" = "momo_merge_p"."k1"`)
 }
 
 // Catches: bound values lost or reordered between the statements: the source's
@@ -131,8 +131,8 @@ func TestMergeEmulationGoldenMySQLAndMariaDB(t *testing.T) {
 		"INSERT INTO `momo_merge_pairs` SELECT `src`.`momo_merge_row` AS `src_row`, `mrg_rows`.`id` AS `k0`, src.val AS `v0` FROM `mrg_rows`, `momo_merge_src` AS `src` WHERE `mrg_rows`.`k` = src.k FOR UPDATE",
 		"SELECT 1 FROM `momo_merge_pairs` GROUP BY `k0` HAVING COUNT(*) > 1 LIMIT 1",
 		"SELECT COUNT(*) FROM `momo_merge_pairs`",
-		"UPDATE `mrg_rows`, `momo_merge_pairs` AS `n` SET `mrg_rows`.`val` = `n`.`v0`, `mrg_rows`.`version` = `mrg_rows`.`version` + 1 WHERE `mrg_rows`.`id` = `n`.`k0`",
-		"INSERT INTO `mrg_rows` (`id`, `k`, `val`) SELECT src.id, src.k, src.val FROM `momo_merge_src` AS `src` WHERE NOT EXISTS (SELECT 1 FROM `momo_merge_pairs` AS `n` WHERE `n`.`src_row` = `src`.`momo_merge_row`)",
+		"UPDATE `mrg_rows`, `momo_merge_pairs` AS `momo_merge_p` SET `mrg_rows`.`val` = `momo_merge_p`.`v0`, `mrg_rows`.`version` = `mrg_rows`.`version` + 1 WHERE `mrg_rows`.`id` = `momo_merge_p`.`k0`",
+		"INSERT INTO `mrg_rows` (`id`, `k`, `val`) SELECT src.id, src.k, src.val FROM `momo_merge_src` AS `src` WHERE NOT EXISTS (SELECT 1 FROM `momo_merge_pairs` AS `momo_merge_p` WHERE `momo_merge_p`.`src_row` = `src`.`momo_merge_row`)",
 		dropSrc,
 		dropPairs,
 	}
@@ -152,9 +152,12 @@ func TestMergeEmulationRunsOnlyTheClausesGiven(t *testing.T) {
 	}
 	updOnly := statementSQL(t, momo.Merge[mrgRow](db, mrgSource()).On(mrgOn()).
 		WhenMatchedUpdate(mrgN.SetExpr(momo.TypedSQL[int64]("src.n"))))
-	if len(updOnly) != 10 || !strings.HasPrefix(updOnly[7], "UPDATE ") || slices.ContainsFunc(updOnly, func(s string) bool { return strings.HasPrefix(s, "INSERT") }) {
-		t.Errorf("update only = %v, want 2 drops, 2 creates, check, count, update, 2 drops", updOnly)
+	if len(updOnly) != 10 || !strings.HasPrefix(updOnly[7], "UPDATE ") || slices.ContainsFunc(updOnly, func(s string) bool { return strings.HasPrefix(s, `INSERT INTO "mrg_rows"`) }) {
+		t.Errorf("update only = %v, want 2 drops, 3 setups, check, count, update, 2 drops and no insert into the target", updOnly)
 	}
+	// The assigned column is named n: the pairs table keeps its reserved alias,
+	// so "n" never means two things.
+	hasAll(t, updOnly[7], `SET "n" = "momo_merge_p"."v0"`, `FROM "momo_merge_pairs" AS "momo_merge_p" WHERE "mrg_rows"."id" = "momo_merge_p"."k0"`)
 }
 
 // Catches: RETURNING being emulated from a pre-update snapshot (wrong rows) or

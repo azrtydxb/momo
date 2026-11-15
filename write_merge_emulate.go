@@ -21,6 +21,10 @@ const (
 	// that On joins, with the new value of every assigned column computed from
 	// the target row as it was before any write.
 	mergePairsTable = "momo_merge_pairs"
+	// mergePairsAlias is the fixed alias of the pairs table in the UPDATE and
+	// the INSERT. It is reserved: never derive an alias from a column name, or a
+	// target column of that name would collide with it.
+	mergePairsAlias = "momo_merge_p"
 	mergePairRow    = "src_row"
 	mergePairKey    = "k"
 	mergePairValue  = "v"
@@ -135,7 +139,7 @@ func (m MergeQuery[T]) emulation() ([]mergeStep, error) {
 	var buildErr error
 	add := func(kind mergeStepKind, fn func(b *Builder)) {
 		c, err := compile(d, func(b *Builder) {
-			b.withScope([]string{target.Qualifier(), "src", "n"}, func() { fn(b) })
+			b.withScope([]string{target.Qualifier(), "src", mergePairsAlias}, func() { fn(b) })
 		})
 		if err != nil && buildErr == nil {
 			buildErr = err
@@ -256,7 +260,7 @@ func (m MergeQuery[T]) emulation() ([]mergeStep, error) {
 			target.appendFrom(b)
 			if mysql {
 				b.WriteString(", ")
-				from(b, mergePairsTable, "n")
+				from(b, mergePairsTable, mergePairsAlias)
 			}
 			b.WriteString(" SET ")
 			for i, a := range mp.sets {
@@ -265,7 +269,7 @@ func (m MergeQuery[T]) emulation() ([]mergeStep, error) {
 				}
 				b.QualifiedIdent(qual, a.col)
 				b.WriteString(" = ")
-				b.QualifiedIdent("n", val(i))
+				b.QualifiedIdent(mergePairsAlias, val(i))
 			}
 			if vi := m.meta.Version; vi >= 0 {
 				b.WriteString(", ")
@@ -276,7 +280,7 @@ func (m MergeQuery[T]) emulation() ([]mergeStep, error) {
 			}
 			if !mysql {
 				b.WriteString(" FROM ")
-				from(b, mergePairsTable, "n")
+				from(b, mergePairsTable, mergePairsAlias)
 			}
 			b.WriteString(" WHERE ")
 			for i, ci := range m.meta.PK {
@@ -285,7 +289,7 @@ func (m MergeQuery[T]) emulation() ([]mergeStep, error) {
 				}
 				b.QualifiedIdent(target.Qualifier(), m.meta.Columns[ci].Name)
 				b.WriteString(" = ")
-				b.QualifiedIdent("n", pk(i))
+				b.QualifiedIdent(mergePairsAlias, pk(i))
 			}
 		})
 	}
@@ -314,9 +318,9 @@ func (m MergeQuery[T]) emulation() ([]mergeStep, error) {
 			b.WriteString(" FROM ")
 			from(b, mergeSnapshotTable, "src")
 			b.WriteString(" WHERE NOT EXISTS (SELECT 1 FROM ")
-			from(b, mergePairsTable, "n")
+			from(b, mergePairsTable, mergePairsAlias)
 			b.WriteString(" WHERE ")
-			b.QualifiedIdent("n", mergePairRow)
+			b.QualifiedIdent(mergePairsAlias, mergePairRow)
 			b.WriteString(" = ")
 			b.QualifiedIdent("src", mergeRowColumn)
 			b.writeByte(')')
