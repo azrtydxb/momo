@@ -164,7 +164,7 @@ func TestFullTextPostgresConcurrentConfigChange(t *testing.T) {
 	var d Dialect
 	from, _ := d.ExpandSchema(concurrentArticles("english", nil))
 	to, _ := d.ExpandSchema(concurrentArticles("simple", []string{"A", "B"}))
-	changes, _, err := migrate.Diff(from, to, migrate.DiffOptions{AllowDestructive: true})
+	changes, _, err := migrate.Diff(from, to, migrate.DiffOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

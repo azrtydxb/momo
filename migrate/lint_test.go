@@ -4,6 +4,36 @@ package migrate
 
 import "testing"
 
+// Catches: a column that is dropped and added again as a generated column being
+// reported as data loss, and the exemption leaking to a plain drop, to another
+// column, or to a column added back as an ordinary one.
+func TestLintDropRegeneratedColumn(t *testing.T) {
+	parent := map[string]bool{"docs": true}
+	drop := Statement{SQL: `ALTER TABLE "docs" DROP COLUMN "docs_tsv"`}
+	regen := Statement{SQL: `ALTER TABLE "docs" ADD COLUMN "docs_tsv" tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce("title", ''))) STORED`}
+	other := Statement{SQL: `ALTER TABLE "docs" ADD COLUMN "other_tsv" tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce("title", ''))) STORED`}
+	plain := Statement{SQL: `ALTER TABLE "docs" ADD COLUMN "docs_tsv" tsvector`}
+	for name, c := range map[string]struct {
+		stmts []Statement
+		want  int
+	}{
+		"regenerated":       {[]Statement{drop, regen}, 0},
+		"plain drop":        {[]Statement{drop}, 1},
+		"another column":    {[]Statement{drop, other}, 1},
+		"added as ordinary": {[]Statement{drop, plain}, 1},
+	} {
+		got := 0
+		for _, f := range LintSQL("v", c.stmts, parent, "postgres") {
+			if f.Rule == RuleDestructiveWithoutDirective {
+				got++
+			}
+		}
+		if got != c.want {
+			t.Errorf("%s: %d destructive findings, want %d", name, got, c.want)
+		}
+	}
+}
+
 func TestMigrateLint(t *testing.T) {
 	parent := map[string]bool{"docs": true}
 	cases := []struct {

@@ -37,7 +37,7 @@ func splitArticles(ft *schema.FullText, concurrently bool) *schema.Schema {
 func splitDiff(t *testing.T, dir fstest.MapFS, want *schema.Schema, name string, at time.Time) *migrate.Migration {
 	t.Helper()
 	e := migratetest.NewEngine(t, mpg.New(), nil, dir, migrate.WithClock(func() time.Time { return at }))
-	m, err := e.Diff(context.Background(), want, name, migrate.DiffOptions{AllowDestructive: true})
+	m, err := e.Diff(context.Background(), want, name, migrate.DiffOptions{})
 	if err != nil || m == nil {
 		t.Fatalf("diff %s: %v %v", name, m, err)
 	}
@@ -55,7 +55,10 @@ func sqlOf(stmts []migrate.Statement) string {
 	return strings.Join(out, ";\n")
 }
 
-func noBlockingIndex(t *testing.T, m *migrate.Migration) {
+// noLintErrors requires every generated migration of m to lint without an
+// error-severity finding; warnings are allowed. LintSQL sees the migration
+// without a -- momo:destructive directive, as a generated one has none.
+func noLintErrors(t *testing.T, m *migrate.Migration) {
 	t.Helper()
 	parents := map[string]bool{"articles": true}
 	for _, mm := range []*migrate.Migration{m, m.Next} {
@@ -63,8 +66,8 @@ func noBlockingIndex(t *testing.T, m *migrate.Migration) {
 			continue
 		}
 		for _, f := range migrate.LintSQL(mm.Version, mm.Up, parents, "postgres") {
-			if f.Rule == migrate.RuleBlockingIndex {
-				t.Errorf("migration %s: lint reports %s: %s", mm.Version, f.Rule, f.Message)
+			if f.Severity == migrate.SeverityError {
+				t.Errorf("migration %s: lint error %s: %s", mm.Version, f.Rule, f.Message)
 			}
 		}
 	}
@@ -104,7 +107,7 @@ func TestFullTextConcurrentlyOnExistingTable(t *testing.T) {
 	if !strings.Contains(tailFile, "-- momo:no-transaction") {
 		t.Errorf("the concurrent index file lacks -- momo:no-transaction:\n%s", tailFile)
 	}
-	noBlockingIndex(t, m)
+	noLintErrors(t, m)
 }
 
 // Catches: a config and weights change of a concurrent declaration being refused
@@ -131,7 +134,7 @@ func TestFullTextConcurrentlyConfigChangeSplit(t *testing.T) {
 	if tail != `CREATE INDEX CONCURRENTLY "articles_search" ON "articles" USING gin ("articles_search_tsv")` {
 		t.Errorf("tail:\n%s", tail)
 	}
-	noBlockingIndex(t, m)
+	noLintErrors(t, m)
 }
 
 // Catches: the change leaking into declarations that are not concurrent, which

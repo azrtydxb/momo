@@ -71,7 +71,7 @@ func ftStep(t *testing.T, drv momo.Driver, dir fstest.MapFS, want *schema.Schema
 	t.Helper()
 	ctx := context.Background()
 	gen := migratetest.NewEngine(t, mpg.New(), drv, dir, migrate.WithClock(func() time.Time { return at }))
-	m, err := gen.Diff(ctx, want, name, migrate.DiffOptions{AllowDestructive: true})
+	m, err := gen.Diff(ctx, want, name, migrate.DiffOptions{})
 	if err != nil || m == nil {
 		t.Fatalf("diff %s: %v %v", name, m, err)
 	}
@@ -82,7 +82,7 @@ func ftStep(t *testing.T, drv momo.Driver, dir fstest.MapFS, want *schema.Schema
 	if _, err := eng.Apply(ctx, migrate.ApplyOptions{}); err != nil {
 		t.Fatalf("apply %s: %v", name, err)
 	}
-	if again, err := eng.Diff(ctx, want, name+"_again", migrate.DiffOptions{AllowDestructive: true}); err != nil || again != nil {
+	if again, err := eng.Diff(ctx, want, name+"_again", migrate.DiffOptions{}); err != nil || again != nil {
 		t.Fatalf("diff after %s is not empty: %v %v", name, again, err)
 	}
 	return m
@@ -139,6 +139,11 @@ func TestFullTextPostgresConcurrentlyConfigChange(t *testing.T) {
 	if n := ftScalar(t, db.Driver(), `SELECT count(*) FROM articles WHERE articles_search_tsv @@ to_tsquery('simple', 'fox')`); n != 1 {
 		t.Fatalf("english stemming: matches = %d, want 1", n)
 	}
+	// The word "the" is a stop word under english, so it is not in the old vector.
+	mustExec(t, db.Driver(), `INSERT INTO articles (title, body) VALUES ('the', NULL)`)
+	if n := ftScalar(t, db.Driver(), `SELECT count(*) FROM articles WHERE articles_search_tsv @@ to_tsquery('simple', 'the')`); n != 0 {
+		t.Fatalf("english stop word: matches = %d, want 0", n)
+	}
 
 	m := ftStep(t, db.Driver(), dir, splitArticles(&schema.FullText{Columns: []string{"title", "body"}, Config: "simple", Weights: []string{"A", "B"}}, true), "retune", time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
 	if m.Next == nil || !m.Next.NoTx {
@@ -152,5 +157,10 @@ func TestFullTextPostgresConcurrentlyConfigChange(t *testing.T) {
 	}
 	if n := ftScalar(t, db.Driver(), `SELECT count(*) FROM articles WHERE articles_search_tsv @@ to_tsquery('simple', 'foxes')`); n != 1 {
 		t.Fatalf("the vector was not recomputed: %d matches for the word", n)
+	}
+	// Only the simple configuration keeps the stop word, so the row matches only
+	// under the new vector.
+	if n := ftScalar(t, db.Driver(), `SELECT count(*) FROM articles WHERE articles_search_tsv @@ to_tsquery('simple', 'the')`); n != 1 {
+		t.Fatalf("a row that matches only the new configuration: %d matches, want 1", n)
 	}
 }

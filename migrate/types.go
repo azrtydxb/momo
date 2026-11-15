@@ -88,6 +88,7 @@ type Change struct {
 	// Such an expression cannot be altered in place, so a renderer that supports
 	// full-text declarations drops and adds the column again. The mark comes from
 	// the desired schema, so it holds when the change is rendered on its own.
+	// The dialect-agnostic differ sets it; only the PostgreSQL renderer reads it.
 	FullTextColumn bool
 }
 

@@ -53,7 +53,9 @@ than 63 bytes fails with `ErrValidation`. A full-text index declared
 `Concurrently` is built with `CREATE INDEX CONCURRENTLY` in the trailing
 `-- momo:no-transaction` migration; the generated column, and the drop of the
 old index when the declaration changes, stay in the transactional migration
-before it. SQLite refuses an index that carries a declaration with
+before it. That drop is a plain `DROP INDEX`, not `DROP INDEX CONCURRENTLY`: it
+runs inside the transaction that recreates the generated column and holds an
+`ACCESS EXCLUSIVE` lock on the table for that step. SQLite refuses an index that carries a declaration with
 `ErrUnsupported` ("full-text declarations are not rendered yet"), so a model
 that declares it cannot produce or apply a migration there.
 
