@@ -17,9 +17,16 @@ type Query struct {
 }
 
 // Web reads text like a search box: "quoted phrases", -exclusions, OR between
-// words and a trailing * for a prefix. Every other punctuation character is
-// dropped, so no input can raise a syntax error in the database. A bare AND,
-// NOT or NEAR is dropped too. A query without a positive word matches nothing.
+// words and a trailing * for a prefix. Punctuation inside a word splits it
+// (well-known reads as the phrase "well known"), so no input can raise a syntax
+// error in the database. A bare AND, NOT or NEAR is dropped too. A query
+// without a positive word matches nothing.
+//
+// On PostgreSQL a query without a prefix term is bound as given to
+// websearch_to_tsquery, which reads it by its own rules: a lowercase or is an
+// OR too, and a -x binds to its own OR group. SQLite and a PostgreSQL query
+// with a prefix term use the shared parser instead, which reads only an
+// uppercase OR and applies every exclusion to the whole query.
 func Web(text string) Query { return Query{text: text, syntax: ftsquery.Web} }
 
 // Plain reads text as words that must all match; punctuation is ignored.

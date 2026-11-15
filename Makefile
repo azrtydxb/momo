@@ -7,10 +7,10 @@ GO ?= go
 # mattn/go-sqlite3 compiles FTS5 in only with its sqlite_fts5 build tag. The
 # integration tests of the portable full-text search need the module, and the
 # tests pass their own -tags, which would replace a tag set in GOFLAGS, so the
-# define goes in through the cgo flags (the defaults plus FTS5 and libm, which
-# bm25 needs).
-export CGO_CFLAGS := -O2 -g -DSQLITE_ENABLE_FTS5
-export CGO_LDFLAGS := -O2 -g -lm
+# define goes in through the cgo flags, appended to the caller's value (or to
+# the go defaults when it is unset) together with libm, which bm25 needs.
+export CGO_CFLAGS := $(or $(CGO_CFLAGS),-O2 -g) -DSQLITE_ENABLE_FTS5
+export CGO_LDFLAGS := $(or $(CGO_LDFLAGS),-O2 -g) -lm
 # An execution count, not a duration: a time-based -fuzztime puts a deadline on
 # the fuzz coordinator, and when it fires while a worker call is in flight the
 # run fails with "context deadline exceeded" and no crasher (see FuzzBuilder on

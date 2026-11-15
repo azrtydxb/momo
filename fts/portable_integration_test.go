@@ -38,6 +38,21 @@ var artIDRowMeta = momo.Meta[artIDRow]{
 
 func (*artIDRow) MomoMeta() *momo.Meta[artIDRow] { return &artIDRowMeta }
 
+// artScoreRow projects an id and a score.
+type artScoreRow struct {
+	ID    int64
+	Score float64
+}
+
+var artScoreRowMeta = momo.Meta[artScoreRow]{
+	Columns:  []momo.ColumnMeta{{Name: "id"}, {Name: "score"}},
+	Ptr:      func(m *artScoreRow, i int) any { return [...]any{&m.ID, &m.Score}[i] },
+	Value:    func(m *artScoreRow, i int) any { return [...]any{m.ID, m.Score}[i] },
+	Identity: -1, Version: -1, SoftDelete: -1, CreatedAt: -1, UpdatedAt: -1,
+}
+
+func (*artScoreRow) MomoMeta() *momo.Meta[artScoreRow] { return &artScoreRowMeta }
+
 // artSnipRow projects an id and a text.
 type artSnipRow struct {
 	ID   int64
@@ -168,6 +183,40 @@ func TestFullTextScoreOrdering(t *testing.T) {
 		}
 		if !reflect.DeepEqual(got, []int64{3, 2, 1}) {
 			t.Fatalf("score order %v, want [3 2 1]", got)
+		}
+	})
+}
+
+// Catches: a row the query does not match scoring NULL on SQLite, which sorts
+// below every score on one dialect and above it on another, instead of 0.
+func TestFullTextScoreWithoutSearch(t *testing.T) {
+	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		createArticles(t, db, d, [][3]string{
+			{"1", "note", "fox cat dog"},
+			{"2", "note", "fox fox dog"},
+			{"3", "note", "fox fox fox"},
+			{"4", "note", "cat dog bird"},
+			{"5", "note", "bird cat cat"},
+			{"6", "note", "dog dog bird"},
+		})
+		target := fts.Over[article](artTitle, artBody)
+		q := fts.Web("fox")
+		out, err := momo.Select[artIDRow](db).From(momo.TableRef{Name: "articles"}).Columns(artID).
+			OrderBy(fts.Score(target, q).Desc(), artID.Asc()).All(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []int64
+		for _, r := range out {
+			got = append(got, r.ID)
+		}
+		if !reflect.DeepEqual(got, []int64{3, 2, 1, 4, 5, 6}) {
+			t.Fatalf("order by score without a search: %v, want [3 2 1 4 5 6]", got)
+		}
+		sc, err := momo.Select[artScoreRow](db).From(momo.TableRef{Name: "articles"}).
+			Columns(artID, fts.Score(target, q).As("score")).Where(artID.Eq(4)).All(context.Background())
+		if err != nil || len(sc) != 1 || sc[0].Score != 0 {
+			t.Fatalf("score of a non-matching row = %+v, %v; want 0", sc, err)
 		}
 	})
 }

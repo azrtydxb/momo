@@ -14,7 +14,9 @@ import (
 // FTS5Match is the SQLite predicate "table" MATCH q over an FTS5 table, with q
 // in FTS5 query syntax bound as a parameter. Other dialects fail the build
 // with ErrUnsupported. Use Search for user input: it translates and escapes
-// the text, FTS5Match passes it on as given.
+// the text, FTS5Match passes it on as given. The bound text is not masked in
+// hook events, because the predicate does not know which columns it reads; use
+// Search over a target with a sensitive column when the text must be masked.
 func FTS5Match(table string, q string) momo.Predicate {
 	return momo.PredicateFunc(func(b *momo.Builder) {
 		if b.Dialect().Name != dialect.SQLite {

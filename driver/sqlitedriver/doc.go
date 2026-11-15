@@ -9,6 +9,15 @@
 // or for Windows, Open reports momo.ErrUnsupported. The cgo-free alternative
 // is package sqlitepure (modernc.org/sqlite), which has no vector support.
 //
+// # Full-text search
+//
+// SQLite full-text search (the fts package's Search, Score and Snippet) needs
+// the FTS5 module, which mattn/go-sqlite3 compiles in only when the program is
+// built with -tags sqlite_fts5, or with CGO_CFLAGS=-DSQLITE_ENABLE_FTS5 (the
+// tag also links libm; with the flag add -lm to CGO_LDFLAGS). Without it a
+// statement that creates or searches an FTS5 table fails in SQLite. Package
+// sqlitepure includes FTS5 and needs no flag.
+//
 // # Process-wide effects
 //
 // Importing the package has no side effect. The first Open registers the

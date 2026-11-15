@@ -8,15 +8,18 @@ later releases can break more.
 ## Upgrading to 0.15.0
 
 No edit is needed in your code. A model can now declare full-text search, and
-the declaration is recorded in the model and in the schema snapshot, but
-migrations refuse it until a later release renders it. Package `fts` also gains
-a query layer that reads the declaration: `fts.Over` names the searched
-columns, and `fts.Search`, `fts.Score` and `fts.Snippet` render a match, a
-relevance score and an excerpt on PostgreSQL and SQLite, with the text of a
-`fts.Web`, `fts.Plain` or `fts.Raw` query bound as a parameter. The existing
-`fts` builders keep their signatures and their PostgreSQL SQL. A search on SQLite
-whose FTS5 table does not exist fails with `momo.ErrUnsupported` naming the
-table.
+the declaration is recorded in the model and in the schema snapshot. Package
+`fts` also gains a query layer that reads the declaration: `fts.Over` names the
+searched columns, and `fts.Search`, `fts.Score` and `fts.Snippet` render a
+match, a relevance score and an excerpt, with the text of a `fts.Web`,
+`fts.Plain` or `fts.Raw` query bound as a parameter. On PostgreSQL they search
+the generated tsvector column `<index>_tsv` of the declaration; on SQLite they
+search the FTS5 table `<table>_fts`, and a search whose FTS5 table does not
+exist fails with `momo.ErrUnsupported` naming the table. The existing `fts`
+builders keep their signatures and their PostgreSQL SQL. On the cgo SQLite
+driver FTS5 needs the build flag `-tags sqlite_fts5` (or
+`CGO_CFLAGS=-DSQLITE_ENABLE_FTS5`); the pure-Go driver `driver/sqlitepure`
+includes FTS5.
 
 ### Declare full-text search on a model
 

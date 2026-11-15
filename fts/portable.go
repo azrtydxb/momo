@@ -81,6 +81,10 @@ func Snippet(t Target, q Query, o SnippetOpts) Expr[string] {
 		if !t.check(b) {
 			return
 		}
+		if o.Column.ColumnName() == "" {
+			b.SetErr(validationError("snippet needs the text column to excerpt (SnippetOpts.Column)"))
+			return
+		}
 		if t.kind == kindDeclared && !slices.Contains(t.ft.Columns, o.Column.ColumnName()) {
 			b.SetErr(validationError("snippet column %q is not a declared full-text column of table %s", o.Column.ColumnName(), t.tbl.Name))
 			return
@@ -302,7 +306,9 @@ func sqliteScore(b *momo.Builder, t Target, q Query) {
 		b.WriteString("0")
 		return
 	}
-	b.WriteString("(SELECT -bm25(")
+	// A row the query does not match has no FTS5 row, so the subquery is NULL;
+	// COALESCE gives it the score 0 that PostgreSQL gives it.
+	b.WriteString("COALESCE((SELECT -bm25(")
 	b.Ident(c.fts)
 	for _, w := range t.ft.Weights {
 		b.WriteString(", " + bm25Weight[w])
@@ -313,7 +319,7 @@ func sqliteScore(b *momo.Builder, t Target, q Query) {
 	c.writeMatch(b)
 	b.WriteString(" AND ")
 	c.writeCorrelation(b)
-	b.WriteString(")")
+	b.WriteString("), 0)")
 }
 
 func sqliteSnippet(b *momo.Builder, t Target, q Query, o SnippetOpts) {

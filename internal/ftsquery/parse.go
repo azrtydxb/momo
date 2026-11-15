@@ -29,7 +29,7 @@ const (
 // Term is one searched word or phrase.
 type Term struct {
 	Text   string
-	Phrase bool // quoted: Text holds several words
+	Phrase bool // quoted or split at punctuation: Text holds several words
 	Prefix bool // trailing *
 }
 
@@ -72,21 +72,17 @@ func isWordRune(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '\''
 }
 
-// cleanWord keeps the word characters of s and reports whether a letter or a
-// digit is left.
-func cleanWord(s string) (string, bool) {
-	var sb strings.Builder
-	has := false
-	for _, r := range s {
-		if !isWordRune(r) {
-			continue
+// splitWords splits s at every character that is not a word character and
+// returns the runs that hold a letter or a digit, so well-known is two words
+// and 3.14 is two words, as the FTS5 unicode61 tokenizer reads them.
+func splitWords(s string) []string {
+	var out []string
+	for _, f := range strings.FieldsFunc(s, func(r rune) bool { return !isWordRune(r) }) {
+		if strings.IndexFunc(f, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) >= 0 {
+			out = append(out, f)
 		}
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			has = true
-		}
-		sb.WriteRune(r)
 	}
-	return sb.String(), has
+	return out
 }
 
 // operatorWord is a bare uppercase word that reads as an operator in some
@@ -107,10 +103,8 @@ func Parse(text string, syn Syntax) Parsed {
 
 func parsePlain(text string) Parsed {
 	var g []Term
-	for _, f := range strings.FieldsFunc(text, unicode.IsSpace) {
-		if w, ok := cleanWord(f); ok {
-			g = append(g, Term{Text: w})
-		}
+	for _, w := range splitWords(text) {
+		g = append(g, Term{Text: w})
 	}
 	if len(g) == 0 {
 		return Parsed{}
@@ -137,13 +131,13 @@ func (w *webParser) add(t Term, negate bool) {
 func (w *webParser) flushWord() {
 	raw := string(w.word)
 	w.word = w.word[:0]
-	switch {
-	case raw == "":
+	switch raw {
+	case "":
 		return
-	case raw == "-":
+	case "-":
 		w.neg = true
 		return
-	case raw == "OR":
+	case "OR":
 		if len(w.cur) > 0 {
 			w.groups = append(w.groups, w.cur)
 			w.cur = nil
@@ -159,20 +153,15 @@ func (w *webParser) flushWord() {
 	if prefix {
 		raw = strings.TrimRight(raw, "*")
 	}
-	text, ok := cleanWord(raw)
-	if !ok || operatorWord(text) {
+	words := splitWords(raw)
+	if len(words) == 0 || (len(words) == 1 && operatorWord(words[0])) {
 		return
 	}
-	w.add(Term{Text: text, Prefix: prefix}, negate)
+	w.add(Term{Text: strings.Join(words, " "), Phrase: len(words) > 1, Prefix: prefix}, negate)
 }
 
 func (w *webParser) phrase(raw string) {
-	var words []string
-	for _, f := range strings.FieldsFunc(raw, unicode.IsSpace) {
-		if t, ok := cleanWord(f); ok {
-			words = append(words, t)
-		}
-	}
+	words := splitWords(raw)
 	if len(words) > 0 {
 		w.add(Term{Text: strings.Join(words, " "), Phrase: true}, w.neg)
 	}

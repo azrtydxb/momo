@@ -24,12 +24,12 @@ is immutable and safe for concurrent use.
 A relation is a field on the parent model. Its tag names the kind, and the Go
 type of the field decides the shape:
 
-| Tag          | Field type | Foreign key lives on |
-| ------------ | ---------- | -------------------- |
-| `belongs_to` | `*Target`  | the parent           |
-| `has_one`    | `*Target`  | the child            |
-| `has_many`   | `[]Target` | the child            |
-| `many2many`  | `[]Target` | a join table         |
+| Tag          | Field type  | Foreign key lives on |
+| ------------ | ----------- | -------------------- |
+| `belongs_to` | `*Related`  | the parent           |
+| `has_one`    | `*Related`  | the child            |
+| `has_many`   | `[]Related` | the child            |
+| `many2many`  | `[]Related` | a join table         |
 
 <!-- docscheck:fragment -->
 

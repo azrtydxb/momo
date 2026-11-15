@@ -1,5 +1,3 @@
 # Pages whose bare backticked names are not root (momo) names.
 # Format: path package reason (see TestBareNamesAreRootNames).
-docs/ai-guide.md fts the relation tag table writes Target for the related model of an example, not fts.Target
-docs/relations.md fts the relation tag table writes Target for the related model of an example, not fts.Target
 docs/migrations.md migrate the page documents the migrate package; its sections name it and write Engine.Apply, Engine.Rollback

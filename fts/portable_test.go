@@ -95,7 +95,7 @@ func TestFullTextSearchGolden(t *testing.T) {
 			`WHERE "articles"."id" IN (SELECT rowid FROM "articles_fts" WHERE "articles_fts" MATCH ?)`,
 			[]any{`"red" "fox"`}},
 		{"sqlite score", dialect.SQLite, fts.Score(target, q).As("score"), nil,
-			`SELECT (SELECT -bm25("articles_fts", 1, 0.4) FROM "articles_fts" WHERE "articles_fts" MATCH ? AND "articles_fts".rowid = "articles"."id") AS "score" FROM "articles"`,
+			`SELECT COALESCE((SELECT -bm25("articles_fts", 1, 0.4) FROM "articles_fts" WHERE "articles_fts" MATCH ? AND "articles_fts".rowid = "articles"."id"), 0) AS "score" FROM "articles"`,
 			[]any{`"red" "fox"`}},
 	}
 	for _, c := range cases {
@@ -256,6 +256,20 @@ func TestFullTextSnippetBuild(t *testing.T) {
 		if _, err := compileFor(t, dialect.SQLite, fts.Snippet(target, q, o).As("s"), nil); !errors.Is(err, momo.ErrValidation) {
 			t.Errorf("snippet %+v: err = %v, want ErrValidation", o, err)
 		}
+	}
+}
+
+// Catches: a snippet without a column to excerpt reaching the database on a
+// hand-managed tsvector target, where no declaration lists the columns.
+func TestFullTextSnippetNeedsColumn(t *testing.T) {
+	target := fts.OverVector(tsv, "english")
+	_, err := compileFor(t, dialect.Postgres, fts.Snippet(target, fts.Web("fox"), fts.SnippetOpts{}).As("s"), nil)
+	if !errors.Is(err, momo.ErrValidation) {
+		t.Errorf("err = %v, want ErrValidation", err)
+	}
+	got, err := compileFor(t, dialect.Postgres, fts.Snippet(target, fts.Web("fox"), fts.SnippetOpts{Column: artBody}).As("s"), nil)
+	if err != nil || !strings.Contains(got.SQL, `ts_headline(CAST($1 AS regconfig), "articles"."body"`) {
+		t.Errorf("snippet over a tsvector column: %v %v", got.SQL, err)
 	}
 }
 
