@@ -1081,3 +1081,22 @@ Decision (2026-11-14, integrator): as above.
   updated_at, version and the soft-delete scope.
 
 Decision (2026-11-14, integrator): as above.
+
+## Next parity work after 0.13.0, and stale agent worktrees
+
+Which of the remaining design-dependent parity items to start next:
+
+- BulkUpdate: one statement that updates many rows with per-row values (UPDATE ... FROM (VALUES ...) on PostgreSQL and SQLite, a CASE or joined derived table on MySQL)
+- MERGE emulation: `Merge` on SQLite, MySQL and MariaDB through upsert plus delete, with the combinations that cannot be emulated refused
+- Full-text search: a design spec first (PostgreSQL tsvector, SQLite FTS5, MySQL FULLTEXT) before any code
+- None for now
+
+And whether to clean up the ~150 unlocked agent worktrees under momo/.claude/worktrees from earlier sprints:
+
+- Delete those whose branch is merged or gone from GitHub, list the rest
+- Leave them
+
+Decision (2026-11-14, the user, via AskUserQuestion): start BulkUpdate, MERGE
+emulation and a full-text search design spec (no FTS code until the spec is
+approved). Delete the agent worktrees whose branch is merged or gone from
+GitHub, and list any with unmerged commits.
