@@ -417,12 +417,12 @@ type Tag struct {
 Relation tags (a relation is an exported field of struct, slice or pointer type;
 it is not a column):
 
-| Tag                      | Field type | FK lives on | Notes                                                                                                               |
-| ------------------------ | ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------- |
-| `belongs_to,fk:<Field>`  | `*Target`  | this struct | `fk` names the FK field on THIS struct; make it a pointer if the relation is optional                               |
-| `has_one,fk:<Field>`     | `*Target`  | the target  | `fk` names the field on the TARGET                                                                                  |
-| `has_many,fk:<Field>`    | `[]Target` | the target  | `fk` names the field on the TARGET                                                                                  |
-| `many2many,join:<table>` | `[]Target` | join table  | set `join:` (same table) on every side you declare; the reverse side is optional; two key columns `<model>_<pkcol>` |
+| Tag                      | Field type  | FK lives on | Notes                                                                                                               |
+| ------------------------ | ----------- | ----------- | ------------------------------------------------------------------------------------------------------------------- |
+| `belongs_to,fk:<Field>`  | `*Related`  | this struct | `fk` names the FK field on THIS struct; make it a pointer if the relation is optional                               |
+| `has_one,fk:<Field>`     | `*Related`  | the target  | `fk` names the field on the TARGET                                                                                  |
+| `has_many,fk:<Field>`    | `[]Related` | the target  | `fk` names the field on the TARGET                                                                                  |
+| `many2many,join:<table>` | `[]Related` | join table  | set `join:` (same table) on every side you declare; the reverse side is optional; two key columns `<model>_<pkcol>` |
 
 Extra relation options: `polytype:<column>` + `polyvalue:<value>` (both, on
 `has_one`/`has_many` only: polymorphic), `on_delete:` / `on_update:`

@@ -3337,6 +3337,11 @@
 <td>Meta is the generated, reflection-free description of a model or projection type T.</td>
 </tr>
 <tr>
+<td><code>momo.MetaTableSchema</code></td>
+<td>func</td>
+<td>MetaTableSchema returns the normalized table definition of model T from its generated metadata, or nil for a projection.</td>
+</tr>
+<tr>
 <td><code>momo.Min</code></td>
 <td>func</td>
 <td>Min is MIN(expr) (NULL over zero rows).</td>
@@ -7188,6 +7193,11 @@
 </thead>
 <tbody>
 <tr>
+<td><code>fts.BM25</code></td>
+<td>func</td>
+<td>BM25 is bm25("table", weights...) over an FTS5 table, the relevance of the row matched in the same query; lower (more negative) is better.</td>
+</tr>
+<tr>
 <td><code>fts.Expr</code></td>
 <td>type</td>
 <td>Expr is a full-text function call whose SQL result type corresponds to T.</td>
@@ -7203,6 +7213,11 @@
 <td>As names the expression in a select list.</td>
 </tr>
 <tr>
+<td><code>fts.FTS5Match</code></td>
+<td>func</td>
+<td>FTS5Match is the SQLite predicate "table" MATCH q over an FTS5 table, with q in FTS5 query syntax bound as a parameter.</td>
+</tr>
+<tr>
 <td><code>fts.Headline</code></td>
 <td>func</td>
 <td>Headline is ts_headline(config, doc, q [, options]): doc with the query matches marked up.</td>
@@ -7213,14 +7228,39 @@
 <td>Match is vec @@ q: true when the document matches the query.</td>
 </tr>
 <tr>
+<td><code>fts.Over</code></td>
+<td>func</td>
+<td>Over is the target of the full-text declaration of model T.</td>
+</tr>
+<tr>
+<td><code>fts.OverVector</code></td>
+<td>func</td>
+<td>OverVector is the target of a tsvector column the application maintains itself (a trigger, or a generated column it declared by hand), searched with the text search configuration config.</td>
+</tr>
+<tr>
 <td><code>fts.PhraseToQuery</code></td>
 <td>func</td>
 <td>PhraseToQuery is phraseto_tsquery(config, query): the words of query as one phrase.</td>
 </tr>
 <tr>
+<td><code>fts.Plain</code></td>
+<td>func</td>
+<td>Plain reads text as words that must all match; punctuation is ignored.</td>
+</tr>
+<tr>
 <td><code>fts.PlainToQuery</code></td>
 <td>func</td>
 <td>PlainToQuery is plainto_tsquery(config, query): the words of query ANDed together, punctuation ignored.</td>
+</tr>
+<tr>
+<td><code>fts.Query</code></td>
+<td>type</td>
+<td>Query is the user's search text plus how to read it.</td>
+</tr>
+<tr>
+<td><code>fts.Query.Config</code></td>
+<td>method</td>
+<td>Config sets the PostgreSQL text search configuration for this query.</td>
 </tr>
 <tr>
 <td><code>fts.Rank</code></td>
@@ -7233,6 +7273,36 @@
 <td>RankCD is ts_rank_cd(vec, q [, normalization]): the cover-density score, which also rewards query terms that sit close together.</td>
 </tr>
 <tr>
+<td><code>fts.Raw</code></td>
+<td>func</td>
+<td>Raw passes text to the database in its own query syntax: tsquery text on PostgreSQL, an FTS5 query on SQLite.</td>
+</tr>
+<tr>
+<td><code>fts.Score</code></td>
+<td>func</td>
+<td>Score is the relevance of a row for q: higher is better on every dialect (ts_rank_cd on PostgreSQL, the negated bm25 on SQLite).</td>
+</tr>
+<tr>
+<td><code>fts.Search</code></td>
+<td>func</td>
+<td>Search is the predicate that matches the rows whose searchable columns match q: ts @@ tsquery on PostgreSQL, a MATCH on the FTS5 table on SQLite.</td>
+</tr>
+<tr>
+<td><code>fts.Snippet</code></td>
+<td>func</td>
+<td>Snippet is the excerpt of o.Column with the matched words marked (ts_headline on PostgreSQL, snippet() on SQLite).</td>
+</tr>
+<tr>
+<td><code>fts.SnippetOpts</code></td>
+<td>type</td>
+<td>SnippetOpts configures Snippet.</td>
+</tr>
+<tr>
+<td><code>fts.Target</code></td>
+<td>type</td>
+<td>Target is what Search, Score and Snippet search.</td>
+</tr>
+<tr>
 <td><code>fts.ToQuery</code></td>
 <td>func</td>
 <td>ToQuery is to_tsquery(config, query): query must already be in tsquery syntax (&amp; | ! &lt;-&gt; and prefix:*); a malformed query is a database error.</td>
@@ -7241,6 +7311,11 @@
 <td><code>fts.ToVector</code></td>
 <td>func</td>
 <td>ToVector is to_tsvector(config, doc): doc parsed into a tsvector with the text search configuration config.</td>
+</tr>
+<tr>
+<td><code>fts.Web</code></td>
+<td>func</td>
+<td>Web reads text like a search box: "quoted phrases", -exclusions, OR between words and a trailing * for a prefix.</td>
 </tr>
 <tr>
 <td><code>fts.WebsearchToQuery</code></td>

@@ -3315,7 +3315,18 @@ database holds with a storage engine other than InnoDB. A parser on MariaDB is
 refused with <code>ErrUnsupported</code> when the engine knows the server is MariaDB (any
 engine built on a driver); the offline <code>momo migrate</code> commands, which open no
 database, cannot know it and render the parser, so MariaDB rejects it when the
-migration is applied. Drift does not report a table for its storage engine.</p>
+migration is applied. Drift does not report a table for its storage engine.
+Package <code>fts</code> also gains a query layer that reads the declaration: <code>fts.Over</code>
+names the searched columns, and <code>fts.Search</code>, <code>fts.Score</code> and <code>fts.Snippet</code>
+render a match, a relevance score and an excerpt, with the text of a <code>fts.Web</code>,
+<code>fts.Plain</code> or <code>fts.Raw</code> query bound as a parameter. On PostgreSQL they search
+the generated tsvector column <code>&lt;index&gt;_tsv</code> of the declaration; on SQLite they
+search the FTS5 table <code>&lt;table&gt;_fts</code>, and a search whose FTS5 table does not
+exist fails with <code>momo.ErrUnsupported</code> naming the table. The existing <code>fts</code>
+builders keep their signatures and their PostgreSQL SQL. On the cgo SQLite
+driver FTS5 needs the build flag <code>-tags sqlite_fts5</code> (or
+<code>CGO_CFLAGS=-DSQLITE_ENABLE_FTS5</code>); the pure-Go driver <code>driver/sqlitepure</code>
+includes FTS5.</p>
 <h3 id="declare-full-text-search-on-a-model">Declare full-text search on a model<a class="headerlink" href="#declare-full-text-search-on-a-model" title="Permanent link">&para;</a></h3>
 <p>A model can declare one full-text search index, either with the <code>search</code> tag on
 each text field (the index is named <code>&lt;table&gt;_search</code> and covers the tagged

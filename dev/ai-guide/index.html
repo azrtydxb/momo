@@ -2221,25 +2221,25 @@ it is not a column):</p>
 <tbody>
 <tr>
 <td><code>belongs_to,fk:&lt;Field&gt;</code></td>
-<td><code>*Target</code></td>
+<td><code>*Related</code></td>
 <td>this struct</td>
 <td><code>fk</code> names the FK field on THIS struct; make it a pointer if the relation is optional</td>
 </tr>
 <tr>
 <td><code>has_one,fk:&lt;Field&gt;</code></td>
-<td><code>*Target</code></td>
+<td><code>*Related</code></td>
 <td>the target</td>
 <td><code>fk</code> names the field on the TARGET</td>
 </tr>
 <tr>
 <td><code>has_many,fk:&lt;Field&gt;</code></td>
-<td><code>[]Target</code></td>
+<td><code>[]Related</code></td>
 <td>the target</td>
 <td><code>fk</code> names the field on the TARGET</td>
 </tr>
 <tr>
 <td><code>many2many,join:&lt;table&gt;</code></td>
-<td><code>[]Target</code></td>
+<td><code>[]Related</code></td>
 <td>join table</td>
 <td>set <code>join:</code> (same table) on every side you declare; the reverse side is optional; two key columns <code>&lt;model&gt;_&lt;pkcol&gt;</code></td>
 </tr>
