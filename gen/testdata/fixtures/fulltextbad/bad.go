@@ -46,16 +46,6 @@ func (h *HostileParser) MomoConfig(c *momo.Config) {
 	c.FullText("hostile_parsers_search", &h.Title).Parser("ngram; x")
 }
 
-type DuplicateOption struct {
-	momo.Model `momo:"table:duplicate_options"`
-	ID         int64 `momo:"pk,identity"`
-	Title      string
-}
-
-func (d *DuplicateOption) MomoConfig(c *momo.Config) {
-	c.FullText("duplicate_options_search", &d.Title).Config("english").Config("simple")
-}
-
 type WeightMismatch struct {
 	momo.Model `momo:"table:weight_mismatches"`
 	ID         int64 `momo:"pk,identity"`
@@ -65,17 +55,6 @@ type WeightMismatch struct {
 
 func (w *WeightMismatch) MomoConfig(c *momo.Config) {
 	c.FullText("weight_mismatches_search", &w.Title, &w.Body).Weights("A")
-}
-
-type Unresolved struct {
-	momo.Model `momo:"table:unresolveds"`
-	ID         int64 `momo:"pk,identity"`
-	Title      string
-}
-
-func (u *Unresolved) MomoConfig(c *momo.Config) {
-	var other Counter
-	c.FullText("unresolveds_search", &other.Views)
 }
 
 type Both struct {
