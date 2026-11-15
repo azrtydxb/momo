@@ -151,15 +151,6 @@ func searchIDs(t *testing.T, db *momo.DB, q fts.Query) []int64 {
 	return ids
 }
 
-// prefixWant is the rows a two-letter prefix finds: on the MySQL family the
-// prefix is shorter than innodb_ft_min_token_size (3), so it finds none.
-func prefixWant(d dialect.Name, all []int64) []int64 {
-	if d == dialect.MySQL {
-		return []int64{}
-	}
-	return all
-}
-
 // Catches: a dialect returning a row that misses a word, or omitting a row that
 // has all of them (S-1), and the portable score ordering being inverted (S-2).
 func TestFullTextSearchAllDialects(t *testing.T) {
@@ -171,8 +162,10 @@ func TestFullTextSearchAllDialects(t *testing.T) {
 		if got := searchIDs(t, db, fts.Web(`"red fox" -hen`)); !reflect.DeepEqual(got, []int64{1}) {
 			t.Fatalf("phrase and exclusion: %v, want [1]", got)
 		}
-		if got := searchIDs(t, db, fts.Web(`fo*`)); !reflect.DeepEqual(got, prefixWant(d, []int64{1, 3, 4, 5})) {
-			t.Fatalf("prefix: %v, want %v", got, prefixWant(d, []int64{1, 3, 4, 5}))
+		// InnoDB matches a prefix shorter than innodb_ft_min_token_size too: the
+		// limit applies to indexed words, not to a wildcard prefix.
+		if got := searchIDs(t, db, fts.Web(`fo*`)); !reflect.DeepEqual(got, []int64{1, 3, 4, 5}) {
+			t.Fatalf("prefix: %v, want [1 3 4 5]", got)
 		}
 		if got := searchIDs(t, db, fts.Web(`fox*`)); !reflect.DeepEqual(got, []int64{1, 3, 4, 5}) {
 			t.Fatalf("three-letter prefix: %v, want [1 3 4 5]", got)
@@ -280,8 +273,8 @@ func TestFullTextPhraseAndPrefix(t *testing.T) {
 		if got := searchIDs(t, db, fts.Web(`"fox red"`)); !reflect.DeepEqual(got, []int64{4}) {
 			t.Fatalf("reversed phrase: %v, want [4]", got)
 		}
-		if got := searchIDs(t, db, fts.Web(`fo*`)); !reflect.DeepEqual(got, prefixWant(d, []int64{1, 3, 4, 5})) {
-			t.Fatalf("prefix: %v, want %v", got, prefixWant(d, []int64{1, 3, 4, 5}))
+		if got := searchIDs(t, db, fts.Web(`fo*`)); !reflect.DeepEqual(got, []int64{1, 3, 4, 5}) {
+			t.Fatalf("prefix: %v, want [1 3 4 5]", got)
 		}
 	})
 }
