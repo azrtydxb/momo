@@ -2,11 +2,12 @@
 
 ## [0.14.0](https://github.com/azrtydxb/momo/compare/v0.13.0...v0.14.0) (2026-11-15)
 
+_`Merge` and `BulkUpdate` now run on SQLite, MySQL and MariaDB, not only PostgreSQL. No code change is needed to upgrade, but code that relied on `ErrUnsupported` from these calls now takes the success path, and `Merge` on the emulated dialects has documented limits; see [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.14.0/docs/upgrading.md). [Changes since 0.13.0](https://github.com/azrtydxb/momo/compare/v0.13.0...v0.14.0)._
 
 ### Features
 
-* BulkUpdate on SQLite, MySQL and MariaDB with composite keys ([#160](https://github.com/azrtydxb/momo/issues/160)) ([36bf04d](https://github.com/azrtydxb/momo/commit/36bf04d54db39f7e10731febe4fa7c1530a6d7c3))
-* emulate MERGE on SQLite, MySQL and MariaDB ([#163](https://github.com/azrtydxb/momo/issues/163)) ([4b4d3ca](https://github.com/azrtydxb/momo/commit/4b4d3ca1da490f1e60246f31b7c16d5c39df1f02))
+- `Merge` is emulated on SQLite, MySQL and MariaDB as one atomic sequence (a transaction, or a savepoint inside the caller's `Tx`): the matches and every new value are staged in a temporary table before any write, so the final table and the affected-row count equal PostgreSQL's `MERGE`, assignments that read another assigned column included. A target row matched by two source rows is `ErrTooManyRows` on every dialect, PostgreSQL included. `Returning`, `Rows`, `SET col = DEFAULT`, a model without a primary key and a pinned connection stay `ErrUnsupported` there; a target row committed by another writer mid-sequence is not seen, and the account needs the temporary-table privilege ([#163](https://github.com/azrtydxb/momo/pull/163))
+- `BulkUpdate` runs on SQLite, MySQL and MariaDB, and the new `BulkUpdateKeys` matches on a composite key. Long lists are chunked to the dialect's parameter limit and run atomically, with one `updated_at` clock read for all chunks; the affected-row count is the number of matched rows on every dialect. `Returning` stays PostgreSQL and SQLite only ([#160](https://github.com/azrtydxb/momo/pull/160))
 
 ## [0.13.0](https://github.com/azrtydxb/momo/compare/v0.12.0...v0.13.0) (2026-11-14)
 
