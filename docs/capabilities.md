@@ -165,21 +165,41 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 
 ### `Merge` on SQLite, MySQL and MariaDB
 
-These dialects have no `MERGE`, so `MergeQuery.Exec` runs the same clauses as
-one atomic sequence: a transaction on a `DB`, a savepoint on a `Tx` (a pinned
-`DB` is `ErrUnsupported`). The match is decided once, before any write: the
-source is copied into a temporary table with a flag that says whether a target
-row satisfies `On`, and the `UPDATE` and the `INSERT` read that snapshot. The
-final table and the affected-row count (rows updated plus rows inserted) are
-those of PostgreSQL, whatever the `On` condition and the assigned columns. A
-`NULL` key matches nothing, as in PostgreSQL. A target row that two source rows
-match fails with `ErrTooManyRows` before anything is written when there is a
-`WhenMatchedUpdate` clause; without one the duplicates are harmless, as in
-PostgreSQL. Refused with `ErrUnsupported`: `Returning`, and `WhenMatchedUpdate`
-on a model without a primary key. The statements are listed by
-`MergeQuery.Statements`; `MergeQuery.SQL` has no single text there. The server
-needs the privilege to create temporary tables; see [mysql.md](mysql.md) for the
-MySQL and MariaDB notes.
+These dialects have no `MERGE`, so `MergeQuery.Exec` runs the same clauses as a
+sequence of statements in one transaction (a savepoint on a `Tx`; a pinned `DB`
+is `ErrUnsupported`). Without concurrent writers the final table and the
+affected-row count (rows updated plus rows inserted) are those of PostgreSQL.
+The match is decided once, before any write: the source is copied into a
+temporary table, the pairs of target and source rows that `On` joins are
+computed once, with the new value of every assigned column taken from the
+target row as it was before the statement, and the `UPDATE` and the `INSERT`
+read only those two tables. So an update of a column that `On` reads does not
+change the match, and an assignment that reads another assigned column sees the
+old value, as in PostgreSQL. A `NULL` key matches nothing. A target row that two
+source rows match fails with `ErrTooManyRows` before anything is written when
+there is a `WhenMatchedUpdate` clause, and on PostgreSQL the server's
+cardinality violation is `ErrTooManyRows` too; without that clause the
+duplicates are harmless. Refused with `ErrUnsupported`: `Returning`,
+`SET col = DEFAULT` in the update, and `WhenMatchedUpdate` on a model without a
+primary key. The statements are listed by `MergeQuery.Statements`;
+`MergeQuery.SQL` has no single text there.
+
+Not equivalent to the single PostgreSQL statement:
+
+- **Concurrent writers.** The sequence holds no lock that stops a matching
+  target row from being committed between its steps. A row that starts to match
+  mid-sequence counts as unmatched, so the `INSERT` writes it again (or fails
+  with `ErrUniqueViolation` on a unique key), and the affected-row count is taken
+  before the `UPDATE`. On MySQL and MariaDB the matched target rows are locked
+  (`FOR UPDATE`) and read at their latest committed version, so the update side
+  does not go stale under repeatable read or read committed; the insert side has
+  no phantom protection. SQLite has one writer, so a race there ends in a busy
+  error rather than a stale read. No test covers concurrent writers.
+- **Environment.** The account needs the privilege to create temporary tables.
+  A source needs distinct column names (alias `a.id` and `b.id` in a join), or
+  the copy fails. A canceled context or a lost connection can leave the
+  temporary tables on that pooled connection until its next `Merge`, which
+  drops them first. See [mysql.md](mysql.md) for the MySQL and MariaDB notes.
 
 ## Row locking, CTEs, subqueries, window functions
 

@@ -59,31 +59,80 @@ func assertStatements(t *testing.T, got, want []string) {
 // qualifies the SET target where SQLite refuses it, or a lost version bump.
 func TestMergeEmulationGoldenSQLite(t *testing.T) {
 	db := momo.New(fakedriver.New(dialect.SQLite))
-	const drop = `DROP TABLE IF EXISTS temp."momo_merge_src"`
+	const dropSrc = `DROP TABLE IF EXISTS temp."momo_merge_src"`
+	const dropPairs = `DROP TABLE IF EXISTS temp."momo_merge_pairs"`
 	assertStatements(t, statementSQL(t, mrgUpsert(db)), []string{
-		drop,
-		`CREATE TEMPORARY TABLE "momo_merge_src" AS SELECT "src".*, CASE WHEN EXISTS (SELECT 1 FROM "mrg_rows" WHERE "mrg_rows"."k" = src.k) THEN 1 ELSE 0 END AS "momo_merge_matched" FROM (SELECT id, k, val, n FROM mrg_src) AS "src"`,
-		`SELECT 1 FROM "mrg_rows", "momo_merge_src" AS "src" WHERE "mrg_rows"."k" = src.k GROUP BY "mrg_rows"."id" HAVING COUNT(*) > 1 LIMIT 1`,
-		`SELECT COUNT(*) FROM "mrg_rows", "momo_merge_src" AS "src" WHERE "mrg_rows"."k" = src.k`,
-		`UPDATE "mrg_rows" SET "val" = src.val, "version" = "mrg_rows"."version" + 1 FROM "momo_merge_src" AS "src" WHERE "mrg_rows"."k" = src.k`,
-		`INSERT INTO "mrg_rows" ("id", "k", "val") SELECT src.id, src.k, src.val FROM "momo_merge_src" AS "src" WHERE "src"."momo_merge_matched" = 0`,
-		drop,
+		dropSrc,
+		dropPairs,
+		`CREATE TEMPORARY TABLE "momo_merge_src" AS SELECT "src".*, ROW_NUMBER() OVER () AS "momo_merge_row" FROM (SELECT id, k, val, n FROM mrg_src) AS "src"`,
+		`CREATE TEMPORARY TABLE "momo_merge_pairs" AS SELECT "src"."momo_merge_row" AS "src_row", "mrg_rows"."id" AS "k0", src.val AS "v0" FROM "mrg_rows", "momo_merge_src" AS "src" WHERE "mrg_rows"."k" = src.k`,
+		`SELECT 1 FROM "momo_merge_pairs" GROUP BY "k0" HAVING COUNT(*) > 1 LIMIT 1`,
+		`SELECT COUNT(*) FROM "momo_merge_pairs"`,
+		`UPDATE "mrg_rows" SET "val" = "n"."v0", "version" = "mrg_rows"."version" + 1 FROM "momo_merge_pairs" AS "n" WHERE "mrg_rows"."id" = "n"."k0"`,
+		`INSERT INTO "mrg_rows" ("id", "k", "val") SELECT src.id, src.k, src.val FROM "momo_merge_src" AS "src" WHERE NOT EXISTS (SELECT 1 FROM "momo_merge_pairs" AS "n" WHERE "n"."src_row" = "src"."momo_merge_row")`,
+		dropSrc,
+		dropPairs,
 	})
+}
+
+// Catches: only the first primary-key column being carried through the pairs
+// table, which would let a composite key update the wrong rows or miss a
+// duplicate.
+func TestMergeEmulationCompositeKeySQL(t *testing.T) {
+	db := momo.New(fakedriver.New(dialect.SQLite))
+	got := func() []string {
+		cs, err := mrgPairMerge(db).Statements()
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make([]string, len(cs))
+		for i, c := range cs {
+			out[i] = c.SQL
+		}
+		return out
+	}()
+	hasAll(t, got[3], `"mrg_pairs"."a" AS "k0", "mrg_pairs"."b" AS "k1", src.v AS "v0"`)
+	hasAll(t, got[4], `GROUP BY "k0", "k1" HAVING COUNT(*) > 1`)
+	hasAll(t, got[6], `WHERE "mrg_pairs"."a" = "n"."k0" AND "mrg_pairs"."b" = "n"."k1"`)
+}
+
+// Catches: bound values lost or reordered between the statements: the source's
+// argument belongs to the snapshot, the assigned value and the On argument to
+// the pairs table (select list first, then WHERE), and no later statement may
+// bind anything.
+func TestMergeEmulationBindsItsArguments(t *testing.T) {
+	db := momo.New(fakedriver.New(dialect.SQLite))
+	src := momo.RawSubquery("SELECT id, k, val, n FROM mrg_src WHERE n >= ?", int64(7))
+	cs, err := momo.Merge[mrgRow](db, src).On(mrgOn(), mrgN.Eq(0)).
+		WhenMatchedUpdate(mrgVal.Set("x")).Statements()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[int][]any{2: {int64(7)}, 3: {"x", int64(0)}}
+	for i, c := range cs {
+		if w := want[i]; !slices.Equal(c.Args, w) {
+			t.Errorf("statement %d args = %v, want %v:\n%s", i, c.Args, w, c.SQL)
+		}
+	}
 }
 
 // Catches: the SQLite UPDATE ... FROM form on MySQL, which has the multi-table
 // form, or an unqualified SET target there; and MariaDB rendering differently
 // from MySQL.
 func TestMergeEmulationGoldenMySQLAndMariaDB(t *testing.T) {
-	const drop = "DROP TEMPORARY TABLE IF EXISTS `momo_merge_src`"
+	const dropSrc = "DROP TEMPORARY TABLE IF EXISTS `momo_merge_src`"
+	const dropPairs = "DROP TEMPORARY TABLE IF EXISTS `momo_merge_pairs`"
 	want := []string{
-		drop,
-		"CREATE TEMPORARY TABLE `momo_merge_src` AS SELECT `src`.*, CASE WHEN EXISTS (SELECT 1 FROM `mrg_rows` WHERE `mrg_rows`.`k` = src.k) THEN 1 ELSE 0 END AS `momo_merge_matched` FROM (SELECT id, k, val, n FROM mrg_src) AS `src`",
-		"SELECT 1 FROM `mrg_rows`, `momo_merge_src` AS `src` WHERE `mrg_rows`.`k` = src.k GROUP BY `mrg_rows`.`id` HAVING COUNT(*) > 1 LIMIT 1",
-		"SELECT COUNT(*) FROM `mrg_rows`, `momo_merge_src` AS `src` WHERE `mrg_rows`.`k` = src.k",
-		"UPDATE `mrg_rows`, `momo_merge_src` AS `src` SET `mrg_rows`.`val` = src.val, `mrg_rows`.`version` = `mrg_rows`.`version` + 1 WHERE `mrg_rows`.`k` = src.k",
-		"INSERT INTO `mrg_rows` (`id`, `k`, `val`) SELECT src.id, src.k, src.val FROM `momo_merge_src` AS `src` WHERE `src`.`momo_merge_matched` = 0",
-		drop,
+		dropSrc,
+		dropPairs,
+		"CREATE TEMPORARY TABLE `momo_merge_src` AS SELECT `src`.*, ROW_NUMBER() OVER () AS `momo_merge_row` FROM (SELECT id, k, val, n FROM mrg_src) AS `src`",
+		"CREATE TEMPORARY TABLE `momo_merge_pairs` AS SELECT `src`.`momo_merge_row` AS `src_row`, `mrg_rows`.`id` AS `k0`, src.val AS `v0` FROM `mrg_rows`, `momo_merge_src` AS `src` WHERE `mrg_rows`.`k` = src.k FOR UPDATE",
+		"SELECT 1 FROM `momo_merge_pairs` GROUP BY `k0` HAVING COUNT(*) > 1 LIMIT 1",
+		"SELECT COUNT(*) FROM `momo_merge_pairs`",
+		"UPDATE `mrg_rows`, `momo_merge_pairs` AS `n` SET `mrg_rows`.`val` = `n`.`v0`, `mrg_rows`.`version` = `mrg_rows`.`version` + 1 WHERE `mrg_rows`.`id` = `n`.`k0`",
+		"INSERT INTO `mrg_rows` (`id`, `k`, `val`) SELECT src.id, src.k, src.val FROM `momo_merge_src` AS `src` WHERE NOT EXISTS (SELECT 1 FROM `momo_merge_pairs` AS `n` WHERE `n`.`src_row` = `src`.`momo_merge_row`)",
+		dropSrc,
+		dropPairs,
 	}
 	for _, f := range []dialect.Flavor{dialect.FlavorMySQL, dialect.FlavorMariaDB} {
 		assertStatements(t, statementSQL(t, mrgUpsert(flavorDB(f))), want)
@@ -96,13 +145,13 @@ func TestMergeEmulationGoldenMySQLAndMariaDB(t *testing.T) {
 func TestMergeEmulationRunsOnlyTheClausesGiven(t *testing.T) {
 	db := momo.New(fakedriver.New(dialect.SQLite))
 	insOnly := statementSQL(t, mrgInsertClause(momo.Merge[mrgRow](db, mrgSource()).On(mrgOn())))
-	if len(insOnly) != 4 || !strings.HasPrefix(insOnly[2], "INSERT INTO") {
-		t.Errorf("insert only = %v, want drop, create, insert, drop", insOnly)
+	if len(insOnly) != 7 || !strings.HasPrefix(insOnly[4], "INSERT INTO") || strings.Contains(insOnly[3], `"k0"`) {
+		t.Errorf("insert only = %v, want 2 drops, 2 creates without a key or value column, insert, 2 drops", insOnly)
 	}
 	updOnly := statementSQL(t, momo.Merge[mrgRow](db, mrgSource()).On(mrgOn()).
 		WhenMatchedUpdate(mrgN.SetExpr(momo.TypedSQL[int64]("src.n"))))
-	if len(updOnly) != 6 || !strings.HasPrefix(updOnly[4], "UPDATE ") || slices.ContainsFunc(updOnly, func(s string) bool { return strings.HasPrefix(s, "INSERT") }) {
-		t.Errorf("update only = %v, want drop, create, check, count, update, drop", updOnly)
+	if len(updOnly) != 9 || !strings.HasPrefix(updOnly[6], "UPDATE ") || slices.ContainsFunc(updOnly, func(s string) bool { return strings.HasPrefix(s, "INSERT") }) {
+		t.Errorf("update only = %v, want 2 drops, 2 creates, check, count, update, 2 drops", updOnly)
 	}
 }
 
@@ -169,7 +218,7 @@ func TestMergeEmulationRunsInOneTransaction(t *testing.T) {
 	if _, err := mrgUpsert(momo.New(drv)).Exec(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	prefixes := []string{"DROP TABLE IF EXISTS temp.", "CREATE TEMPORARY TABLE ", "SELECT 1 FROM ", "SELECT COUNT(*) FROM ", "INSERT INTO ", "DROP TABLE IF EXISTS temp."}
+	prefixes := []string{"DROP TABLE IF EXISTS temp.", "DROP TABLE IF EXISTS temp.", "CREATE TEMPORARY TABLE ", "CREATE TEMPORARY TABLE ", "SELECT 1 FROM ", "SELECT COUNT(*) FROM ", "INSERT INTO ", "DROP TABLE IF EXISTS temp.", "DROP TABLE IF EXISTS temp."}
 	calls := drv.Calls()
 	if len(calls) != len(prefixes) {
 		t.Fatalf("%d statements ran, want %d (the UPDATE is skipped when nothing matched): %+v", len(calls), len(prefixes), calls)

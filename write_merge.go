@@ -87,19 +87,27 @@ type MergeQuery[T any] struct {
 // call.
 //
 // SQLite, MySQL and MariaDB have no MERGE. Exec runs the same clauses there as
-// a sequence of statements in one atomic scope (a transaction on a DB, a
-// savepoint on a Tx): the source is copied once into a temporary table with a
-// flag that records, before any write, which source rows match the target; the
-// matched rows are then updated and the unmatched rows inserted from that
-// snapshot. Because the match is computed before any action, the result and
-// the affected-row count are those of MERGE, whatever the ON condition and the
-// assigned columns. A target row that more than one source row matches fails
-// with ErrTooManyRows before anything is written, as MERGE does, when there is
-// a WhenMatchedUpdate clause. Returning, and a model without a primary key
-// combined with WhenMatchedUpdate, are refused with ErrUnsupported. The
-// emulation needs the privilege to create temporary tables, and the source
-// columns take the types and collations the server derives for a temporary
-// table. SQL has no single text there: read the statements with Statements.
+// a sequence of statements in one transaction (a savepoint on a Tx): the source
+// is copied once into a temporary table, the pairs of target and source rows
+// that On joins are computed once, with the new value of every assigned column
+// taken from the target row as it was before any write, and the UPDATE and the
+// INSERT then read only those two tables. So the match does not depend on what
+// the UPDATE changed, and an assignment that reads another assigned column sees
+// the old value. A target row that more than one source row matches fails with
+// ErrTooManyRows before anything is written, as in PostgreSQL, when there is a
+// WhenMatchedUpdate clause. Returning, SET col = DEFAULT, a model without a
+// primary key combined with WhenMatchedUpdate, and a pinned DB are refused with
+// ErrUnsupported. Under concurrent writers the sequence is not equivalent to
+// the single statement: it takes no lock that stops a matching target row from
+// being committed between its steps, so a row that starts to match
+// mid-sequence is seen as unmatched (the INSERT then writes it again, or fails
+// on a unique key), and the affected-row count is taken before the UPDATE. On
+// MySQL and MariaDB the matched target rows are locked and read at their
+// latest committed version; SQLite's single writer turns a race into a busy
+// error. The emulation needs the privilege to create temporary tables, a source
+// with distinct column names, and a connection that survives the call (a
+// canceled context can leave the temporary tables until the connection's next
+// Merge). SQL has no single text there: read the statements with Statements.
 //
 // Matched rows are updated through WhenMatchedUpdate, which keeps the
 // updated-at and version columns up to date like Update does; the values of

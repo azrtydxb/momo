@@ -104,11 +104,11 @@ func TestMergeEmulationMatchesPostgresIntegration(t *testing.T) {
 		build    func(q momo.Querier) momo.MergeQuery[mrgRow]
 		want     []string
 		affected int64
+		// after is run after the seed, to give a target row another value.
+		after string
 		// err, when set, is the kind the statement must fail with and the table
-		// must be left as it was. cardinality marks the one error whose kind
-		// only the emulation sets: PostgreSQL's own error has no momo kind.
-		err         error
-		cardinality bool
+		// must be left as it was.
+		err error
 	}{
 		{
 			name:   "update and insert",
@@ -167,13 +167,42 @@ func TestMergeEmulationMatchesPostgresIntegration(t *testing.T) {
 			affected: 2,
 		},
 		{
-			name:        "two source rows for one target row fail the update",
-			target:      mrgBaseTarget,
-			src:         [][]any{{int64(10), "a", "x", int64(1)}, {int64(11), "a", "y", int64(2)}},
-			build:       mrgUpsert,
-			want:        mrgBase,
-			err:         momo.ErrTooManyRows,
-			cardinality: true,
+			name:   "two source rows for one target row fail the update",
+			target: mrgBaseTarget,
+			src:    [][]any{{int64(10), "a", "x", int64(1)}, {int64(11), "a", "y", int64(2)}},
+			build:  mrgUpsert,
+			want:   mrgBase,
+			err:    momo.ErrTooManyRows,
+		},
+		{
+			// Bound values in the source and in an extra, non-key On predicate:
+			// row 2 has n = 5, so source 'b' does not match it and is inserted.
+			name:   "bound arguments and an extra On predicate",
+			target: mrgBaseTarget,
+			src:    [][]any{{int64(10), "b", "s_b", int64(0)}, {int64(11), "a", "s_a", int64(0)}},
+			after:  "UPDATE mrg_rows SET n = 5 WHERE id = 2",
+			build: func(q momo.Querier) momo.MergeQuery[mrgRow] {
+				src := momo.RawSubquery("SELECT id, k, val, n FROM mrg_src WHERE id >= ?", int64(0))
+				return mrgInsertClause(momo.Merge[mrgRow](q, src).On(mrgOn(), mrgN.Eq(0)).
+					WhenMatchedUpdate(mrgVal.SetExpr(momo.TypedSQL[string]("src.val"))))
+			},
+			want:     []string{"1|a|s_a|0|2", "2|b|t2|5|1", "3|NULL|t3|0|1", "10|b|s_b|0|1"},
+			affected: 2,
+		},
+		{
+			// val is assigned from the old k and k from the source: every
+			// assignment reads the row as it was before the statement (MySQL
+			// assigns left to right and would read the new k).
+			name:   "an assignment reading another assigned column sees the old value",
+			target: mrgBaseTarget,
+			src:    [][]any{{int64(10), "a", "s_a", int64(0)}},
+			build: func(q momo.Querier) momo.MergeQuery[mrgRow] {
+				return mrgMergeOf(q).WhenMatchedUpdate(
+					mrgKey.SetExpr(momo.TypedSQL[string]("src.val")),
+					mrgVal.SetExpr(momo.TypedSQL[string]("mrg_rows.k")))
+			},
+			want:     []string{"1|s_a|a|0|2", "2|b|t2|0|1", "3|NULL|t3|0|1"},
+			affected: 1,
 		},
 		{
 			name:     "two source rows for one target row are fine without an update",
@@ -213,13 +242,18 @@ func TestMergeEmulationMatchesPostgresIntegration(t *testing.T) {
 		for _, c := range cases {
 			t.Run(c.name, func(t *testing.T) {
 				mrgSetup(t, db, d, c.target, c.src)
+				if c.after != "" {
+					if _, err := momo.Exec(context.Background(), db, c.after); err != nil {
+						t.Fatal(err)
+					}
+				}
 				res, err := c.build(db).Exec(context.Background())
 				switch {
 				case c.err == nil && err != nil:
 					t.Fatalf("Merge failed: %v", err)
 				case c.err != nil && err == nil:
 					t.Fatalf("Merge succeeded, want a failure of kind %v", c.err)
-				case c.err != nil && (!c.cardinality || d != dialect.Postgres) && !errors.Is(err, c.err):
+				case c.err != nil && !errors.Is(err, c.err):
 					t.Fatalf("Merge failed with %v, want kind %v", err, c.err)
 				}
 				if c.err == nil && res.RowsAffected != c.affected {
@@ -284,6 +318,87 @@ func TestMergeEmulationInsideATransactionIntegration(t *testing.T) {
 		}
 		if got := mrgState(t, db); !slices.Equal(got, mrgBase) {
 			t.Errorf("after the rollback:\n got %v\nwant %v", got, mrgBase)
+		}
+
+		// A target row that two source rows match fails inside a Tx, and only
+		// the Merge is undone.
+		mrgSetup(t, db, d, mrgBaseTarget, [][]any{{int64(10), "a", "x", int64(0)}, {int64(11), "a", "y", int64(0)}})
+		err = db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+			if _, err := momo.Exec(ctx, tx, "INSERT INTO mrg_rows (id, k, val) VALUES (99, 'z', 'zz')"); err != nil {
+				return err
+			}
+			if _, err := mrgUpsert(tx).Exec(ctx); !errors.Is(err, momo.ErrTooManyRows) {
+				t.Errorf("Merge with two source rows for one target row inside a Tx = %v, want ErrTooManyRows", err)
+			}
+			if got, want := mrgState(t, tx), withBase("99|z|zz|0|1"); !slices.Equal(got, want) {
+				t.Errorf("inside the Tx after the failed Merge:\n got %v\nwant %v", got, want)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// Catches: the pair key of the emulation using only the first primary-key
+// column (a composite key then misses a duplicate or updates the wrong rows),
+// and the same final table and count as PostgreSQL for a two-column key.
+func TestMergeEmulationCompositeKeyIntegration(t *testing.T) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		ctx := context.Background()
+		text := "text"
+		if d == dialect.MySQL {
+			text = "varchar(64)"
+		}
+		drop := []string{"DROP TABLE IF EXISTS mrg_pairs", "DROP TABLE IF EXISTS mrg_pairs_src"}
+		for _, stmt := range append(slices.Clone(drop),
+			"CREATE TABLE mrg_pairs (a bigint not null, b bigint not null, v "+text+" not null, primary key (a, b))",
+			"CREATE TABLE mrg_pairs_src (a bigint not null, b bigint not null, v "+text+" not null)",
+		) {
+			if _, err := db.Driver().Exec(ctx, stmt, nil); err != nil {
+				t.Fatalf("%s: %v", stmt, err)
+			}
+		}
+		t.Cleanup(func() {
+			for _, stmt := range drop {
+				_, _ = db.Driver().Exec(context.Background(), stmt, nil)
+			}
+		})
+		state := func() []string {
+			rows, err := momo.Select[mrgPair](db).OrderBy(mrgPairA.Asc(), mrgPairB.Asc()).All(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out := make([]string, len(rows))
+			for i, r := range rows {
+				out[i] = fmt.Sprintf("%d|%d|%s", r.A, r.B, r.V)
+			}
+			return out
+		}
+		exec := func(sql string, args ...any) {
+			if _, err := momo.Exec(ctx, db, sql, args...); err != nil {
+				t.Fatal(err)
+			}
+		}
+		exec("INSERT INTO mrg_pairs (a, b, v) VALUES (1, 1, 'x'), (1, 2, 'y')")
+		exec("INSERT INTO mrg_pairs_src (a, b, v) VALUES (1, 1, 'X'), (2, 1, 'z')")
+		res, err := mrgPairMerge(db).Exec(ctx)
+		if err != nil || res.RowsAffected != 2 {
+			t.Fatalf("Merge = %+v, %v, want 2 rows", res, err)
+		}
+		if got, want := state(), []string{"1|1|X", "1|2|y", "2|1|z"}; !slices.Equal(got, want) {
+			t.Errorf("table:\n got %v\nwant %v", got, want)
+		}
+		// Two source rows for the key (1, 1): rows that differ in one key column
+		// only are not duplicates, the same pair twice is.
+		exec("DELETE FROM mrg_pairs_src")
+		exec("INSERT INTO mrg_pairs_src (a, b, v) VALUES (1, 1, 'p'), (1, 2, 'q'), (1, 1, 'r')")
+		if _, err := mrgPairMerge(db).Exec(ctx); !errors.Is(err, momo.ErrTooManyRows) {
+			t.Fatalf("Merge with the key (1, 1) twice = %v, want ErrTooManyRows", err)
+		}
+		if got, want := state(), []string{"1|1|X", "1|2|y", "2|1|z"}; !slices.Equal(got, want) {
+			t.Errorf("table after the failed Merge:\n got %v\nwant %v", got, want)
 		}
 	})
 }

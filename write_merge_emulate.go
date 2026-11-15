@@ -7,16 +7,23 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 
 	"github.com/azrtydxb/momo/dialect"
 )
 
 const (
-	// mergeSnapshotTable is the temporary table that holds the source rows and,
-	// per row, whether it matched the target before any write.
+	// mergeSnapshotTable is the temporary table that holds the source rows, each
+	// numbered in mergeRowColumn.
 	mergeSnapshotTable = "momo_merge_src"
-	// mergeMatchedColumn is that flag: 1 when a target row satisfies On.
-	mergeMatchedColumn = "momo_merge_matched"
+	mergeRowColumn     = "momo_merge_row"
+	// mergePairsTable is the temporary table of (target row, source row) pairs
+	// that On joins, with the new value of every assigned column computed from
+	// the target row as it was before any write.
+	mergePairsTable = "momo_merge_pairs"
+	mergePairRow    = "src_row"
+	mergePairKey    = "k"
+	mergePairValue  = "v"
 )
 
 // mergeStepKind says how an emulation step is run.
@@ -28,12 +35,12 @@ const (
 	// mergeStepCardinality is a query that returns a row when a target row
 	// matches more than one source row.
 	mergeStepCardinality
-	// mergeStepCount is a query that returns the number of (target, source)
-	// pairs: the rows the update changes.
+	// mergeStepCount is a query that returns the number of pairs: the rows the
+	// update changes.
 	mergeStepCount
 	mergeStepUpdate
 	mergeStepInsert
-	// mergeStepCleanup drops the temporary table; it is always the last step.
+	// mergeStepCleanup drops a temporary table; the cleanup steps come last.
 	mergeStepCleanup
 )
 
@@ -58,13 +65,13 @@ func (m MergeQuery[T]) unsupportedErr(format string, args ...any) error {
 
 // Statements returns the statements Exec runs, in order. On a dialect with
 // MERGE that is the one MERGE statement. On SQLite, MySQL and MariaDB it is
-// the emulation: drop and create the temporary snapshot of the source, with the
-// matched flag; when there is a WhenMatchedUpdate clause, the check for a
-// target row that more than one source row matches, the count of rows it
-// changes and the UPDATE; when there is a WhenNotMatchedInsert clause, the
-// INSERT of the unmatched rows; and the drop of the snapshot. The check and
-// the count are queries, the others are executed. Nothing is run and no
-// server is called. Interceptors run as for SQL.
+// the emulation: drop and create the temporary snapshot of the source and the
+// temporary table of matched pairs; when there is a WhenMatchedUpdate clause,
+// the check for a target row that more than one source row matches, the count
+// of rows it changes and the UPDATE; when there is a WhenNotMatchedInsert
+// clause, the INSERT of the unmatched rows; and the drops. The check and the
+// count are queries, the others are executed. Nothing is run and no server is
+// called. Interceptors run as for SQL.
 func (m MergeQuery[T]) Statements() ([]Compiled, error) {
 	if m.q == nil {
 		return nil, noQuerier("merge", m.meta.Table)
@@ -92,14 +99,16 @@ func (m MergeQuery[T]) Statements() ([]Compiled, error) {
 
 // emulation builds the statement sequence for a dialect without MERGE.
 //
-// The sequence keeps MERGE semantics because the match is decided once, before
-// any write: the snapshot holds every source row with the flag "a target row
-// satisfies On", computed against the untouched target. The UPDATE joins the
-// target to the snapshot (On is still evaluated, but the cardinality check
-// ran against the same unchanged target just before it), and the INSERT takes
-// the rows whose flag is 0, so neither depends on what the UPDATE changed, not
-// even when it assigns a column that On reads. The source is also evaluated
-// once.
+// Everything MERGE decides is decided once, before any write. The source is
+// copied into a snapshot with a row number. The pairs table joins the target
+// to the snapshot on On and holds, per pair, the key of the target row and the
+// new value of every assigned column, computed from the target row as it is
+// before any write (so an assignment that reads another assigned column sees
+// the old value, as in PostgreSQL, whatever order MySQL assigns in). The UPDATE
+// then assigns from the pairs table only, and the INSERT takes the snapshot rows
+// that have no pair. Neither depends on what the UPDATE changed. On MySQL and
+// MariaDB the pairs are read with FOR UPDATE when there is an update, so the
+// matched target rows are locked and read at their latest committed version.
 func (m MergeQuery[T]) emulation() ([]mergeStep, error) {
 	mp, err := m.plan()
 	if err != nil {
@@ -115,75 +124,110 @@ func (m MergeQuery[T]) emulation() ([]mergeStep, error) {
 	if m.hasMatched && len(m.meta.PK) == 0 {
 		return nil, m.unsupportedErr("WhenMatchedUpdate on %s needs a primary key on %s, to detect a target row that more than one source row matches", d.Name, m.meta.Table)
 	}
+	for _, a := range mp.sets {
+		if a.kind == setDefault {
+			return nil, m.unsupportedErr("WhenMatchedUpdate with SET %s = DEFAULT cannot be emulated on %s", a.col, d.Name)
+		}
+	}
 	mysql := d.Name == dialect.MySQL
 	target := TableRef{Name: m.meta.Table, Schema: m.meta.Schema}
 	var steps []mergeStep
 	var buildErr error
 	add := func(kind mergeStepKind, fn func(b *Builder)) {
 		c, err := compile(d, func(b *Builder) {
-			b.withScope([]string{target.Qualifier(), "src"}, func() { fn(b) })
+			b.withScope([]string{target.Qualifier(), "src", "n"}, func() { fn(b) })
 		})
 		if err != nil && buildErr == nil {
 			buildErr = err
 		}
 		steps = append(steps, mergeStep{kind: kind, c: c})
 	}
-	drop := func(b *Builder) {
-		if mysql {
-			b.WriteString("DROP TEMPORARY TABLE IF EXISTS ")
-		} else {
-			b.WriteString("DROP TABLE IF EXISTS temp.")
+	drop := func(table string) func(b *Builder) {
+		return func(b *Builder) {
+			if mysql {
+				b.WriteString("DROP TEMPORARY TABLE IF EXISTS ")
+			} else {
+				b.WriteString("DROP TABLE IF EXISTS temp.")
+			}
+			b.Ident(table)
 		}
-		b.Ident(mergeSnapshotTable)
 	}
-	snapshotSrc := func(b *Builder) {
-		b.Ident(mergeSnapshotTable)
+	from := func(b *Builder, table, alias string) {
+		b.Ident(table)
 		b.WriteString(" AS ")
-		b.Ident("src")
+		b.Ident(alias)
 	}
-	// pairs writes "target, snapshot AS src WHERE <on>": every (target, source)
-	// pair that On joins.
-	pairs := func(b *Builder) {
-		target.appendFrom(b)
-		b.WriteString(", ")
-		snapshotSrc(b)
-		b.WriteString(" WHERE ")
-		appendAnd(b, m.on)
-	}
+	pk := func(i int) string { return mergePairKey + strconv.Itoa(i) }
+	val := func(i int) string { return mergePairValue + strconv.Itoa(i) }
 
-	add(mergeStepSetup, drop)
+	add(mergeStepSetup, drop(mergeSnapshotTable))
+	add(mergeStepSetup, drop(mergePairsTable))
 	add(mergeStepSetup, func(b *Builder) {
 		b.WriteString("CREATE TEMPORARY TABLE ")
 		b.Ident(mergeSnapshotTable)
 		b.WriteString(" AS SELECT ")
 		b.Ident("src")
-		b.WriteString(".*, CASE WHEN EXISTS (SELECT 1 FROM ")
-		target.appendFrom(b)
-		b.WriteString(" WHERE ")
-		appendAnd(b, m.on)
-		b.WriteString(") THEN 1 ELSE 0 END AS ")
-		b.Ident(mergeMatchedColumn)
+		b.WriteString(".*, ROW_NUMBER() OVER () AS ")
+		b.Ident(mergeRowColumn)
 		b.WriteString(" FROM ")
 		m.source.AppendSQL(b)
 		b.WriteString(" AS ")
 		b.Ident("src")
 	})
+	add(mergeStepSetup, func(b *Builder) {
+		b.WriteString("CREATE TEMPORARY TABLE ")
+		b.Ident(mergePairsTable)
+		b.WriteString(" AS SELECT ")
+		b.QualifiedIdent("src", mergeRowColumn)
+		b.WriteString(" AS ")
+		b.Ident(mergePairRow)
+		if m.hasMatched {
+			for i, ci := range m.meta.PK {
+				b.WriteString(", ")
+				b.QualifiedIdent(target.Qualifier(), m.meta.Columns[ci].Name)
+				b.WriteString(" AS ")
+				b.Ident(pk(i))
+			}
+			for i, a := range mp.sets {
+				b.WriteString(", ")
+				switch a.kind {
+				case setValue:
+					b.argFor(a.flags, a.val)
+				case setExpr:
+					b.exprFor(a.flags, a.expr)
+				default:
+					b.WriteString("NULL")
+				}
+				b.WriteString(" AS ")
+				b.Ident(val(i))
+			}
+		}
+		b.WriteString(" FROM ")
+		target.appendFrom(b)
+		b.WriteString(", ")
+		from(b, mergeSnapshotTable, "src")
+		b.WriteString(" WHERE ")
+		appendAnd(b, m.on)
+		if mysql && m.hasMatched {
+			b.WriteString(" FOR UPDATE")
+		}
+	})
 	if m.hasMatched {
 		add(mergeStepCardinality, func(b *Builder) {
 			b.WriteString("SELECT 1 FROM ")
-			pairs(b)
+			b.Ident(mergePairsTable)
 			b.WriteString(" GROUP BY ")
-			for i, ci := range m.meta.PK {
+			for i := range m.meta.PK {
 				if i > 0 {
 					b.WriteString(", ")
 				}
-				b.QualifiedIdent(target.Qualifier(), m.meta.Columns[ci].Name)
+				b.Ident(pk(i))
 			}
 			b.WriteString(" HAVING COUNT(*) > 1 LIMIT 1")
 		})
 		add(mergeStepCount, func(b *Builder) {
 			b.WriteString("SELECT COUNT(*) FROM ")
-			pairs(b)
+			b.Ident(mergePairsTable)
 		})
 		add(mergeStepUpdate, func(b *Builder) {
 			qual := ""
@@ -194,14 +238,16 @@ func (m MergeQuery[T]) emulation() ([]mergeStep, error) {
 			target.appendFrom(b)
 			if mysql {
 				b.WriteString(", ")
-				snapshotSrc(b)
+				from(b, mergePairsTable, "n")
 			}
 			b.WriteString(" SET ")
 			for i, a := range mp.sets {
 				if i > 0 {
 					b.WriteString(", ")
 				}
-				mp.upd.appendAssignment(b, a, qual)
+				b.QualifiedIdent(qual, a.col)
+				b.WriteString(" = ")
+				b.QualifiedIdent("n", val(i))
 			}
 			if vi := m.meta.Version; vi >= 0 {
 				b.WriteString(", ")
@@ -212,10 +258,17 @@ func (m MergeQuery[T]) emulation() ([]mergeStep, error) {
 			}
 			if !mysql {
 				b.WriteString(" FROM ")
-				snapshotSrc(b)
+				from(b, mergePairsTable, "n")
 			}
 			b.WriteString(" WHERE ")
-			appendAnd(b, m.on)
+			for i, ci := range m.meta.PK {
+				if i > 0 {
+					b.WriteString(" AND ")
+				}
+				b.QualifiedIdent(target.Qualifier(), m.meta.Columns[ci].Name)
+				b.WriteString(" = ")
+				b.QualifiedIdent("n", pk(i))
+			}
 		})
 	}
 	if m.hasInsert {
@@ -241,13 +294,18 @@ func (m MergeQuery[T]) emulation() ([]mergeStep, error) {
 				mp.ins.appendValue(b, a)
 			}
 			b.WriteString(" FROM ")
-			snapshotSrc(b)
+			from(b, mergeSnapshotTable, "src")
+			b.WriteString(" WHERE NOT EXISTS (SELECT 1 FROM ")
+			from(b, mergePairsTable, "n")
 			b.WriteString(" WHERE ")
-			b.QualifiedIdent("src", mergeMatchedColumn)
-			b.WriteString(" = 0")
+			b.QualifiedIdent("n", mergePairRow)
+			b.WriteString(" = ")
+			b.QualifiedIdent("src", mergeRowColumn)
+			b.writeByte(')')
 		})
 	}
-	add(mergeStepCleanup, drop)
+	add(mergeStepCleanup, drop(mergeSnapshotTable))
+	add(mergeStepCleanup, drop(mergePairsTable))
 	if buildErr != nil {
 		return nil, buildErr
 	}
@@ -273,16 +331,20 @@ func (m MergeQuery[T]) execEmulated(ctx context.Context) (Result, error) {
 	var total int64
 	err = runAtomic(ctx, m.q, "merge", m.meta.Table, func(q Querier) (err error) {
 		cn := q.conn()
-		cleanup := steps[len(steps)-1].c
 		defer func() {
 			// MySQL does not roll a temporary table back with the transaction, so
-			// the drop always runs, even after a failure.
-			if _, derr := cn.exec(context.WithoutCancel(ctx), "merge", m.meta.Table, cleanup); derr != nil {
-				err = errors.Join(err, derr)
+			// the drops always run, even after a failure.
+			for _, s := range steps {
+				if s.kind != mergeStepCleanup {
+					continue
+				}
+				if _, derr := cn.exec(context.WithoutCancel(ctx), "merge", m.meta.Table, s.c); derr != nil {
+					err = errors.Join(err, derr)
+				}
 			}
 		}()
 		matched := int64(0)
-		for _, s := range steps[:len(steps)-1] {
+		for _, s := range steps {
 			switch s.kind {
 			case mergeStepSetup:
 				if _, err := cn.exec(ctx, "merge", m.meta.Table, s.c); err != nil {
