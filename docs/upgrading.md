@@ -18,6 +18,17 @@ refused with `ErrUnsupported` when the engine knows the server is MariaDB (any
 engine built on a driver); the offline `momo migrate` commands, which open no
 database, cannot know it and render the parser, so MariaDB rejects it when the
 migration is applied. Drift does not report a table for its storage engine.
+Package `fts` also gains a query layer that reads the declaration: `fts.Over`
+names the searched columns, and `fts.Search`, `fts.Score` and `fts.Snippet`
+render a match, a relevance score and an excerpt, with the text of a `fts.Web`,
+`fts.Plain` or `fts.Raw` query bound as a parameter. On PostgreSQL they search
+the generated tsvector column `<index>_tsv` of the declaration; on SQLite they
+search the FTS5 table `<table>_fts`, and a search whose FTS5 table does not
+exist fails with `momo.ErrUnsupported` naming the table. The existing `fts`
+builders keep their signatures and their PostgreSQL SQL. On the cgo SQLite
+driver FTS5 needs the build flag `-tags sqlite_fts5` (or
+`CGO_CFLAGS=-DSQLITE_ENABLE_FTS5`); the pure-Go driver `driver/sqlitepure`
+includes FTS5.
 
 ### Declare full-text search on a model
 

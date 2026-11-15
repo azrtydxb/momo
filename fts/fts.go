@@ -32,10 +32,19 @@ type Expr[T any] struct {
 	momo.Ops[T]
 	what   string
 	render func(b *momo.Builder)
+	// portable marks an expression that renders on more than PostgreSQL; its
+	// render function decides per dialect and records ErrUnsupported itself.
+	portable bool
 }
 
 func newExpr[T any](what string, render func(b *momo.Builder)) Expr[T] {
 	e := Expr[T]{what: what, render: render}
+	e.Ops = momo.NewOps[T](e)
+	return e
+}
+
+func newPortableExpr[T any](what string, render func(b *momo.Builder)) Expr[T] {
+	e := Expr[T]{what: what, render: render, portable: true}
 	e.Ops = momo.NewOps[T](e)
 	return e
 }
@@ -46,7 +55,7 @@ func (e Expr[T]) As(alias string) momo.Aliased[T] { return momo.As[T](e, alias) 
 // AppendSQL renders the call, or records a build error on a dialect without
 // full-text search or for an invalid argument.
 func (e Expr[T]) AppendSQL(b *momo.Builder) {
-	if !available(b, e.what) || e.render == nil {
+	if e.render == nil || (!e.portable && !available(b, e.what)) {
 		return
 	}
 	e.render(b)

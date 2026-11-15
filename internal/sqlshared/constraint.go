@@ -24,6 +24,29 @@ func ConstraintTarget(msg string) (table, column string) {
 	return table, column
 }
 
+// MissingFTSTable parses "no such table: <name>" where name is the FTS5 table
+// of a model (it ends in _fts). It returns the table name, or false for any
+// other message. It maps any "no such table" error whose name ends in _fts, not
+// only the table of a model's declaration, so a statement of the application's
+// own that names a missing table with that suffix is classified the same way.
+// The drivers report such a failure as ErrUnsupported naming the table,
+// because the search structure was never created.
+func MissingFTSTable(msg string) (string, bool) {
+	const prefix = "no such table: "
+	_, name, ok := strings.Cut(msg, prefix)
+	if !ok {
+		return "", false
+	}
+	name = strings.Trim(strings.TrimSpace(name), `"`)
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		name = name[i+1:]
+	}
+	if !strings.HasSuffix(name, "_fts") {
+		return "", false
+	}
+	return name, true
+}
+
 // ConstraintKind classifies a constraint failure by its message prefix, for a
 // SQLITE_CONSTRAINT whose extended code names no kind (a bare code, or one a
 // later SQLite adds). It returns nil for any other message.
