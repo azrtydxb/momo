@@ -33,6 +33,47 @@ func offlineEngine(t *testing.T, fsys fstest.MapFS, now time.Time) *migrate.Engi
 	return migratetest.NewEngine(t, mpg.New(), nil, fsys, migrate.WithClock(func() time.Time { return now }))
 }
 
+// expandingDialect is the PostgreSQL dialect plus a SchemaExpander that adds a
+// table the declaration implies.
+type expandingDialect struct{ pgBase }
+
+// pgBase names the embedded dialect so that its field does not shadow the
+// Dialect method.
+type pgBase = mpg.Dialect
+
+func (expandingDialect) ExpandSchema(s *schema.Schema) (*schema.Schema, error) {
+	out := *s
+	out.Tables = append([]schema.Table(nil), s.Tables...)
+	if _, ok := out.Table("derived"); !ok {
+		out.Tables = append(out.Tables, schema.Table{
+			Name:       "derived",
+			Columns:    []schema.Column{{Name: "id", Type: "INTEGER"}},
+			PrimaryKey: []string{"id"},
+		})
+	}
+	return &out, nil
+}
+
+// Catches: Engine.Diff comparing the declaration instead of the expanded
+// schema, so objects a dialect derives are never planned.
+func TestExpandSchemaHook(t *testing.T) {
+	e := migratetest.NewEngine(t, expandingDialect{pgBase: mpg.New()}, nil, fstest.MapFS{},
+		migrate.WithClock(func() time.Time { return time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC) }))
+	mig, err := e.Diff(context.Background(), docsSchema(), "init", migrate.DiffOptions{})
+	if err != nil || mig == nil {
+		t.Fatalf("diff: %v %v", mig, err)
+	}
+	var created []string
+	for _, c := range mig.Changes {
+		if c.Kind == migrate.CreateTable {
+			created = append(created, c.Name)
+		}
+	}
+	if len(created) != 2 || created[0] != "derived" && created[1] != "derived" {
+		t.Fatalf("create_table changes = %v, want docs and derived", created)
+	}
+}
+
 func mapFS(files map[string][]byte) fstest.MapFS {
 	dir := fstest.MapFS{}
 	for k, v := range files {
