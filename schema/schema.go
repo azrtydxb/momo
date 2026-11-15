@@ -219,6 +219,9 @@ type Index struct {
 	// It is a migration-time option, not a schema property, and is ignored
 	// by comparisons.
 	Concurrently bool `json:"concurrently,omitempty"`
+	// FullText is the full-text search declaration of an index whose Method
+	// is "fulltext".
+	FullText *FullText `json:"fulltext,omitempty"`
 }
 
 // IndexPart is one key of an index.

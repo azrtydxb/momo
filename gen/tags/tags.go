@@ -47,7 +47,7 @@ type Tags struct {
 	PK, NotNull, Nullable, Identity, Serial, Version, CreatedAt, UpdatedAt bool
 	ReadOnly, CreateOnly, Immutable, Sensitive, Embedded                   bool
 	NoConstraint, BelongsTo, HasOne, HasMany, ManyToMany                   bool
-	Index, Unique                                                          bool
+	Index, Unique, Search                                                  bool
 
 	// DBDefault is the dbdefault option: a Model insert leaves the column to
 	// the database default while the field holds its zero value.
@@ -324,6 +324,8 @@ func (t *Tags) set(key, val string, hasVal bool) string {
 		return named(&t.Index, &t.IndexName)
 	case "unique":
 		return named(&t.Unique, &t.UniqueName)
+	case "search":
+		return bare(&t.Search)
 	}
 	return `unknown tag option "` + key + `"`
 }

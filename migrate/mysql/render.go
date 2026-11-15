@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
@@ -445,6 +446,9 @@ func renderAlterColumn(c migrate.Change) ([]migrate.Statement, error) {
 // ----------------------------------------------------------------- indexes
 
 func createIndex(schemaName, table string, ix schema.Index) (migrate.Statement, error) {
+	if ix.FullText != nil {
+		return migrate.Statement{}, &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate/mysql", Err: fmt.Errorf("index %q: full-text declarations are not rendered yet", ix.Name)}
+	}
 	if ix.Where != "" {
 		return migrate.Statement{}, fmt.Errorf("index %q: partial indexes do not exist on MySQL", ix.Name)
 	}

@@ -1232,3 +1232,13 @@ GitHub, and list any with unmerged commits.
 - SchemaExpander: an optional migrate hook expands derived objects on both sides before diffing, so snapshots keep only the declaration (recommended); store the derived objects in the snapshot
 
 Decision (2026-11-15, the user, via AskUserQuestion): accept all fallbacks and the hook.
+
+## Full-text search Task 1: choices the plan leaves open (2026-11-15, integrator)
+
+- `schema.FullText.Validate` returns plain errors, not `momo.ErrValidation`: package `schema` is standard-library only and cannot import the root package. The generator turns the error into a positioned diagnostic and the dialect expansions of later tasks wrap it in `ErrValidation`.
+- The one-declaration-per-table check and `Validate` run in the generator's `addIndex`, before the name-collision check, so a `search` tag and a `c.FullText` call of the same name report "one full-text declaration per table" rather than a name clash.
+- The `search` tag form is checked per field (`field <GoName>: search needs a text column, it is <type>`); the call form is checked per column in `applyCompanion`, because a column has no Go field name there.
+- The companion reader does not seed the tag-built `<table>_search` name into its index namespace; the builder reports the second declaration.
+- Review follow-up (2026-11-15, integrator): until the dialect tasks land, the PostgreSQL, SQLite and MySQL/MariaDB index renderers refuse an index with a full-text declaration with `ErrUnsupported` ("full-text declarations are not rendered yet"). Without it PostgreSQL wrote `USING "fulltext"` (invalid DDL) and MySQL wrote a plain FULLTEXT that ignored the parser. So the declaration is recorded in the model and the snapshot, but migrations refuse it until a later release; docs/upgrading.md says so.
+- Review follow-up: `ForDialect` also clears the PostgreSQL-only `Expression` on SQLite and MySQL, or those dialects would diff it forever. `isTextType` compares the base type (length stripped) against an exact set and rejects arrays, so `text[]` and an enum named `text_kind` are not text. The FTS5 `remove_diacritics` option is allowed only on `unicode61`.
+- An older momo's `schema.Load` does not reject the new `fulltext` key: it uses plain `json.Unmarshal` (no `DisallowUnknownFields`), so it reads the snapshot and drops the declaration silently.
