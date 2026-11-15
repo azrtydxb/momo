@@ -60,8 +60,12 @@ func ftsExec(t *testing.T, db *momo.DB, sql string, args ...any) {
 }
 
 func ftsSearch(t *testing.T, db *momo.DB, q string) []int64 {
+	return ftsSearchIn(t, db, "articles_fts", q)
+}
+
+func ftsSearchIn(t *testing.T, db *momo.DB, fts, q string) []int64 {
 	t.Helper()
-	rows, err := db.Driver().Query(context.Background(), `SELECT rowid FROM articles_fts WHERE articles_fts MATCH ? ORDER BY rowid`, []any{q})
+	rows, err := db.Driver().Query(context.Background(), `SELECT rowid FROM "`+fts+`" WHERE "`+fts+`" MATCH ? ORDER BY rowid`, []any{q})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,6 +221,47 @@ func TestFullTextSQLiteDropSourceColumn(t *testing.T) {
 	ftsExec(t, db, `INSERT INTO articles_fts(articles_fts) VALUES('integrity-check')`)
 	if again, err := e3.Diff(ctx, next, "again", migrate.DiffOptions{}); err != nil || again != nil {
 		t.Fatalf("diff after the change = %v, %v; want none", again, err)
+	}
+}
+
+// Catches: ALTER TABLE RENAME leaving the FTS5 table's content= option on the
+// old name, so a search after the rename finds nothing or fails, and the old
+// FTS5 table or its triggers surviving the rename.
+func TestFullTextSQLiteTableRename(t *testing.T) {
+	ctx := context.Background()
+	db := testopen.SQLite(t)
+	eng, files := ftsMigrate(t, db, ftsDeclared())
+	ftsExec(t, db, `INSERT INTO articles (id, title, body) VALUES (1, 'red fox', 'quick')`)
+
+	next := ftsDeclared()
+	next.Tables[0].Name = "posts"
+	next.Tables[0].Indexes[0].Name = "posts_search"
+	m, err := eng.Diff(ctx, next, "rename", migrate.DiffOptions{RenameTables: map[string]string{"articles": "posts"}})
+	if err != nil || m == nil {
+		t.Fatalf("diff = %v, %v", m, err)
+	}
+	up := upFile(t, m.Files)
+	e3 := newEngine(t, db, migratetest.FS(mergeFiles(files, m.Files)), "20260103000000")
+	if _, err := e3.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatalf("apply: %v\n%s", err, up)
+	}
+	if got := ftsSearchIn(t, db, "posts_fts", `"fox"`); len(got) != 1 {
+		t.Fatalf("existing row missing after the rename: %v\n%s", got, up)
+	}
+	ftsExec(t, db, `INSERT INTO posts (id, title, body) VALUES (2, 'blue whale', 'slow')`)
+	ftsExec(t, db, `UPDATE posts SET title = 'green frog' WHERE id = 1`)
+	if got := ftsSearchIn(t, db, "posts_fts", `"frog"`); len(got) != 1 {
+		t.Fatalf("triggers do not follow the rename: %v", got)
+	}
+	ftsExec(t, db, `INSERT INTO posts_fts(posts_fts) VALUES('integrity-check')`)
+	var n int
+	rows, err := db.Driver().Query(ctx, `SELECT count(*) FROM sqlite_schema WHERE name LIKE 'articles%'`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() || rows.Scan(&n) != nil || n != 0 {
+		t.Fatalf("objects of the old name survive the rename: %d", n)
 	}
 }
 

@@ -59,8 +59,12 @@ it in step with the table, and the table is filled with the FTS5 `rebuild`
 command when it is created. The table needs a rowid table with a primary key of
 one `INTEGER` column; any other key, or a declared column the table lacks, is
 `ErrValidation` naming the table. Removing the declaration, or the table, drops
-the triggers, then the FTS5 table. A build without FTS5 fails the migration with
-`ErrUnsupported`.
+the triggers, then the FTS5 table. Renaming the table drops and re-creates the
+FTS5 table and the triggers under the new name. A build without FTS5 fails the
+migration with `ErrUnsupported`. `INSERT OR REPLACE` and `ON CONFLICT REPLACE`
+do not fire the delete trigger unless `PRAGMA recursive_triggers = ON`, which
+leaves stale tokens in the FTS5 table; repair it with
+`INSERT INTO <table>_fts(<table>_fts) VALUES('rebuild')`.
 
 ## Upgrading to 0.14.0
 

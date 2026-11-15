@@ -279,7 +279,7 @@ func (r *renderer) renderChange(c migrate.Change) ([]migrate.Statement, error) {
 			if _, ok := t.FullTextIndex(); ok {
 				// The FTS5 table is a table of its own: it does not go with its
 				// content table.
-				return []migrate.Statement{{SQL: dropFTS5SQL(c.Table, true)}, drop}, nil
+				return []migrate.Statement{{SQL: dropFTS5SQL(schema.FTS5Table(c.Table), true)}, drop}, nil
 			}
 		}
 		return []migrate.Statement{drop}, nil

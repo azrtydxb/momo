@@ -128,6 +128,67 @@ func TestFullTextSQLiteUnknownColumn(t *testing.T) {
 	}
 }
 
+// Catches: a table or key name that createFTS5SQL would refuse passing the diff
+// and failing only at render, and a column named like an FTS5 reserved name.
+func TestFullTextSQLiteExpandNames(t *testing.T) {
+	var d Dialect
+	bad := map[string]func(*schema.Schema){
+		"table name": func(s *schema.Schema) { s.Tables[0].Name = "art-icles" },
+		"key name": func(s *schema.Schema) {
+			s.Tables[0].Columns[0].Name = "i-d"
+			s.Tables[0].PrimaryKey = []string{"i-d"}
+		},
+		"rank column": func(s *schema.Schema) {
+			s.Tables[0].Columns[1].Name = "rank"
+			s.Tables[0].Indexes[0].FullText.Columns[0] = "rank"
+		},
+		"rowid column": func(s *schema.Schema) {
+			s.Tables[0].Columns[2].Name = "RowID"
+			s.Tables[0].Indexes[0].FullText.Columns[1] = "RowID"
+		},
+	}
+	for name, mutate := range bad {
+		s := ftsArticles([]string{"id"}, "INTEGER")
+		mutate(s)
+		_, err := d.ExpandSchema(s)
+		if err == nil || !errors.Is(err, momo.ErrValidation) {
+			t.Errorf("%s: err = %v, want ErrValidation", name, err)
+		}
+	}
+	s := ftsArticles([]string{"id"}, "INTEGER")
+	s.Tables[0].Name = "art-icles"
+	if _, err := d.ExpandSchema(s); err == nil || !strings.Contains(err.Error(), "art-icles") {
+		t.Errorf("table name error = %v, want it to name the table", err)
+	}
+}
+
+// Catches: a table rename that leaves the FTS5 table on content='articles'
+// (ALTER TABLE RENAME does not rewrite it), and a drop of the old FTS5 table
+// that names the new table.
+func TestFullTextSQLiteRenameRecreates(t *testing.T) {
+	var d Dialect
+	from, err := d.ExpandSchema(ftsArticles([]string{"id"}, "INTEGER"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamed := ftsArticles([]string{"id"}, "INTEGER")
+	renamed.Tables[0].Name = "posts"
+	to, err := d.ExpandSchema(renamed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := renderPlan(t, from, to, migrate.DiffOptions{RenameTables: map[string]string{"articles": "posts"}})
+	rename := strings.Index(all, `ALTER TABLE "articles" RENAME TO "posts"`)
+	dropTrigger := strings.LastIndex(all, `DROP TRIGGER IF EXISTS "articles_fts_`)
+	dropTable := strings.Index(all, `DROP TABLE "articles_fts"`)
+	create := strings.Index(all, `CREATE VIRTUAL TABLE "posts_fts" USING fts5("title", "body", content='posts'`)
+	trigger := strings.Index(all, `CREATE TRIGGER "posts_fts_ai" AFTER INSERT ON "posts"`)
+	if rename < 0 || dropTrigger < rename || dropTable < dropTrigger || create < dropTable || trigger < create {
+		t.Fatalf("wrong statements or order (rename=%d dropTrigger=%d dropTable=%d create=%d trigger=%d):\n%s",
+			rename, dropTrigger, dropTable, create, trigger, all)
+	}
+}
+
 // Catches: a table or key name with a quote reaching the content= option.
 func TestCreateFTS5SQLRefusesHostileNames(t *testing.T) {
 	ix := schema.Index{Name: "x", Method: "fulltext", FullText: &schema.FullText{Columns: []string{"title"}}}

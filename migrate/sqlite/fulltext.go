@@ -52,6 +52,14 @@ func (Dialect) ExpandSchema(s *schema.Schema) (*schema.Schema, error) {
 			if _, found := t.Column(c); !found {
 				return nil, invalid("table %q: full-text column %q is not a column of the table", t.Name, c)
 			}
+			// FTS5 reserves these names for its hidden columns and the rank
+			// option, so a column called one of them cannot be indexed.
+			if strings.EqualFold(c, "rank") || strings.EqualFold(c, "rowid") {
+				return nil, invalid("table %q: full-text column %q is a name FTS5 reserves", t.Name, c)
+			}
+		}
+		if !ftsIdentRE.MatchString(t.Name) {
+			return nil, invalid("table %q: full-text search on SQLite needs a plain identifier as the table name", t.Name)
 		}
 		if len(t.PrimaryKey) != 1 {
 			return nil, invalid("table %q: full-text search on SQLite needs a primary key of one INTEGER column, it has %d key columns", t.Name, len(t.PrimaryKey))
@@ -60,6 +68,9 @@ func (Dialect) ExpandSchema(s *schema.Schema) (*schema.Schema, error) {
 			return nil, invalid("table %q: full-text search on SQLite needs a rowid table, it is WITHOUT ROWID", t.Name)
 		}
 		pk := t.PrimaryKey[0]
+		if !ftsIdentRE.MatchString(pk) {
+			return nil, invalid("table %q: full-text search on SQLite needs a plain identifier as the key column, got %q", t.Name, pk)
+		}
 		pkCol, found := t.Column(pk)
 		if !found || schema.NormalizeType(dialect.SQLite, pkCol.Type) != "INTEGER" {
 			return nil, invalid("table %q: full-text search on SQLite needs an INTEGER primary key, column %q is not one", t.Name, pk)
@@ -124,13 +135,13 @@ func rebuildFTS5SQL(table string) string {
 	return "INSERT INTO " + fts + "(" + fts + ") VALUES('rebuild')"
 }
 
-// dropFTS5SQL drops the FTS5 table of table; its shadow tables go with it.
-func dropFTS5SQL(table string, ifExists bool) string {
+// dropFTS5SQL drops the FTS5 table fts; its shadow tables go with it.
+func dropFTS5SQL(fts string, ifExists bool) string {
 	sql := "DROP TABLE "
 	if ifExists {
 		sql += "IF EXISTS "
 	}
-	return sql + ident(schema.FTS5Table(table))
+	return sql + ident(fts)
 }
 
 // ftsTriggers returns the three triggers that keep the FTS5 table of table in
@@ -189,7 +200,13 @@ func isFTSChange(c migrate.Change) bool {
 // renderFTSChange renders the creation or drop of the FTS5 table.
 func (r *renderer) renderFTSChange(c migrate.Change, ix schema.Index) ([]migrate.Statement, error) {
 	if c.Kind == migrate.DropIndex {
-		return one(dropFTS5SQL(c.Table, c.IfExists)), nil
+		// The index name is the FTS5 table's name. After a table rename it is
+		// the name the old table had, while c.Table is already the new one.
+		fts := c.Name
+		if fts == "" {
+			fts = schema.FTS5Table(c.Table)
+		}
+		return one(dropFTS5SQL(fts, c.IfExists)), nil
 	}
 	if r.to == nil {
 		return nil, invalid("index %q is a full-text declaration; render it through RenderSchema", ix.Name)
