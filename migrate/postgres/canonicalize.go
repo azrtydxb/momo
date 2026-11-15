@@ -581,7 +581,10 @@ func rewriteTable(t *schema.Table, tables map[string]*schema.Table) error {
 			if c.Default != "" {
 				c.Default = rc.Default
 			}
-			if c.Generated != "" {
+			// The generated column of a full-text index stays as declared: the
+			// scratch schema has no index over it, so it is read back raw, while
+			// the inspector writes it from the parsed declaration.
+			if c.Generated != "" && !fullTextGenerated(t, c.Name) {
 				c.Generated = rc.Generated
 			}
 		}

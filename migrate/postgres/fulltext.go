@@ -59,11 +59,7 @@ func expandTable(t *schema.Table, ix *schema.Index) error {
 	}
 	ix.FullText = &ft
 	if ft.Expression {
-		parts := make([]string, len(ft.Columns))
-		for i, c := range ft.Columns {
-			parts[i] = `coalesce(` + ident(c) + `, '')`
-		}
-		ix.Parts = []schema.IndexPart{{Expr: "to_tsvector(" + configLiteral(ft.Config) + ", " + strings.Join(parts, " || ' ' || ") + ")"}}
+		ix.Parts = []schema.IndexPart{{Expr: expressionIndexExpr(ft)}}
 		return nil
 	}
 	name := schema.TSVectorColumn(ix.Name)
@@ -111,6 +107,16 @@ func renderRecreateGenerated(c migrate.Change) ([]migrate.Statement, error) {
 		{SQL: pre + " DROP COLUMN " + ident(after.Name)},
 		{SQL: pre + " ADD COLUMN " + def},
 	}, nil
+}
+
+// expressionIndexExpr is the key of the GIN expression index of an expression
+// declaration: one to_tsvector over the source columns joined by a space.
+func expressionIndexExpr(ft schema.FullText) string {
+	parts := make([]string, len(ft.Columns))
+	for i, c := range ft.Columns {
+		parts[i] = `coalesce(` + ident(c) + `, '')`
+	}
+	return "to_tsvector(" + configLiteral(ft.Config) + ", " + strings.Join(parts, " || ' ' || ") + ")"
 }
 
 // configLiteral is the configuration name as a quoted literal. The name was
