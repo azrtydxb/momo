@@ -84,6 +84,12 @@ WHERE name NOT LIKE 'sqlite\_%' ESCAPE '\' AND sql IS NOT NULL ORDER BY type, na
 		out.Enums = append(out.Enums, enums...)
 	}
 
+	// An external-content FTS5 table is not a table of its own: it is the
+	// full-text index of its content table. Its shadow tables stay skipped, and
+	// its sync triggers are reported below like any trigger, so a missing or
+	// altered one is drift.
+	ftsIndexes(rows, out.Tables)
+
 	known := map[string]string{} // lower-case name -> name, tables and views
 	for _, t := range out.Tables {
 		known[strings.ToLower(t.Name)] = t.Name

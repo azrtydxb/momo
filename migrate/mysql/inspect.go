@@ -97,6 +97,9 @@ func (Dialect) Inspect(ctx context.Context, c momo.PinnedConn, opts migrate.Insp
 		return nil, fmt.Errorf("mysql inspect: checks: %w", err)
 	}
 	in.applyIndexes(out, pk, idx)
+	if err := in.fullTextParsers(ctx, out); err != nil {
+		return nil, fmt.Errorf("mysql inspect: full-text parsers: %w", err)
+	}
 	in.jsonColumns(out)
 	out.Sort()
 	return out, nil
@@ -373,6 +376,10 @@ func (in *inspector) applyIndexes(out *schema.Schema, pk map[string][]string, gr
 				part.Column = r.column.String
 			}
 			ix.Parts = append(ix.Parts, part)
+		}
+		if method == "fulltext" {
+			// The parser is not in information_schema; parsers() reads it.
+			ix.FullText = &schema.FullText{Columns: cols}
 		}
 		t.Indexes = append(t.Indexes, ix)
 	}

@@ -235,6 +235,7 @@ func (in *inspector) tables(ctx context.Context, out *schema.Schema) error {
 			return fmt.Errorf("postgres inspect: indexes of %s.%s: %w", tr.ns, tr.name, err)
 		}
 		t.Indexes = ixs
+		foldFullText(&t)
 		for _, name := range invalid {
 			in.invalid = append(in.invalid, in.qualify(tr.ns, name))
 		}
