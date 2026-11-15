@@ -101,6 +101,31 @@ func TestFoldFullTextEqualsExpansion(t *testing.T) {
 	}
 }
 
+// Catches: a generated column whose expression starts like a declaration but
+// has an extra term, or another configuration on one term, being folded, which
+// would hide a hand-made change behind the declaration.
+func TestFoldFullTextLeavesPartialMatchPlain(t *testing.T) {
+	prefix := `to_tsvector('english'::regconfig, COALESCE(title, ''::text))`
+	for name, expr := range map[string]string{
+		"extra term":       `(` + prefix + ` || to_tsvector('english'::regconfig, 'x'::text))`,
+		"extra call":       `(` + prefix + ` || lower(body))`,
+		"other config":     `(` + prefix + ` || to_tsvector('simple'::regconfig, COALESCE(body, ''::text)))`,
+		"other coalesce":   `(` + prefix + ` || to_tsvector('english'::regconfig, COALESCE(body, 'n/a'::text)))`,
+		"only some weight": `(setweight(` + prefix + `, 'A'::"char") || to_tsvector('english'::regconfig, COALESCE(body, ''::text)))`,
+	} {
+		tbl := schema.Table{Name: "articles",
+			Columns: []schema.Column{
+				{Name: "title", Type: "text"}, {Name: "body", Type: "text"},
+				{Name: "articles_search_tsv", Type: "tsvector", Nullable: true, Generated: expr},
+			},
+			Indexes: []schema.Index{{Name: "articles_search", Method: "gin", Parts: []schema.IndexPart{{Column: "articles_search_tsv"}}}}}
+		foldFullText(&tbl)
+		if tbl.Indexes[0].Method != "gin" || tbl.Indexes[0].FullText != nil || tbl.Columns[2].Generated != expr {
+			t.Errorf("%s: folded or rewritten: %+v / %q", name, tbl.Indexes[0], tbl.Columns[2].Generated)
+		}
+	}
+}
+
 // pgPrinted spells the generation expression the way pg_get_expr prints it.
 func pgPrinted(ft schema.FullText) string {
 	s := ""

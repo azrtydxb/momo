@@ -6,6 +6,8 @@ package postgres_test
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -98,6 +100,37 @@ func TestFullTextInspectRoundTrip(t *testing.T) {
 			}
 			if !rep.Clean() {
 				t.Fatalf("drift reports a change on a freshly applied full-text index: %+v", rep)
+			}
+		})
+	}
+}
+
+// Catches: a generated column altered by hand (another configuration, or an
+// expression that is no declaration at all) that drift does not report because
+// the fold rewrote it to look like the declared one.
+func TestFullTextDriftReportsAlteredGeneratedColumn(t *testing.T) {
+	for name, expr := range map[string]string{
+		"other config":      `to_tsvector('simple', coalesce(title, '')) || to_tsvector('simple', coalesce(body, ''))`,
+		"no declared shape": `to_tsvector('english', coalesce(title, '') || coalesce(body, ''))`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			db := testopen.Postgres(t)
+			eng, _ := ftApply(t, db, ftModel(ftForms["stored"]))
+			for _, q := range []string{
+				`DROP INDEX articles_search`,
+				`ALTER TABLE articles DROP COLUMN articles_search_tsv`,
+				`ALTER TABLE articles ADD COLUMN articles_search_tsv tsvector GENERATED ALWAYS AS (` + expr + `) STORED`,
+				`CREATE INDEX articles_search ON articles USING gin (articles_search_tsv)`,
+			} {
+				mustExec(t, db.Driver(), q)
+			}
+			rep, err := eng.Drift(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rep.Clean() || !strings.Contains(fmt.Sprintf("%+v", rep.Changed), "articles_search") {
+				t.Fatalf("drift = %+v, want the altered full-text index reported as changed", rep)
 			}
 		})
 	}

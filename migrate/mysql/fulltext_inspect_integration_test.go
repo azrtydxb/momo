@@ -7,6 +7,7 @@ package mysql_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo"
@@ -63,6 +64,40 @@ func TestFullTextInspectRoundTrip(t *testing.T) {
 		}
 		if !rep.Clean() {
 			t.Fatalf("drift on a freshly applied full-text index: %+v", rep)
+		}
+	})
+}
+
+// Catches: InnoDB's hidden FTS_DOC_ID column or FTS_DOC_ID_INDEX showing up in
+// an inspection, which would make every FULLTEXT table differ from its model.
+func TestFullTextInspectHidesDocID(t *testing.T) {
+	testopen.EachMySQL(t, func(t *testing.T, db *momo.DB) {
+		ctx := context.Background()
+		dir := t.TempDir()
+		eng := migratetest.NewEngine(t, mmysql.New(), db.Driver(), os.DirFS(dir))
+		applyExample(t, dir, eng, ftDeclared(ftParser(db)), "fulltext")
+		got, err := eng.Inspect(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tbl, ok := got.Table("articles")
+		if !ok {
+			t.Fatalf("articles not inspected: %+v", got.Tables)
+		}
+		for _, c := range tbl.Columns {
+			if strings.HasPrefix(strings.ToUpper(c.Name), "FTS_DOC_ID") {
+				t.Errorf("hidden column inspected: %+v", c)
+			}
+		}
+		for _, ix := range tbl.Indexes {
+			if strings.HasPrefix(strings.ToUpper(ix.Name), "FTS_DOC_ID") {
+				t.Errorf("hidden index inspected: %+v", ix)
+			}
+		}
+		for _, u := range tbl.Uniques {
+			if strings.HasPrefix(strings.ToUpper(u.Name), "FTS_DOC_ID") {
+				t.Errorf("hidden unique key inspected: %+v", u)
+			}
 		}
 	})
 }

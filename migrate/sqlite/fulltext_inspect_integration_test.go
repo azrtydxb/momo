@@ -123,6 +123,73 @@ func TestFullTextAutoMigrateTwice(t *testing.T) {
 	}
 }
 
+// Catches: AutoMigrate applying a bare CREATE TRIGGER or CREATE VIRTUAL TABLE
+// for a changed declaration (its drops are skipped, so the objects exist) and
+// failing with "already exists" instead of reporting a skip.
+func TestFullTextAutoMigrateChangedColumnsSkips(t *testing.T) {
+	ctx := context.Background()
+	db := testopen.SQLite(t)
+	eng := newEngine(t, db, migratetest.EmptyFS(), "20260101000000")
+	if _, err := eng.AutoMigrate(ctx, ftsDeclared()); err != nil {
+		t.Fatal(err)
+	}
+	next := ftsDeclared()
+	ix := &next.Tables[0].Indexes[0]
+	ix.Parts = []schema.IndexPart{{Column: "title"}}
+	ix.FullText.Columns = []string{"title"}
+	rep, err := eng.AutoMigrate(ctx, next)
+	if err != nil {
+		t.Fatalf("a changed declaration must be skipped, not fail: %v", err)
+	}
+	if len(rep.Applied) != 0 || len(rep.Skipped) == 0 {
+		t.Fatalf("applied %+v, skipped %+v; want a skip report only", rep.Applied, rep.Skipped)
+	}
+	for _, s := range rep.Skipped {
+		if s.Reason == "" {
+			t.Errorf("skip without a reason: %+v", s.Change)
+		}
+	}
+	ftsExec(t, db, `INSERT INTO articles (id, title, body) VALUES (1, 'red fox', 'quick')`)
+	if got := ftsSearch(t, db, `"quick"`); len(got) != 1 {
+		t.Fatalf("the existing FTS5 table and triggers were disturbed: %v", got)
+	}
+}
+
+// Catches: a user trigger that merely shares the name of a sync trigger being
+// treated as the generated one and applied by AutoMigrate.
+func TestFullTextAutoMigrateSkipsUserTriggerNamedLikeSync(t *testing.T) {
+	ctx := context.Background()
+	db := testopen.SQLite(t)
+	eng := newEngine(t, db, migratetest.EmptyFS(), "20260101000000")
+	want := ftsDeclared()
+	want.Triggers = []schema.Trigger{{
+		Name: "articles_fts_ai", Table: "articles",
+		Definition: `CREATE TRIGGER "articles_fts_ai" AFTER INSERT ON "articles" BEGIN SELECT 1; END`,
+	}}
+	rep, err := eng.AutoMigrate(ctx, want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skipped := false
+	for _, s := range rep.Skipped {
+		if s.Change.Kind == migrate.CreateTrigger && s.Change.Name == "articles_fts_ai" {
+			skipped = true
+		}
+	}
+	if !skipped {
+		t.Fatalf("the user trigger was not skipped: applied %+v, skipped %+v", rep.Applied, rep.Skipped)
+	}
+	rows, err := db.Driver().Query(ctx, `SELECT count(*) FROM sqlite_schema WHERE type = 'trigger' AND name = 'articles_fts_ai'`, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var n int
+	if !rows.Next() || rows.Scan(&n) != nil || n != 0 {
+		t.Fatalf("the user trigger was created: %d", n)
+	}
+}
+
 // Catches: a baseline of a database that holds a full-text table refused as a
 // mismatch, and drift after the baseline.
 func TestFullTextBaselineClean(t *testing.T) {
