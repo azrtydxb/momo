@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.0](https://github.com/azrtydxb/momo/compare/v0.13.0...v0.14.0) (2026-11-15)
+
+
+### Features
+
+* BulkUpdate on SQLite, MySQL and MariaDB with composite keys ([#160](https://github.com/azrtydxb/momo/issues/160)) ([36bf04d](https://github.com/azrtydxb/momo/commit/36bf04d54db39f7e10731febe4fa7c1530a6d7c3))
+* emulate MERGE on SQLite, MySQL and MariaDB ([#163](https://github.com/azrtydxb/momo/issues/163)) ([4b4d3ca](https://github.com/azrtydxb/momo/commit/4b4d3ca1da490f1e60246f31b7c16d5c39df1f02))
+
 ## [0.13.0](https://github.com/azrtydxb/momo/compare/v0.12.0...v0.13.0) (2026-11-14)
 
 _More dialect parity: `DistinctOn`, `DELETE ... USING`, mixed `DEFAULT` rows, `DELETE ... RETURNING` and advisory session locks now work beyond PostgreSQL, where the database allows it. No code change is needed to upgrade, but code that relied on `ErrUnsupported` from these calls now takes the success path; see [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.13.0/docs/upgrading.md). [Changes since 0.12.0](https://github.com/azrtydxb/momo/compare/v0.12.0...v0.13.0)._
