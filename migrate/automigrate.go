@@ -116,6 +116,9 @@ func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *
 		if rd, ok := e.opts.dialect.(RebuildDetector); ok && reason == "" && !created[ch.Schema+"\x00"+ch.Table] && rd.NeedsRebuild(live, ch) {
 			reason = "requires a table rebuild; use a migration"
 		}
+		if reason == "" {
+			reason = e.fullTextConflict(ch, &to, live)
+		}
 		if reason != "" {
 			rep.Skipped = append(rep.Skipped, Skipped{Change: ch, Reason: reason})
 			continue
@@ -200,6 +203,68 @@ func autoSkipReason(ch Change, desired *schema.Schema, created map[string]bool) 
 		return "rename requires a migration"
 	}
 	return "change requires a migration"
+}
+
+// fullTextConflict returns why a creation that belongs to a full-text
+// declaration must not run, or "" when it may. A changed declaration is a drop
+// plus a create, and AutoMigrate never drops, so the create would meet the
+// object it replaces: a sync trigger or a full-text index that already exists
+// is skipped. A trigger that only shares the name of a sync trigger, and
+// differs from the one the dialect derives, is the user's and is skipped too.
+func (e *Engine) fullTextConflict(ch Change, desired, live *schema.Schema) string {
+	const reason = "change requires a migration"
+	switch ch.Kind {
+	case CreateTrigger:
+		if !isFTS5SyncTrigger(desired, ch) {
+			return ""
+		}
+		if !e.derivedTrigger(desired, ch) {
+			return reason
+		}
+		for _, t := range live.Triggers {
+			if t.Schema == ch.Schema && t.Table == ch.Table && t.Name == ch.Name {
+				return reason
+			}
+		}
+	case CreateIndex:
+		ix, ok := ch.After.(*schema.Index)
+		if !ok || ix.FullText == nil {
+			return ""
+		}
+		for _, t := range live.Tables {
+			if t.Schema != ch.Schema || t.Name != ch.Table {
+				continue
+			}
+			for _, o := range t.Indexes {
+				if o.Name == ch.Name {
+					return reason
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// derivedTrigger reports whether the trigger ch creates is the one the
+// dialect's expansion derives from the table's declaration, not a trigger of
+// the user's that carries the same name.
+func (e *Engine) derivedTrigger(desired *schema.Schema, ch Change) bool {
+	got, ok := ch.After.(*schema.Trigger)
+	if !ok {
+		return false
+	}
+	bare := *desired
+	bare.Triggers = nil
+	exp, err := expand(e.opts.dialect, &bare)
+	if err != nil || exp == nil {
+		return false
+	}
+	for _, t := range exp.Triggers {
+		if t.Schema == ch.Schema && t.Table == ch.Table && t.Name == ch.Name {
+			return t.Definition == got.Definition
+		}
+	}
+	return false
 }
 
 // isFTS5SyncTrigger reports whether ch creates one of the three triggers that
