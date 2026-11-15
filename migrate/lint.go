@@ -26,6 +26,10 @@ const (
 	RuleEnumAddAndUse = "enum-add-and-use"
 	// RuleDestructiveWithoutDirective: a destructive statement in a migration without -- momo:destructive.
 	RuleDestructiveWithoutDirective = "destructive-without-directive"
+	// RuleFullTextRewrite: ADD COLUMN ... GENERATED ALWAYS AS (... to_tsvector ...) STORED on an existing table (table rewrite under ACCESS EXCLUSIVE).
+	RuleFullTextRewrite = "fulltext-column-rewrite"
+	// RuleFullTextFirstIndex: CREATE FULLTEXT INDEX on an existing table (the first one adds FTS_DOC_ID and rebuilds the table).
+	RuleFullTextFirstIndex = "fulltext-first-index"
 )
 
 // Severities of a lint Finding.
@@ -53,6 +57,9 @@ var (
 	lintAddEnumValue = regexp.MustCompile(`(?i)^alter type \S+ add value (?:if not exists )?'((?:[^']|'')*)'`)
 	lintDropTable    = regexp.MustCompile(`^(?:drop table|drop schema|drop type|truncate)\b`)
 	lintDropColumn   = regexp.MustCompile(`\bdrop column\b`)
+
+	lintTSVectorColumn = regexp.MustCompile(`\badd (?:column )?(?:if not exists )?\S+ .*\bgenerated always as \(.*\bto_tsvector\(.*\) stored$`)
+	lintFullTextIndex  = regexp.MustCompile(`^create fulltext index (?:if not exists )?\S+ on (\S+)`)
 )
 
 // lintClean strips comments, collapses whitespace and trims the trailing
@@ -83,7 +90,8 @@ func lintTable(ref string) (full, bare string) {
 // itself is empty and never reported. A key is a bare table name or
 // "schema.name"; case is ignored. dialectName selects the rules: R1 to R4 and R6
 // are PostgreSQL rules, R5 reads the "rebuild" Hint a SQLite plan carries, and
-// R7 applies to every dialect.
+// R7 applies to every dialect. The full-text rewrite rule is a PostgreSQL rule
+// and the first-index rule belongs to the "mysql" name, which MariaDB shares.
 //
 // The rules are text heuristics on the comment-free, whitespace-collapsed
 // statement and have limits: a statement built by a DO block or a function is
@@ -146,6 +154,9 @@ func lintStatements(version string, stmts []Statement, parentTables map[string]b
 			}
 			lintNotNullChecks(low, notNullChecks, validated)
 			lintPostgres(i, low, existing, add, notNullChecks, validated)
+		}
+		if dialectName == "mysql" {
+			lintMySQL(i, low, existing, add)
 		}
 		if !destructiveOK {
 			destructive := lintDropTable.MatchString(low)
@@ -225,11 +236,25 @@ func lintPostgres(i int, low string, existing func(string) bool, add func(int, S
 				"adding a foreign key or check constraint validates every row under a lock",
 				"add NOT VALID, then VALIDATE CONSTRAINT in a separate migration")
 		}
+		if lintTSVectorColumn.MatchString(rest) {
+			add(i, SeverityWarning, RuleFullTextRewrite,
+				"adding a stored generated tsvector column to "+m[1]+" rewrites the whole table under an ACCESS EXCLUSIVE lock",
+				"build the column during a maintenance window (-- momo:no-transaction does not avoid the rewrite)")
+		}
 	}
 	if m := lintCreateIndex.FindStringSubmatch(low); m != nil && m[1] == "" && existing(m[2]) {
 		add(i, SeverityError, RuleBlockingIndex,
 			"CREATE INDEX without CONCURRENTLY blocks writes to the table while it builds",
 			"CREATE INDEX CONCURRENTLY in a -- momo:no-transaction migration")
+	}
+}
+
+// lintMySQL holds the rules of the mysql dialect name, which MariaDB shares.
+func lintMySQL(i int, low string, existing func(string) bool, add func(int, Severity, string, string, string)) {
+	if m := lintFullTextIndex.FindStringSubmatch(low); m != nil && existing(m[1]) {
+		add(i, SeverityWarning, RuleFullTextFirstIndex,
+			"CREATE FULLTEXT INDEX on "+m[1]+": the first full-text index of a table adds FTS_DOC_ID and rebuilds the table",
+			"add the index in a low-traffic window; the table is copied once")
 	}
 }
 

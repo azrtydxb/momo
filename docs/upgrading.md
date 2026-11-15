@@ -10,7 +10,8 @@ later releases can break more.
 No edit is needed in your code. A model can now declare full-text search, and
 the declaration is recorded in the model and in the schema snapshot. On
 PostgreSQL 12 or newer `momo migrate` renders it as a stored generated tsvector
-column with a GIN index. On MySQL
+column with a GIN index. On SQLite it renders an external-content FTS5 table
+with sync triggers. On MySQL
 and MariaDB a migration renders it as a `FULLTEXT` index, with `WITH PARSER`
 when a parser is declared. A unique index, a column that is not text, more than
 16 columns and a parser name other than `ngram` or `mecab` are refused with
@@ -62,6 +63,19 @@ generated column is named `<index>_tsv`; a model column of that name, a source
 column the table does not have, an index name that makes the column name longer
 than 63 bytes, or a full-text index declared `Concurrently` fails with
 `ErrValidation`.
+
+On SQLite the declaration becomes an external-content FTS5 table named
+`<table>_fts` plus three triggers (`<table>_fts_ai`, `_ad` and `_au`) that keep
+it in step with the table, and the table is filled with the FTS5 `rebuild`
+command when it is created. The table needs a rowid table with a primary key of
+one `INTEGER` column; any other key, or a declared column the table lacks, is
+`ErrValidation` naming the table. Removing the declaration, or the table, drops
+the triggers, then the FTS5 table. Renaming the table drops and re-creates the
+FTS5 table and the triggers under the new name. A build without FTS5 fails the
+migration with `ErrUnsupported`. `INSERT OR REPLACE` and `ON CONFLICT REPLACE`
+do not fire the delete trigger unless `PRAGMA recursive_triggers = ON`, which
+leaves stale tokens in the FTS5 table; repair it with
+`INSERT INTO <table>_fts(<table>_fts) VALUES('rebuild')`.
 
 ## Upgrading to 0.14.0
 
