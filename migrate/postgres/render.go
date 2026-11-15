@@ -597,9 +597,6 @@ var safeValue = regexp.MustCompile(`^[A-Za-z0-9_.+-]+$`)
 var nullsOrder = map[string]string{"first": "NULLS FIRST", "last": "NULLS LAST"}
 
 func createIndex(schemaName, table string, ix schema.Index) (migrate.Statement, error) {
-	if ix.FullText != nil {
-		ix.Method = "gin"
-	}
 	var b strings.Builder
 	b.WriteString("CREATE ")
 	if ix.Unique {
@@ -610,7 +607,11 @@ func createIndex(schemaName, table string, ix schema.Index) (migrate.Statement, 
 		b.WriteString("CONCURRENTLY ")
 	}
 	b.WriteString(ident(ix.Name) + " ON " + tableRef(schemaName, table))
-	if ix.Method != "" {
+	switch {
+	case ix.FullText != nil:
+		// A full-text declaration is always a GIN index, whatever Method says.
+		b.WriteString(" USING gin")
+	case ix.Method != "":
 		b.WriteString(" USING " + ident(ix.Method))
 	}
 	parts := make([]string, len(ix.Parts))
