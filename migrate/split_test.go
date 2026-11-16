@@ -172,6 +172,97 @@ func TestSplitBOM(t *testing.T) {
 	}
 }
 
+// requireResplit fails unless every statement splits again into itself.
+func requireResplit(t *testing.T, got []string) {
+	t.Helper()
+	for _, st := range got {
+		again, err := SplitStatements([]byte(st), "postgres")
+		if err != nil || len(again) != 1 || again[0] != st {
+			t.Fatalf("statement %q re-split to %q (%v)", st, again, err)
+		}
+	}
+}
+
+// TestSplitNonASCIISpaceIsIdentifier pins the PostgreSQL lexer rule: only
+// ASCII white space separates tokens, and every byte at or above 0x80 continues
+// an identifier. A non-ASCII space before $$ therefore makes an identifier, not
+// a dollar quote, and the statement keeps that space.
+func TestSplitNonASCIISpaceIsIdentifier(t *testing.T) {
+	for name, space := range map[string]string{"nbsp": "\xc2\xa0", "nel": "\xc2\x85", "line separator": "\xe2\x80\xa8"} {
+		t.Run(name+" leading", func(t *testing.T) {
+			got, err := SplitStatements([]byte("SELECT 1;"+space+"$$ a;SELECT 2"), "postgres")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []string{"SELECT 1", space + "$$ a", "SELECT 2"}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("got %q, want %q", got, want)
+			}
+			requireResplit(t, got)
+		})
+		t.Run(name+" inside a statement", func(t *testing.T) {
+			got, err := SplitStatements([]byte("SELECT 1 "+space+"$$ a;SELECT 2"), "postgres")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []string{"SELECT 1 " + space + "$$ a", "SELECT 2"}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("got %q, want %q", got, want)
+			}
+			requireResplit(t, got)
+		})
+	}
+}
+
+// TestSplitEscapeStringPrefix pins that E' opens a backslash-escaped string
+// after a BOM, which is white space, and not after a non-ASCII space, which
+// ends in an identifier byte.
+func TestSplitEscapeStringPrefix(t *testing.T) {
+	body := "E'a\\'b';SELECT 2"
+	got, err := SplitStatements([]byte("SELECT 1;\xef\xbb\xbf"+body), "postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"SELECT 1", "E'a\\'b'", "SELECT 2"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	requireResplit(t, got)
+	if _, err := SplitStatements([]byte("SELECT 1;\xc2\xa0"+body), "postgres"); err == nil {
+		t.Fatal("want an unterminated string error: NBSP+E is an identifier, so the string has no escapes")
+	}
+}
+
+// TestSplitDollarQuoteAfterBOM pins that a BOM is white space: a dollar quote
+// opens after it exactly as after a space, and a closed one re-splits.
+func TestSplitDollarQuoteAfterBOM(t *testing.T) {
+	if _, err := SplitStatements([]byte("SELECT 1;\xef\xbb\xbf$$00"), "postgres"); err == nil {
+		t.Fatal("want an unterminated dollar-quoted string error")
+	}
+	got, err := SplitStatements([]byte("SELECT 1;\xef\xbb\xbf$$ a; $$00"), "postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"SELECT 1", "$$ a; $$00"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	requireResplit(t, got)
+}
+
+// TestSplitPositionalParamIsNotATag pins that $1 and $00 are positional
+// parameters, never dollar-quote tags.
+func TestSplitPositionalParamIsNotATag(t *testing.T) {
+	got, err := SplitStatements([]byte("SELECT $1, $00;SELECT $$a;b$$"), "postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"SELECT $1, $00", "SELECT $$a;b$$"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
 func FuzzSplitStatements(f *testing.F) {
 	for _, s := range []string{
 		"", ";", "SELECT 1;", "SELECT 'a;b'; -- c\nSELECT 2",
@@ -187,7 +278,7 @@ func FuzzSplitStatements(f *testing.F) {
 				continue
 			}
 			for _, st := range got {
-				if st == "" || st != strings.TrimSpace(st) {
+				if st == "" || st != trimSpaceBOM(st) {
 					t.Fatalf("%s: statement not trimmed or empty: %q", d, st)
 				}
 			}
