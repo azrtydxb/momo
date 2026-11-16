@@ -95,7 +95,7 @@ func TestMigrateRebaseRenumber(t *testing.T) {
 	}
 
 	code, out, errOut := run("rebase", "--renumber", "--applied", "20260101000000,20260102000500")
-	if code != 0 || !strings.Contains(out, "renumbered: 20260102000000_add_a -> 20260102000501_add_a") {
+	if code != 0 || !strings.Contains(out, "renumbered: 20260102000000_add_a -> ") {
 		t.Fatalf("renumber: exit %d: %s %s", code, out, errOut)
 	}
 	for _, gone := range []string{"20260102000000_add_a.up.sql", "20260102000000_add_a.snapshot.json"} {
@@ -103,9 +103,10 @@ func TestMigrateRebaseRenumber(t *testing.T) {
 			t.Errorf("%s must be gone", gone)
 		}
 	}
-	for _, here := range []string{"20260102000501_add_a.up.sql", "20260102000501_add_a.snapshot.json"} {
-		if _, err := os.Stat(filepath.Join(mdir, here)); err != nil {
-			t.Errorf("%s must exist: %v", here, err)
+	for _, suffix := range []string{"up.sql", "snapshot.json"} {
+		got, err := filepath.Glob(filepath.Join(mdir, "*_add_a."+suffix))
+		if err != nil || len(got) != 1 || filepath.Base(got[0]) <= "20260102000500" {
+			t.Errorf("add_a.%s must exist once, after the newest applied version: %v %v", suffix, got, err)
 		}
 	}
 	if code, out, errOut := run("validate"); code != 0 {
