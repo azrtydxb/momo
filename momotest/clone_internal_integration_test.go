@@ -131,6 +131,7 @@ func TestNewClonesATemplateDatabase(t *testing.T) {
 // shared database (the second insert collides), and a clone that writes back
 // into the template (a fresh clone afterwards sees the rows).
 func TestCloneParallelIsolation(t *testing.T) {
+	adminConn(t) // skips when this job has no PostgreSQL server
 	fsys := cloneMigrations(randomName("iso_"), "")
 	names := make(chan string, 8)
 	t.Run("group", func(t *testing.T) {
