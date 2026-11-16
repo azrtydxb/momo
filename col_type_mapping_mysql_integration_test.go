@@ -53,8 +53,11 @@ func parseDocMySQL(t *testing.T) map[string]string {
 // hold 64 KiB (65535 bytes).
 func mysqlLiveCases(t *testing.T) map[string]liveCase {
 	cases := liveCases(t)
-	cases["float32"] = roundTripAll(f32eq, math.MaxFloat32, -math.MaxFloat32,
-		math.Float32frombits(0x00800000), float32(0), float32(0.1))
+	// A query without arguments reads FLOAT with six significant digits, so the
+	// values here are the nearest float32 to a decimal of six digits or fewer;
+	// TestTypeMappingMySQLLimits pins the loss for the full range.
+	cases["float32"] = roundTripAll(f32eq, float32(1.5e38), float32(-1.5e38),
+		float32(1e-30), float32(-1e-30), float32(0), float32(0.1), float32(123456))
 	cases["float64"] = roundTripAll(f64eq, math.MaxFloat64, -math.MaxFloat64,
 		2.2250738585072014e-308, 0, 0.1)
 	cases["string"] = roundTripAll[string](nil, "", "héllo 日本 \U0001F600 \"q\" 'q' \\ ?",
@@ -110,13 +113,20 @@ func tmVectorMySQL(t *testing.T, db *momo.DB, cell string) {
 	if _, err := momo.Exec(ctx, db, "CREATE TABLE tm_vec (id bigint PRIMARY KEY, emb "+typ+" NOT NULL)"); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	wants := []tmVec{
+	candidates := []tmVec{
 		{ID: 1, Emb: vector.Vector{1, -2.5, 3}},
-		{ID: 2, Emb: vector.Vector{math.MaxFloat32, 0, math.Float32frombits(0x00800000)}},
-		{ID: 3, Emb: vector.Vector{0, 0, 0}},
+		{ID: 2, Emb: vector.Vector{math.MaxFloat32, 0, 0}},
+		{ID: 3, Emb: vector.Vector{math.Float32frombits(0x00800000), 0, 0}},
+		{ID: 4, Emb: vector.Vector{0, 0, 0}},
 	}
-	if _, err := momo.Insert[tmVec](db).Models(wants).Exec(ctx); err != nil {
-		t.Fatalf("insert: %v", err)
+	// One row at a time, so a refused value names itself.
+	var wants []tmVec
+	for _, c := range candidates {
+		if _, err := momo.Insert[tmVec](db).Models([]tmVec{c}).Exec(ctx); err != nil {
+			t.Errorf("insert %v: %v", c.Emb, err)
+			continue
+		}
+		wants = append(wants, c)
 	}
 	for _, w := range wants {
 		got, err := momo.Select[tmVec](db).Where(momo.NewColumn[int64]("tm_vec", "id", 0).Eq(w.ID)).All(ctx)
@@ -308,6 +318,19 @@ func TestTypeMappingMySQLLimits(t *testing.T) {
 			if _, err := momo.Exec(ctx, db, "INSERT INTO tm_lim ("+c.col+") VALUES (?)", c.arg); err == nil {
 				t.Errorf("%s: insert succeeded, want an error", name)
 			}
+		}
+
+		// FLOAT reads back with six significant digits: the largest float32
+		// stays within 1e-5 of what was stored but is not bit-identical.
+		if _, err := momo.Exec(ctx, db, "CREATE TABLE tm_f32 (v float)"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := momo.Exec(ctx, db, "INSERT INTO tm_f32 (v) VALUES (?)", float32(math.MaxFloat32)); err != nil {
+			t.Fatal(err)
+		}
+		f32, err := momo.Scalars[float32](ctx, db, "SELECT v FROM tm_f32")
+		if err != nil || len(f32) != 1 || math.Abs(float64(f32[0])-math.MaxFloat32)/math.MaxFloat32 > 1e-5 {
+			t.Fatalf("MaxFloat32 read back %v, %v; want within 1e-5", f32, err)
 		}
 
 		// decimal(p,s): the generator's type for a precision tag keeps every digit.
