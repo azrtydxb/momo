@@ -329,16 +329,18 @@ scans.
 ## Hybrid search
 
 `momo.HybridSearch` fuses a full-text leg and a cosine-distance
-vector leg with reciprocal rank fusion (RRF) in one statement. Each leg picks
+vector leg with reciprocal rank fusion (RRF) in one statement. It runs on
+PostgreSQL, on SQLite (FTS5 and sqlite-vec) and on MariaDB 11.8. Each leg picks
 its own best `TextCandidates` and `VectorCandidates` rows (default 100, at most
 1000), ranks them, and a row scores the sum of `1/(RRFK+rank)` over the legs it
-appears in (`RRFK` defaults to 60 and must be at least 1). The text leg ranks
-with `ts_rank_cd` over `websearch_to_tsquery`; the vector leg uses `<=>`.
+appears in (`RRFK` defaults to 60 and must be at least 1). On PostgreSQL the
+text leg ranks with `ts_rank_cd` over `websearch_to_tsquery` and the vector leg
+uses `<=>`.
 Ties break on the primary key ascending, in each leg's ranking and in the final
-order, so the result does not depend on insertion order. The vector leg orders
-by distance alone so an hnsw or ivfflat index can serve it; when rows tie on
-distance exactly at the candidate cut-off, which of them become candidates is
-not defined.
+order, so the result does not depend on insertion order. On PostgreSQL the
+vector leg orders by distance alone so an hnsw or ivfflat index can serve it;
+when rows tie on distance exactly at the candidate cut-off, which of them become
+candidates is not defined.
 
 <!-- docscheck:fragment -->
 
@@ -364,14 +366,20 @@ cosine distance is NaN (zero vectors).
 
 On SQLite and MariaDB 11.8 the same call runs with the same knobs and
 tie-breaks. The text leg searches the structure of the model's full-text
-declaration (the FTS5 table ordered by `bm25`, or `MATCH ... AGAINST` in
-boolean mode), so `HybridSpec.Text` must be one of the declared columns
+declaration (see [full-text search](fulltext.md#declare-a-search)): the FTS5
+table ordered by `bm25`, or `MATCH ... AGAINST` in boolean mode over all
+declared columns. `HybridSpec.Text` must be one of the declared columns
 (`momo.ErrValidation` otherwise), `TextConfig` is ignored, and `Query` is read
 like a web-style `fts.Web` query. The vector leg uses `vec_distance_cosine` on
-SQLite and `VEC_DISTANCE_COSINE` on MariaDB. A query without a positive word
-leaves the text leg empty and the result is the vector leg alone. MySQL has no
-distance function, so the call returns `momo.ErrUnsupported` before any SQL is
-sent.
+SQLite, which needs the cgo driver with sqlite-vec, and `VEC_DISTANCE_COSINE`
+on MariaDB. Unlike the PostgreSQL vector leg, which orders by distance alone,
+both of them order by distance and then the primary key, so rows that tie at the
+candidate cut-off are chosen by key. A query without a positive word leaves the
+text leg empty and the result is the vector leg alone. The text leg of MariaDB
+sees committed rows only, so a row inserted in the same transaction appears
+through the vector leg only. MySQL has no distance function, so the call
+returns `momo.ErrUnsupported` before any SQL is sent, and never falls back to a
+text-only search.
 
 On PostgreSQL the vector leg can use an hnsw or ivfflat index on the vector column with
 `vector_cosine_ops`. The text leg binds the configuration as a parameter, and a

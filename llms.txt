@@ -26,7 +26,7 @@ A database is usable when a driver package for it exists under `driver/`:
 - [Relations](https://github.com/azrtydxb/momo/blob/main/docs/relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
 - [Migrations](https://github.com/azrtydxb/momo/blob/main/docs/migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, known issues, CLI reference.
 - [Vector search](https://github.com/azrtydxb/momo/blob/main/docs/vectors.md): pgvector types, distance functions (package `vecop`: `vecop.Cosine`, `vecop.L2`), index limits, search settings.
-- [Full-text search](https://github.com/azrtydxb/momo/blob/main/docs/fulltext.md): tsvector column type, match, rank and headline builders, hybrid vector plus text ranking.
+- [Full-text search](https://github.com/azrtydxb/momo/blob/main/docs/fulltext.md): declaring a search on a model, the portable search, score and snippet calls on PostgreSQL, SQLite and MySQL or MariaDB, the PostgreSQL tsvector builders, hybrid vector plus text search.
 - [Projections and tuple rows](https://github.com/azrtydxb/momo/blob/main/docs/projections.md): read aggregates, joins and column subsets into projection structs or generic Row1 to Row10 tuple rows, with soft-delete and keyset rules.
 - [Go to SQL type mapping](https://github.com/azrtydxb/momo/blob/main/docs/TYPE_MAPPING.md): column type per Go type, edge values, null handling.
 - [Capabilities](https://github.com/azrtydxb/momo/blob/main/docs/capabilities.md): what each database supports, what is not built, what returns ErrUnsupported.

@@ -46,12 +46,15 @@ A database is usable when a driver package for it exists under `driver/`:
 - Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.
 - `diff` writes forward migrations only. `momo migrate rollback [--group]` runs a hand-written `.down.sql`, `momo migrate lint` reports risky operations, and `momo migrate rebase --onto <dir>` regenerates a branch's migrations on a target's.
 - `momo generate --from-db DATABASE_URL` turns a live PostgreSQL, MySQL or MariaDB database into models and an init snapshot (see [migrations](migrations.md#7-adopting-an-existing-database) and [MySQL and MariaDB](mysql.md#models-from-a-database)). SQLite: write models by hand.
-- Reciprocal-rank-fusion hybrid search is `momo.HybridSearch` (PostgreSQL only,
-  see [vectors.md](vectors.md#hybrid-search)). Full-text search
-  (`types.TSVector`, `fts.Match`, `fts.RankCD`, `fts.Headline`, the
-  query builders) exists on PostgreSQL; to weigh the signals yourself, combine
-  a vector distance with a text rank in one score as shown in
-  [fulltext.md](fulltext.md).
+- Reciprocal-rank-fusion hybrid search is `momo.HybridSearch` (PostgreSQL,
+  SQLite and MariaDB; `ErrUnsupported` on MySQL, see
+  [vectors.md](vectors.md#hybrid-search)). Full-text search runs on PostgreSQL,
+  SQLite and MySQL or MariaDB: declare it once on the model (the `search` tag or
+  `c.FullText`) and search with `fts.Search`, `fts.Score` and `fts.Snippet`
+  (see [fulltext.md](fulltext.md)); `types.TSVector`, `fts.Match`,
+  `fts.RankCD`, `fts.Headline` and the query builders are PostgreSQL SQL. To
+  weigh the signals yourself, combine a vector distance with a text rank in one
+  score as shown in [fulltext.md](fulltext.md).
 
 Details: [capabilities.md](capabilities.md). Example: [quickstart](../examples/quickstart/).
 
@@ -2176,7 +2179,8 @@ Pitfalls:
   `pgxpool.NewWithConfig`, then `pgxdriver.WithVectorFormat(pgxdriver.VectorBinary)`
   with a describe-based exec mode). Default text transport is correct; skip unless
   profiling says otherwise. `NewPool` does not call `ConfigureVectors`.
-- Reciprocal-rank-fusion hybrid search is `momo.HybridSearch` (PostgreSQL only,
+- Reciprocal-rank-fusion hybrid search is `momo.HybridSearch` (PostgreSQL,
+  SQLite and MariaDB; `ErrUnsupported` on MySQL,
   [vectors.md](vectors.md#hybrid-search)); for a custom mix, combine a distance
   and a text rank in one score ([fulltext.md](fulltext.md)).
 

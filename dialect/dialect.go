@@ -67,6 +67,8 @@ type Dialect struct {
 	ILike            bool // native ILIKE; SQLite and MySQL render LOWER(x) LIKE LOWER(?)
 	Merge            bool // MERGE statement
 	WindowFunctions  bool
+	FullText         bool // portable full-text search (package fts)
+	HybridSearch     bool // momo.HybridSearch: needs a full-text leg and a cosine distance function
 
 	// Vector describes vector storage, distance metrics and ANN indexes.
 	Vector VectorCaps
@@ -91,6 +93,7 @@ var postgres = Dialect{
 	DefaultInUpdate: true, DefaultInValues: true, RecursiveCTE: true,
 	RowValues: true, Savepoints: true, IsolationLevels: true,
 	TransactionalDDL: true, ILike: true, Merge: true, WindowFunctions: true,
+	FullText: true, HybridSearch: true,
 	Vector: VectorCaps{
 		Storage: true,
 		Metrics: []Metric{MetricL2, MetricInnerProduct, MetricCosine, MetricL1, MetricHamming, MetricJaccard},
@@ -105,6 +108,7 @@ var sqlite = Dialect{
 	Returning: true, OnConflict: true, NullsOrdering: true,
 	RecursiveCTE: true, RowValues: true, Savepoints: true,
 	TransactionalDDL: true, WindowFunctions: true, // no DEFAULT inside VALUES
+	FullText: true, HybridSearch: true,
 	// The metric list is the set of scalar distance functions registered by
 	// sqlite-vec v0.1.6 (aFunc[] in cgo/sqlite-vec.c of
 	// github.com/asg017/sqlite-vec-go-bindings/cgo, read 2026-11-04). It has
