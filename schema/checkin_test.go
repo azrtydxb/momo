@@ -26,6 +26,7 @@ func TestParseCheckIn(t *testing.T) {
 		{"quoted spaced", `"kind" in ('a', 'b')`, "kind", []string{"a", "b"}, true},
 		{"parenthesised", `(kind IN ('a'))`, "kind", []string{"a"}, true},
 		{"mysql", "(`kind` in (_utf8mb4'a',_utf8mb4'b'))", "kind", []string{"a", "b"}, true},
+		{"mysql escaped quotes", "(`kind` in (_utf8mb4\\'a\\',_utf8mb4\\'b\\'))", "kind", []string{"a", "b"}, true},
 		{"postgres text", `(kind = ANY (ARRAY['a'::text, 'b'::text]))`, "kind", []string{"a", "b"}, true},
 		{"postgres varchar", `((kind)::text = ANY ((ARRAY['a'::character varying, 'b'::character varying])::text[]))`, "kind", []string{"a", "b"}, true},
 		{"escaped quote", `kind IN ('it''s')`, "kind", []string{"it's"}, true},

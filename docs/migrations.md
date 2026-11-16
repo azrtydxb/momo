@@ -132,9 +132,9 @@ What the migration does on each dialect:
 - MySQL 8.4, MySQL 9.7 and MariaDB 11.8: one
   `ALTER TABLE ... DROP CONSTRAINT ck, ADD CONSTRAINT ck CHECK (...)`, so the
   table is never without the constraint. All three enforce CHECK constraints, and
-  they accept `DROP CONSTRAINT` for one (MySQL before 8.0.16 parses and ignores
-  CHECK, and before 8.0.19 spells the drop `DROP CHECK`). A removed value that
-  rows hold makes the statement fail.
+  they accept `DROP CONSTRAINT` for one (older MySQL releases parse and ignore
+  CHECK, or spell the drop `DROP CHECK`). A removed value that rows hold makes
+  the statement fail.
 
 The expression is `"col" IN ('a','b')` (backticks on MySQL and MariaDB) with
 the values sorted. Drift reads the list out of the stored expression and

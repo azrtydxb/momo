@@ -129,7 +129,7 @@ func TestCheckInFallsBackToDropAndAdd(t *testing.T) {
 	plain := checkInSchema("a")
 	plain.Tables[0].Checks[0].In = nil
 	other := checkInSchema("a")
-	other.Tables[0].Columns = append(other.Tables[0].Columns, schema.Column{Name: "tag", Type: "text"})
+	other.Tables[0].Columns = append(other.Tables[0].Columns, schema.Column{Name: "tag", Type: "text", Nullable: true})
 	other.Tables[0].Checks[0].In.Column = "tag"
 	other.Tables[0].Checks[0].Expr = schema.CheckInExpr(dialect.Postgres, "tag", []string{"a"})
 	for name, c := range map[string]struct{ from, to *schema.Schema }{

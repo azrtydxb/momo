@@ -44,7 +44,13 @@ func checkInTable(d dialect.Name, values ...string) *schema.Schema {
 	case dialect.MySQL:
 		kindType = "varchar(40)"
 	}
-	return &schema.Schema{Dialect: d, Tables: []schema.Table{{
+	// The test database has vector installed and inspection reports every
+	// extension, so the desired PostgreSQL schema declares it.
+	var extensions []schema.Extension
+	if d == dialect.Postgres {
+		extensions = []schema.Extension{{Name: "vector"}}
+	}
+	return &schema.Schema{Dialect: d, Extensions: extensions, Tables: []schema.Table{{
 		Name:       "notes",
 		Columns:    []schema.Column{{Name: "id", Type: idType}, {Name: "kind", Type: kindType}},
 		PrimaryKey: []string{"id"},
@@ -118,7 +124,12 @@ func (r *checkInRun) mustBeClean() {
 		r.t.Fatal(err)
 	}
 	if !rep.Clean() {
-		r.t.Fatalf("drift: %+v", rep)
+		live, _ := r.engine().Inspect(context.Background())
+		var checks []schema.Check
+		if live != nil && len(live.Tables) > 0 {
+			checks = live.Tables[0].Checks
+		}
+		r.t.Fatalf("drift: %+v\nlive checks: %+v", rep, checks)
 	}
 }
 

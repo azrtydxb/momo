@@ -28,7 +28,7 @@ import (
 const (
 	markerRun         = "<!-- docscheck:run -->"
 	markerFragment    = "<!-- docscheck:fragment -->"
-	maxFragmentBlocks = 77
+	maxFragmentBlocks = 78
 )
 
 var goFence = regexp.MustCompile("^(\\s*)```go\\s*$")

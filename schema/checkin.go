@@ -92,7 +92,8 @@ type checkTok struct {
 // expression, a list that holds something but string literals, or a literal
 // with a backslash, reports false.
 func ParseCheckIn(expr string) (column string, values []string, ok bool) {
-	toks, ok := checkTokens(expr)
+	// MySQL reports the quotes of a string literal escaped (_utf8mb4\'a\').
+	toks, ok := checkTokens(strings.ReplaceAll(expr, `\'`, `'`))
 	if !ok {
 		return "", nil, false
 	}
