@@ -64,7 +64,8 @@ func Update[T any, PT Modeler[T]](q Querier) UpdateQuery[T] {
 // Set adds explicit column assignments. An assignment to a column that is
 // read-only, identity, create-only or immutable in the model's metadata is
 // refused with ErrValidation when the statement is built. A later assignment
-// to the same column replaces an earlier one.
+// to the same column replaces an earlier one. A primary-key column is refused
+// unless AllowKeyChange is set.
 func (u UpdateQuery[T]) Set(assigns ...Assignment) UpdateQuery[T] {
 	u.assigns = append(slices.Clip(u.assigns), assigns...)
 	return u
@@ -162,8 +163,9 @@ func (u UpdateQuery[T]) AllRows() UpdateQuery[T] { u.allRows = true; return u }
 // every dialect; a composite key may set any of its columns. A key that
 // collides with another row fails with ErrUniqueViolation. Foreign keys
 // declared ON UPDATE CASCADE follow the new key, as the database defines.
-// Locate the row by its old key in Where: a read-back after the update uses
-// the new key, and RETURNING (PostgreSQL and SQLite) yields it.
+// Locate the row by its old key in Where; AllowKeyChange does not check that
+// Where does. A read-back after the update uses the new key, and RETURNING
+// (PostgreSQL and SQLite) yields it.
 //
 // Only Set assigns a key. Model (which addresses the row by the key it holds),
 // BulkUpdate and the OnUpdate field hook keep refusing it, and an identity
