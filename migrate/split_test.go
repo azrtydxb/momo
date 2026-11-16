@@ -172,6 +172,50 @@ func TestSplitBOM(t *testing.T) {
 	}
 }
 
+// TestSplitDollarQuoteAfterLeadingSpace pins that a dollar quote opens after
+// any whitespace the splitter later trims, a BOM or a non-ASCII space, exactly
+// as it does after an ASCII one: the statement text and its re-split agree.
+func TestSplitDollarQuoteAfterLeadingSpace(t *testing.T) {
+	for name, space := range map[string]string{
+		"ascii": " ", "bom": "\xef\xbb\xbf", "nbsp": " ", "nel": "\u0085", "line separator": " ",
+	} {
+		t.Run(name+" opens an unterminated quote", func(t *testing.T) {
+			if _, err := SplitStatements([]byte("SELECT 1;"+space+"$$00"), "postgres"); err == nil {
+				t.Fatal("want an unterminated dollar-quoted string error")
+			}
+		})
+		t.Run(name+" quote closes and re-splits", func(t *testing.T) {
+			got, err := SplitStatements([]byte("SELECT 1;"+space+"$$ a; $$00"), "postgres")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []string{"SELECT 1", "$$ a; $$00"}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("got %q, want %q", got, want)
+			}
+			for _, st := range got {
+				again, err := SplitStatements([]byte(st), "postgres")
+				if err != nil || len(again) != 1 || again[0] != st {
+					t.Fatalf("statement %q re-split to %q (%v)", st, again, err)
+				}
+			}
+		})
+	}
+}
+
+// TestSplitPositionalParamIsNotATag pins that $1 and $00 are positional
+// parameters, never dollar-quote tags.
+func TestSplitPositionalParamIsNotATag(t *testing.T) {
+	got, err := SplitStatements([]byte("SELECT $1, $00;SELECT $$a;b$$"), "postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"SELECT $1, $00", "SELECT $$a;b$$"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
 func FuzzSplitStatements(f *testing.F) {
 	for _, s := range []string{
 		"", ";", "SELECT 1;", "SELECT 'a;b'; -- c\nSELECT 2",
