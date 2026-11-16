@@ -4,11 +4,14 @@ package migrate
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -25,8 +28,10 @@ import (
 //
 // The base of a migration is its parent's stored snapshot, because that is the
 // schema it was generated from; a snapshot marked SnapshotFile.Base =
-// BaseDerived (written by a diff after a merge) was generated from the parent's
-// derived schema, so that is its base.
+// "derived:<sha256>" (written by a diff after a merge) was generated from the
+// parent's derived schema, so that is its base; the hash fingerprints that
+// state, and a migration whose parent state has since changed (an older branch
+// merged late) is a conflict, to be regenerated.
 //
 // The unit of change is one object: a table with its triggers and policies, a
 // view, an enum, an extension, a function or a namespace. When independence of
@@ -103,6 +108,42 @@ func splitObjects(s *schema.Schema) map[string]*schema.Schema {
 		o.Policies = append(o.Policies, x)
 	}
 	return out
+}
+
+// objectCount returns the number of objects in s: the length of every list
+// field, found by reflection so that a kind added to schema.Schema is counted
+// without anyone remembering to.
+func objectCount(s *schema.Schema) int {
+	v := reflect.ValueOf(s).Elem()
+	n := 0
+	for i := 0; i < v.NumField(); i++ {
+		if v.Field(i).Kind() == reflect.Slice {
+			n += v.Field(i).Len()
+		}
+	}
+	return n
+}
+
+// countObjs is objectCount summed over single-object schemas.
+func countObjs(objs map[string]*schema.Schema) int {
+	n := 0
+	for _, o := range objs {
+		n += objectCount(o)
+	}
+	return n
+}
+
+// stateFingerprint returns a hash of the objects of s, in key order.
+func stateFingerprint(s *schema.Schema) string {
+	h := sha256.New()
+	objs := splitObjects(s)
+	for _, k := range slices.Sorted(maps.Keys(objs)) {
+		b, _ := json.Marshal(objs[k])
+		h.Write([]byte(k + "\n"))
+		h.Write(b)
+		h.Write([]byte("\n"))
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // objectKey names one object: "<kind>:<schema>.<name>", or "<kind>:<name>" in
@@ -196,6 +237,18 @@ func impliedKeys(keys map[string]bool, srcs ...map[string]*schema.Schema) (out m
 		}
 	}
 	return out, unknown
+}
+
+// removesShared reports whether keys remove or alter an enum, an extension or
+// a schema namespace that already existed in base: tables, views and functions
+// may use any of them. Adding one is safe.
+func removesShared(keys map[string]bool, base map[string]*schema.Schema) bool {
+	for k := range keys {
+		if slices.Contains([]string{"enum", "extension", "schema"}, keyKind(k)) && base[k] != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // opaqueChanged reports whether the change from before to after of the keys
@@ -348,7 +401,7 @@ func foldChain(entries []chainEntry) ([]*schema.Schema, []error) {
 		switch {
 		case p == "":
 			return map[string]*schema.Schema{}
-		case entries[i].snap.Base == BaseDerived:
+		case baseIsDerived(entries[i].snap.Base):
 			return stateObjs(idx[p])
 		default:
 			return storedObjs(idx[p])
@@ -378,9 +431,17 @@ func foldChain(entries []chainEntry) ([]*schema.Schema, []error) {
 			continue
 		}
 		p := idx[e.snap.ParentVersion]
+		// A snapshot generated from a derived state is only as good as that
+		// state: when a branch merged since, it is stale.
+		if baseIsDerived(e.snap.Base) && e.snap.Base != derivedBase(states[p]) {
+			problems = append(problems, fmt.Errorf("%w: %s was generated from the merged state after %s, which has changed since (an older branch merged after it was written); regenerate it: delete it and run momo migrate diff, or run momo migrate rebase (see docs/migrations.md)",
+				ErrBranchConflict, e.path, e.snap.ParentVersion))
+			states[i] = states[i-1]
+			continue
+		}
 		// Built on the migration just before it, whose stored snapshot is its
 		// derived schema: nothing happened in between.
-		if p == i-1 && (e.snap.Base == BaseDerived || states[p] == entries[p].snap.Schema) {
+		if p == i-1 && (baseIsDerived(e.snap.Base) || states[p] == entries[p].snap.Schema) {
 			states[i] = e.snap.Schema
 			continue
 		}
@@ -388,6 +449,12 @@ func foldChain(entries []chainEntry) ([]*schema.Schema, []error) {
 		mineKeys, runKeys := touchedBy(i), changedKeys(base, running)
 		if len(runKeys) == 0 {
 			states[i] = e.snap.Schema
+			continue
+		}
+		// Every object must survive the split, or the merge would drop it silently.
+		if objectCount(e.snap.Schema) != countObjs(mine) || objectCount(states[i-1]) != countObjs(running) {
+			problems = append(problems, fmt.Errorf("%w: %s holds an object of a kind this momo cannot merge, so it cannot be shown independent of the migrations before it", ErrBranchConflict, e.path))
+			states[i] = states[i-1]
 			continue
 		}
 		name := func(j int) string { return entries[j].path }
@@ -408,10 +475,15 @@ func foldChain(entries []chainEntry) ([]*schema.Schema, []error) {
 			j := other(i, func(t map[string]bool) bool { return len(t) > 0 })
 			conflict("%s and %s: one changes a view whose source tables are unknown while the other changes a table", name(j), e.path)
 		}
-		if opaqueChanged(mineKeys, base, mine) && hasKind(runKeys, "table", "view") ||
-			opaqueChanged(runKeys, base, running) && hasKind(mineKeys, "table", "view") {
+		if opaqueChanged(mineKeys, base, mine) && hasKind(runKeys, "table", "view", "function") ||
+			opaqueChanged(runKeys, base, running) && hasKind(mineKeys, "table", "view", "function") {
 			j := other(i, func(t map[string]bool) bool { return len(t) > 0 })
-			conflict("%s and %s: one changes a function, trigger or policy, whose body can refer to any table, while the other changes a table or view", name(j), e.path)
+			conflict("%s and %s: one changes a function, trigger or policy, whose body can refer to any table, view or function, while the other changes a table, view or function", name(j), e.path)
+		}
+		if removesShared(mineKeys, base) && hasKind(runKeys, "table", "view", "function") ||
+			removesShared(runKeys, base) && hasKind(mineKeys, "table", "view", "function") {
+			j := other(i, func(t map[string]bool) bool { return len(t) > 0 })
+			conflict("%s and %s: one removes or alters an enum, extension or schema that the tables, views and functions of the other may use", name(j), e.path)
 		}
 		if len(conflicts) > 0 {
 			problems = append(problems, conflicts...)
@@ -427,8 +499,11 @@ func foldChain(entries []chainEntry) ([]*schema.Schema, []error) {
 			}
 		}
 		s, err := assemble(e.snap.Schema, merged)
+		if err == nil && objectCount(s) != countObjs(merged) {
+			err = errors.New("the merged schema lost an object")
+		}
 		if err != nil {
-			problems = append(problems, fmt.Errorf("migrate: %s: %w", e.path, err))
+			problems = append(problems, fmt.Errorf("%w: %s: %w", ErrBranchConflict, e.path, err))
 			states[i] = states[i-1]
 			continue
 		}
@@ -514,7 +589,7 @@ func LatestState(fsys fs.FS) (*SnapshotFile, error) {
 	out := *latest
 	out.Schema, out.Base = st, ""
 	if isDerived {
-		out.Base = BaseDerived
+		out.Base = derivedBase(st)
 	}
 	return &out, nil
 }

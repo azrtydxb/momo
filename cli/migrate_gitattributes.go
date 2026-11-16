@@ -27,13 +27,28 @@ func (l *cli) warnNoUnionRule(dir string) {
 		return
 	}
 	sum := filepath.Join(abs, migrate.SumFileName)
+	// Git reads the .gitattributes of every directory from the work tree root
+	// down to the file's, and the last matching line that sets merge wins, so
+	// walk from the root down and let a later (closer, lower) line override.
+	var dirs []string
 	for d := abs; ; d = filepath.Dir(d) {
-		if rel, err := filepath.Rel(d, sum); err == nil && attributesGiveUnion(filepath.Join(d, ".gitattributes"), filepath.ToSlash(rel)) {
-			return
-		}
+		dirs = append(dirs, d)
 		if d == root || d == filepath.Dir(d) {
 			break
 		}
+	}
+	union := false
+	for i := len(dirs) - 1; i >= 0; i-- {
+		rel, err := filepath.Rel(dirs[i], sum)
+		if err != nil {
+			continue
+		}
+		if u, set := attributesMerge(filepath.Join(dirs[i], ".gitattributes"), filepath.ToSlash(rel)); set {
+			union = u
+		}
+	}
+	if union {
+		return
 	}
 	_, _ = fmt.Fprintf(l.errOut, "momo: warning: no .gitattributes rule %q covers %s; two branches that each add a migration will conflict on it (see docs/migrations.md, Parallel branches)\n",
 		"<dir>/momo.sum merge=union", l.rel(sum))
@@ -52,31 +67,34 @@ func gitWorkTree(dir string) string {
 	}
 }
 
-// attributesGiveUnion reports whether the .gitattributes file gives merge=union
-// to the slash-separated path rel, relative to the file's directory.
-func attributesGiveUnion(file, rel string) bool {
+// attributesMerge reads the merge attribute that the .gitattributes file sets
+// for the slash-separated path rel, relative to the file's directory: union
+// reports merge=union, and set reports that some line set merge at all, to
+// union or to anything else (merge=text, merge, -merge, !merge). The last
+// matching line wins, as in git. [attr] macros are not supported: a macro that
+// expands to merge=union is not seen, and the warning is then printed anyway.
+func attributesMerge(file, rel string) (union, set bool) {
 	f, err := os.Open(file) // #nosec G304 -- a .gitattributes next to the migration directory
 	if err != nil {
-		return false
+		return false, false
 	}
 	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		fields := strings.Fields(sc.Text())
-		if len(fields) < 2 || strings.HasPrefix(fields[0], "#") {
+		if len(fields) < 2 || strings.HasPrefix(fields[0], "#") || !attributePatternMatches(fields[0], rel) {
 			continue
 		}
-		union := false
 		for _, a := range fields[1:] {
-			if a == "merge=union" {
-				union = true
+			switch {
+			case a == "merge=union":
+				union, set = true, true
+			case a == "merge" || a == "-merge" || a == "!merge" || strings.HasPrefix(a, "merge="):
+				union, set = false, true
 			}
 		}
-		if union && attributePatternMatches(fields[0], rel) {
-			return true
-		}
 	}
-	return false
+	return union, set
 }
 
 // attributePatternMatches matches a .gitattributes pattern against rel: a

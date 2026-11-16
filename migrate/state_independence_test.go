@@ -102,6 +102,85 @@ func TestCustomMigrationWithStoredParentSnapshot(t *testing.T) {
 	}
 }
 
+// pbSnapshotExtra is pbSnapshotWith with a raw JSON fragment, such as
+// `"enums":[...]`, added to the schema.
+func pbSnapshotExtra(version string, tables []string, extra string) string {
+	s := pbSnapshotWith(version, pbV0, tables, "", "")
+	return strings.TrimSuffix(s, "}}") + "," + extra + "}}"
+}
+
+// An enum, extension or schema that one branch removes or alters can be used
+// by any table, view or function of the other, so the fork conflicts.
+func TestForkSharedTypeRemovalConflictsWithTableChange(t *testing.T) {
+	for name, tc := range map[string]struct{ extra, none string }{
+		"enum":      {`"enums":[{"name":"e","values":["a","b"]}]`, `"enums":[]`},
+		"extension": {`"extensions":[{"name":"citext"}]`, `"extensions":[]`},
+		"schema":    {`"schemas":[{"name":"s"}]`, `"schemas":[]`},
+	} {
+		root := fstest.MapFS{
+			pbV0 + "_init.up.sql":        pbFile("-- momo:generated\nSELECT 1;\n"),
+			pbV0 + "_init.snapshot.json": pbFile(strings.Replace(pbSnapshotExtra(pbV0, []string{noKeyTable("t", "bigint")}, tc.extra), `"parent":"`+pbV0+`"`, `"parent":""`, 1)),
+		}
+		drop := pbBranchWith(root, pbVA, "drop_"+name, pbSnapshotExtra(pbVA, []string{noKeyTable("t", "bigint")}, tc.none))
+		addTable := pbBranchWith(root, pbVB, "add_u", pbSnapshotExtra(pbVB, []string{noKeyTable("t", "bigint"), noKeyTable("u", "bigint")}, tc.extra))
+		t.Run(name, func(t *testing.T) {
+			wantConflict(t, pbMerge(t, drop, addTable), "enum, extension or schema")
+		})
+	}
+}
+
+// Adding an enum next to a table change is independent.
+func TestForkAddingAnEnumMergesWithTableChange(t *testing.T) {
+	root := rootWith(noKeyTable("t", "bigint"))
+	add := pbBranchWith(root, pbVA, "add_e", pbSnapshotExtra(pbVA, []string{noKeyTable("t", "bigint")}, `"enums":[{"name":"e","values":["a"]}]`))
+	table := pbBranchWith(root, pbVB, "add_u", pbTablesOnly(pbVB, noKeyTable("t", "bigint"), noKeyTable("u", "bigint")))
+	wantMerge(t, pbMerge(t, add, table))
+}
+
+func TestForkFunctionAndFunctionConflict(t *testing.T) {
+	root := rootWith(noKeyTable("t", "bigint"))
+	fn := func(version, name string) fstest.MapFS {
+		return pbBranchWith(root, version, "add_"+name, pbSnapshotWith(version, pbV0, []string{noKeyTable("t", "bigint")}, "",
+			`{"name":"`+name+`","args":"","returns":"integer","language":"sql","volatility":"VOLATILE","body":"SELECT 1"}`))
+	}
+	wantConflict(t, pbMerge(t, fn(pbVA, "f"), fn(pbVB, "g")), "function, trigger or policy")
+}
+
+// A marked snapshot that equals the stored parent, not the derived one, changes
+// the schema and is not a no-change migration.
+func TestMarkedCustomMigrationMustEqualDerivedParent(t *testing.T) {
+	merged := pbMergedIndependent(t)
+	st, err := migrate.LatestState(merged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	custom := pbBranchWith(merged, "20260103000000", "backfill", pbSnapshot("20260103000000", pbVB, pbTable("base"), pbTable("b")))
+	custom["20260103000000_backfill.up.sql"] = pbFile("UPDATE b SET id = id;\n")
+	custom["20260103000000_backfill.snapshot.json"] = pbFile(strings.Replace(string(custom["20260103000000_backfill.snapshot.json"].Data), `"parent":"`+pbVB+`"`, `"parent":"`+pbVB+`","base":"`+st.Base+`"`, 1))
+	custom = pbMerge(t, custom, fstest.MapFS{})
+	found := false
+	for _, p := range pbProblems(t, custom) {
+		found = found || strings.Contains(p, "must not change the schema")
+	}
+	if !found {
+		t.Fatalf("a marked snapshot equal to the stored parent must be refused: %v", pbProblems(t, custom))
+	}
+}
+
+// A base this momo does not know is refused, not read as the stored parent.
+func TestReadSnapshotRefusesUnknownBase(t *testing.T) {
+	good := pbSnapshot(pbV0, "", pbTable("base"))
+	for name, base := range map[string]string{"unknown word": "future", "bare derived": "derived", "short hash": "derived:abc"} {
+		src := strings.Replace(good, `"parent":""`, `"parent":"","base":"`+base+`"`, 1)
+		if _, err := migrate.ReadSnapshot(strings.NewReader(src)); !errors.Is(err, migrate.ErrNewerFormat) {
+			t.Errorf("%s: want ErrNewerFormat, got %v", name, err)
+		}
+	}
+	if _, err := migrate.ReadSnapshot(strings.NewReader(good)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 const viewOnT = `{"name":"v","query":"SELECT id FROM t","depends":["t"]}`
 
 func TestForkForeignKeyToTableDroppedByOtherBranch(t *testing.T) {

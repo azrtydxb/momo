@@ -35,11 +35,15 @@ func (e chainEntry) derived() *schema.Schema {
 	return e.snap.Schema
 }
 
-// leavesSchemaOf reports whether s is the schema this migration leaves: its
-// derived state or its own stored snapshot. A migration that changes nothing
-// has one of them, depending on whether it was written before or after a merge.
-func (e chainEntry) leavesSchemaOf(s *schema.Schema) bool {
-	return schemaEqual(s, e.derived()) || schemaEqual(s, e.snap.Schema)
+// leavesSchemaOf reports whether child changes nothing relative to this
+// migration, its parent. A snapshot marked as generated from a derived state
+// must equal the derived schema; one written before a merge may equal the
+// parent's own stored snapshot as well.
+func (e chainEntry) leavesSchemaOf(child *SnapshotFile) bool {
+	if schemaEqual(child.Schema, e.derived()) {
+		return true
+	}
+	return !baseIsDerived(child.Base) && schemaEqual(child.Schema, e.snap.Schema)
 }
 
 // loadChain reads every snapshot in fsys and checks that they form a chain:

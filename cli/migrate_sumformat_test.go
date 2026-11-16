@@ -78,6 +78,20 @@ func TestMigrateWarnsWithoutUnionRule(t *testing.T) {
 	if !warned("hash") {
 		t.Fatal("a rule for another directory must not count")
 	}
+	// The last matching line that sets merge wins, as in git.
+	writeFile(t, filepath.Join(dir, ".gitattributes"), "momo.sum merge=union\nmigrations/**/momo.sum -merge\n")
+	if !warned("hash") {
+		t.Fatal("a later -merge overrides the union rule")
+	}
+	writeFile(t, filepath.Join(dir, ".gitattributes"), "momo.sum merge=text\nmigrations/**/momo.sum merge=union\n")
+	if warned("hash") {
+		t.Fatal("a later union rule overrides an earlier merge=text")
+	}
+	writeFile(t, filepath.Join(dir, ".gitattributes"), "momo.sum merge=union\n")
+	writeFile(t, filepath.Join(mdir, ".gitattributes"), "momo.sum merge=binary\n")
+	if !warned("hash") {
+		t.Fatal("a .gitattributes closer to the file overrides one above it")
+	}
 }
 
 func cliSnapshot(version, parent string, tables ...string) string {

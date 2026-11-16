@@ -408,9 +408,14 @@ Two branches that each add a migration merge with `git merge` and at most one
   version order, and each one contributes what it changed relative to its
   parent. A migration's base is its parent's stored snapshot, because that is
   what it was generated from; a migration written by `diff` or `new --custom`
-  after a merge records `"base": "derived"` in its snapshot, which makes the
-  parent's derived schema its base, so a later deliberate drop of the other
-  branch's table is a change and not swallowed. The next `diff` and `drift` read
+  after a merge records `"base": "derived:<sha256>"` in its snapshot, which makes
+  the parent's derived schema its base, so a later deliberate drop of the other
+  branch's table is a change and not swallowed. The hash fingerprints that
+  derived schema: when an older branch merges later and changes it, the marked
+  migration is stale, and `validate` reports a `migrate.ErrBranchConflict`
+  naming it; delete it and run `momo migrate diff` again, or run
+  `momo migrate rebase`. A `base` value this momo does not know is refused with
+  `migrate.ErrNewerFormat`. The next `diff` and `drift` read
   the derived schema (`migrate.LatestState`), so after the merge `diff` builds on
   the work of both branches and does not undo either. A chain with no fork is
   unchanged: every derived schema is its snapshot. A migration built on one
@@ -431,7 +436,10 @@ Two branches that each add a migration merge with `git merge` and at most one
     by the view's recorded sources; when the sources of a changed view are not
     recorded, the other branch must change no table;
   - when one branch changes a function, a trigger or a policy, whose body is
-    opaque, the other changes no table or view;
+    opaque, the other changes no table, view or function;
+  - when one branch removes or alters an enum, an extension or a schema
+    namespace, the other changes no table, view or function, because any of
+    them may use it (adding one is independent);
   - every foreign key of the merged schema that was valid on either side is
     still valid: the referenced table and columns exist, the column types match
     and a primary key, a unique constraint or a unique index backs the
