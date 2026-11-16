@@ -1922,6 +1922,16 @@
 <td>CapabilityReporter is implemented by drivers that report driver-level capabilities.</td>
 </tr>
 <tr>
+<td><code>momo.CheckInOpts</code></td>
+<td>type</td>
+<td>CheckInOpts carries the optional parts of a value-list check declaration.</td>
+</tr>
+<tr>
+<td><code>momo.CheckInOpts.Name</code></td>
+<td>method</td>
+<td>Name sets the constraint name of a CheckIn declaration, in place of <table>_<column>_check.</td>
+</tr>
+<tr>
 <td><code>momo.Coalesce</code></td>
 <td>func</td>
 <td>Coalesce returns the first non-NULL argument.</td>
@@ -2005,6 +2015,11 @@
 <td><code>momo.Config.Check</code></td>
 <td>method</td>
 <td>Check declares a named check constraint.</td>
+</tr>
+<tr>
+<td><code>momo.Config.CheckIn</code></td>
+<td>method</td>
+<td>CheckIn restricts a string field to a list of values with a check constraint, CHECK (column IN ('a', 'b')).</td>
 </tr>
 <tr>
 <td><code>momo.Config.Collate</code></td>
@@ -5188,6 +5203,26 @@
 <td>Check is a CHECK constraint.</td>
 </tr>
 <tr>
+<td><code>schema.Check.ExprFor</code></td>
+<td>method</td>
+<td>ExprFor returns the expression a renderer writes for the check on dialect d: the rendering of its value list when it has one, otherwise Expr.</td>
+</tr>
+<tr>
+<td><code>schema.CheckIn</code></td>
+<td>type</td>
+<td>CheckIn describes a CHECK constraint that restricts a text column to a set of values: CHECK (column IN ('a', 'b')).</td>
+</tr>
+<tr>
+<td><code>schema.CheckIn.Validate</code></td>
+<td>method</td>
+<td>Validate reports whether the list can be rendered: it names a column, holds at least one value, and no value holds a backslash or a control character (MySQL reads a backslash in a string literal as an escape, so no spelling of such a value is portable).</td>
+</tr>
+<tr>
+<td><code>schema.CheckInExpr</code></td>
+<td>func</td>
+<td>CheckInExpr renders the expression of a value-list check for dialect d: the column quoted the way d quotes identifiers, then IN and the sorted, de-duplicated values as single-quoted literals separated by a comma, with no space after it (the spelling MySQL and MariaDB report back).</td>
+</tr>
+<tr>
 <td><code>schema.Column</code></td>
 <td>type</td>
 <td>Column is a table column.</td>
@@ -5303,6 +5338,11 @@
 <td>Normalized returns a deep copy of s with every type and expression rewritten to its canonical spelling, the Concurrently migration option cleared and the collections sorted.</td>
 </tr>
 <tr>
+<td><code>schema.ParseCheckIn</code></td>
+<td>func</td>
+<td>ParseCheckIn reads the expression of a CHECK constraint that restricts one column to a list of string literals and returns the column and the values in the order written.</td>
+</tr>
+<tr>
 <td><code>schema.Partition</code></td>
 <td>type</td>
 <td>Partition describes the partitioning of a parent table.</td>
@@ -5346,6 +5386,11 @@
 <td><code>schema.SchemaNamespace</code></td>
 <td>type</td>
 <td>SchemaNamespace is a PostgreSQL schema (namespace) managed by Momo.</td>
+</tr>
+<tr>
+<td><code>schema.SortedValues</code></td>
+<td>func</td>
+<td>SortedValues returns the values sorted and without duplicates, as a new slice.</td>
 </tr>
 <tr>
 <td><code>schema.TSVectorColumn</code></td>
@@ -5833,6 +5878,11 @@
 </tr>
 <tr>
 <td><code>migrate.AddUnique</code></td>
+<td>const</td>
+<td>Change kinds produced by Diff.</td>
+</tr>
+<tr>
+<td><code>migrate.AlterCheckIn</code></td>
 <td>const</td>
 <td>Change kinds produced by Diff.</td>
 </tr>
@@ -6450,6 +6500,11 @@
 <td><code>migrate.RuleBlockingIndex</code></td>
 <td>const</td>
 <td>RuleBlockingIndex: CREATE INDEX without CONCURRENTLY on an existing table.</td>
+</tr>
+<tr>
+<td><code>migrate.RuleCheckValueRemoval</code></td>
+<td>const</td>
+<td>RuleCheckValueRemoval: a migration whose snapshot removes a value from a value-list check (schema.CheckIn) without -- momo:destructive.</td>
 </tr>
 <tr>
 <td><code>migrate.RuleColumnTypeChange</code></td>

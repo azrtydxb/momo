@@ -2166,11 +2166,41 @@ string literals only.</p>
 <p>An index name declared in <code>MomoConfig</code> must not collide with an auto-named
 <code>&lt;table&gt;_&lt;col&gt;_idx</code> produced by an <code>index</code> tag (the <code>Plan</code> field above already
 yields <code>accounts_plan_idx</code>); the generator refuses the duplicate.</p>
-<p>Config methods: <code>Config.Index</code>, <code>Config.IndexExpr</code>, <code>Config.Unique</code>, <code>Config.ForeignKey</code>, <code>Config.Check</code>, <code>Config.Enum</code>, <code>Config.Default</code>, <code>Config.Generated</code>,
+<p>Config methods: <code>Config.Index</code>, <code>Config.IndexExpr</code>, <code>Config.Unique</code>, <code>Config.ForeignKey</code>, <code>Config.Check</code>, <code>Config.CheckIn</code>, <code>Config.Enum</code>, <code>Config.Default</code>, <code>Config.Generated</code>,
 <code>Config.Comment</code>, <code>Config.Collate</code>, <code>Config.IDGen</code>, <code>Config.FKName</code>, <code>Config.PrimaryKey</code>, <code>Config.View</code>, <code>Config.Function</code>, <code>Config.Trigger</code>, <code>Config.Policy</code>, <code>Config.RLS</code>, <code>Config.Partition</code>,
 <code>Config.PartitionOf</code>. Index chain: <code>IndexOpts.Unique()</code> (on <code>Config.Index</code> or <code>Config.IndexExpr</code>), <code>Where(pred)</code>, <code>Method(m)</code>, <code>IndexOpts.With(k, v)</code>,
 <code>Opclass(field, op)</code>, <code>Desc(field)</code>, <code>Nulls(field, "first"|"last")</code>,
 <code>Concurrently()</code> (<code>diff</code> writes the index as <code>CREATE INDEX CONCURRENTLY</code> in its own no-transaction migration).</p>
+<p>A check that restricts a string field to a list of values is <code>Config.CheckIn</code>.
+Write one value per line; the values are string literals. <code>CheckInOpts.Name</code>
+names the constraint, which is <code>&lt;table&gt;_&lt;column&gt;_check</code> by default.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="s">"github.com/azrtydxb/momo"</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{}</span>
+
+<span class="kd">type</span><span class="w"> </span><span class="nx">Ticket</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Model</span><span class="w"> </span><span class="s">`momo:"table:tickets"`</span>
+<span class="w">    </span><span class="nx">ID</span><span class="w">         </span><span class="kt">int64</span><span class="w"> </span><span class="s">`momo:"pk,identity"`</span>
+<span class="w">    </span><span class="nx">Kind</span><span class="w">       </span><span class="kt">string</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">n</span><span class="w"> </span><span class="o">*</span><span class="nx">Ticket</span><span class="p">)</span><span class="w"> </span><span class="nx">MomoConfig</span><span class="p">(</span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Config</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">CheckIn</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">n</span><span class="p">.</span><span class="nx">Kind</span><span class="p">,</span>
+<span class="w">        </span><span class="s">"archived"</span><span class="p">,</span>
+<span class="w">        </span><span class="s">"draft"</span><span class="p">,</span>
+<span class="w">        </span><span class="s">"published"</span><span class="p">,</span>
+<span class="w">    </span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>migrate diff</code> compares the list as a set, so the order of the values never
+matters, and a change that adds a value is one <code>migrate.AlterCheckIn</code> change.
+Two branches that add different values to the list merge as text and diff to one
+migration that adds both. Removing a value is destructive: it needs
+<code>--allow-destructive</code>, and rows that hold it must be backfilled first. See
+<a href="../migrations/#value-list-checks">migrations</a>. An empty list, a repeated value,
+a field that is not a string and an enum column are generator errors.</p>
 <p>A unique expression index is <code>Config.IndexExpr</code> with <code>IndexOpts.Unique()</code>:
 <code>c.IndexExpr("principal_email_key", "lower(email)").Unique()</code>. Each string is one
 key: an expression, or the exact name of a column of the table, which is a plain
