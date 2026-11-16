@@ -341,6 +341,12 @@ func TestTypeMappingMySQLLimits(t *testing.T) {
 				t.Errorf("%s: MaxFloat32 read back %v, %v", name, got, err)
 			}
 		}
+		// A query with no argument comes back over the text protocol, where the
+		// server prints a FLOAT with six significant digits.
+		plain, err := momo.Scalars[float32](ctx, db, "SELECT v FROM tm_f32")
+		if err != nil || len(plain) != 1 || math.Abs(float64(plain[0])-math.MaxFloat32)/math.MaxFloat32 > 1e-5 {
+			t.Errorf("text protocol: MaxFloat32 read back %v, %v; want six digits", plain, err)
+		}
 
 		// decimal(p,s): the generator's type for a precision tag keeps every digit.
 		dec, err := typemap.Map("types.Numeric", dialect.MySQL, tags.Tags{Precision: 65, Scale: 30})
