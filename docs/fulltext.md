@@ -7,7 +7,7 @@ runs the search on all of them. Package `fts` also keeps the builders that
 write PostgreSQL full-text SQL by hand (`fts.Match`, `fts.Rank`,
 `fts.Headline`) and two builders for `MATCH ... AGAINST` on MySQL and MariaDB
 (`fts.MySQLMatch`, `fts.MySQLRelevance`). The capabilities table in
-[capabilities](capabilities.md) shows the `FullText` flag per dialect.
+[capabilities](capabilities.md) shows the `dialect.Dialect.FullText` flag per dialect.
 
 The three databases do not search alike. The portable calls cover the common
 subset: all words, phrases, exclusion, prefixes, a relevance score and an
@@ -279,8 +279,8 @@ the configuration in the index and ignore it.
 `fts.Score` is `ts_rank_cd` on PostgreSQL, the negated `bm25` on SQLite (FTS5
 reports `bm25` as a negative number where lower is better) and the `MATCH`
 value on MySQL and MariaDB. Higher is better on every dialect, and a row the
-query does not match scores 0. Scores are comparable only within one dialect
-and one query; no portable function takes a score threshold. Use a score to
+query does not match scores 0.
+Scores are comparable only within one dialect and one query; no portable function takes a score threshold. Use a score to
 order rows, never to cut them off, and never compare it with a score from
 another query or another database. On SQLite the declared weights `A` to `D`
 are `bm25` column weights of 1, 0.4, 0.2 and 0.1.
