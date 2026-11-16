@@ -1290,3 +1290,24 @@ Options:
 - Do #206 only now; leave #205 for a later sprint.
 
 Decision (2026-11-16, the user, via AskUserQuestion): accept the recommended package. #205 phase 1 (momo.sum format 2, the fold chain C1, `rebase --renumber`) and #206 in full; C2, C4 and the schema-changing custom-migration marker later.
+
+## Closing milestones M1 to M4 after 0.15.0 (2026-11-16, integrator)
+
+All four milestones are open on the board; two stories are open (momo-07 Task 8 pgx binary vector codecs, momo-12 Task 5 Ent and Bun adapters), every epic shows spec drift, and the parity and full-text work of 0.12.0 to 0.15.0 has no stories.
+
+- Audit then close (recommended): a read-only audit of every epic against the real code, build or drop the two open stories, record the shipped parity and full-text work, then close what the audit shows done.
+- Audit only: report what each epic really delivers and what is missing; close nothing yet.
+- Build the two open stories first, audit afterwards.
+- Leave the board as it is.
+
+Decision (2026-11-16, the user, via AskUserQuestion): build the two open stories first (momo-07 Task 8 pgx binary vector codecs, momo-12 Task 5 Ent and Bun adapters), then audit the epics.
+
+## The two open stories need a benchmark run on dedicated hardware (2026-11-16, integrator)
+
+Both stories are already built and tested in CI (vector codecs with TestVectorBinaryCodec; Ent and Bun adapters with TestBenchEquivalence). The only unticked criterion of each is a committed `make bench` reference run under bench/results (raw output, environment, pinned versions, vector-encoding.txt). docs/PERFORMANCE.md forbids shared CI runner numbers, and the laptop's docker is broken, so no agent can produce it.
+
+- Reword the two criteria (recommended): the tooling and layout test (`make bench`, bench/scripts/run.sh, TestBenchResultsLayout) is the deliverable; a published reference run becomes a separate story owned by the user, and both stories close.
+- Run on a CI runner: add a workflow that runs `make bench` and commits bench/results, changing docs/PERFORMANCE.md to accept runner numbers labelled as such.
+- Wait for the user to run `make bench` on dedicated hardware and commit bench/results.
+
+Decision (2026-11-16, the user, via AskUserQuestion): reword and close. The tooling and layout test are the deliverable; a published reference run is a separate story owned by the user.

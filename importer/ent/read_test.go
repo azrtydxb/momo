@@ -79,6 +79,47 @@ func readSource(t *testing.T, src string) ([]importer.Model, *importer.Report) {
 	return models, rep
 }
 
+func TestReadCompositeIndexes(t *testing.T) {
+	models, rep := readSource(t, `
+type Row struct{ ent.Schema }
+
+func (Row) Fields() []ent.Field {
+	return []ent.Field{field.String("a"), field.String("b"), field.Int("c")}
+}
+
+func (Row) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("b", "a").Unique().StorageKey("row_b_a"),
+		index.Fields("c", "a", "b"),
+	}
+}
+`)
+	if rep.Has(importer.DroppedIndex) || rep.Has(importer.Unsupported) {
+		t.Fatalf("composite indexes import cleanly: %s", rep)
+	}
+	row := model(t, models, "Row")
+	if len(row.Indexes) != 2 {
+		t.Fatalf("two composite indexes: %+v", row.Indexes)
+	}
+	if ix := row.Indexes[0]; ix.Name != "row_b_a" || !ix.Unique || strings.Join(ix.Fields, " ") != "B A" {
+		t.Fatalf("the unique index keeps its name and column order: %+v", ix)
+	}
+	if ix := row.Indexes[1]; ix.Name != "row_c_a_b" || ix.Unique || strings.Join(ix.Fields, " ") != "C A B" {
+		t.Fatalf("Ent names an index <model>_<columns>: %+v", ix)
+	}
+	root := t.TempDir()
+	w := gen.NewWriter(gen.WriterOptions{ModuleRoot: root})
+	if err := importer.Emit(models, rep, w, filepath.Join(root, "models"), "models"); err != nil {
+		t.Fatal(err)
+	}
+	src := string(w.Outputs()[0].Data)
+	for _, want := range []string{"func (m *Row) MomoConfig(c *momo.Config) {", `c.Index("row_b_a", &m.B, &m.A).Unique()`, `c.Index("row_c_a_b", &m.C, &m.A, &m.B)`} {
+		if !strings.Contains(src, want) {
+			t.Errorf("emitted source lacks %q:\n%s", want, src)
+		}
+	}
+}
+
 func model(t *testing.T, models []importer.Model, name string) importer.Model {
 	t.Helper()
 	for _, m := range models {
@@ -214,8 +255,12 @@ func TestReadFixtureModels(t *testing.T) {
 	if got := rep.Of(importer.ImplicitSave); len(got) != 7 {
 		t.Fatalf("every edge is reported once: %s", rep)
 	}
-	if got := rep.Of(importer.DroppedIndex); len(got) != 1 || got[0].Model != "User" {
-		t.Fatalf("one composite index: %s", rep)
+	if got := rep.Of(importer.DroppedIndex); len(got) != 0 {
+		t.Fatalf("a composite index is imported, not reported: %s", rep)
+	}
+	if len(user.Indexes) != 1 || user.Indexes[0].Name != "user_score_active" || user.Indexes[0].Unique ||
+		strings.Join(user.Indexes[0].Fields, " ") != "Score Active" {
+		t.Fatalf("the composite index of User: %+v", user.Indexes)
 	}
 	if got := rep.Of(importer.Naming); len(got) != 4 {
 		t.Fatalf("four foreign key names: %s", rep)

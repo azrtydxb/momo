@@ -412,7 +412,9 @@ func applyChecks(t *schema.Table, def tableDef) []schema.Enum {
 	seen := map[string]bool{}
 	unnamed := 0
 	for _, ck := range def.checks {
-		if col, values, ok := enumCheck(ck.expr); ok && !seen[col] {
+		// Only an unnamed check is the one an enum column writes. A named
+		// constraint over a value list is a declared value-list check.
+		if col, values, ok := enumCheck(ck.expr); ok && ck.name == "" && !seen[col] {
 			if c, found := t.Column(col); found && c.Enum == "" && strings.EqualFold(strings.TrimSpace(c.Type), "TEXT") {
 				seen[col] = true
 				c.Enum = t.Name + "_" + col
@@ -428,7 +430,15 @@ func applyChecks(t *schema.Table, def tableDef) []schema.Enum {
 			}
 			unnamed++
 		}
-		t.Checks = append(t.Checks, schema.Check{Name: name, Expr: ck.expr})
+		check := schema.Check{Name: name, Expr: ck.expr}
+		if ck.name != "" {
+			if col, values, ok := schema.ParseCheckIn(ck.expr); ok {
+				if _, found := t.Column(col); found {
+					check.In = &schema.CheckIn{Column: col, Values: schema.SortedValues(values)}
+				}
+			}
+		}
+		t.Checks = append(t.Checks, check)
 	}
 	return enums
 }

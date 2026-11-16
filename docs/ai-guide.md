@@ -367,11 +367,45 @@ An index name declared in `MomoConfig` must not collide with an auto-named
 `<table>_<col>_idx` produced by an `index` tag (the `Plan` field above already
 yields `accounts_plan_idx`); the generator refuses the duplicate.
 
-Config methods: `Config.Index`, `Config.IndexExpr`, `Config.Unique`, `Config.ForeignKey`, `Config.Check`, `Config.Enum`, `Config.Default`, `Config.Generated`,
+Config methods: `Config.Index`, `Config.IndexExpr`, `Config.Unique`, `Config.ForeignKey`, `Config.Check`, `Config.CheckIn`, `Config.Enum`, `Config.Default`, `Config.Generated`,
 `Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.PrimaryKey`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
 `Config.PartitionOf`. Index chain: `IndexOpts.Unique()` (on `Config.Index` or `Config.IndexExpr`), `Where(pred)`, `Method(m)`, `IndexOpts.With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
 `Concurrently()` (`diff` writes the index as `CREATE INDEX CONCURRENTLY` in its own no-transaction migration).
+
+A check that restricts a string field to a list of values is `Config.CheckIn`.
+Write one value per line; the values are string literals. `CheckInOpts.Name`
+names the constraint, which is `<table>_<column>_check` by default.
+
+```go
+package main
+
+import "github.com/azrtydxb/momo"
+
+func main() {}
+
+type Ticket struct {
+	momo.Model `momo:"table:tickets"`
+	ID         int64 `momo:"pk,identity"`
+	Kind       string
+}
+
+func (n *Ticket) MomoConfig(c *momo.Config) {
+	c.CheckIn(&n.Kind,
+		"archived",
+		"draft",
+		"published",
+	)
+}
+```
+
+`migrate diff` compares the list as a set, so the order of the values never
+matters, and a change that adds a value is one `migrate.AlterCheckIn` change.
+Two branches that add different values to the list merge as text and diff to one
+migration that adds both. Removing a value is destructive: it needs
+`--allow-destructive`, and rows that hold it must be backfilled first. See
+[migrations](migrations.md#value-list-checks). An empty list, a repeated value,
+a field that is not a string and an enum column are generator errors.
 
 A unique expression index is `Config.IndexExpr` with `IndexOpts.Unique()`:
 `c.IndexExpr("principal_email_key", "lower(email)").Unique()`. Each string is one

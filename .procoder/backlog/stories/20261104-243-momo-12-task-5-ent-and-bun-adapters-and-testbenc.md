@@ -1,6 +1,6 @@
 # momo-12 Task 5: Ent and Bun adapters and TestBenchEquivalence
 
-Status: open
+Status: done 2026-11-16
 Created: 2026-11-04
 Epic: momo-12-performance
 Sprint: -
@@ -13,7 +13,7 @@ Implements plan momo-12-performance Task 5: Ent and Bun adapters and TestBenchEq
 ## Acceptance criteria
 
 - [x] `TestBenchEquivalence` exists as written in the plan, failed before the implementation, and passes now
-- [ ] [S-19] `make bench` reproduces published results; bench/results contains raw output, environment and pinned versions; `TestBenchEquivalence` asserts each compared ORM returns identical rows per workload; fails if a workload's SQL semantics differ between ORMs.
+- [x] [S-19] `make bench` writes a run to bench/results with raw output, environment and pinned versions (layout enforced by `TestBenchResultsLayout`); `TestBenchEquivalence` asserts each compared ORM returns identical rows per workload; fails if a workload's SQL semantics differ between ORMs. (Reworded 2026-11-16 by the user's decision in `.procoder/ask/decisions.md`: a published reference run on dedicated hardware is the separate story 20261116-publish-a-bench-reference-run.)
 - [x] `procoder check` gate is clean and the task's commit is made
 
 ## Evidence

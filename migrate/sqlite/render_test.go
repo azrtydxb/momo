@@ -40,6 +40,39 @@ func TestSQLiteAlterDecision(t *testing.T) {
 	}
 }
 
+// TestSQLiteRenderRefusesVectorIndexMethod: sqlite-vec compares every row and
+// SQLite indexes are b-trees, so an approximate vector index method (hnsw,
+// ivfflat) on SQLite is refused by the migration dialect with ErrUnsupported
+// that names the index and the method, and nothing is rendered for it. A
+// b-tree index, in either case, still renders.
+//
+// Catches: a SQLite migration that emits CREATE INDEX ... USING hnsw, or one
+// that drops the method and silently builds a plain index.
+func TestSQLiteRenderRefusesVectorIndexMethod(t *testing.T) {
+	for _, method := range []string{"hnsw", "ivfflat", "vector"} {
+		ix := &schema.Index{Name: "emb_idx", Method: method, Parts: []schema.IndexPart{{Column: "emb"}}}
+		stmts, err := Dialect{}.Render([]migrate.Change{{Kind: migrate.CreateIndex, Table: "docs", Name: "emb_idx", After: ix}})
+		if !errors.Is(err, momo.ErrUnsupported) {
+			t.Fatalf("%s: want an error wrapping momo.ErrUnsupported, got %v", method, err)
+		}
+		for _, w := range []string{`"emb_idx"`, `"` + method + `"`, "b-trees"} {
+			if !strings.Contains(err.Error(), w) {
+				t.Errorf("%s: message %q does not contain %q", method, err, w)
+			}
+		}
+		if len(stmts) != 0 {
+			t.Errorf("%s: nothing may be rendered for a refused index, got %+v", method, stmts)
+		}
+	}
+	for _, method := range []string{"", "btree", "BTREE"} {
+		ix := &schema.Index{Name: "emb_idx", Method: method, Parts: []schema.IndexPart{{Column: "emb"}}}
+		stmts, err := Dialect{}.Render([]migrate.Change{{Kind: migrate.CreateIndex, Table: "docs", Name: "emb_idx", After: ix}})
+		if err != nil || len(stmts) != 1 {
+			t.Errorf("method %q must render a b-tree index, got %+v, %v", method, stmts, err)
+		}
+	}
+}
+
 func TestSQLiteUnsupportedKindsError(t *testing.T) {
 	_, err := Dialect{}.Render([]migrate.Change{{Kind: "create_enum", Name: "e"}})
 	if err == nil {

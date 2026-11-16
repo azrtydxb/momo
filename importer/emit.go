@@ -27,7 +27,21 @@ type Model struct {
 	// ForeignKeys are the belongs-to relations of the model; each one is
 	// emitted as a relation field next to the columns.
 	ForeignKeys []ForeignKey
-	Source      string
+	// Indexes are the composite indexes of the model; each one is emitted as a
+	// c.Index declaration in the MomoConfig method. An index over one column
+	// belongs on the Field instead.
+	Indexes []Index
+	Source  string
+}
+
+// Index is a composite index over the columns of a Model.
+type Index struct {
+	// Name is the index name in the source database.
+	Name string
+	// Fields are the Go names of the indexed fields, in index order.
+	Fields []string
+	// Unique makes it a unique index.
+	Unique bool
 }
 
 // ForeignKey is a belongs-to relation with a database constraint.
@@ -159,6 +173,11 @@ func render(models []Model, pkg string) ([]byte, error) {
 			body.WriteString(line)
 		}
 		body.WriteString("}\n\n")
+		cfg, err := companionConfig(m)
+		if err != nil {
+			return nil, err
+		}
+		body.WriteString(cfg)
 	}
 	var out bytes.Buffer
 	out.WriteString(gen.Header())
@@ -174,6 +193,40 @@ func render(models []Model, pkg string) ([]byte, error) {
 	out.WriteString(")\n\n")
 	out.Write(body.Bytes())
 	return out.Bytes(), nil
+}
+
+// companionConfig renders the MomoConfig method that declares the composite
+// indexes of m, or nothing when m has none.
+func companionConfig(m Model) (string, error) {
+	if len(m.Indexes) == 0 {
+		return "", nil
+	}
+	known := map[string]bool{}
+	for _, f := range m.Fields {
+		known[f.Name] = true
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "// MomoConfig declares the composite indexes of %s.\nfunc (m *%s) MomoConfig(c *momo.Config) {\n", m.Name, m.Name)
+	for _, ix := range m.Indexes {
+		if ix.Name == "" || len(ix.Fields) < 2 {
+			return "", fmt.Errorf("importer: %s: a composite index needs a name and at least two fields: %+v", m.Source, ix)
+		}
+		args := make([]string, 0, len(ix.Fields)+1)
+		args = append(args, strconv.Quote(ix.Name))
+		for _, f := range ix.Fields {
+			if !known[f] {
+				return "", fmt.Errorf("importer: %s: index %s of %s names the field %s, which the model does not have", m.Source, ix.Name, m.Name, f)
+			}
+			args = append(args, "&m."+f)
+		}
+		unique := ""
+		if ix.Unique {
+			unique = ".Unique()"
+		}
+		fmt.Fprintf(&sb, "\tc.Index(%s)%s\n", strings.Join(args, ", "), unique)
+	}
+	sb.WriteString("}\n\n")
+	return sb.String(), nil
 }
 
 // collectImports adds the import path of every pkg.Name qualifier in goType.

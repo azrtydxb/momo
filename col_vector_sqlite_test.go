@@ -130,39 +130,6 @@ func TestSQLiteVectorColumnTypes(t *testing.T) {
 	}
 }
 
-func TestCheckVectorIndexMethod(t *testing.T) {
-	cases := []struct {
-		name   string
-		d      *dialect.Dialect
-		method string
-		ok     bool
-	}{
-		{"postgres hnsw", dialect.For(dialect.Postgres), "hnsw", true},
-		{"postgres ivfflat", dialect.For(dialect.Postgres), "ivfflat", true},
-		{"postgres vector", dialect.For(dialect.Postgres), "vector", false},
-		{"mariadb vector", dialect.MySQLFlavor(dialect.FlavorMariaDB), "vector", true},
-		{"mariadb hnsw", dialect.MySQLFlavor(dialect.FlavorMariaDB), "hnsw", false},
-		{"mysql vector", dialect.MySQLFlavor(dialect.FlavorMySQL), "vector", false},
-		{"sqlite hnsw", dialect.For(dialect.SQLite), "hnsw", false},
-		{"sqlite ivfflat", dialect.For(dialect.SQLite), "ivfflat", false},
-		{"sqlite vector", dialect.For(dialect.SQLite), "vector", false},
-		{"sqlite empty", dialect.For(dialect.SQLite), "", false},
-	}
-	for _, c := range cases {
-		err := checkVectorIndexMethod(c.d, c.method)
-		if c.ok && err != nil {
-			t.Errorf("%s: %v, want nil", c.name, err)
-		}
-		if !c.ok && !errors.Is(err, ErrUnsupported) {
-			t.Errorf("%s: err = %v, want ErrUnsupported", c.name, err)
-		}
-	}
-	err := checkVectorIndexMethod(dialect.For(dialect.SQLite), "hnsw")
-	if err == nil || !strings.Contains(err.Error(), "sqlite") || !strings.Contains(err.Error(), "none") {
-		t.Fatalf("diagnostic %v does not name the dialect and say no index exists", err)
-	}
-}
-
 // A nil pointer to a vector type is the nullable field before it has a value:
 // every dialect binds SQL NULL. Left to the DialectValue method the pointer
 // inherits from the value type, it dereferenced nil and panicked on PostgreSQL,
