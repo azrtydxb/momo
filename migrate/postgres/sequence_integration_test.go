@@ -12,8 +12,15 @@ import (
 	"github.com/azrtydxb/momo/schema"
 )
 
+// sequenceOnly is a schema with one sequence. The test database has the vector
+// extension installed, so the inspected schema lists it and the declared one
+// must too, as arraySchema does.
 func sequenceOnly(q schema.Sequence) *schema.Schema {
-	return &schema.Schema{Dialect: "postgres", Sequences: []schema.Sequence{q}}
+	return &schema.Schema{
+		Dialect:    "postgres",
+		Extensions: []schema.Extension{{Name: "vector"}},
+		Sequences:  []schema.Sequence{q},
+	}
 }
 
 // Catches: an ALTER SEQUENCE that changes the data type, or flips the sign of
