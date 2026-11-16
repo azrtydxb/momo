@@ -477,7 +477,7 @@ func (r *companionReader) index(calls []call) {
 }
 
 // fullText reads c.FullText(name, &m.A, &m.B) with its optional Config,
-// Weights, Tokenizer, Parser and Expression.
+// Weights, Tokenizer, Parser, Expression and Concurrently.
 func (r *companionReader) fullText(calls []call) {
 	first := calls[0]
 	args := first.expr.Args
@@ -545,6 +545,12 @@ func (r *companionReader) fullText(calls []call) {
 				continue
 			}
 			ft.Expression = true
+		case "Concurrently":
+			if len(cargs) != 0 {
+				r.unsupported(c.expr)
+				continue
+			}
+			ix.Concurrently = true
 		default:
 			r.unsupported(c.expr)
 		}

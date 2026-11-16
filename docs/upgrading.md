@@ -62,7 +62,7 @@ index, recreates the generated column and creates the index again. The
 generated column is named `<index>_tsv`; a model column of that name, a source
 column the table does not have, an index name that makes the column name longer
 than 63 bytes fails with `ErrValidation`. A full-text index declared
-`Concurrently` is built with `CREATE INDEX CONCURRENTLY` in the trailing
+`Concurrently` (`c.FullText(...).Concurrently()`) is built with `CREATE INDEX CONCURRENTLY` in the trailing
 `-- momo:no-transaction` migration; the generated column, and the drop of the
 old index when the declaration changes, stay in the transactional migration
 before it. That drop is a plain `DROP INDEX`, not `DROP INDEX CONCURRENTLY`: it

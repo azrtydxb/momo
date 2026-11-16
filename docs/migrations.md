@@ -899,8 +899,11 @@ built.
   `Concurrently()` the index is a plain `CREATE INDEX` that blocks writes while
   it builds. Set a role without `statement_timeout` for the run. A hand-written
   alternative: `examples/custom-sql-migration`. A full-text index on an existing
-  PostgreSQL table is such an index: declare it `Concurrently()` too, or the
-  generated `CREATE INDEX ... USING gin` fails `blocking-index` in lint.
+  PostgreSQL table is such an index: declare it with
+  `c.FullText("articles_search", &a.Title).Config("english").Concurrently()`,
+  or the generated `CREATE INDEX ... USING gin` fails `blocking-index` in lint.
+  SQLite and MySQL ignore `Concurrently()` on a full-text index as they do on
+  any index.
   Dropping that index when its declaration changes is a plain `DROP INDEX` inside
   the transaction that recreates the generated column, which holds an
   `ACCESS EXCLUSIVE` lock for that step.
