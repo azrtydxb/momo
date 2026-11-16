@@ -1242,3 +1242,24 @@ Decision (2026-11-15, the user, via AskUserQuestion): accept all fallbacks and t
 - Review follow-up (2026-11-15, integrator): until the dialect tasks land, the PostgreSQL, SQLite and MySQL/MariaDB index renderers refuse an index with a full-text declaration with `ErrUnsupported` ("full-text declarations are not rendered yet"). Without it PostgreSQL wrote `USING "fulltext"` (invalid DDL) and MySQL wrote a plain FULLTEXT that ignored the parser. So the declaration is recorded in the model and the snapshot, but migrations refuse it until a later release; docs/upgrading.md says so.
 - Review follow-up: `ForDialect` also clears the PostgreSQL-only `Expression` on SQLite and MySQL, or those dialects would diff it forever. `isTextType` compares the base type (length stripped) against an exact set and rejects arrays, so `text[]` and an enum named `text_kind` are not text. The FTS5 `remove_diacritics` option is allowed only on `unicode61`.
 - An older momo's `schema.Load` does not reject the new `fulltext` key: it uses plain `json.Unmarshal` (no `DisallowUnknownFields`), so it reads the snapshot and drops the declaration silently.
+
+## Closing milestones M1 to M4 after 0.15.0 (2026-11-16, integrator)
+
+All four milestones are open on the board; two stories are open (momo-07 Task 8 pgx binary vector codecs, momo-12 Task 5 Ent and Bun adapters), every epic shows spec drift, and the parity and full-text work of 0.12.0 to 0.15.0 has no stories.
+
+- Audit then close (recommended): a read-only audit of every epic against the real code, build or drop the two open stories, record the shipped parity and full-text work, then close what the audit shows done.
+- Audit only: report what each epic really delivers and what is missing; close nothing yet.
+- Build the two open stories first, audit afterwards.
+- Leave the board as it is.
+
+Decision (2026-11-16, the user, via AskUserQuestion): build the two open stories first (momo-07 Task 8 pgx binary vector codecs, momo-12 Task 5 Ent and Bun adapters), then audit the epics.
+
+## The two open stories need a benchmark run on dedicated hardware (2026-11-16, integrator)
+
+Both stories are already built and tested in CI (vector codecs with TestVectorBinaryCodec; Ent and Bun adapters with TestBenchEquivalence). The only unticked criterion of each is a committed `make bench` reference run under bench/results (raw output, environment, pinned versions, vector-encoding.txt). docs/PERFORMANCE.md forbids shared CI runner numbers, and the laptop's docker is broken, so no agent can produce it.
+
+- Reword the two criteria (recommended): the tooling and layout test (`make bench`, bench/scripts/run.sh, TestBenchResultsLayout) is the deliverable; a published reference run becomes a separate story owned by the user, and both stories close.
+- Run on a CI runner: add a workflow that runs `make bench` and commits bench/results, changing docs/PERFORMANCE.md to accept runner numbers labelled as such.
+- Wait for the user to run `make bench` on dedicated hardware and commit bench/results.
+
+Decision (2026-11-16, the user, via AskUserQuestion): reword and close. The tooling and layout test are the deliverable; a published reference run is a separate story owned by the user.
