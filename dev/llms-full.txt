@@ -4668,12 +4668,13 @@ reports it as `fulltext-column-rewrite`. The column name is
 longer than 63 bytes and a source column the table lacks are `ErrValidation`.
 
 The migration builds the index with a plain `CREATE INDEX`, which blocks writes
-while it builds. A full-text index whose description has its `Concurrently`
-flag set splits the work instead: the generated column and the drop of an old
-index stay in the transactional migration, and `CREATE INDEX CONCURRENTLY` goes
-into the migration that follows it with `-- momo:no-transaction`. The flag is
-part of `schema.Index`; `c.FullText` has no `Concurrently` option, so only a
-schema built in code sets it. See
+while it builds. A declaration with `.Concurrently()`, for example
+`c.FullText("articles_search", &a.Title).Config("english").Concurrently()`,
+splits the work instead: the generated column and the drop of an old index stay
+in the transactional migration, and `CREATE INDEX CONCURRENTLY` goes into the
+migration that follows it with `-- momo:no-transaction`. SQLite and MySQL have
+no concurrent build and ignore `Concurrently()` on a full-text index, as they do
+on any index. See
 [migrations](migrations.md#3b-full-text-search-structures).
 
 A tsvector column that a trigger maintains, as in [the column](#the-column), is
@@ -6259,13 +6260,14 @@ columns, the configuration, the weights or the expression flag drops the index,
 drops and adds the generated column (a table rewrite under an
 `ACCESS EXCLUSIVE` lock) and creates the index again. `fulltext-column-rewrite`
 of `momo migrate lint` flags it. The index is a plain `CREATE INDEX`, which
-blocks writes while it builds. When the description of the index has its
-`Concurrently` flag set (`schema.Index`; `c.FullText` has no such option, so
-only a schema built in code sets it), the work is split in two migrations: the
+blocks writes while it builds. When the declaration ends in `.Concurrently()`
+(`c.FullText(...).Concurrently()`), the work is split in two migrations: the
 generated column, and the drop of the old index when the declaration changes,
 stay in the transactional migration, and `CREATE INDEX CONCURRENTLY` follows in
 a `-- momo:no-transaction` migration. That drop is a plain `DROP INDEX` inside
-the transaction that recreates the column.
+the transaction that recreates the column. SQLite and MySQL have no concurrent
+build and ignore `Concurrently()` on a full-text index, as they do on any
+index.
 
 **SQLite.** `CREATE VIRTUAL TABLE "<table>_fts" USING fts5(...)` with
 `content='<table>'`, `content_rowid` and the declared `tokenize` clause, then
@@ -6574,12 +6576,13 @@ built.
   `Concurrently()` the index is a plain `CREATE INDEX` that blocks writes while
   it builds. Set a role without `statement_timeout` for the run. A hand-written
   alternative: `examples/custom-sql-migration`. A full-text index on an existing
-  PostgreSQL table is such an index, but `c.FullText` has no `Concurrently`
-  option: the generated `CREATE INDEX ... USING gin` fails `blocking-index` in
-  lint unless the schema built in code sets `Concurrently` on its index (see
-  section 3b). Dropping that index when its declaration changes is a plain
-  `DROP INDEX` inside the transaction that recreates the generated column, which
-  holds an `ACCESS EXCLUSIVE` lock for that step.
+  PostgreSQL table is such an index: declare it with
+  `c.FullText("articles_search", &a.Title).Config("english").Concurrently()`,
+  or the generated `CREATE INDEX ... USING gin` fails `blocking-index` in lint
+  (see section 3b). SQLite and MySQL ignore `Concurrently()` on a full-text
+  index as they do on any index. Dropping that index when its declaration
+  changes is a plain `DROP INDEX` inside the transaction that recreates the
+  generated column, which holds an `ACCESS EXCLUSIVE` lock for that step.
 - **Lock timeout**: the default 5 s lock wait fails fast instead of queuing
   behind a long transaction. A retry is safe for transactional migrations.
 - **Deploy order**: migrate first, then roll out code, with every migration
@@ -10011,9 +10014,8 @@ of the declaration (`Columns`, `Config`, `Weights` or `Expression`) drops the
 index, recreates the generated column and creates the index again. The
 generated column is named `<index>_tsv`; a model column of that name, a source
 column the table does not have, an index name that makes the column name longer
-than 63 bytes fails with `ErrValidation`. A full-text index whose
-description has `Concurrently` set (`c.FullText` has no such option, so only a
-schema built in code sets it) is built with `CREATE INDEX CONCURRENTLY` in the trailing
+than 63 bytes fails with `ErrValidation`. A full-text index declared with
+`c.FullText(...).Concurrently()` is built with `CREATE INDEX CONCURRENTLY` in the trailing
 `-- momo:no-transaction` migration; the generated column, and the drop of the
 old index when the declaration changes, stay in the transactional migration
 before it. That drop is a plain `DROP INDEX`, not `DROP INDEX CONCURRENTLY`: it
@@ -12285,6 +12287,7 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.FrameBound`                      | type   | FrameBound is one end of a window frame.                                                                                                                                                                                                                                          |
 | `momo.FromSubquery`                    | func   | FromSubquery uses a subquery as a FROM/JOIN source under alias.                                                                                                                                                                                                                   |
 | `momo.FullTextOpts`                    | type   | FullTextOpts carries the optional parts of a full-text search declaration.                                                                                                                                                                                                        |
+| `momo.FullTextOpts.Concurrently`       | method | Concurrently marks the full-text index to be built concurrently.                                                                                                                                                                                                                  |
 | `momo.FullTextOpts.Config`             | method | Config sets the PostgreSQL text search configuration.                                                                                                                                                                                                                             |
 | `momo.FullTextOpts.Expression`         | method | Expression declares a PostgreSQL expression index instead of a generated tsvector column.                                                                                                                                                                                         |
 | `momo.FullTextOpts.Parser`             | method | Parser sets the MySQL full-text parser ("ngram" or "mecab").                                                                                                                                                                                                                      |

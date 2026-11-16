@@ -1789,12 +1789,13 @@ reports it as <code>fulltext-column-rewrite</code>. The column name is
 <code>&lt;index&gt;_tsv</code>; a model column of that name, an index name that makes the name
 longer than 63 bytes and a source column the table lacks are <code>ErrValidation</code>.</p>
 <p>The migration builds the index with a plain <code>CREATE INDEX</code>, which blocks writes
-while it builds. A full-text index whose description has its <code>Concurrently</code>
-flag set splits the work instead: the generated column and the drop of an old
-index stay in the transactional migration, and <code>CREATE INDEX CONCURRENTLY</code> goes
-into the migration that follows it with <code>-- momo:no-transaction</code>. The flag is
-part of <code>schema.Index</code>; <code>c.FullText</code> has no <code>Concurrently</code> option, so only a
-schema built in code sets it. See
+while it builds. A declaration with <code>.Concurrently()</code>, for example
+<code>c.FullText("articles_search", &amp;a.Title).Config("english").Concurrently()</code>,
+splits the work instead: the generated column and the drop of an old index stay
+in the transactional migration, and <code>CREATE INDEX CONCURRENTLY</code> goes into the
+migration that follows it with <code>-- momo:no-transaction</code>. SQLite and MySQL have
+no concurrent build and ignore <code>Concurrently()</code> on a full-text index, as they do
+on any index. See
 <a href="../migrations/#3b-full-text-search-structures">migrations</a>.</p>
 <p>A tsvector column that a trigger maintains, as in <a href="#the-column">the column</a>, is
 not a declaration. It stays a plain <code>Method("gin")</code> index and diffs as before.</p>

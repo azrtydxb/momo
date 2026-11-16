@@ -3360,9 +3360,8 @@ of the declaration (<code>Columns</code>, <code>Config</code>, <code>Weights</co
 index, recreates the generated column and creates the index again. The
 generated column is named <code>&lt;index&gt;_tsv</code>; a model column of that name, a source
 column the table does not have, an index name that makes the column name longer
-than 63 bytes fails with <code>ErrValidation</code>. A full-text index whose
-description has <code>Concurrently</code> set (<code>c.FullText</code> has no such option, so only a
-schema built in code sets it) is built with <code>CREATE INDEX CONCURRENTLY</code> in the trailing
+than 63 bytes fails with <code>ErrValidation</code>. A full-text index declared with
+<code>c.FullText(...).Concurrently()</code> is built with <code>CREATE INDEX CONCURRENTLY</code> in the trailing
 <code>-- momo:no-transaction</code> migration; the generated column, and the drop of the
 old index when the declaration changes, stay in the transactional migration
 before it. That drop is a plain <code>DROP INDEX</code>, not <code>DROP INDEX CONCURRENTLY</code>: it

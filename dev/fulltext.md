@@ -110,12 +110,13 @@ reports it as `fulltext-column-rewrite`. The column name is
 longer than 63 bytes and a source column the table lacks are `ErrValidation`.
 
 The migration builds the index with a plain `CREATE INDEX`, which blocks writes
-while it builds. A full-text index whose description has its `Concurrently`
-flag set splits the work instead: the generated column and the drop of an old
-index stay in the transactional migration, and `CREATE INDEX CONCURRENTLY` goes
-into the migration that follows it with `-- momo:no-transaction`. The flag is
-part of `schema.Index`; `c.FullText` has no `Concurrently` option, so only a
-schema built in code sets it. See
+while it builds. A declaration with `.Concurrently()`, for example
+`c.FullText("articles_search", &a.Title).Config("english").Concurrently()`,
+splits the work instead: the generated column and the drop of an old index stay
+in the transactional migration, and `CREATE INDEX CONCURRENTLY` goes into the
+migration that follows it with `-- momo:no-transaction`. SQLite and MySQL have
+no concurrent build and ignore `Concurrently()` on a full-text index, as they do
+on any index. See
 [migrations](migrations.md#3b-full-text-search-structures).
 
 A tsvector column that a trigger maintains, as in [the column](#the-column), is
