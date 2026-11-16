@@ -1651,10 +1651,21 @@ _, err = momo.Update[models.Task](q).Model(&cur).Exec(ctx)
   success your struct's version field is advanced. Reload the row and retry on
   `ErrOptimisticLock`.
 - Only `UpdateQuery.Model` checks and advances the version. A `UpdateQuery.Set`-based update,
-  `Upsert` and relation helpers do NOT. DON'T `Column.Set` the version, pk, soft-delete,
-  created_at or updated_at column directly (`ErrValidation`); writing a
+  `Upsert` and relation helpers do NOT. DON'T `Column.Set` the version, pk (see
+  `AllowKeyChange` below), soft-delete, created_at or updated_at column directly (`ErrValidation`); writing a
   `read_only`, `immutable` (on update) or identity column is `ErrValidation`.
   `Rows` is not supported on a versioned `Model` update; use `Exec`.
+- To rename a primary key, add `.AllowKeyChange()` to an update that assigns the key
+  with `UpdateQuery.Set` and find the row by its old key in `UpdateQuery.Where`.
+  Without it a key assignment is `ErrValidation`. Every key column of a composite
+  key may be set. A key held by another row is `ErrUniqueViolation`; foreign keys
+  declared `ON UPDATE CASCADE` follow the new key (SQLite needs foreign keys on,
+  which `sqlitedriver` does by default). Read the row back by the NEW key.
+  `Returning` yields the new key on PostgreSQL and SQLite; MySQL and MariaDB have
+  no `UPDATE ... RETURNING` (`ErrUnsupported`), so select by the new key instead.
+  `UpdateQuery.Model`, `BulkUpdate`, the `OnUpdate` field hook and an identity key
+  still refuse a key assignment, and `AllowKeyChange` on a `BulkUpdate` is
+  `ErrValidation`.
 - `updated_at` is set automatically on `Update` (Set or Model), not on raw SQL
   and not on relation helpers.
 - An `Update` with no assignment is a touch when the model has an `updated_at`
@@ -10160,6 +10171,17 @@ unnamed column check is unchanged. `momotest.WithTemplateClone` makes
 `momotest.New` clone a template database per test instead of building a schema
 per test; without the option `momotest.New` behaves as before.
 
+### Change a primary key with `AllowKeyChange`
+
+`UpdateQuery.AllowKeyChange` is an opt-in that lets `UpdateQuery.Set` assign a
+primary-key column, for a row whose key a user chooses and may rename. Without
+it an assignment to a key column is refused with `ErrValidation`, as before.
+With it the statement runs as written, on every dialect, and a key that
+collides with another row fails with `ErrUniqueViolation`; foreign keys
+declared `ON UPDATE CASCADE` follow the new key. `UpdateQuery.Model`,
+`BulkUpdate`, the `OnUpdate` field hook and an identity key keep refusing a key
+assignment.
+
 ## Upgrading to 0.15.0
 
 No edit is needed in your code. A model can now declare full-text search, and
@@ -12892,6 +12914,7 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.Update`                          | func   | Update starts an UPDATE of T's table.                                                                                                                                                                                                                                             |
 | `momo.UpdateQuery`                     | type   | UpdateQuery builds an UPDATE of one model table.                                                                                                                                                                                                                                  |
 | `momo.UpdateQuery.AllRows`             | method | AllRows confirms that an UPDATE without WHERE is intended.                                                                                                                                                                                                                        |
+| `momo.UpdateQuery.AllowKeyChange`      | method | AllowKeyChange confirms that Set may assign primary-key columns.                                                                                                                                                                                                                  |
 | `momo.UpdateQuery.AppendSQL`           | method | AppendSQL renders the statement in parentheses as a WITH clause body.                                                                                                                                                                                                             |
 | `momo.UpdateQuery.Exec`                | method | Exec runs the UPDATE.                                                                                                                                                                                                                                                             |
 | `momo.UpdateQuery.From`                | method | From adds sources to the statement, rendering UPDATE t SET ...                                                                                                                                                                                                                    |

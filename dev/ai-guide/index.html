@@ -3159,10 +3159,21 @@ yourself. A keyset order that is not total skips or repeats rows. Example:
   success your struct's version field is advanced. Reload the row and retry on
   <code>ErrOptimisticLock</code>.</li>
 <li>Only <code>UpdateQuery.Model</code> checks and advances the version. A <code>UpdateQuery.Set</code>-based update,
-  <code>Upsert</code> and relation helpers do NOT. DON'T <code>Column.Set</code> the version, pk, soft-delete,
-  created_at or updated_at column directly (<code>ErrValidation</code>); writing a
+  <code>Upsert</code> and relation helpers do NOT. DON'T <code>Column.Set</code> the version, pk (see
+  <code>AllowKeyChange</code> below), soft-delete, created_at or updated_at column directly (<code>ErrValidation</code>); writing a
   <code>read_only</code>, <code>immutable</code> (on update) or identity column is <code>ErrValidation</code>.
   <code>Rows</code> is not supported on a versioned <code>Model</code> update; use <code>Exec</code>.</li>
+<li>To rename a primary key, add <code>.AllowKeyChange()</code> to an update that assigns the key
+  with <code>UpdateQuery.Set</code> and find the row by its old key in <code>UpdateQuery.Where</code>.
+  Without it a key assignment is <code>ErrValidation</code>. Every key column of a composite
+  key may be set. A key held by another row is <code>ErrUniqueViolation</code>; foreign keys
+  declared <code>ON UPDATE CASCADE</code> follow the new key (SQLite needs foreign keys on,
+  which <code>sqlitedriver</code> does by default). Read the row back by the NEW key.
+  <code>Returning</code> yields the new key on PostgreSQL and SQLite; MySQL and MariaDB have
+  no <code>UPDATE ... RETURNING</code> (<code>ErrUnsupported</code>), so select by the new key instead.
+  <code>UpdateQuery.Model</code>, <code>BulkUpdate</code>, the <code>OnUpdate</code> field hook and an identity key
+  still refuse a key assignment, and <code>AllowKeyChange</code> on a <code>BulkUpdate</code> is
+  <code>ErrValidation</code>.</li>
 <li><code>updated_at</code> is set automatically on <code>Update</code> (Set or Model), not on raw SQL
   and not on relation helpers.</li>
 <li>An <code>Update</code> with no assignment is a touch when the model has an <code>updated_at</code>
