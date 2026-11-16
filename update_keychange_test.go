@@ -59,7 +59,7 @@ func TestUpdateAllowKeyChangeExprAllRowsAndHook(t *testing.T) {
 		t.Errorf("SetExpr on a key without opt-in err = %v, want ErrValidation", err)
 	}
 	c, err := momo.Update[bulkStock](pg).Set(expr).Where(bulkRegion.Eq("eu")).AllowKeyChange().SQL()
-	if err != nil || !strings.Contains(c.SQL, `SET "sku" = "bulk_stock"."sku" + $1`) {
+	if err != nil || !strings.Contains(c.SQL, `SET "sku" = ("bulk_stock"."sku" + $1)`) {
 		t.Errorf("SetExpr on a key with opt-in = %q %v", c.SQL, err)
 	}
 	c, err = momo.Update[bulkStock](pg).Set(bulkRegion.Set("us")).AllRows().AllowKeyChange().SQL()
