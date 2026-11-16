@@ -65,8 +65,8 @@ var namer = naming.Ent{}
 // Momo writes the zero value; the database default is kept), go-default for
 // defaults and update defaults that are Go functions, go-side-rule for
 // validators, immutable fields, hooks and policies, naming for foreign key
-// names Momo derives itself, dropped-index for indexes Momo's tags cannot
-// express, and unsupported for everything the reader does not handle (a
+// names Momo derives itself, dropped-index for a second index on one field
+// (an index over several fields becomes a composite index of the model), and unsupported for everything the reader does not handle (a
 // many-to-many edge, JSON and UUID fields, an unknown builder method).
 func Read(dir string) ([]importer.Model, *importer.Report, error) {
 	entries, err := os.ReadDir(dir)
@@ -1404,8 +1404,8 @@ func (r *reader) keyField(e *entity, f *fk, pos string) importer.Field {
 }
 
 // indexes applies the Ent indexes to the fields of m. A Momo tag names one
-// index per field, so composite indexes and a second index on one field are
-// reported and dropped.
+// index per field, so a second index on one field is reported and dropped; an
+// index over several columns becomes a composite index of the model.
 func (r *reader) indexes(e *entity, m *importer.Model, byColumn map[string]int) {
 	model := e.ti.name
 	for _, ix := range e.indexes {
@@ -1440,7 +1440,19 @@ func (r *reader) indexes(e *entity, m *importer.Model, byColumn map[string]int) 
 		}
 		pos := r.pos(ix.pos)
 		if len(cols) > 1 {
-			r.rep.Add(importer.Change{Kind: importer.DroppedIndex, Source: pos, Model: model, Message: "index " + name + " spans " + strings.Join(cols, ", ") + "; composite indexes are not imported, declare it in the companion file"})
+			var fields []string
+			for _, c := range cols {
+				i, ok := byColumn[c]
+				if !ok {
+					r.unsupported(ix.pos, model, "", "the index column "+c+" has no field in the imported model")
+					fields = nil
+					break
+				}
+				fields = append(fields, m.Fields[i].Name)
+			}
+			if fields != nil {
+				m.Indexes = append(m.Indexes, importer.Index{Name: name, Fields: fields, Unique: ix.unique})
+			}
 			continue
 		}
 		i, ok := byColumn[cols[0]]

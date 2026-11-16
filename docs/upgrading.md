@@ -7,14 +7,17 @@ later releases can break more.
 
 ## Upgrading to 0.16.0
 
-No edit is needed in your code. `UpdateQuery.AllowKeyChange` is an opt-in that
-lets `Set` assign a primary-key column, for a row whose key a user chooses and
-may rename. Without it an assignment to a key column is refused with
-`ErrValidation`, as before. With it the statement runs as written, on every
-dialect, and a key that collides with another row fails with
-`ErrUniqueViolation`; foreign keys declared `ON UPDATE CASCADE` follow the new
-key. `UpdateQuery.Model`, `BulkUpdate`, the `OnUpdate` field hook and an
-identity key keep refusing a key assignment.
+No edit is needed in your code. The GORM, Bun and Ent importers now write a
+composite index of the source model as a `c.Index` declaration in a
+`MomoConfig` method of the generated model, so a converted project no longer
+drops it on its next migration; rerun the import to get the declaration.
+`UpdateQuery.AllowKeyChange` is an opt-in that lets `Set` assign a primary-key
+column, for a row whose key a user chooses and may rename. Without it an
+assignment to a key column is refused with `ErrValidation`, as before. With it
+the statement runs as written, on every dialect, and a key that collides with
+another row fails with `ErrUniqueViolation`; foreign keys declared
+`ON UPDATE CASCADE` follow the new key. `UpdateQuery.Model`, `BulkUpdate`, the
+`OnUpdate` field hook and an identity key keep refusing a key assignment.
 
 ## Upgrading to 0.15.0
 

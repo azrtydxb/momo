@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/importer"
 )
 
@@ -292,8 +293,22 @@ type U struct {
 			t.Errorf("%s is in a composite unique constraint and must not get a single-column one", name)
 		}
 	}
-	if !hasChange(rep, importer.DroppedIndex, "U", "A") {
-		t.Errorf("composite unique constraint not reported: %s", rep)
+	if hasChange(rep, importer.DroppedIndex, "U", "A") {
+		t.Errorf("a composite unique constraint is imported, not reported: %s", rep)
+	}
+	if len(m.Indexes) != 1 || m.Indexes[0].Name != "grp" || !m.Indexes[0].Unique || strings.Join(m.Indexes[0].Fields, " ") != "A B" {
+		t.Errorf("composite unique index = %+v", m.Indexes)
+	}
+	root := t.TempDir()
+	w := gen.NewWriter(gen.WriterOptions{ModuleRoot: root})
+	if err := importer.Emit(models, rep, w, filepath.Join(root, "models"), "models"); err != nil {
+		t.Fatal(err)
+	}
+	src := string(w.Outputs()[0].Data)
+	for _, want := range []string{"func (m *U) MomoConfig(c *momo.Config) {", `c.Index("grp", &m.A, &m.B).Unique()`} {
+		if !strings.Contains(src, want) {
+			t.Errorf("emitted source lacks %q:\n%s", want, src)
+		}
 	}
 	if f := fieldOf(t, m, "Twice"); !f.Unique {
 		t.Errorf("Twice = %+v", f)
