@@ -138,6 +138,16 @@ func tmVectorMySQL(t *testing.T, db *momo.DB, cell string) {
 		{ID: 3, Emb: vector.Vector{math.Float32frombits(0x00800000), 0, 0}},
 		{ID: 4, Emb: vector.Vector{0, 0, 0}},
 	}
+	// Diagnostic: which texts does the server take for a vector component?
+	if db.Dialect().Flavor == dialect.FlavorMariaDB {
+		for i, txt := range []string{"[3e38,0,0]", "[1e38,0,0]", "[3.4e38,0,0]", "[3.40282e38,0,0]", "[3.4028234e38,0,0]",
+			"[3.40282346e38,0,0]", "[3.4028235e38,0,0]", "[-3.4028234e38,0,0]", "[1e-38,0,0]", "[1.1754944e-38,0,0]"} {
+			_, err := momo.Exec(ctx, db, fmt.Sprintf("INSERT INTO tm_vec (id, emb) VALUES (%d, VEC_FromText(?))", 100+i), txt)
+			t.Errorf("diagnostic %s: err = %v", txt, err)
+		}
+		v, _ := vector.Vector{math.MaxFloat32, 0, 0}.Value()
+		t.Errorf("diagnostic: momo text for MaxFloat32 = %v", v)
+	}
 	// One row at a time, so a refused value names itself.
 	var wants []tmVec
 	for _, c := range candidates {
