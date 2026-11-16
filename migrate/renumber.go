@@ -103,7 +103,10 @@ func renumberSnapshots(all []File, newVersion map[string]string) (map[string]Sna
 // when a pending Go migration (registered with WithGoMigrations) sorts before
 // the newest applied version, naming it: a Go migration's version is set in
 // code, so renumber cannot move it. The command line has no Go migrations, so
-// it cannot see them; the engine that has them can. A
+// it cannot see them; the engine that has them can. It also refuses when a
+// moved snapshot generated from a merged state (a marked base) would sort
+// behind a migration that was newer than it and stays, because its schema does
+// not include that migration; it names both and says to regenerate it. A
 // version moved past a migration of the other branch is checked by validate
 // afterwards: two migrations that change the same table are then a conflict.
 func (e *Engine) Renumber(applied []string) (removed []string, files map[string][]byte, moved []Renumbered, err error) {
@@ -188,6 +191,24 @@ func (e *Engine) Renumber(applied []string) (removed []string, files map[string]
 	}
 	if len(move) == 0 {
 		return nil, nil, nil, nil
+	}
+	// A moved snapshot generated from a merged state holds only what was older
+	// than itself. Every migration that stays sorts before it afterwards, so one
+	// that was newer would vanish from the derived state: refuse, before writing.
+	for _, v := range slices.Sorted(maps.Keys(move)) {
+		if !marked[v] {
+			continue
+		}
+		var newer []string
+		for u := range parentOf {
+			if u > v && !move[u] {
+				newer = append(newer, u)
+			}
+		}
+		if len(newer) > 0 {
+			slices.Sort(newer)
+			return nil, nil, nil, fmt.Errorf("migrate: version %s was generated from a merged state and would have to move behind %s, which are newer than it and stay: its schema does not include them, so renumbering would drop their objects from the derived state; delete %s and run momo migrate diff again to regenerate it", v, strings.Join(newer, ", "), v)
+		}
 	}
 	for _, f := range all {
 		if move[f.Version] && strings.Contains(f.Path, "/") {

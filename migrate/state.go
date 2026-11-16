@@ -458,13 +458,18 @@ func foldChain(entries []chainEntry) ([]*schema.Schema, []error) {
 				}
 				j = idx[pv]
 			}
+			// Those newer than the parent's own parent come first: a branch merged
+			// late most likely sits just before the parent.
 			var late []string
-			for j := 0; j < p; j++ {
-				if !onChain[j] && len(late) < 5 {
-					late = append(late, entries[j].path)
+			for pass := 0; pass < 2; pass++ {
+				for j := 0; j < p; j++ {
+					recent := entries[j].snap.Version > entries[p].snap.ParentVersion
+					if !onChain[j] && recent == (pass == 0) && len(late) < 5 {
+						late = append(late, entries[j].path)
+					}
 				}
 			}
-			problems = append(problems, fmt.Errorf("%w: %s was generated from the merged state after %s, which has changed since: a branch with an older version was merged after it was written (candidates, not on the path to %s: %s); rebase or renumber that branch so it sorts after %s, and if %s is not applied yet, delete it and run momo migrate diff again (see docs/migrations.md)",
+			problems = append(problems, fmt.Errorf("%w: %s was generated from the merged state after %s, which has changed since: a branch with an older version was merged after it was written (possible causes, not on the path to %s: %s); rebase or renumber that branch so it sorts after %s, and if %s is not applied yet, delete it and run momo migrate diff again (see docs/migrations.md)",
 				ErrBranchConflict, e.path, e.snap.ParentVersion, e.snap.ParentVersion, strings.Join(late, ", "), e.snap.ParentVersion, e.path))
 			states[i] = states[i-1]
 			continue

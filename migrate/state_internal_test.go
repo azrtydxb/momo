@@ -3,6 +3,7 @@
 package migrate
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -22,6 +23,67 @@ func TestStateFingerprintV1IsPinned(t *testing.T) {
 	}
 	if got := derivedBase(s); got != "derived:v1:"+want {
 		t.Fatalf("marker = %q", got)
+	}
+}
+
+// fillNonZero sets every exported field reachable from v to a deterministic
+// non-zero value derived from its path, and fails on a kind it cannot fill, so
+// a new kind of field in the schema needs a decision here.
+func fillNonZero(t *testing.T, v reflect.Value, path string) {
+	t.Helper()
+	switch v.Kind() {
+	case reflect.String:
+		v.SetString(path)
+	case reflect.Bool:
+		v.SetBool(true)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		v.SetInt(1)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		v.SetUint(1)
+	case reflect.Float32, reflect.Float64:
+		v.SetFloat(1)
+	case reflect.Slice:
+		s := reflect.MakeSlice(v.Type(), 1, 1)
+		fillNonZero(t, s.Index(0), path)
+		v.Set(s)
+	case reflect.Pointer:
+		p := reflect.New(v.Type().Elem())
+		fillNonZero(t, p.Elem(), path)
+		v.Set(p)
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			if f := v.Type().Field(i); f.IsExported() {
+				fillNonZero(t, v.Field(i), path+"."+f.Name)
+			}
+		}
+	default:
+		t.Fatalf("schema field %s has kind %s, which the fingerprint fixture cannot fill: decide how it is hashed", path, v.Kind())
+	}
+}
+
+// The fingerprint is pinned over a schema with every object kind and every
+// field set, so a field added anywhere in the schema (even one that stays
+// omitted for existing snapshots) changes the hash and fails here. If the new
+// field is omitted from the JSON of every existing schema, markers already
+// written still verify and the literal may be updated deliberately; otherwise
+// the encoding changed and needs a new fingerprintVersion.
+func TestStateFingerprintV1CoversEveryField(t *testing.T) {
+	var s schema.Schema
+	fillNonZero(t, reflect.ValueOf(&s).Elem(), "s")
+	s.FormatVersion, s.Dialect = 1, "postgres"
+	for i := 0; i < reflect.TypeOf(s).NumField(); i++ {
+		if f := reflect.ValueOf(s).Field(i); f.Kind() == reflect.Slice && f.Len() == 0 {
+			t.Fatalf("the fixture leaves %s empty", reflect.TypeOf(s).Field(i).Name)
+		}
+	}
+	for k, o := range splitObjects(&s) {
+		if _, err := json.MarshalIndent(o, "", "  "); err != nil {
+			t.Fatalf("object %s cannot be encoded: %v", k, err)
+		}
+	}
+	const want = ""
+	if got := stateFingerprint(&s); got != want {
+		t.Fatalf("fingerprint v1 of the full fixture: got %s, want %s", got, want)
 	}
 }
 
