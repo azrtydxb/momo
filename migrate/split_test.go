@@ -263,6 +263,61 @@ func TestSplitPositionalParamIsNotATag(t *testing.T) {
 	}
 }
 
+// TestSplitBOMEndsIdentifierRun pins that a BOM is white space wherever it
+// appears, so it ends an identifier run and E' after it opens an escape string.
+func TestSplitBOMEndsIdentifierRun(t *testing.T) {
+	for name, prefix := range map[string]string{"ident byte": "a", "nbsp": "\xc2\xa0"} {
+		t.Run(name, func(t *testing.T) {
+			stmt := prefix + "\xef\xbb\xbf" + "E'x\\'y'"
+			got, err := SplitStatements([]byte("SELECT 1;"+stmt+";SELECT 2"), "postgres")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []string{"SELECT 1", stmt, "SELECT 2"}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("got %q, want %q", got, want)
+			}
+			requireResplit(t, got)
+		})
+	}
+}
+
+// TestSplitTrimsOnlyScannedWhitespace pins both edges of the trim on every
+// dialect: ASCII white space, including VT and FF, and the BOM go; a non-ASCII
+// space stays, since the lexer counts it as an identifier byte.
+func TestSplitTrimsOnlyScannedWhitespace(t *testing.T) {
+	for name, tc := range map[string]struct {
+		in   string
+		want []string
+	}{
+		"trailing nbsp before semicolon": {"SELECT 1\xc2\xa0;", []string{"SELECT 1\xc2\xa0"}},
+		"trailing nbsp statement":        {"SELECT 1;\xc2\xa0", []string{"SELECT 1", "\xc2\xa0"}},
+		"nbsp only":                      {"\xc2\xa0", []string{"\xc2\xa0"}},
+		"leading nbsp":                   {"\xc2\xa0SELECT 1", []string{"\xc2\xa0SELECT 1"}},
+		"vt and ff at both edges":        {"\x0bSELECT 1\x0c;\x0c SELECT 2\x0b", []string{"SELECT 1", "SELECT 2"}},
+		"vt and ff only edges":           {"\x0b\x0c SELECT 1 \x0c\x0b", []string{"SELECT 1"}},
+		"bom at both edges":              {"\xef\xbb\xbf SELECT 1 \xef\xbb\xbf", []string{"SELECT 1"}},
+	} {
+		for _, d := range []string{"postgres", "sqlite", "mysql"} {
+			t.Run(name+" "+d, func(t *testing.T) {
+				got, err := SplitStatements([]byte(tc.in), d)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(got, tc.want) {
+					t.Fatalf("got %q, want %q", got, tc.want)
+				}
+				for _, st := range got {
+					again, err := SplitStatements([]byte(st), d)
+					if err != nil || len(again) != 1 || again[0] != st {
+						t.Fatalf("statement %q re-split to %q (%v)", st, again, err)
+					}
+				}
+			})
+		}
+	}
+}
+
 func FuzzSplitStatements(f *testing.F) {
 	for _, s := range []string{
 		"", ";", "SELECT 1;", "SELECT 'a;b'; -- c\nSELECT 2",

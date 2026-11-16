@@ -276,7 +276,7 @@ func (s *splitter) run() ([]string, error) {
 			i++
 		case isIdent(c):
 			j := i
-			for j < len(b) && isIdent(b[j]) {
+			for j < len(b) && isIdent(b[j]) && !bomAt(b, j) {
 				j++
 			}
 			s.word(strings.ToUpper(string(b[i:j])))
