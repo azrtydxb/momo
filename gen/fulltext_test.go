@@ -50,6 +50,24 @@ func TestGenerateFullTextDeclaration(t *testing.T) {
 	}
 }
 
+// Catches: Concurrently() on a full-text chain being rejected or dropped, so
+// the index never reaches the no-transaction migration, and the sibling
+// options being lost when it is present.
+func TestGenerateFullTextConcurrently(t *testing.T) {
+	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
+		ix := fullTextIndex(t, "fulltextconcurrent", d)
+		if !ix.Concurrently {
+			t.Fatalf("%s: Concurrently() not carried onto the index: %+v", d, ix)
+		}
+		if ix.FullText.Config != "english" || ix.Name != "articles_search" {
+			t.Fatalf("%s: other options lost: %+v", d, ix)
+		}
+		if plain := fullTextIndex(t, "fulltextcall", d); plain.Concurrently {
+			t.Fatalf("%s: an index without Concurrently() is concurrent: %+v", d, plain)
+		}
+	}
+}
+
 // Catches: the tag accepted on a non-text field, a second declaration
 // accepted, and a diagnostic that does not name the field.
 func TestGenerateFullTextDeclarationRejected(t *testing.T) {

@@ -181,6 +181,13 @@ func (o *FullTextOpts) Parser(p string) *FullTextOpts { return o }
 // tsvector column. Read statically; no-op at runtime.
 func (o *FullTextOpts) Expression() *FullTextOpts { return o }
 
+// Concurrently marks the full-text index to be built concurrently. Read
+// statically; no-op at runtime. On PostgreSQL the index is created with
+// CREATE INDEX CONCURRENTLY in a migration of its own that carries
+// -- momo:no-transaction; dialects without a concurrent build ignore it, as
+// they do for an ordinary index.
+func (o *FullTextOpts) Concurrently() *FullTextOpts { return o }
+
 // OnDelete sets the ON DELETE action of a foreign key ("CASCADE", "RESTRICT",
 // "SET NULL", "SET DEFAULT" or "NO ACTION"). Read statically; no-op at runtime.
 func (o *ForeignKeyOpts) OnDelete(action string) *ForeignKeyOpts { return o }

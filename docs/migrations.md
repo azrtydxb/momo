@@ -636,13 +636,14 @@ columns, the configuration, the weights or the expression flag drops the index,
 drops and adds the generated column (a table rewrite under an
 `ACCESS EXCLUSIVE` lock) and creates the index again. `fulltext-column-rewrite`
 of `momo migrate lint` flags it. The index is a plain `CREATE INDEX`, which
-blocks writes while it builds. When the description of the index has its
-`Concurrently` flag set (`schema.Index`; `c.FullText` has no such option, so
-only a schema built in code sets it), the work is split in two migrations: the
+blocks writes while it builds. When the declaration ends in `.Concurrently()`
+(`c.FullText(...).Concurrently()`), the work is split in two migrations: the
 generated column, and the drop of the old index when the declaration changes,
 stay in the transactional migration, and `CREATE INDEX CONCURRENTLY` follows in
 a `-- momo:no-transaction` migration. That drop is a plain `DROP INDEX` inside
-the transaction that recreates the column.
+the transaction that recreates the column. SQLite and MySQL have no concurrent
+build and ignore `Concurrently()` on a full-text index, as they do on any
+index.
 
 **SQLite.** `CREATE VIRTUAL TABLE "<table>_fts" USING fts5(...)` with
 `content='<table>'`, `content_rowid` and the declared `tokenize` clause, then
@@ -951,12 +952,13 @@ built.
   `Concurrently()` the index is a plain `CREATE INDEX` that blocks writes while
   it builds. Set a role without `statement_timeout` for the run. A hand-written
   alternative: `examples/custom-sql-migration`. A full-text index on an existing
-  PostgreSQL table is such an index, but `c.FullText` has no `Concurrently`
-  option: the generated `CREATE INDEX ... USING gin` fails `blocking-index` in
-  lint unless the schema built in code sets `Concurrently` on its index (see
-  section 3b). Dropping that index when its declaration changes is a plain
-  `DROP INDEX` inside the transaction that recreates the generated column, which
-  holds an `ACCESS EXCLUSIVE` lock for that step.
+  PostgreSQL table is such an index: declare it with
+  `c.FullText("articles_search", &a.Title).Config("english").Concurrently()`,
+  or the generated `CREATE INDEX ... USING gin` fails `blocking-index` in lint
+  (see section 3b). SQLite and MySQL ignore `Concurrently()` on a full-text
+  index as they do on any index. Dropping that index when its declaration
+  changes is a plain `DROP INDEX` inside the transaction that recreates the
+  generated column, which holds an `ACCESS EXCLUSIVE` lock for that step.
 - **Lock timeout**: the default 5 s lock wait fails fast instead of queuing
   behind a long transaction. A retry is safe for transactional migrations.
 - **Deploy order**: migrate first, then roll out code, with every migration

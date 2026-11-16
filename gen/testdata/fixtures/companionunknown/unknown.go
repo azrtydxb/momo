@@ -13,4 +13,5 @@ type Thing struct {
 func (t *Thing) MomoConfig(c *momo.Config) {
 	c.Frobnicate("x", &t.Name)
 	c.Index("things_name_idx", &t.Name).Frobnicate()
+	c.FullText("things_search", &t.Name).Config("english").Frobnicate()
 }

@@ -150,6 +150,7 @@ func TestCompanionUnknownMethods(t *testing.T) {
 	for _, w := range []string{
 		`unknown.go:14:2: unsupported companion expression: c.Frobnicate("x", &t.Name)`,
 		`unknown.go:15:2: unsupported companion expression: c.Index("things_name_idx", &t.Name).Frobnicate()`,
+		`unknown.go:16:2: unsupported companion expression: c.FullText("things_search", &t.Name).Config("english").Frobnicate()`,
 	} {
 		if !strings.Contains(joined, w) {
 			t.Errorf("missing %q in:\n%s", w, joined)

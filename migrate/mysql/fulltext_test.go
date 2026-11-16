@@ -90,3 +90,35 @@ func TestFullTextMySQLRenderValidation(t *testing.T) {
 		t.Errorf("valid declaration refused: %v", err)
 	}
 }
+
+// Catches: a full-text index declared Concurrently being refused on MySQL or
+// rendering differently from a plain one. MySQL has no concurrent build, so the
+// flag is ignored the way it is for an ordinary index.
+func TestFullTextMySQLIgnoresConcurrently(t *testing.T) {
+	d := Dialect{}
+	render := func(s *schema.Schema) []migrate.Statement {
+		changes, _, err := migrate.Diff(&schema.Schema{Dialect: "mysql"}, s, migrate.DiffOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		stmts, err := d.Render(changes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return stmts
+	}
+	conc := ftTable("varchar(255)", "", false, "ngram")
+	conc.Tables[0].Indexes[0].Concurrently = true
+	if err := d.ValidateSchema(conc); err != nil {
+		t.Fatalf("a Concurrently full-text index must validate on MySQL: %v", err)
+	}
+	want, got := render(ftTable("varchar(255)", "", false, "ngram")), render(conc)
+	if len(got) != len(want) {
+		t.Fatalf("Concurrently changed the statement count: %+v vs %+v", got, want)
+	}
+	for i := range got {
+		if got[i].SQL != want[i].SQL || got[i].NoTx {
+			t.Fatalf("statement %d differs or is no-transaction: %+v vs %+v", i, got[i], want[i])
+		}
+	}
+}
