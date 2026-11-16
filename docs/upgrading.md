@@ -11,7 +11,7 @@ No edit is needed in your code. The GORM, Bun and Ent importers now write a
 composite index of the source model as a `c.Index` declaration in a
 `MomoConfig` method of the generated model, so a converted project no longer
 drops it on its next migration; rerun the import to get the declaration.
-`UpdateQuery.AllowKeyChange` is an opt-in that lets `Set` assign a primary-key
+`UpdateQuery.AllowKeyChange` is an opt-in that lets `UpdateQuery.Set` assign a primary-key
 column, for a row whose key a user chooses and may rename. Without it an
 assignment to a key column is refused with `ErrValidation`, as before. With it
 the statement runs as written, on every dialect, and a key that collides with

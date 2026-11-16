@@ -1388,8 +1388,8 @@ _, err = momo.Update[models.Task](q).Model(&cur).Exec(ctx)
   `AllowKeyChange` below), soft-delete, created_at or updated_at column directly (`ErrValidation`); writing a
   `read_only`, `immutable` (on update) or identity column is `ErrValidation`.
   `Rows` is not supported on a versioned `Model` update; use `Exec`.
-- To rename a primary key, add `.AllowKeyChange()` to a `Set` update and find the
-  row by its old key in `Where` (`Set(team.ID.Set(newID))` with `Where(team.ID.Eq(oldID))`).
+- To rename a primary key, add `.AllowKeyChange()` to an update that assigns the key
+  with `UpdateQuery.Set` and find the row by its old key in `UpdateQuery.Where`.
   Without it a key assignment is `ErrValidation`. Every key column of a composite
   key may be set. A key held by another row is `ErrUniqueViolation`; foreign keys
   declared `ON UPDATE CASCADE` follow the new key (SQLite needs foreign keys on,
