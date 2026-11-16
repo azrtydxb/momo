@@ -1,6 +1,6 @@
 # M3: MySQL 8.4/9.7 LTS and MariaDB 11.8
 
-Status: open
+Status: done 2026-11-16
 Created: 2026-11-04
 
 ## Goal

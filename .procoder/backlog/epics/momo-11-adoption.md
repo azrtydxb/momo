@@ -1,6 +1,6 @@
 # Adoption from GORM, Ent and Bun
 
-Status: open
+Status: done 2026-11-16
 Created: 2026-11-04
 Milestone: m4-ecosystem
 Spec: momo @ d452f2ef1e4f

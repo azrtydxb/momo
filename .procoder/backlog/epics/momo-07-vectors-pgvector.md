@@ -1,6 +1,6 @@
 # First-class vectors — pgvector
 
-Status: open
+Status: done 2026-11-16
 Created: 2026-11-04
 Milestone: m1-postgres-pgvector
 Spec: momo @ d452f2ef1e4f

@@ -1,6 +1,6 @@
 # M1: PostgreSQL + pgvector, end to end
 
-Status: open
+Status: done 2026-11-16
 Created: 2026-11-04
 
 ## Goal

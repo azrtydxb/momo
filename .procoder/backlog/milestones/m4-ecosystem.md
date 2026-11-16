@@ -1,6 +1,6 @@
 # M4: Ecosystem, adoption, performance, docs
 
-Status: open
+Status: done 2026-11-16
 Created: 2026-11-04
 
 ## Goal
