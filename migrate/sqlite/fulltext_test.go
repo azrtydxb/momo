@@ -229,3 +229,25 @@ func TestFullTextSQLiteDropContentTable(t *testing.T) {
 		t.Fatalf("both tables must be dropped:\n%s", all)
 	}
 }
+
+// Catches: a full-text index declared Concurrently being refused on SQLite or
+// rendering differently from a plain one. SQLite has no concurrent build, so
+// the flag is ignored the way it is for an ordinary index.
+func TestFullTextSQLiteIgnoresConcurrently(t *testing.T) {
+	var d Dialect
+	plain, err := d.ExpandSchema(ftsArticles([]string{"id"}, "INTEGER"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	conc := ftsArticles([]string{"id"}, "INTEGER")
+	conc.Tables[0].Indexes[0].Concurrently = true
+	concurrent, err := d.ExpandSchema(conc)
+	if err != nil {
+		t.Fatalf("a Concurrently full-text index must expand on SQLite: %v", err)
+	}
+	empty := &schema.Schema{Dialect: "sqlite"}
+	want := renderPlan(t, empty, plain, migrate.DiffOptions{})
+	if got := renderPlan(t, empty, concurrent, migrate.DiffOptions{}); got != want {
+		t.Fatalf("Concurrently changed the SQLite rendering:\n%s\nwant:\n%s", got, want)
+	}
+}
