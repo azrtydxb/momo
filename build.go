@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/floatfmt"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -382,6 +383,9 @@ func sqliteLiteral(v any) (string, error) {
 			format = 'f'
 		}
 		out := strconv.FormatFloat(f, format, -1, bits)
+		if bits == 32 && format == 'g' {
+			out = floatfmt.Float32(float32(f))
+		}
 		if !strings.ContainsAny(out, ".e") {
 			out += ".0" // keep it a real, as in the index text
 		}

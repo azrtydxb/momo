@@ -147,7 +147,9 @@ func TestMySQLStagedChange(t *testing.T) {
 // concurrentVersions is the pending migrations both callers apply.
 func concurrentVersions() fstest.MapFS {
 	return fstest.MapFS{
-		"20260101000000_a.up.sql": {Data: []byte("CREATE TABLE a (x int);")},
+		// The sleep makes the first caller hold the lock long enough for the
+		// second to start while it is held.
+		"20260101000000_a.up.sql": {Data: []byte("SELECT SLEEP(1);\nCREATE TABLE a (x int);")},
 		"20260101000001_b.up.sql": {Data: []byte("CREATE TABLE b (x int);")},
 	}
 }
@@ -197,6 +199,7 @@ func TestMySQLConcurrentApply(t *testing.T) {
 		fsys := concurrentVersions()
 		var wg sync.WaitGroup
 		errs := make(chan error, 2)
+		start := make(chan struct{})
 		for i := 0; i < 2; i++ {
 			wg.Add(1)
 			go func() {
@@ -206,29 +209,29 @@ func TestMySQLConcurrentApply(t *testing.T) {
 					errs <- err
 					return
 				}
+				<-start
 				_, err = e.Apply(ctx, migrate.ApplyOptions{})
 				errs <- err
 			}()
 		}
+		close(start)
 		wg.Wait()
 		close(errs)
-		succeeded := 0
+		succeeded, locked := 0, 0
 		for err := range errs {
 			switch {
 			case err == nil:
 				succeeded++
-			case !errors.Is(err, migrate.ErrLocked):
+			case errors.Is(err, migrate.ErrLocked):
+				locked++
+			default:
 				t.Fatal(err)
 			}
 		}
-		if succeeded == 0 {
-			t.Fatal("neither caller applied: one must win the lock")
-		}
-		// The loser may have been locked out; the database is whole once a
-		// later apply has run.
-		e := migratetest.NewEngine(t, mmysql.New(), db.Driver(), fsys)
-		if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err != nil {
-			t.Fatal(err)
+		// The winner holds the lock for the one-second migration, so the
+		// other caller, which does not wait, is refused.
+		if succeeded != 1 || locked != 1 {
+			t.Fatalf("one caller must apply and one must be locked out: applied %d, locked %d", succeeded, locked)
 		}
 		got := appliedVersions(t, db)
 		if len(got) != 2 || got["20260101000000"] != 1 || got["20260101000001"] != 1 {
@@ -249,6 +252,7 @@ func TestMySQLConcurrentApplyWaits(t *testing.T) {
 		var wg sync.WaitGroup
 		reports := make(chan *migrate.Report, 2)
 		errs := make(chan error, 2)
+		start := make(chan struct{})
 		for i := 0; i < 2; i++ {
 			wg.Add(1)
 			go func() {
@@ -259,11 +263,13 @@ func TestMySQLConcurrentApplyWaits(t *testing.T) {
 					reports <- nil
 					return
 				}
+				<-start
 				rep, err := e.Apply(ctx, migrate.ApplyOptions{LockWait: 20 * time.Second})
 				reports <- rep
 				errs <- err
 			}()
 		}
+		close(start)
 		wg.Wait()
 		close(reports)
 		close(errs)

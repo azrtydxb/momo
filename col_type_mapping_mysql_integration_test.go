@@ -48,6 +48,25 @@ func parseDocMySQL(t *testing.T) map[string]string {
 	return out
 }
 
+// docUnsignedRE matches "`uint8` to `tinyint unsigned`" in the document,
+// across a line break.
+var docUnsignedRE = regexp.MustCompile("`(uint(?:8|16|32|64)?)`\\s+to\\s+`([^`]+)`")
+
+// parseDocUnsigned returns the column type the document names for each
+// unsigned Go integer.
+func parseDocUnsigned(t *testing.T) map[string]string {
+	t.Helper()
+	b, err := os.ReadFile(typeMappingDoc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]string{}
+	for _, m := range docUnsignedRE.FindAllStringSubmatch(string(b), -1) {
+		out[m[1]] = m[2]
+	}
+	return out
+}
+
 // mysqlLiveCases is liveCases with the edge values of the MySQL column:
 // FLOAT and DOUBLE have no NaN or infinity and no denormals, and text and blob
 // hold 64 KiB (65535 bytes).
@@ -154,8 +173,20 @@ func TestTypeMappingMySQL(t *testing.T) {
 		covered := map[string]bool{}
 		for _, r := range mappingRows {
 			cell, ok := doc[r.goType]
-			if !ok || cell == "unsupported" {
-				continue // codec and manual rows have no generated MySQL column
+			if r.src != srcGenerator {
+				// Codec and manual rows have no generated MySQL column and
+				// no fourth cell.
+				if ok {
+					t.Errorf("row %q is a %s row but %s gives it a MySQL cell", r.goType, r.src, typeMappingDoc)
+				}
+				continue
+			}
+			if !ok {
+				t.Errorf("generated row %q has no MySQL cell in %s", r.goType, typeMappingDoc)
+				continue
+			}
+			if cell == "unsupported" {
+				continue
 			}
 			covered[r.goType] = true
 			if r.goType == "vector.Vector" {
@@ -274,11 +305,26 @@ func TestTypeMappingMySQLUnsigned(t *testing.T) {
 			}
 			return nil
 		}
-		run("uint8", "tinyint unsigned", func(tbl, _ string) error { return round(tbl, 0, math.MaxUint8) })
-		run("uint16", "smallint unsigned", func(tbl, _ string) error { return round(tbl, 0, math.MaxUint16) })
-		run("uint32", "int unsigned", func(tbl, _ string) error { return round(tbl, 0, math.MaxUint32) })
-		run("uint", "bigint unsigned", func(tbl, _ string) error { return round(tbl, 0, math.MaxUint64) })
-		run("uint64", "bigint unsigned", func(tbl, _ string) error { return round(tbl, 0, math.MaxUint64) })
+		// The column type of each unsigned Go integer is read from the sentence
+		// of the document that names them.
+		docTypes := parseDocUnsigned(t)
+		maxes := map[string]uint64{
+			"uint8": math.MaxUint8, "uint16": math.MaxUint16, "uint32": math.MaxUint32,
+			"uint": math.MaxUint64, "uint64": math.MaxUint64,
+		}
+		for goType, max := range maxes {
+			want, ok := docTypes[goType]
+			if !ok {
+				t.Errorf("%s does not name a column type for %s", typeMappingDoc, goType)
+				continue
+			}
+			run(goType, want, func(tbl, _ string) error { return round(tbl, 0, max) })
+		}
+		for goType := range docTypes {
+			if _, ok := maxes[goType]; !ok {
+				t.Errorf("%s names an unsigned type %s that has no round-trip case", typeMappingDoc, goType)
+			}
+		}
 		t.Run("out of range", func(t *testing.T) {
 			if _, err := momo.Exec(ctx, db, "CREATE TABLE tm_u8 (v tinyint unsigned)"); err != nil {
 				t.Fatal(err)
