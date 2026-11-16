@@ -661,6 +661,9 @@ func (u UpdateQuery[T]) bulkGuard() error {
 	if len(u.from) > 0 || len(u.with) > 0 {
 		return u.fail(ErrValidation, errors.New("BulkUpdate cannot be combined with With or From"))
 	}
+	if u.allowKeyChange {
+		return u.fail(ErrValidation, errors.New("BulkUpdate cannot be combined with AllowKeyChange"))
+	}
 	return nil
 }
 

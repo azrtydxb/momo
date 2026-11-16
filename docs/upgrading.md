@@ -5,6 +5,17 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.16.0
+
+No edit is needed in your code. `UpdateQuery.AllowKeyChange` is an opt-in that
+lets `Set` assign a primary-key column, for a row whose key a user chooses and
+may rename. Without it an assignment to a key column is refused with
+`ErrValidation`, as before. With it the statement runs as written, on every
+dialect, and a key that collides with another row fails with
+`ErrUniqueViolation`; foreign keys declared `ON UPDATE CASCADE` follow the new
+key. `UpdateQuery.Model`, `BulkUpdate`, the `OnUpdate` field hook and an
+identity key keep refusing a key assignment.
+
 ## Upgrading to 0.15.0
 
 No edit is needed in your code. A model can now declare full-text search, and
