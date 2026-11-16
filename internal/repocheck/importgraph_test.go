@@ -26,6 +26,10 @@ var coreAllowed = map[string]bool{
 	modPath + "/internal/keyenc":  true,
 	modPath + "/internal/chunk":   true,
 	modPath + "/internal/snake":   true,
+
+	// The search-text parser of hybrid search; it imports only the standard
+	// library.
+	modPath + "/internal/ftsquery": true,
 }
 
 func TestImportGraph(t *testing.T) {
