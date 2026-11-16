@@ -218,6 +218,34 @@ func TestRenumberMovesMarkedChildWithTheBranch(t *testing.T) {
 	}
 }
 
+// A marked child holds only what was older than itself when diff wrote it.
+// Moving it behind a migration that was newer would drop that migration's
+// objects from the derived state, so renumber refuses, naming the child and the
+// migration, and writes nothing: (a) the newer one is applied, (b) it is a
+// pending sibling that stays.
+func TestRenumberRefusesMarkedChildBehindANewerMigration(t *testing.T) {
+	ctx := context.Background()
+	merged := pbMergedIndependent(t) // V0, VA (pending), VB (applied)
+	m, err := offlineEngine(t, merged, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)).Diff(ctx, pbDesired("base", "a", "b", "c"), "add_c", migrate.DiffOptions{})
+	if err != nil || m == nil {
+		t.Fatalf("diff: %v %v", m, err)
+	}
+	const newer = "20260301000000"
+	d := pbBranch(pbBase(), newer, "add_d", "CREATE TABLE d (id bigint NOT NULL);", pbTable("base"), pbTable("d"))
+	dir := pbMerge(t, withFiles(merged, m.Files), d)
+	e := offlineEngine(t, dir, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+
+	for name, applied := range map[string][]string{
+		"the newer migration is applied": {pbV0, pbVB, newer},
+		"the newer migration is pending": {pbV0, pbVB},
+	} {
+		removed, files, moved, err := e.Renumber(applied)
+		if err == nil || !strings.Contains(err.Error(), m.Version) || !strings.Contains(err.Error(), newer) || removed != nil || files != nil || moved != nil {
+			t.Errorf("%s: want a refusal naming %s and %s that writes nothing, got %v %v %v %v", name, m.Version, newer, removed, files, moved, err)
+		}
+	}
+}
+
 func pbDesired(tables ...string) *schema.Schema {
 	s := &schema.Schema{Dialect: "postgres"}
 	for _, n := range tables {
