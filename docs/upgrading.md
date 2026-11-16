@@ -5,6 +5,31 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.16.0
+
+No edit is needed in your code. A PostgreSQL sequence that no column owns, such
+as the one a column default names with `nextval('jobs_seq')`, is now part of
+the schema model: `momo generate --from-db` writes a `c.Sequence` call for it
+and keeps it in the init snapshot, and `momo migrate` creates, alters, drops and
+compares it like any other object, so an init migration built from such a
+database applies on an empty one.
+
+### Declare a standalone sequence
+
+Declare one with `momo.Config.Sequence` in a model's `MomoConfig`, for example
+`c.Sequence("jobs_seq").Start(1000).Increment(10)`; the chain of
+`momo.SequenceOpts` sets the schema, the data type, the bounds, the cache and
+`Cycle`. Run `momo generate --from-db` again to adopt the sequences of an
+existing database: a database that already uses one shows it as an
+`unmanaged: sequence` line in `momo migrate drift` until the models declare it,
+and `migrate.exclude` hides one you do not want managed. The snapshot gets an
+optional `sequences` key and its `format_version` does not change, so snapshots
+written before it still load. A release that predates the key reads a snapshot
+that has it and ignores the sequences without an error, so move every machine
+that writes snapshots to this release together. Declaring a sequence while
+generating for SQLite, MySQL or MariaDB is refused, because those dialects have
+no sequence in the schema model.
+
 ## Upgrading to 0.15.0
 
 No edit is needed in your code. A model can now declare full-text search, and

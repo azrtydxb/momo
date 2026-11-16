@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/azrtydxb/momo"
@@ -71,6 +72,10 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		return []migrate.Statement{{SQL: "ALTER TYPE " + qualifiedName(c.Name) + " ADD VALUE " + lit, Hint: "enum-add"}}, nil
 	case migrate.DropEnum:
 		return nil, fmt.Errorf("enum %q cannot be dropped by a generated migration; removing an enum or its values requires a manual migration", c.Name)
+	case migrate.CreateSequence, migrate.AlterSequence:
+		return renderSequence(c)
+	case migrate.DropSequence:
+		return one("DROP SEQUENCE " + tableRef(c.Schema, c.Name)), nil
 	case migrate.CreateTable:
 		return renderCreateTable(c)
 	case migrate.DropTable:
@@ -295,6 +300,43 @@ func renderCreateEnum(c migrate.Change) ([]migrate.Statement, error) {
 		}
 	}
 	return one("CREATE TYPE " + qualifiedName(e.Name) + " AS ENUM (" + strings.Join(vals, ", ") + ")"), nil
+}
+
+// --------------------------------------------------------------- sequences
+
+// renderSequence renders CREATE SEQUENCE or ALTER SEQUENCE. Both spell every
+// option out from the normalized sequence, so an option the declaration leaves
+// out is the PostgreSQL default and an ALTER also resets an option the
+// declaration no longer sets.
+func renderSequence(c migrate.Change) ([]migrate.Statement, error) {
+	declared, err := get[schema.Sequence](c.After)
+	if err != nil {
+		return nil, err
+	}
+	q := schema.NormalizeSequence(declared)
+	if q.Name == "" {
+		return nil, errors.New("a sequence needs a name")
+	}
+	switch q.AsType {
+	case "smallint", "integer", "bigint":
+	default:
+		return nil, fmt.Errorf("sequence %q: the type %q must be smallint, integer or bigint", q.Name, declared.AsType)
+	}
+	cycle := "NO CYCLE"
+	if q.Cycle {
+		cycle = "CYCLE"
+	}
+	opts := " AS " + q.AsType +
+		" INCREMENT BY " + strconv.FormatInt(q.Increment, 10) +
+		" MINVALUE " + strconv.FormatInt(q.MinValue, 10) +
+		" MAXVALUE " + strconv.FormatInt(q.MaxValue, 10) +
+		" START WITH " + strconv.FormatInt(q.Start, 10) +
+		" CACHE " + strconv.FormatInt(q.Cache, 10) + " " + cycle
+	verb := "CREATE SEQUENCE "
+	if c.Kind == migrate.AlterSequence {
+		verb = "ALTER SEQUENCE "
+	}
+	return one(verb + tableRef(q.Schema, q.Name) + opts), nil
 }
 
 // ------------------------------------------------------------------ tables

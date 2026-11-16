@@ -35,11 +35,14 @@ type Schema struct {
 	Schemas    []SchemaNamespace `json:"schemas,omitempty"`
 	Extensions []Extension       `json:"extensions,omitempty"`
 	Enums      []Enum            `json:"enums,omitempty"`
-	Tables     []Table           `json:"tables"`
-	Views      []View            `json:"views,omitempty"`
-	Functions  []Function        `json:"functions,omitempty"`
-	Triggers   []Trigger         `json:"triggers,omitempty"`
-	Policies   []Policy          `json:"policies,omitempty"`
+	// Sequences lists the PostgreSQL sequences no column owns. A serial or
+	// identity column owns its sequence and is declared by the column.
+	Sequences []Sequence `json:"sequences,omitempty"`
+	Tables    []Table    `json:"tables"`
+	Views     []View     `json:"views,omitempty"`
+	Functions []Function `json:"functions,omitempty"`
+	Triggers  []Trigger  `json:"triggers,omitempty"`
+	Policies  []Policy   `json:"policies,omitempty"`
 }
 
 // SchemaNamespace is a PostgreSQL schema (namespace) managed by Momo.
@@ -58,6 +61,38 @@ type Extension struct {
 type Enum struct {
 	Name   string   `json:"name"`
 	Values []string `json:"values"`
+}
+
+// Sequence is a PostgreSQL sequence that no column owns, such as the one a
+// column default names with nextval('name'). A column that is serial or
+// identity owns its sequence, which is part of the column and not listed here.
+//
+// A zero numeric field and an empty AsType mean the PostgreSQL default for the
+// rest of the declaration (see NormalizeSequence), so a declaration names only
+// what differs. An inspected sequence carries every field. A bound or start of
+// exactly 0 cannot be told from "not set"; PostgreSQL's own defaults never use
+// it.
+type Sequence struct {
+	// Schema is the PostgreSQL namespace. Empty means the connection's
+	// current_schema().
+	Schema string `json:"schema,omitempty"`
+	Name   string `json:"name"`
+	// AsType is the data type of the sequence: "smallint", "integer" or
+	// "bigint". Empty means bigint.
+	AsType string `json:"as_type,omitempty"`
+	// Start is the first value (START WITH). Zero means MinValue for an
+	// ascending sequence and MaxValue for a descending one.
+	Start int64 `json:"start,omitempty"`
+	// Increment is the step (INCREMENT BY). Zero means 1; it is never 0.
+	Increment int64 `json:"increment,omitempty"`
+	// MinValue and MaxValue bound the sequence. Zero means the default for
+	// the type and direction.
+	MinValue int64 `json:"min_value,omitempty"`
+	MaxValue int64 `json:"max_value,omitempty"`
+	// Cache is the number of values a session preallocates. Zero means 1.
+	Cache int64 `json:"cache,omitempty"`
+	// Cycle wraps the sequence around at its bound (CYCLE) instead of failing.
+	Cycle bool `json:"cycle,omitempty"`
 }
 
 // Table is a base table.
@@ -290,6 +325,7 @@ func (s *Schema) Sort() {
 	slices.SortFunc(s.Schemas, func(a, b SchemaNamespace) int { return byName(a.Name, b.Name) })
 	slices.SortFunc(s.Extensions, func(a, b Extension) int { return byName(a.Name, b.Name) })
 	slices.SortFunc(s.Enums, func(a, b Enum) int { return byName(a.Name, b.Name) })
+	slices.SortFunc(s.Sequences, func(a, b Sequence) int { return byKey([]string{a.Schema, a.Name}, []string{b.Schema, b.Name}) })
 	slices.SortFunc(s.Tables, func(a, b Table) int { return byKey([]string{a.Schema, a.Name}, []string{b.Schema, b.Name}) })
 	slices.SortFunc(s.Views, func(a, b View) int { return byKey([]string{a.Schema, a.Name}, []string{b.Schema, b.Name}) })
 	slices.SortFunc(s.Functions, func(a, b Function) int {

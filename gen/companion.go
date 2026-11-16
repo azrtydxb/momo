@@ -30,7 +30,9 @@ type CompanionResult struct {
 	ForeignKeys []schema.ForeignKey
 	Checks      []schema.Check
 	Enums       []schema.Enum
-	Defaults    map[string]string
+	// Sequences are the standalone sequences declared with Config.Sequence.
+	Sequences []schema.Sequence
+	Defaults  map[string]string
 	// Generated maps a column to the expression set by a Generated call.
 	Generated map[string]string
 	// GeneratedVirtual marks the columns declared with a GeneratedVirtual call;
@@ -86,6 +88,7 @@ func ReadCompanion(pkg *packages.Package, m *Model) (*CompanionResult, []Diagnos
 		checkAt: map[string]string{},
 		enumAt:  map[string]string{},
 		fkAt:    map[string]string{},
+		seqAt:   map[string]string{},
 	}
 	for _, f := range m.Fields {
 		r.byPath[pathKey(f.Path)] = f
@@ -116,7 +119,7 @@ type companionReader struct {
 	optSeen map[string]bool
 	// indexAt, checkAt and enumAt record where each name comes from: a tag
 	// description for tag-produced names, a file:line for companion names.
-	indexAt, checkAt, enumAt, fkAt map[string]string
+	indexAt, checkAt, enumAt, fkAt, seqAt map[string]string
 }
 
 func pathKey(p []int) string {
@@ -275,6 +278,8 @@ func (r *companionReader) readStmt(s ast.Stmt) {
 			want = "ForeignKeyOpts"
 		case "FullText":
 			want = "FullTextOpts"
+		case "Sequence":
+			want = "SequenceOpts"
 		}
 		if i == 0 {
 			want = "Config"
@@ -294,6 +299,9 @@ func (r *companionReader) readStmt(s ast.Stmt) {
 		return
 	case "ForeignKey":
 		r.foreignKey(calls)
+		return
+	case "Sequence":
+		r.sequence(calls)
 		return
 	}
 	if len(calls) > 1 {
@@ -563,6 +571,115 @@ func (r *companionReader) fullText(calls []call) {
 	}
 	ix.FullText = &ft
 	r.res.Indexes = append(r.res.Indexes, ix)
+}
+
+// sequence reads c.Sequence(name) with its optional Schema, As, Start,
+// Increment, MinValue, MaxValue, Cache and Cycle.
+func (r *companionReader) sequence(calls []call) {
+	first := calls[0]
+	if len(first.expr.Args) != 1 {
+		r.unsupported(first.expr)
+		return
+	}
+	startDiags := len(r.diags)
+	name, _ := r.str(first.expr.Args[0])
+	q := schema.Sequence{Name: name}
+	seen := map[string]bool{}
+	for _, c := range calls[1:] {
+		if seen[c.name] {
+			r.diag(c.expr.Pos(), fmt.Sprintf("duplicate %s on sequence %q", c.name, name))
+			continue
+		}
+		seen[c.name] = true
+		args := c.expr.Args
+		switch c.name {
+		case "Cycle":
+			if len(args) != 0 {
+				r.unsupported(c.expr)
+				continue
+			}
+			q.Cycle = true
+		case "Schema", "As":
+			if len(args) != 1 {
+				r.unsupported(c.expr)
+				continue
+			}
+			s, ok := r.str(args[0])
+			if !ok {
+				continue
+			}
+			if c.name == "Schema" {
+				q.Schema = s
+			} else {
+				q.AsType = s
+			}
+		case "Start", "Increment", "MinValue", "MaxValue", "Cache":
+			if len(args) != 1 {
+				r.unsupported(c.expr)
+				continue
+			}
+			n, ok := r.int64Lit(args[0])
+			if !ok {
+				continue
+			}
+			switch c.name {
+			case "Start":
+				q.Start = n
+			case "Increment":
+				q.Increment = n
+			case "MinValue":
+				q.MinValue = n
+			case "MaxValue":
+				q.MaxValue = n
+			default:
+				q.Cache = n
+			}
+		default:
+			r.unsupported(c.expr)
+		}
+	}
+	if len(r.diags) != startDiags {
+		return
+	}
+	if q.Name == "" {
+		r.diag(first.expr.Pos(), "a sequence needs a name")
+		return
+	}
+	if seen["Increment"] && q.Increment == 0 {
+		r.diag(first.expr.Pos(), fmt.Sprintf("sequence %q: Increment must not be 0", name))
+		return
+	}
+	if !r.declare(r.seqAt, "sequence", q.Schema+"."+name, first.expr.Args[0].Pos()) {
+		return
+	}
+	r.res.Sequences = append(r.res.Sequences, q)
+}
+
+// int64Lit accepts an integer literal, optionally signed.
+func (r *companionReader) int64Lit(e ast.Expr) (int64, bool) {
+	text := ""
+	switch x := e.(type) {
+	case *ast.BasicLit:
+		if x.Kind == token.INT {
+			text = x.Value
+		}
+	case *ast.UnaryExpr:
+		if lit, ok := x.X.(*ast.BasicLit); ok && lit.Kind == token.INT {
+			switch x.Op {
+			case token.SUB:
+				text = "-" + lit.Value
+			case token.ADD:
+				text = lit.Value
+			}
+		}
+	}
+	if text != "" {
+		if n, err := strconv.ParseInt(text, 0, 64); err == nil {
+			return n, true
+		}
+	}
+	r.unsupported(e)
+	return 0, false
 }
 
 // foreignKey reads c.ForeignKey(name, []any{&m.A, &m.B}, "table", []string{"x", "y"})

@@ -367,6 +367,8 @@ func (r *renderer) renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		return nil, unsupported("SQLite has no row-level security")
 	case migrate.CreateFunction, migrate.ReplaceFunction, migrate.DropFunction:
 		return nil, unsupported("SQLite has no stored functions")
+	case migrate.CreateSequence, migrate.AlterSequence, migrate.DropSequence:
+		return nil, unsupported("SQLite has no sequences; an INTEGER PRIMARY KEY is its own counter")
 	}
 	return nil, unsupported("the change kind %q has no SQLite rendering (a table change that needs a rebuild reached the native path)", c.Kind)
 }

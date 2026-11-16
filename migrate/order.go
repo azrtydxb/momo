@@ -22,8 +22,8 @@ type dependent interface{ dependsOn() []string }
 // Renames come first so that everything else sees the new names. Then the
 // dependents of altered or dropped objects go (triggers, policies, views,
 // foreign keys, indexes, constraints, columns, tables). Creates follow in
-// dependency order. Functions and enums that are no longer used go last,
-// after every statement that could still reference them.
+// dependency order. Functions, sequences and enums that are no longer used go
+// last, after every statement that could still reference them.
 var phases = [][]ChangeKind{
 	{RenameTable, RenameColumn},
 	{DropTrigger, DropPolicy},
@@ -34,6 +34,7 @@ var phases = [][]ChangeKind{
 	{CreateSchema},
 	{CreateExtension},
 	{CreateEnum, AlterEnumAddValue},
+	{CreateSequence, AlterSequence},
 	{CreateTable},
 	{AddColumn},
 	{AlterColumn},
@@ -46,19 +47,21 @@ var phases = [][]ChangeKind{
 	{CreatePolicy},
 	{SetRLS},
 	{DropFunction},
+	{DropSequence},
 	{DropEnum},
 }
 
 // Order sorts changes into an executable sequence.
 //
 // Creates run in the order create_schema, create_extension, create_enum,
-// create_table (parents before partitions, referenced tables before
+// create_sequence and alter_sequence (before the tables, whose column defaults
+// may call nextval), create_table (parents before partitions, referenced tables before
 // referencing ones), add_column, alter_column, constraints, create_index, add_fk,
 // create_function, create_view (dependencies first), create_trigger,
 // create_policy, set_rls. Drops run first: drop_trigger, drop_policy,
 // drop_view (dependents first), drop_fk, drop_index and the other drops of
 // constraints and columns, drop_table (partitions before parents), and, last
-// of all, drop_function and drop_enum. Renames run before everything else.
+// of all, drop_function, drop_sequence and drop_enum. Renames run before everything else.
 //
 // Renames run before every drop, so renaming A to B while dropping a
 // different table B in the same plan would clash; Diff does not produce that.

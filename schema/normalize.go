@@ -701,6 +701,9 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 		return nil, err
 	}
 	d := c.Dialect
+	for i := range c.Sequences {
+		c.Sequences[i] = NormalizeSequence(c.Sequences[i])
+	}
 	for i := range c.Tables {
 		t := &c.Tables[i]
 		for j := range t.Columns {
