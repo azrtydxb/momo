@@ -100,6 +100,16 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		return one("ALTER TABLE " + t + " ADD " + checkDef(ck)), nil
 	case migrate.DropCheck:
 		return one("ALTER TABLE " + t + " DROP CONSTRAINT " + ident(c.Name)), nil
+	case migrate.AlterCheckIn:
+		// One statement, so the table is never without the constraint. Every
+		// supported server (MySQL 8.4 and 9.7, MariaDB 11.8) enforces CHECK and
+		// accepts DROP CONSTRAINT for one; MySQL before 8.0.16 parses and ignores
+		// it, and before 8.0.19 spells the drop DROP CHECK.
+		ck, err := get[schema.Check](c.After)
+		if err != nil {
+			return nil, err
+		}
+		return one("ALTER TABLE " + t + " DROP CONSTRAINT " + ident(ck.Name) + ", ADD " + checkDef(ck)), nil
 	case migrate.AddFK:
 		fk, err := get[schema.ForeignKey](c.After)
 		if err != nil {
@@ -302,7 +312,7 @@ func uniqueDef(u schema.Unique) string {
 }
 
 func checkDef(c schema.Check) string {
-	return "CONSTRAINT " + ident(c.Name) + " CHECK (" + c.Expr + ")"
+	return "CONSTRAINT " + ident(c.Name) + " CHECK (" + c.ExprFor(dialect.MySQL) + ")"
 }
 
 func fkDef(fk schema.ForeignKey) (string, error) {
