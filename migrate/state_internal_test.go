@@ -81,7 +81,7 @@ func TestStateFingerprintV1CoversEveryField(t *testing.T) {
 			t.Fatalf("object %s cannot be encoded: %v", k, err)
 		}
 	}
-	const want = ""
+	const want = "4dae13321682bdb86c945f76c7ccfbbe5a630dbdba2dd6374c1b0684d1572e28"
 	if got := stateFingerprint(&s); got != want {
 		t.Fatalf("fingerprint v1 of the full fixture: got %s, want %s", got, want)
 	}
