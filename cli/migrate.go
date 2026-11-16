@@ -43,9 +43,11 @@ Commands:
   apply [--to N] [--lock-wait 30s]   apply pending migrations (needs a database)
   status      show the state of every migration (needs a database)
   validate [--db]   check the migration directory (offline; --db also checks the database)
-  hash        recompute momo.sum from the files in the directory and write it (offline;
-              first lists the changed, added and removed files it accepts;
-              review the files first: this accepts every edit as the new baseline)
+  hash [--sum-format 1|2]   recompute momo.sum from the files in the directory and write it
+              (offline; first lists the changed, added and removed files it accepts;
+              review the files first: this accepts every edit as the new baseline;
+              also resolves a merge of two branches' momo.sum; writes format 2, which
+              older momo binaries refuse, and --sum-format 1 writes the older format)
   new --custom <name>   write an empty hand-written migration: an up file, a snapshot copied
               from the latest one and the extended momo.sum (offline)
   baseline --version N [--force]   record migrations as applied without running them (needs a database)
@@ -64,6 +66,10 @@ Commands:
   rebase --onto <dir> [name]   regenerate this branch's generated migrations that <dir> (the
               target branch's migrations, from git) lacks, on top of its latest snapshot
               (offline; deletes the branch's old files and writes one new migration)
+  rebase --renumber [--applied v1,v2]   move the pending migrations that sort before the
+              newest applied one to later versions, renaming their files and updating
+              their parent links and momo.sum (needs a database, or --applied; refuses
+              to touch an applied migration)
 
 The PostgreSQL migration lock is a session advisory lock: it is released when its
 holder's connection ends, and there is no flag to force it. When apply keeps
@@ -731,8 +737,12 @@ func (l *cli) rehashCmd(fs *flag.FlagSet) func([]string) int {
 
 // hashCmd recomputes momo.sum over the files of the migration directory and
 // writes it atomically. It is the remedy for a missing or stale momo.sum
-// after the files were reviewed.
+// after the files were reviewed, and after a git merge of two branches that
+// each added a migration. It writes format 2, which also upgrades a format 1
+// file; --sum-format 1 writes the older format that old momo binaries read.
 func (l *cli) hashCmd(fs *flag.FlagSet) func([]string) int {
+	format := migrate.SumFormat
+	fs.IntVar(&format, "sum-format", migrate.SumFormat, "momo.sum format to write: 2 (one line per file, merges with git) or 1 (has a directory hash line, read by older momo)")
 	return func(args []string) int {
 		pos, stop := l.setup(fs, args)
 		if stop != nil {
@@ -740,6 +750,9 @@ func (l *cli) hashCmd(fs *flag.FlagSet) func([]string) int {
 		}
 		if code := l.noPositional(pos); code >= 0 {
 			return code
+		}
+		if format != migrate.SumFormat && format != migrate.SumFormatLegacy {
+			return l.errf(exitUsage, "--sum-format must be %d or %d, got %d", migrate.SumFormatLegacy, migrate.SumFormat, format)
 		}
 		dir := l.migrationDir()
 		if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
@@ -749,7 +762,10 @@ func (l *cli) hashCmd(fs *flag.FlagSet) func([]string) int {
 		if err != nil {
 			return l.errf(exitDatabase, "%v", err)
 		}
-		l.reportSumChanges(dir, sum)
+		sum.Format = format
+		if old := l.reportSumChanges(dir, sum); old != nil && old.Format != format {
+			l.say("%s format %d -> %d", migrate.SumFileName, old.Format, format)
+		}
 		var buf bytes.Buffer
 		if err := sum.Write(&buf); err != nil {
 			return l.errf(exitDatabase, "%v", err)
@@ -761,6 +777,7 @@ func (l *cli) hashCmd(fs *flag.FlagSet) func([]string) int {
 		for _, p := range written {
 			l.say("%s", l.rel(p))
 		}
+		l.warnNoUnionRule(dir)
 		return exitOK
 	}
 }
@@ -768,16 +785,17 @@ func (l *cli) hashCmd(fs *flag.FlagSet) func([]string) int {
 // reportSumChanges prints the files whose hash differs from the momo.sum
 // being replaced, so the user sees what hash is about to accept. A missing or
 // unreadable previous sum has nothing to compare against and prints nothing.
-func (l *cli) reportSumChanges(dir string, next *migrate.Sum) {
+// It returns the previous sum, or nil when there is none or it is unreadable.
+func (l *cli) reportSumChanges(dir string, next *migrate.Sum) *migrate.Sum {
 	f, err := os.Open(filepath.Join(dir, migrate.SumFileName)) // #nosec G304 -- the configured migration directory
 	if err != nil {
-		return
+		return nil
 	}
 	defer func() { _ = f.Close() }()
 	old, err := migrate.ParseSum(f)
 	if err != nil {
 		l.say("previous %s is unreadable (%v); every file is accepted", migrate.SumFileName, err)
-		return
+		return nil
 	}
 	for _, name := range migrate.VerifySum(os.DirFS(dir), old) {
 		_, inOld := old.Files[name]
@@ -791,6 +809,7 @@ func (l *cli) reportSumChanges(dir string, next *migrate.Sum) {
 			l.say("removed: %s", name)
 		}
 	}
+	return old
 }
 
 func (l *cli) validateCmd(fs *flag.FlagSet) func([]string) int {
@@ -811,6 +830,7 @@ func (l *cli) validateCmd(fs *flag.FlagSet) func([]string) int {
 		for _, p := range rep.Problems {
 			l.say("problem: %s", p)
 		}
+		l.warnNoUnionRule(l.migrationDir())
 		code := exitOK
 		if len(rep.Problems) > 0 {
 			code = exitFindings
@@ -1058,15 +1078,27 @@ func (l *cli) rollbackCmd(fs *flag.FlagSet) func([]string) int {
 // rebaseCmd regenerates this branch's generated migrations on top of the
 // target branch's. The target is a directory the user produced with git.
 func (l *cli) rebaseCmd(fs *flag.FlagSet) func([]string) int {
-	var onto string
+	var onto, applied string
+	var renumber bool
 	fs.StringVar(&onto, "onto", "", "directory with the target branch's migrations")
+	fs.BoolVar(&renumber, "renumber", false, "move the pending migrations that sort before the newest applied one to later versions (needs the database, or --applied)")
+	fs.StringVar(&applied, "applied", "", "with --renumber: comma-separated applied versions, instead of reading the database")
 	return func(args []string) int {
 		pos, stop := l.setup(fs, args)
 		if stop != nil {
 			return *stop
 		}
+		if renumber {
+			if onto != "" || len(pos) > 0 {
+				return l.errf(exitUsage, "rebase --renumber takes no --onto and no migration name")
+			}
+			return l.renumberCmd(applied)
+		}
+		if applied != "" {
+			return l.errf(exitUsage, "--applied belongs to rebase --renumber")
+		}
 		if onto == "" {
-			return l.errf(exitUsage, "rebase needs --onto <directory of the target branch's migrations>")
+			return l.errf(exitUsage, "rebase needs --onto <directory of the target branch's migrations>, or --renumber")
 		}
 		if len(pos) > 1 {
 			return l.errf(exitUsage, "rebase takes at most one migration name")
@@ -1121,12 +1153,72 @@ func (l *cli) rebaseCmd(fs *flag.FlagSet) func([]string) int {
 	}
 }
 
-// applyRebase deletes the branch files a rebase replaces and writes the
-// regenerated migration. Every path is checked before anything changes, so a
-// path that cannot be deleted refuses the whole rebase with the directory
-// untouched; a failure after that (a delete or a write) leaves a half-rebased
-// directory, and the message says how to get back: restore the directory from
-// version control and run the rebase again.
+// renumberCmd moves the pending migrations that sort before the newest applied
+// one to later versions (rebase --renumber). The applied versions come from the
+// database, or from the --applied list when the database is not at hand.
+func (l *cli) renumberCmd(applied string) int {
+	ctx, cancel := interruptContext()
+	defer cancel()
+	var e *migrate.Engine
+	var versions []string
+	if applied != "" {
+		var code int
+		if e, _, code = l.offlineEngine(); e == nil {
+			return code
+		}
+		for _, v := range strings.Split(applied, ",") {
+			if v = strings.TrimSpace(v); v != "" {
+				versions = append(versions, v)
+			}
+		}
+	} else {
+		eng, closeFn, code := l.openEngine(ctx)
+		if eng == nil {
+			return code
+		}
+		defer closeFn()
+		e = eng
+		var err error
+		if versions, err = e.AppliedVersions(ctx); err != nil {
+			return l.failure(err)
+		}
+	}
+	dir := l.migrationDir()
+	removed, files, moved, err := e.Renumber(versions)
+	if err != nil {
+		return l.errf(exitFindings, "renumber refused: %v", err)
+	}
+	l.say("note: pending Go migrations are not visible to the command line; one that sorts before the newest applied version must get a later Version in its code")
+	if len(moved) == 0 {
+		l.say("nothing to renumber: no pending migration is older than the newest applied one")
+		return exitOK
+	}
+	if code := l.applyRebase(dir, removed, files); code != exitOK {
+		return code
+	}
+	for _, m := range moved {
+		l.say("renumbered: %s_%s -> %s_%s", m.Old, m.Name, m.New, m.Name)
+	}
+	rep, err := migrate.ValidateOffline(dirFS(dir))
+	if err != nil {
+		return l.errf(exitDatabase, "%v", err)
+	}
+	for _, p := range rep.Problems {
+		l.say("problem: %s", p)
+	}
+	if len(rep.Problems) > 0 {
+		return exitFindings
+	}
+	return exitOK
+}
+
+// applyRebase writes the regenerated files and then deletes the branch files
+// a rebase replaces. Every path is checked before anything changes, so a path
+// that cannot be deleted refuses the whole rebase with the directory
+// untouched, and a failed write leaves it untouched too; a failure while
+// deleting leaves old and new files side by side, and the message says how to
+// get back: restore the directory from version control and run the rebase
+// again.
 func (l *cli) applyRebase(dir string, removed []string, files map[string][]byte) int {
 	paths := make([]string, len(removed))
 	for i, f := range removed {
@@ -1137,25 +1229,27 @@ func (l *cli) applyRebase(dir string, removed []string, files map[string][]byte)
 		}
 	}
 	recovery := fmt.Sprintf("the migration directory %s is half rebased; restore it from version control (git checkout -- %s), fix the cause and run momo migrate rebase again", l.rel(dir), l.rel(dir))
+	// The new files and momo.sum are written first, all or nothing, so a
+	// failed write leaves the directory as it was; only then are the old ones
+	// removed.
+	if files != nil {
+		written, err := writeNewFiles(dir, files)
+		for _, p := range written {
+			l.say("%s", l.rel(p))
+		}
+		if err != nil {
+			code := exitUsage
+			if errors.Is(err, iofs.ErrExist) {
+				code = exitFindings
+			}
+			return l.errf(code, "%v; nothing was removed and the directory is unchanged", err)
+		}
+	}
 	for i, p := range paths {
 		if err := os.Remove(p); err != nil {
 			return l.errf(exitDatabase, "remove %s: %v; removed %d of %d files; %s", removed[i], err, i, len(paths), recovery)
 		}
 		l.say("removed: %s", removed[i])
-	}
-	if files == nil {
-		return exitOK
-	}
-	written, err := writeNewFiles(dir, files)
-	for _, p := range written {
-		l.say("%s", l.rel(p))
-	}
-	if err != nil {
-		code := exitUsage
-		if errors.Is(err, iofs.ErrExist) {
-			code = exitFindings
-		}
-		return l.errf(code, "%v; %d old files were removed; %s", err, len(paths), recovery)
 	}
 	return exitOK
 }

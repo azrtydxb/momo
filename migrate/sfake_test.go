@@ -239,6 +239,11 @@ func (sfDialect) Lock(context.Context, momo.PinnedConn, string) (func() error, f
 }
 
 // sfSnap is a minimal snapshot file.
+// sfSnapCol is a snapshot with the table t, which has the columns id and col.
+func sfSnapCol(version, parent, col string) string {
+	return `{"format_version":1,"version":"` + version + `","parent":"` + parent + `","schema":{"format_version":1,"dialect":"postgres","tables":[{"name":"t","columns":[{"name":"id","type":"bigint"},{"name":"` + col + `","type":"text"}]}]}}`
+}
+
 func sfSnap(version, parent string) string {
 	return `{"format_version":1,"version":"` + version + `","parent":"` + parent + `","schema":{"format_version":1,"dialect":"postgres","tables":[]}}`
 }

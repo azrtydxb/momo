@@ -103,10 +103,13 @@ type Change struct {
 
 // Migration is one migration version.
 type Migration struct {
-	Version     string // 14-digit UTC timestamp
-	Name        string
-	Kind        Kind
-	Parent      string
+	Version string // 14-digit UTC timestamp
+	Name    string
+	Kind    Kind
+	Parent  string
+	// Base is SnapshotFile.Base of the migration's snapshot: BaseDerived when
+	// it was generated from a derived (merged) state.
+	Base        string
 	Up          []Statement
 	Down        []Statement
 	NoTx        bool

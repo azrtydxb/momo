@@ -272,7 +272,7 @@ func validateGo(ms []GoMigration, files []File, snapshots map[string]chainEntry,
 		if !ok {
 			continue // reported as a missing parent
 		}
-		if !schemaEqual(e.snap.Schema, parent.snap.Schema) {
+		if !parent.leavesSchemaOf(&e.snap) {
 			add("%s: Go migration %s_%s must not change the schema, but its snapshot differs from its parent's %s", e.path, g.Version, g.Name, parent.path)
 		}
 	}

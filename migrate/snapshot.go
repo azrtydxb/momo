@@ -22,10 +22,37 @@ const SnapshotFormat = 1
 // SnapshotFile is the content of <version>_<name>.snapshot.json: the schema
 // after a migration, plus the version of the migration it follows.
 type SnapshotFile struct {
-	Format        int            `json:"format_version"` // SnapshotFormat
-	Version       string         `json:"version"`
-	ParentVersion string         `json:"parent"` // empty for the first migration
-	Schema        *schema.Schema `json:"schema"`
+	Format        int    `json:"format_version"` // SnapshotFormat
+	Version       string `json:"version"`
+	ParentVersion string `json:"parent"` // empty for the first migration
+	// Base is "derived:<sha256>" when the schema was generated from the
+	// derived state of the parent (a diff after two branches merged), not
+	// from the parent's own snapshot file; the hash fingerprints that
+	// state, so a later merge that changes it is noticed. Empty otherwise.
+	Base   string         `json:"base,omitempty"`
+	Schema *schema.Schema `json:"schema"`
+}
+
+// BaseDerived is the prefix of SnapshotFile.Base of a snapshot generated from
+// the schema derived by folding the chain up to its parent.
+const BaseDerived = "derived"
+
+// derivedBase returns the Base value for a snapshot generated from state:
+// "derived:<fingerprint version>:<sha256>".
+func derivedBase(state *schema.Schema) string {
+	return BaseDerived + ":" + fingerprintVersion + ":" + stateFingerprint(state)
+}
+
+// baseIsDerived reports whether base marks a snapshot generated from a derived state.
+func baseIsDerived(base string) bool { return strings.HasPrefix(base, BaseDerived+":") }
+
+// checkBase refuses a Base value this momo does not know, so a marker written
+// by a newer momo (another fingerprint version) is never read as "stored".
+func checkBase(base string) error {
+	if rest, ok := strings.CutPrefix(base, BaseDerived+":"+fingerprintVersion+":"); base == "" || ok && hexSHA256.MatchString(rest) {
+		return nil
+	}
+	return fmt.Errorf("%w: snapshot base %q is not known to this momo, upgrade momo to read it", ErrNewerFormat, base)
 }
 
 // rawSnapshot decodes the wrapper while deferring the schema to schema.Load,
@@ -34,6 +61,7 @@ type rawSnapshot struct {
 	Format  int             `json:"format_version"`
 	Version string          `json:"version"`
 	Parent  string          `json:"parent"`
+	Base    string          `json:"base"`
 	Schema  json.RawMessage `json:"schema"`
 }
 
@@ -63,6 +91,9 @@ func ReadSnapshot(r io.Reader) (*SnapshotFile, error) {
 	case raw.Format > SnapshotFormat:
 		return nil, fmt.Errorf("%w: snapshot format_version %d; this momo reads format_version %d and earlier, upgrade momo to read it", ErrNewerFormat, raw.Format, SnapshotFormat)
 	}
+	if err := checkBase(raw.Base); err != nil {
+		return nil, err
+	}
 	if len(raw.Schema) == 0 || string(raw.Schema) == "null" {
 		return nil, errors.New("migrate: snapshot has no schema")
 	}
@@ -70,7 +101,7 @@ func ReadSnapshot(r io.Reader) (*SnapshotFile, error) {
 	if err != nil {
 		return nil, fmt.Errorf("migrate: snapshot schema: %w", err)
 	}
-	return &SnapshotFile{Format: raw.Format, Version: raw.Version, ParentVersion: raw.Parent, Schema: s}, nil
+	return &SnapshotFile{Format: raw.Format, Version: raw.Version, ParentVersion: raw.Parent, Base: raw.Base, Schema: s}, nil
 }
 
 // WriteSnapshot encodes s as indented JSON with a trailing newline. It stamps

@@ -46,7 +46,7 @@ func TestApplyRebaseChecksEveryPathBeforeChangingAnything(t *testing.T) {
 	}
 }
 
-func TestApplyRebaseRemovesThenWrites(t *testing.T) {
+func TestApplyRebaseWritesThenRemoves(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "20260102000000_a.up.sql"), "SELECT 1;\n")
 	l, out, errOut := rebaseCLI(dir)
@@ -59,8 +59,9 @@ func TestApplyRebaseRemovesThenWrites(t *testing.T) {
 	}
 }
 
-// A write that fails after the removals says how to recover.
-func TestApplyRebasePrintsRecoveryStepsOnAPartialFailure(t *testing.T) {
+// A write that fails removes nothing: the old files stay, so the directory is
+// unchanged.
+func TestApplyRebaseKeepsOldFilesWhenTheWriteFails(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "20260102000000_a.up.sql"), "SELECT 1;\n")
 	writeFile(t, filepath.Join(dir, "20260103000000_b.up.sql"), "already here\n")
@@ -70,8 +71,8 @@ func TestApplyRebasePrintsRecoveryStepsOnAPartialFailure(t *testing.T) {
 		t.Fatal("writing over an existing file must fail")
 	}
 	msg := errOut.String()
-	if !strings.Contains(msg, "half rebased") || !strings.Contains(msg, "git checkout --") || !strings.Contains(msg, "rebase again") {
-		t.Fatalf("the failure must print the recovery steps: %s", msg)
+	if !strings.Contains(msg, "unchanged") || !pathExists(filepath.Join(dir, "20260102000000_a.up.sql")) {
+		t.Fatalf("a failed write must leave the old files in place: %s", msg)
 	}
 	if got, _ := os.ReadFile(filepath.Join(dir, "20260103000000_b.up.sql")); string(got) != "already here\n" {
 		t.Fatal("an existing file was overwritten")

@@ -21,10 +21,13 @@ func TestSumFormatVersion(t *testing.T) {
 	if err := s.Write(&buf); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(buf.String(), "# momo.sum format=1\n") {
+	if !strings.HasPrefix(buf.String(), "# momo.sum format=2\n") {
 		t.Fatalf("missing header: %q", buf.String())
 	}
-	future := strings.Replace(buf.String(), "format=1", "format=9", 1)
+	if strings.Contains(buf.String(), "h1:") {
+		t.Fatalf("format 2 has no directory hash: %q", buf.String())
+	}
+	future := strings.Replace(buf.String(), "format=2", "format=9", 1)
 	if _, err := ParseSum(strings.NewReader(future)); !errors.Is(err, ErrNewerFormat) {
 		t.Fatalf("want ErrNewerFormat, got %v", err)
 	}
@@ -72,12 +75,12 @@ func TestSumDeterministicOrderAndRoundTrip(t *testing.T) {
 		}
 	}
 	lines := strings.Split(strings.TrimSuffix(first, "\n"), "\n")
-	if len(lines) != 5 || !strings.HasPrefix(lines[1], "h1:") {
+	if len(lines) != 4 || lines[0] != "# momo.sum format=2" {
 		t.Fatalf("unexpected layout: %q", first)
 	}
 	for i, want := range []string{"20260101000000_a.up.sql", "20260102000000_b.up.sql", "20260103000000_c.up.sql"} {
-		if !strings.HasSuffix(lines[2+i], "  "+want) {
-			t.Fatalf("line %d = %q, want name %s", 2+i, lines[2+i], want)
+		if !strings.HasSuffix(lines[1+i], "  "+want) {
+			t.Fatalf("line %d = %q, want name %s", 1+i, lines[1+i], want)
 		}
 	}
 	got, err := ParseSum(strings.NewReader(first))
@@ -108,6 +111,7 @@ func TestVerifySumReportsAddedAndRemoved(t *testing.T) {
 
 func TestParseSumRejectsTampering(t *testing.T) {
 	s, _ := ComputeSum(sumFS())
+	s.Format = SumFormatLegacy
 	var buf bytes.Buffer
 	if err := s.Write(&buf); err != nil {
 		t.Fatal(err)
@@ -171,8 +175,8 @@ func TestAppendSum(t *testing.T) {
 	if got.Files["20260101000000_a.up.sql"] != existing.Files["20260101000000_a.up.sql"] {
 		t.Fatal("existing entry was changed")
 	}
-	if len(got.Files) != 2 || got.DirHash == existing.DirHash {
-		t.Fatalf("new entry or dirhash missing: %+v", got)
+	if len(got.Files) != 2 || got.Format != SumFormat || got.DirHash != "" {
+		t.Fatalf("new entry missing or format changed: %+v", got)
 	}
 	if bad := VerifySum(next, got); !reflect.DeepEqual(bad, []string{"20260101000000_a.up.sql"}) {
 		t.Fatalf("edit of an old file must still be detected, got %v", bad)
@@ -185,6 +189,94 @@ func TestAppendSum(t *testing.T) {
 	}
 	if _, err := AppendSum(existing, next, []string{"20260109000000_nope.up.sql"}); err == nil {
 		t.Fatal("adding a missing file must fail")
+	}
+}
+
+const (
+	hashA = "1111111111111111111111111111111111111111111111111111111111111111"
+	hashB = "2222222222222222222222222222222222222222222222222222222222222222"
+)
+
+// Format 2 lines may come in any order, as after a union merge of two branches.
+func TestParseSumFormat2AnyOrder(t *testing.T) {
+	src := "# momo.sum format=2\n" + hashB + "  20260102000000_b.up.sql\n" + hashA + "  20260101000000_a.up.sql\n"
+	s, err := ParseSum(strings.NewReader(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Format != 2 || s.DirHash != "" || len(s.Files) != 2 || s.Files["20260101000000_a.up.sql"] != hashA {
+		t.Fatalf("parsed %+v", s)
+	}
+	var buf bytes.Buffer
+	if err := s.Write(&buf); err != nil {
+		t.Fatal(err)
+	}
+	want := "# momo.sum format=2\n" + hashA + "  20260101000000_a.up.sql\n" + hashB + "  20260102000000_b.up.sql\n"
+	if buf.String() != want {
+		t.Fatalf("Write must sort the lines:\n%s", buf.String())
+	}
+}
+
+// A union merge can repeat a line; a name with two checksums, an h1: line and
+// conflict markers are refused.
+func TestParseSumFormat2Refusals(t *testing.T) {
+	head := "# momo.sum format=2\n"
+	line := hashA + "  20260101000000_a.up.sql\n"
+	if _, err := ParseSum(strings.NewReader(head + line + line)); err != nil {
+		t.Fatalf("an identical repeated line is a harmless union-merge artefact: %v", err)
+	}
+	for name, src := range map[string]string{
+		"two checksums":    head + line + hashB + "  20260101000000_a.up.sql\n",
+		"h1 line":          head + "h1:AAAA\n" + line,
+		"conflict marker":  head + "<<<<<<< HEAD\n" + line + "=======\n>>>>>>> branch\n",
+		"format 1 header":  "# momo.sum format=1\n" + line,
+		"future format":    "# momo.sum format=3\n" + line,
+		"missing the name": head + hashA + "\n",
+	} {
+		_, err := ParseSum(strings.NewReader(src))
+		if err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+		if name == "future format" && !errors.Is(err, ErrNewerFormat) {
+			t.Errorf("a format above this momo's must be ErrNewerFormat, got %v", err)
+		}
+	}
+}
+
+// Format 1 still parses and verifies, is written on request and survives
+// AppendSum; only hash upgrades it.
+func TestSumFormat1StaysFormat1(t *testing.T) {
+	base := fstest.MapFS{"20260101000000_a.up.sql": {Data: []byte("SELECT 1;")}}
+	s, err := ComputeSum(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Format = SumFormatLegacy
+	var buf bytes.Buffer
+	if err := s.Write(&buf); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(buf.String(), "# momo.sum format=1\nh1:") {
+		t.Fatalf("format 1 layout: %q", buf.String())
+	}
+	old, err := ParseSum(strings.NewReader(buf.String()))
+	if err != nil || old.Format != SumFormatLegacy || old.DirHash == "" {
+		t.Fatalf("format 1 must parse: %+v %v", old, err)
+	}
+	next := fstest.MapFS{
+		"20260101000000_a.up.sql": base["20260101000000_a.up.sql"],
+		"20260102000000_b.up.sql": {Data: []byte("SELECT 2;")},
+	}
+	got, err := AppendSum(old, next, []string{"20260102000000_b.up.sql"})
+	if err != nil || got.Format != SumFormatLegacy || got.DirHash == old.DirHash {
+		t.Fatalf("AppendSum must keep format 1 and refresh its hash: %+v %v", got, err)
+	}
+	up, err := ComputeSum(next)
+	if err != nil || up.Format != SumFormat {
+		t.Fatalf("ComputeSum writes format 2: %+v %v", up, err)
+	}
+	if err := (&Sum{Format: 7, Files: map[string]string{}}).Write(&buf); err == nil {
+		t.Fatal("an unknown format must not be written")
 	}
 }
 
