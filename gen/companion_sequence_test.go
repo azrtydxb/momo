@@ -61,6 +61,44 @@ func TestCompanionSequenceRefusedOffPostgres(t *testing.T) {
 	}
 }
 
+// TestCompanionSequenceRangeRejected: a sequence PostgreSQL would refuse is
+// diagnosed when the model is read, at the c.Sequence call, one diagnostic per
+// fault, and a valid sequence next to them is not.
+//
+// Catches: a bad data type, an inverted or out-of-type bound or a start outside
+// the bounds surviving until CREATE SEQUENCE fails in a migration.
+func TestCompanionSequenceRangeRejected(t *testing.T) {
+	_, diags, err := Load([]string{"./companionsequencerange"}, Config{Dir: fixturesDir(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := diagStrings(diags)
+	for _, want := range []string{
+		`sequence "bad_type_seq": the data type "text" is not smallint, integer or bigint`,
+		`sequence "min_above_max_seq": MinValue 10 is above MaxValue 5`,
+		`sequence "start_low_seq": Start 3 is outside MinValue 10`,
+		`sequence "start_high_seq": Start 11 is outside MinValue 1 and MaxValue 10`,
+		`sequence "max_over_type_seq": MaxValue 40000 is outside the range of smallint`,
+		`sequence "min_under_type_seq": MinValue -3000000000 is outside the range of integer`,
+		`sequence "max_below_default_min_seq": MinValue 1 is above MaxValue 0`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("diagnostics lack %q:\n%s", want, text)
+		}
+	}
+	if len(diags) != 7 {
+		t.Errorf("want 7 diagnostics, got %d:\n%s", len(diags), text)
+	}
+	if strings.Contains(text, "fine_seq") {
+		t.Errorf("a valid sequence was diagnosed:\n%s", text)
+	}
+	for _, d := range diags {
+		if !strings.Contains(d.String(), "bad.go:") {
+			t.Errorf("diagnostic has no source position: %s", d)
+		}
+	}
+}
+
 // TestCompanionSequenceRejected: a repeated option, a name constant where a
 // literal is required, a zero increment and a repeated name are diagnosed.
 func TestCompanionSequenceRejected(t *testing.T) {

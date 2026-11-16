@@ -665,6 +665,10 @@ func (r *companionReader) sequence(calls []call) {
 		r.diag(first.expr.Pos(), fmt.Sprintf("sequence %q: Increment must not be 0", name))
 		return
 	}
+	if err := schema.ValidateSequence(q); err != nil {
+		r.diag(first.expr.Pos(), err.Error())
+		return
+	}
 	if !r.declare(r.seqAt, "sequence", q.Schema+"."+name, first.expr.Args[0].Pos()) {
 		return
 	}

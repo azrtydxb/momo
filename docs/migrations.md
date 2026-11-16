@@ -1499,7 +1499,9 @@ differs from the PostgreSQL defaults (bigint, increment 1, cache 1, bounds from
 the type and the direction, start at the minimum), so a bare `c.Sequence` equals
 the sequence PostgreSQL reports for `CREATE SEQUENCE name`. A value you name is
 kept as written, including 0 (`Start(0).MinValue(0)` is a counter that starts at
-zero).
+zero). The generator refuses a sequence PostgreSQL would reject: a type other
+than the three above, `MinValue` above `MaxValue`, a bound outside the range
+of the type, a `Start` outside the bounds, or an `Increment` of 0.
 
 - `momo generate --from-db` reads every sequence that no column owns (a
   sequence with an `OWNED BY` column, a serial column's or an identity column's,
@@ -1516,6 +1518,11 @@ zero).
 - A sequence has a current value, which is data and not part of the schema. A
   new environment starts at the declared start; set the counter of a loaded
   database with `setval` in a custom migration.
+- A sequence that is later attached to a column with `ALTER SEQUENCE` and
+  `OWNED BY` becomes column-owned and is no longer a standalone sequence, so
+  remove its `c.Sequence` declaration.
+- `introspect.only` (`migrate.Config.OnlyTables`) does not filter sequences,
+  the same as views and functions; use `migrate.exclude` to hide one.
 - SQLite, MySQL and MariaDB have no sequence in the schema model: generating
   for them refuses a `c.Sequence` call, and rendering a sequence change for them
   fails with `momo.ErrUnsupported`.

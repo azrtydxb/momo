@@ -48,6 +48,8 @@ func TestMigrateLint(t *testing.T) {
 		{"check without not valid", "ALTER TABLE docs ADD CONSTRAINT ck CHECK (length(title) > 0);", RuleForeignKeyWithoutNotValid},
 		{"drop table", "DROP TABLE docs;", RuleDestructiveWithoutDirective},
 		{"truncate", "TRUNCATE docs;", RuleDestructiveWithoutDirective},
+		{"drop sequence", "DROP SEQUENCE jobs_seq;", RuleDestructiveWithoutDirective},
+		{"drop sequence if exists", "DROP SEQUENCE IF EXISTS public.jobs_seq;", RuleDestructiveWithoutDirective},
 		{"drop column", "ALTER TABLE docs DROP COLUMN title;", RuleDestructiveWithoutDirective},
 		{"quoted and qualified table", `ALTER TABLE "public"."Docs" ADD COLUMN tenant bigint NOT NULL;`, RuleNotNullWithoutDefault},
 	}

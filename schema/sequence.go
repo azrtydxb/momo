@@ -3,6 +3,7 @@
 package schema
 
 import (
+	"fmt"
 	"math"
 	"strings"
 )
@@ -25,6 +26,35 @@ func sequenceRange(asType string) (lo, hi int64) {
 		return math.MinInt32, math.MaxInt32
 	}
 	return math.MinInt64, math.MaxInt64
+}
+
+// ValidateSequence reports why PostgreSQL would refuse CREATE SEQUENCE for q:
+// a data type other than smallint, integer or bigint, a bound outside the
+// range of the type, a minimum above the maximum, or a start outside the
+// bounds. Unset fields take the defaults NormalizeSequence documents. An
+// Increment of 0 reads as unset here, so a caller that must refuse an explicit
+// 0 checks for it first.
+func ValidateSequence(q Sequence) error {
+	t := strings.ToLower(strings.TrimSpace(q.AsType))
+	if _, ok := sequenceTypes[t]; t != "" && !ok {
+		return fmt.Errorf("sequence %q: the data type %q is not smallint, integer or bigint", q.Name, q.AsType)
+	}
+	n := NormalizeSequence(q)
+	lo, hi := sequenceRange(n.AsType)
+	minV, maxV, start := *n.MinValue, *n.MaxValue, *n.Start
+	if q.MinValue != nil && (minV < lo || minV > hi) {
+		return fmt.Errorf("sequence %q: MinValue %d is outside the range of %s (%d to %d)", q.Name, minV, n.AsType, lo, hi)
+	}
+	if q.MaxValue != nil && (maxV < lo || maxV > hi) {
+		return fmt.Errorf("sequence %q: MaxValue %d is outside the range of %s (%d to %d)", q.Name, maxV, n.AsType, lo, hi)
+	}
+	if minV > maxV {
+		return fmt.Errorf("sequence %q: MinValue %d is above MaxValue %d", q.Name, minV, maxV)
+	}
+	if start < minV || start > maxV {
+		return fmt.Errorf("sequence %q: Start %d is outside MinValue %d and MaxValue %d", q.Name, start, minV, maxV)
+	}
+	return nil
 }
 
 // Int64 returns a pointer to v, for the optional numeric fields of Sequence.
