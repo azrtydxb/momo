@@ -1069,6 +1069,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#standalone-sequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Standalone sequences
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#roles-and-extensions-verified" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2148,6 +2159,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#standalone-sequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Standalone sequences
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#roles-and-extensions-verified" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2355,6 +2377,12 @@ set <code>migrate.dir.postgres</code> or <code>--dir</code>). <code>diff</code> 
 <p>Adding the optional column field <code>generated_virtual</code> (a VIRTUAL generated
 column on MySQL and SQLite) did not bump <code>format_version</code>: a snapshot without
 it loads and its generated columns are STORED.</p>
+<p>The same holds for the optional <code>sequences</code> key, the standalone PostgreSQL
+sequences (section 7): a snapshot without it loads with none, and the format
+version stays the same. A momo release that predates the key reads a snapshot
+that has it without an error and ignores the sequences, so it plans neither
+their creation nor their drop and reports no drift for them. Read and write
+snapshots with one momo release.</p>
 <h3 id="diff">Diff<a class="headerlink" href="#diff" title="Permanent link">&para;</a></h3>
 <p><code>momo migrate diff &lt;name&gt;</code> runs offline (no database, no driver). It loads the
 models, compares them with the snapshot of the highest version in the
@@ -2598,9 +2626,11 @@ finding:</p>
 </table>
 <ul>
 <li>Extension versions are ignored when either side leaves the version empty.</li>
+<li>A sequence no column owns is a <code>sequence</code> object: <code>missing</code>, <code>unmanaged</code> or
+  <code>changed</code> (the differing fields, such as <code>increment</code>) like any other.</li>
 <li>Hide objects you do not manage with <code>migrate.exclude</code> (globs over <code>name</code> or
-  <code>schema.name</code>; they apply to tables, views, functions, enums, extensions,
-  triggers and policies). Example: <code>exclude: ["pg_stat_statements", "audit_*"]</code>.
+  <code>schema.name</code>; they apply to tables, views, functions, enums, sequences,
+  extensions, triggers and policies). Example: <code>exclude: ["pg_stat_statements", "audit_*"]</code>.
   PostgreSQL inspection applies the globs while it reads, before an object is
   examined: a matching table is skipped before its columns, constraints, indexes
   and partitions are read, a matching view or function before its definition is
@@ -3873,6 +3903,76 @@ tables, columns, keys and plain indexes needs no such privilege
 role that has <code>CREATE</code> on the database (for example the owner role), or grant it
 for that run. It takes the lock and refuses on dirty or checksum problems like
 <code>apply</code>.</p>
+<h3 id="standalone-sequences">Standalone sequences<a class="headerlink" href="#standalone-sequences" title="Permanent link">&para;</a></h3>
+<p>A column default can call <code>nextval</code> on a sequence that no column owns, for
+example <code>DEFAULT nextval('jobs_seq')</code>. A <code>serial</code> or identity column owns its
+sequence, and the column declares it. Any other sequence is a schema object of
+its own, kept in the snapshot as <code>schema.Sequence</code> and declared by a model with
+<code>momo.Config.Sequence</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="s">"fmt"</span>
+
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo"</span>
+<span class="p">)</span>
+
+<span class="kd">type</span><span class="w"> </span><span class="nx">Job</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Model</span><span class="w"> </span><span class="s">`momo:"table:jobs"`</span>
+<span class="w">    </span><span class="nx">ID</span><span class="w">         </span><span class="kt">int64</span><span class="w"> </span><span class="s">`momo:"pk"`</span>
+<span class="w">    </span><span class="nx">Target</span><span class="w">     </span><span class="kt">string</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">j</span><span class="w"> </span><span class="o">*</span><span class="nx">Job</span><span class="p">)</span><span class="w"> </span><span class="nx">MomoConfig</span><span class="p">(</span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Config</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">Default</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">j</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span><span class="w"> </span><span class="s">"nextval('jobs_seq'::regclass)"</span><span class="p">)</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">Sequence</span><span class="p">(</span><span class="s">"jobs_seq"</span><span class="p">).</span><span class="nx">Start</span><span class="p">(</span><span class="mi">1000</span><span class="p">).</span><span class="nx">Increment</span><span class="p">(</span><span class="mi">10</span><span class="p">).</span><span class="nx">Cache</span><span class="p">(</span><span class="mi">20</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">j</span><span class="w"> </span><span class="nx">Job</span>
+<span class="w">    </span><span class="nx">j</span><span class="p">.</span><span class="nx">MomoConfig</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Config</span><span class="p">{})</span>
+<span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"declared"</span><span class="p">,</span><span class="w"> </span><span class="nx">j</span><span class="p">.</span><span class="nx">ID</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The chain of <code>momo.SequenceOpts</code> sets the schema name, the data type with <code>As</code>
+(<code>"smallint"</code>, <code>"integer"</code> or <code>"bigint"</code>), <code>Start</code>, <code>Increment</code>, <code>MinValue</code>,
+<code>MaxValue</code>, <code>Cache</code> and <code>Cycle</code>, with integer literals for the numbers. A declaration names only what
+differs from the PostgreSQL defaults (bigint, increment 1, cache 1, bounds from
+the type and the direction, start at the minimum), so a bare <code>c.Sequence</code> equals
+the sequence PostgreSQL reports for <code>CREATE SEQUENCE name</code>. A value you name is
+kept as written, including 0 (<code>Start(0).MinValue(0)</code> is a counter that starts at
+zero). The generator refuses a sequence PostgreSQL would reject: a type other
+than the three above, <code>MinValue</code> above <code>MaxValue</code>, a bound outside the range
+of the type, a <code>Start</code> outside the bounds, or an <code>Increment</code> of 0.</p>
+<ul>
+<li><code>momo generate --from-db</code> reads every sequence that no column owns (a
+  sequence with an <code>OWNED BY</code> column, a serial column's or an identity column's,
+  is not one), writes a <code>c.Sequence</code> call for each on the first model and keeps
+  it in the init snapshot. The init migration then creates the sequence before
+  the tables whose defaults call it.</li>
+<li><code>diff</code> renders <code>CREATE SEQUENCE</code> before the tables, one <code>ALTER SEQUENCE</code> for a
+  changed option, and <code>DROP SEQUENCE</code> after the tables that used it. A drop
+  loses the counter, so it needs <code>--allow-destructive</code>. <code>AutoMigrate</code> creates a
+  missing sequence and leaves an alteration or a drop to a migration.</li>
+<li><code>drift</code> and <code>baseline</code> compare sequences like any other object, so a sequence
+  that is only in the database is <code>unmanaged: sequence &lt;name&gt;</code>. Hide one with
+  <code>migrate.exclude</code>.</li>
+<li>Narrowing the bounds of a sequence past its current value, or flipping its
+  increment so that the value falls outside the new bounds, fails at apply with
+  PostgreSQL's own error (SQLSTATE 22023); momo never adds a <code>RESTART</code>. Run an
+  explicit <code>ALTER SEQUENCE ... RESTART</code> in a custom migration first.</li>
+<li>A sequence has a current value, which is data and not part of the schema. A
+  new environment starts at the declared start; set the counter of a loaded
+  database with <code>setval</code> in a custom migration.</li>
+<li>A sequence that is later attached to a column with <code>ALTER SEQUENCE</code> and
+  <code>OWNED BY</code> becomes column-owned and is no longer a standalone sequence, so
+  remove its <code>c.Sequence</code> declaration.</li>
+<li><code>introspect.only</code> (<code>migrate.Config.OnlyTables</code>) does not filter sequences,
+  the same as views and functions; use <code>migrate.exclude</code> to hide one.</li>
+<li>SQLite, MySQL and MariaDB have no sequence in the schema model: generating
+  for them refuses a <code>c.Sequence</code> call, and rendering a sequence change for them
+  fails with <code>momo.ErrUnsupported</code>.</li>
+</ul>
 <h3 id="roles-and-extensions-verified">Roles and extensions (verified)<a class="headerlink" href="#roles-and-extensions-verified" title="Permanent link">&para;</a></h3>
 <p>Checked on CI with a role that is not a superuser and has no <code>CREATE</code> on the
 database:</p>
@@ -3946,9 +4046,10 @@ step on a copy of production.</p>
 <li><strong>Declare what you do not own.</strong> Put the extension a superuser installs in
    <code>migrate.external_extensions</code>. Put tables, views and functions that stay
    outside the models (an analytics schema, an audit table, Prisma's
-   <code>_prisma_migrations</code>) in <code>migrate.exclude</code>. Roles, grants and sequences
-   outside a column are not part of the schema model; they stay in hand-written
-   SQL.</li>
+   <code>_prisma_migrations</code>) in <code>migrate.exclude</code>. Roles and grants are not
+   part of the schema model; they stay in hand-written SQL. A sequence no
+   column owns is: declare it with <code>c.Sequence</code> (section 7), or hide it with
+   <code>migrate.exclude</code>.</li>
 <li><strong>Write the initial migration.</strong> <code>momo migrate diff init</code> against an empty
    directory. Do not apply it. Read the generated SQL: it is what a new
    environment would run, and it must build the schema you have.</li>
@@ -4117,7 +4218,7 @@ default, and the history table is left out.</p>
 column is <code>AUTO_INCREMENT</code> (<code>by_default</code>; <code>always</code> and <code>serial</code> are refused). A
 default that is not a literal or <code>CURRENT_TIMESTAMP</code> is wrapped in parentheses,
 as MySQL requires. Partial indexes, storage parameters, operator classes,
-enums, views, functions, triggers and policies have no MySQL rendering yet and
+enums, sequences, views, functions, triggers and policies have no MySQL rendering yet and
 are refused. The <code>hash</code> index method is refused: InnoDB builds it as BTREE. Dropping a
 foreign key also drops the index MySQL built for it, when one exists, unless
 another foreign key of the table starts with the same column: that key may rely

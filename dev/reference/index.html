@@ -2112,6 +2112,11 @@
 <td>RLS declares the table's row-level security flags.</td>
 </tr>
 <tr>
+<td><code>momo.Config.Sequence</code></td>
+<td>method</td>
+<td>Sequence declares a PostgreSQL sequence that no column owns, such as the one a column default names with nextval('name').</td>
+</tr>
+<tr>
 <td><code>momo.Config.Trigger</code></td>
 <td>method</td>
 <td>Trigger declares a trigger.</td>
@@ -4472,6 +4477,51 @@
 <td>SelectUnion starts a top-level UNION (all=false) or UNION ALL (all=true) of members, whose rows scan into T.</td>
 </tr>
 <tr>
+<td><code>momo.SequenceOpts</code></td>
+<td>type</td>
+<td>SequenceOpts carries the optional parts of a standalone sequence declaration.</td>
+</tr>
+<tr>
+<td><code>momo.SequenceOpts.As</code></td>
+<td>method</td>
+<td>As sets the data type of the sequence: "smallint", "integer" or "bigint" (the default).</td>
+</tr>
+<tr>
+<td><code>momo.SequenceOpts.Cache</code></td>
+<td>method</td>
+<td>Cache sets how many values a session preallocates.</td>
+</tr>
+<tr>
+<td><code>momo.SequenceOpts.Cycle</code></td>
+<td>method</td>
+<td>Cycle makes the sequence wrap around at its bound instead of failing.</td>
+</tr>
+<tr>
+<td><code>momo.SequenceOpts.Increment</code></td>
+<td>method</td>
+<td>Increment sets the step.</td>
+</tr>
+<tr>
+<td><code>momo.SequenceOpts.MaxValue</code></td>
+<td>method</td>
+<td>MaxValue sets the highest value.</td>
+</tr>
+<tr>
+<td><code>momo.SequenceOpts.MinValue</code></td>
+<td>method</td>
+<td>MinValue sets the lowest value.</td>
+</tr>
+<tr>
+<td><code>momo.SequenceOpts.Schema</code></td>
+<td>method</td>
+<td>Schema places the sequence in a PostgreSQL schema other than the current one.</td>
+</tr>
+<tr>
+<td><code>momo.SequenceOpts.Start</code></td>
+<td>method</td>
+<td>Start sets the first value.</td>
+</tr>
+<tr>
 <td><code>momo.Series</code></td>
 <td>type</td>
 <td>Series is a generate_series(...) source producing one column of type T.</td>
@@ -5308,6 +5358,11 @@
 <td>IndexPart is one key of an index.</td>
 </tr>
 <tr>
+<td><code>schema.Int64</code></td>
+<td>func</td>
+<td>Int64 returns a pointer to v, for the optional numeric fields of Sequence.</td>
+</tr>
+<tr>
 <td><code>schema.KV</code></td>
 <td>type</td>
 <td>KV is an ordered key/value pair.</td>
@@ -5331,6 +5386,11 @@
 <td><code>schema.NormalizeExpr</code></td>
 <td>func</td>
 <td>NormalizeExpr returns the canonical spelling of a SQL expression: outside quoted text whitespace is collapsed and letters are lowercased, and redundant enclosing parentheses are removed.</td>
+</tr>
+<tr>
+<td><code>schema.NormalizeSequence</code></td>
+<td>func</td>
+<td>NormalizeSequence returns q with every field a declaration may leave unset filled in with the PostgreSQL default, so that a declaration and the sequence an inspector reads back for it are equal: the type is bigint, the increment 1, the cache 1, and the bounds and start follow from the type and the direction (an ascending sequence runs from 1 to the largest value of its type and starts at its minimum; a descending one runs from the smallest value of its type to -1 and starts at its maximum).</td>
 </tr>
 <tr>
 <td><code>schema.NormalizeType</code></td>
@@ -5393,6 +5453,11 @@
 <td>SchemaNamespace is a PostgreSQL schema (namespace) managed by Momo.</td>
 </tr>
 <tr>
+<td><code>schema.Sequence</code></td>
+<td>type</td>
+<td>Sequence is a PostgreSQL sequence that no column owns, such as the one a column default names with nextval('name').</td>
+</tr>
+<tr>
 <td><code>schema.SortedValues</code></td>
 <td>func</td>
 <td>SortedValues returns the values sorted and without duplicates, as a new slice.</td>
@@ -5436,6 +5501,11 @@
 <td><code>schema.ValidateMariaDBVectorIndex</code></td>
 <td>func</td>
 <td>ValidateMariaDBVectorIndex checks an index whose Method is "vector" against the column.</td>
+</tr>
+<tr>
+<td><code>schema.ValidateSequence</code></td>
+<td>func</td>
+<td>ValidateSequence reports why PostgreSQL would refuse CREATE SEQUENCE for q: a data type other than smallint, integer or bigint, a bound outside the range of the type, a minimum above the maximum, or a start outside the bounds.</td>
 </tr>
 <tr>
 <td><code>schema.ValidateVectorIndex</code></td>
@@ -5902,6 +5972,11 @@
 <td>Change kinds produced by Diff.</td>
 </tr>
 <tr>
+<td><code>migrate.AlterSequence</code></td>
+<td>const</td>
+<td>Change kinds produced by Diff.</td>
+</tr>
+<tr>
 <td><code>migrate.AppendSum</code></td>
 <td>func</td>
 <td>AppendSum returns a copy of existing with entries for the added files.</td>
@@ -5988,6 +6063,11 @@
 </tr>
 <tr>
 <td><code>migrate.CreateSchema</code></td>
+<td>const</td>
+<td>Change kinds produced by Diff.</td>
+</tr>
+<tr>
+<td><code>migrate.CreateSequence</code></td>
 <td>const</td>
 <td>Change kinds produced by Diff.</td>
 </tr>
@@ -6083,6 +6163,11 @@
 </tr>
 <tr>
 <td><code>migrate.DropPrimaryKey</code></td>
+<td>const</td>
+<td>Change kinds produced by Diff.</td>
+</tr>
+<tr>
+<td><code>migrate.DropSequence</code></td>
 <td>const</td>
 <td>Change kinds produced by Diff.</td>
 </tr>

@@ -1111,6 +1111,39 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#declare-a-value-list-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Declare a value-list check
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clone-a-template-database-in-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clone a template database in tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#declare-a-standalone-sequence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Declare a standalone sequence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#change-a-primary-key-with-allowkeychange" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2292,6 +2325,39 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#declare-a-value-list-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Declare a value-list check
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clone-a-template-database-in-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clone a template database in tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#declare-a-standalone-sequence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Declare a standalone sequence
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#change-a-primary-key-with-allowkeychange" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3364,16 +3430,38 @@ later releases can break more.</p>
 <p>No edit is needed in your code. The GORM, Bun and Ent importers now write a
 composite index of the source model as a <code>c.Index</code> declaration in a
 <code>MomoConfig</code> method of the generated model, so a converted project no longer
-drops it on its next migration; rerun the import to get the declaration.
-<code>Config.CheckIn</code> declares a check over a list of values that <code>migrate diff</code>
+drops it on its next migration; rerun the import to get the declaration.</p>
+<h3 id="declare-a-value-list-check">Declare a value-list check<a class="headerlink" href="#declare-a-value-list-check" title="Permanent link">&para;</a></h3>
+<p><code>Config.CheckIn</code> declares a check over a list of values that <code>migrate diff</code>
 compares as a set; <code>momo generate --from-db</code> now writes a constraint of that
 shape as a <code>Config.CheckIn</code> declaration, and a snapshot written without the
 value list still diffs as before. On SQLite a named table-level
 <code>CHECK (col IN (...))</code> now inspects as a check with a value list, and
 <code>--from-db</code> writes it as <code>Config.CheckIn</code>, instead of as an enum column; an
-unnamed column check is unchanged. <code>momotest.WithTemplateClone</code> makes
-<code>momotest.New</code> clone a template database per test instead of building a schema
-per test; without the option <code>momotest.New</code> behaves as before.</p>
+unnamed column check is unchanged.</p>
+<h3 id="clone-a-template-database-in-tests">Clone a template database in tests<a class="headerlink" href="#clone-a-template-database-in-tests" title="Permanent link">&para;</a></h3>
+<p><code>momotest.WithTemplateClone</code> makes <code>momotest.New</code> clone a template database per
+test instead of building a schema per test; without the option <code>momotest.New</code>
+behaves as before.</p>
+<h3 id="declare-a-standalone-sequence">Declare a standalone sequence<a class="headerlink" href="#declare-a-standalone-sequence" title="Permanent link">&para;</a></h3>
+<p>A PostgreSQL sequence that no column owns, such as the one a column default
+names with <code>nextval('jobs_seq')</code>, is now part of the schema model:
+<code>momo generate --from-db</code> writes a <code>c.Sequence</code> call for it and keeps it in the
+init snapshot, and <code>momo migrate</code> creates, alters, drops and compares it like
+any other object, so an init migration built from such a database applies on an
+empty one. Declare one with <code>momo.Config.Sequence</code> in a model's <code>MomoConfig</code>, for example
+<code>c.Sequence("jobs_seq").Start(1000).Increment(10)</code>; the chain of
+<code>momo.SequenceOpts</code> sets the schema, the data type, the bounds, the cache and
+<code>Cycle</code>. Run <code>momo generate --from-db</code> again to adopt the sequences of an
+existing database: a database that already uses one shows it as an
+<code>unmanaged: sequence</code> line in <code>momo migrate drift</code> until the models declare it,
+and <code>migrate.exclude</code> hides one you do not want managed. The snapshot gets an
+optional <code>sequences</code> key and its <code>format_version</code> does not change, so snapshots
+written before it still load. A release that predates the key reads a snapshot
+that has it and ignores the sequences without an error, so move every machine
+that writes snapshots to this release together. Declaring a sequence while
+generating for SQLite, MySQL or MariaDB is refused, because those dialects have
+no sequence in the schema model.</p>
 <h3 id="change-a-primary-key-with-allowkeychange">Change a primary key with <code>AllowKeyChange</code><a class="headerlink" href="#change-a-primary-key-with-allowkeychange" title="Permanent link">&para;</a></h3>
 <p><code>UpdateQuery.AllowKeyChange</code> is an opt-in that lets <code>UpdateQuery.Set</code> assign a
 primary-key column, for a row whose key a user chooses and may rename. Without
