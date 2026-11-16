@@ -177,7 +177,7 @@ func TestSplitBOM(t *testing.T) {
 // as it does after an ASCII one: the statement text and its re-split agree.
 func TestSplitDollarQuoteAfterLeadingSpace(t *testing.T) {
 	for name, space := range map[string]string{
-		"ascii": " ", "bom": "\xef\xbb\xbf", "nbsp": " ", "nel": "\u0085", "line separator": " ",
+		"ascii": " ", "bom": "\xef\xbb\xbf", "nbsp": "\xc2\xa0", "nel": "\xc2\x85", "line separator": "\xe2\x80\xa8",
 	} {
 		t.Run(name+" opens an unterminated quote", func(t *testing.T) {
 			if _, err := SplitStatements([]byte("SELECT 1;"+space+"$$00"), "postgres"); err == nil {
