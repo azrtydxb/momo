@@ -1311,3 +1311,18 @@ Both stories are already built and tested in CI (vector codecs with TestVectorBi
 - Wait for the user to run `make bench` on dedicated hardware and commit bench/results.
 
 Decision (2026-11-16, the user, via AskUserQuestion): reword and close. The tooling and layout test are the deliverable; a published reference run is a separate story owned by the user.
+
+## Spec criteria reworded to what shipped (2026-11-16, integrator)
+
+The read-only audit of M1 to M4 found criteria whose wording no longer matches the shipped, tested behaviour. The user approved the close-out flow "build the two stories, then audit, then close" (decision "Closing milestones M1 to M4 after 0.15.0"); the rewordings below follow that flow and the earlier decisions named beside each. Each cites test names confirmed in the code.
+
+- S-25: version tags (`@vN`) with declared permissions, enforced by `TestWorkflowsUseVersionTags` (decision "GitHub Actions: version tags or commit SHAs").
+- S-49: `TestCodeQLAndGosecRunOnPullRequests`.
+- S-34: `TestNewTxRollsBack` and `TestNewTxRefusesCommit` (per-test transactions on PostgreSQL), `TestMomotestSQLAssert`, `TestMomotestFixtures`, `TestMomotestSQLiteEphemeral` (SQLite uses throwaway files).
+- S-94: Go migrations are forward-only (rollback refused with ErrNoDown); `TestGoMigrationOrderedWithSQLRunsOnce`, `TestRefuseGoRollback`, `TestRollbackGroup` (decision "Carried plan stories (2026-11-11, the user, via AskUserQuestion)").
+- S-19 and S-50: `make bench` writes raw output, environment and pinned versions under bench/results, layout enforced by `TestBenchResultsLayout`; a published reference run is a separate story (decision "The two open stories need a benchmark run on dedicated hardware").
+- S-89: the pure-Go adapter's own suite (driver/sqlitepure, internal/sqlshared) runs with CGO_ENABLED=0; the root suite uses the cgo driver.
+- S-11: PostgreSQL test names kept; added `TestSQLiteStagedChange`, `TestSQLiteConcurrentApply`, `TestMySQLStagedChange`, `TestMySQLConcurrentApply`, `TestMySQLApplyRefusedWhileLockHeld`.
+- S-16: `TestSQLiteVectorParity`, `TestSQLiteANNIndexUnsupported`, `TestSQLiteRenderRefusesVectorIndexMethod`.
+- S-23: Go blocks are compiled when complete and parse-checked when fragments (ceiling `maxFragmentBlocks` in internal/docscheck/codeblocks_test.go).
+- S-31: `TestTypeMappingMySQL` added for the MySQL column.
