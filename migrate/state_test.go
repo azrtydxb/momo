@@ -181,6 +181,43 @@ func TestLateMergedBranchUnderMarkedChild(t *testing.T) {
 	}
 }
 
+// A migration generated after a merge includes the pending branch that
+// renumber moves behind it, so it moves too, follows that branch and gets a base
+// recomputed against the renumbered chain. When it is applied, nothing is
+// written and the refusal names it.
+func TestRenumberMovesMarkedChildWithTheBranch(t *testing.T) {
+	ctx := context.Background()
+	merged := pbMergedIndependent(t) // the pending branch is VA, the applied one VB
+	m, err := offlineEngine(t, merged, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)).Diff(ctx, pbDesired("base", "a", "b", "c"), "add_c", migrate.DiffOptions{})
+	if err != nil || m == nil {
+		t.Fatalf("diff: %v %v", m, err)
+	}
+	dir := withFiles(merged, m.Files)
+	e := offlineEngine(t, dir, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+
+	removed, files, moved, err := e.Renumber([]string{pbV0, pbVB})
+	if err != nil || len(moved) != 2 || moved[0].Name != "add_a" || moved[1].Name != "add_c" {
+		t.Fatalf("both the branch and the marked child must move: %+v %v", moved, err)
+	}
+	next := pbApplyRenumber(dir, removed, files)
+	if p := pbProblems(t, next); len(p) != 0 {
+		t.Fatalf("validate after renumber: %v", p)
+	}
+	snap, err := migrate.ReadSnapshot(bytes.NewReader(next[moved[1].New+"_add_c.snapshot.json"].Data))
+	if err != nil || snap.ParentVersion != moved[0].New {
+		t.Fatalf("the child must follow the branch it includes: %+v %v", snap, err)
+	}
+	st, err := migrate.LatestState(next)
+	if err != nil || !sameStrings(tableNames(st.Schema), []string{"a", "b", "base", "c"}) {
+		t.Fatalf("state after renumber: %v %v", st, err)
+	}
+
+	removed, files, moved, err = e.Renumber([]string{pbV0, pbVB, m.Version})
+	if err == nil || !strings.Contains(err.Error(), m.Version) || removed != nil || files != nil || moved != nil {
+		t.Fatalf("an applied marked child must refuse, naming it, and write nothing: %v %v %v %v", removed, files, moved, err)
+	}
+}
+
 func pbDesired(tables ...string) *schema.Schema {
 	s := &schema.Schema{Dialect: "postgres"}
 	for _, n := range tables {

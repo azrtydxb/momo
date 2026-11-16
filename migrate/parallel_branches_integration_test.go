@@ -107,6 +107,26 @@ func TestParallelBranchesApply(t *testing.T) {
 	})
 }
 
+// A pending migration older than the newest applied one is not in the database
+// yet, so drift does not report its tables as missing.
+func TestDriftIgnoresAPendingOlderBranch(t *testing.T) {
+	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		deployed := pbBranch(pbBase(), pbVB, "add_b", "CREATE TABLE b (id bigint NOT NULL);", pbTable("base"), pbTable("b"))
+		pbApplyClean(t, db, d, deployed, 2)
+		e, err := migrate.NewEngine(db.Driver(), pbOn(t, pbMergedIndependent(t), d), migrate.WithDialect(pbDialect(d)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		drift, err := e.DriftWith(context.Background(), migrate.DriftOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(drift.Changed) != 0 || len(drift.Missing) != 0 {
+			t.Fatalf("the pending older branch must not be reported missing: %+v", drift)
+		}
+	})
+}
+
 // A migration built on one branch's migration after the merge applies, and
 // the database holds both branches' tables.
 func TestParallelBranchesChildOfMergeApply(t *testing.T) {

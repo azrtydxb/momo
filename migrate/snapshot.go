@@ -37,18 +37,19 @@ type SnapshotFile struct {
 // the schema derived by folding the chain up to its parent.
 const BaseDerived = "derived"
 
-// derivedBase returns the Base value for a snapshot generated from state.
+// derivedBase returns the Base value for a snapshot generated from state:
+// "derived:<fingerprint version>:<sha256>".
 func derivedBase(state *schema.Schema) string {
-	return BaseDerived + ":" + stateFingerprint(state)
+	return BaseDerived + ":" + fingerprintVersion + ":" + stateFingerprint(state)
 }
 
 // baseIsDerived reports whether base marks a snapshot generated from a derived state.
 func baseIsDerived(base string) bool { return strings.HasPrefix(base, BaseDerived+":") }
 
 // checkBase refuses a Base value this momo does not know, so a marker written
-// by a newer momo is never read as "stored".
+// by a newer momo (another fingerprint version) is never read as "stored".
 func checkBase(base string) error {
-	if base == "" || (baseIsDerived(base) && hexSHA256.MatchString(strings.TrimPrefix(base, BaseDerived+":"))) {
+	if rest, ok := strings.CutPrefix(base, BaseDerived+":"+fingerprintVersion+":"); base == "" || ok && hexSHA256.MatchString(rest) {
 		return nil
 	}
 	return fmt.Errorf("%w: snapshot base %q is not known to this momo, upgrade momo to read it", ErrNewerFormat, base)

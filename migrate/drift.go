@@ -548,9 +548,11 @@ func (e *Engine) DriftWith(ctx context.Context, o DriftOptions) (*DriftReport, e
 		return nil, err
 	}
 	latest := ""
+	applied := map[string]bool{}
 	for _, r := range hist {
-		if r.Status == StatusApplied && r.Version > latest {
-			latest = r.Version
+		if r.Status == StatusApplied {
+			applied[r.Version] = true
+			latest = max(latest, r.Version)
 		}
 	}
 	live, invalid, err := e.inspectOn(ctx, c)
@@ -561,7 +563,7 @@ func (e *Engine) DriftWith(ctx context.Context, o DriftOptions) (*DriftReport, e
 	var skipped []ObjectRef
 	exact := false
 	if latest != "" {
-		snap, err := stateUpTo(e.dir, latest)
+		snap, err := stateUpTo(e.dir, latest, applied)
 		if err != nil {
 			return nil, err
 		}

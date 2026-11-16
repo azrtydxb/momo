@@ -38,6 +38,51 @@ func (e *Engine) AppliedVersions(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
+// renumberSnapshots returns every snapshot of all as it will be after the
+// versions in newVersion are applied, keyed by its old version: the new
+// version, the parents mapped to the new versions, and, for a moved snapshot
+// generated from a derived state, the migration just before it as parent and a
+// base recomputed against the renumbered chain. Such a snapshot holds the whole
+// merged state of everything older than it, so after the move its parent is the
+// head it now follows.
+func renumberSnapshots(all []File, newVersion map[string]string) (map[string]SnapshotFile, error) {
+	var entries []chainEntry
+	oldOf := map[string]string{} // new version -> old version
+	for _, f := range all {
+		if f.Kind != "snapshot" {
+			continue
+		}
+		s, err := ReadSnapshot(strings.NewReader(string(f.Body)))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", f.Path, err)
+		}
+		nv, moved := newVersion[f.Version]
+		if !moved {
+			nv = f.Version
+		}
+		s.Version = nv
+		if p, ok := newVersion[s.ParentVersion]; ok {
+			s.ParentVersion = p
+		}
+		entries = append(entries, chainEntry{path: f.Path, snap: *s})
+		oldOf[nv] = f.Version
+	}
+	slices.SortFunc(entries, func(a, b chainEntry) int { return strings.Compare(a.snap.Version, b.snap.Version) })
+	for k := range entries {
+		if _, moved := newVersion[oldOf[entries[k].snap.Version]]; !moved || k == 0 || !baseIsDerived(entries[k].snap.Base) {
+			continue
+		}
+		entries[k].snap.ParentVersion = entries[k-1].snap.Version
+		states, _ := foldChain(entries[:k])
+		entries[k].snap.Base = derivedBase(states[k-1])
+	}
+	out := make(map[string]SnapshotFile, len(entries))
+	for _, e := range entries {
+		out[oldOf[e.snap.Version]] = e.snap
+	}
+	return out, nil
+}
+
 // Renumber moves the pending migrations that sort before the newest applied
 // one to versions after every existing version, so they stop being
 // ErrOutOfOrder. applied lists the versions the database has applied; a
@@ -87,6 +132,7 @@ func (e *Engine) Renumber(applied []string) (removed []string, files map[string]
 		return nil, nil, nil, err
 	}
 	parentOf := map[string]string{}
+	marked := map[string]bool{} // snapshots generated from a derived (merged) state
 	for _, f := range all {
 		if f.Kind != "snapshot" {
 			continue
@@ -96,6 +142,7 @@ func (e *Engine) Renumber(applied []string) (removed []string, files map[string]
 			return nil, nil, nil, fmt.Errorf("%s: %w", f.Path, err)
 		}
 		parentOf[f.Version] = s.ParentVersion
+		marked[f.Version] = baseIsDerived(s.Base)
 	}
 	move := map[string]bool{}
 	for _, f := range all {
@@ -115,6 +162,27 @@ func (e *Engine) Renumber(applied []string) (removed []string, files map[string]
 					return nil, nil, nil, fmt.Errorf("migrate: Go migration %s is built on %s, which would move; renumber cannot change the version of a Go migration", v, p)
 				}
 				move[v], grew = true, true
+			}
+		}
+		// A snapshot generated from a merged state includes every migration older
+		// than itself, so one of those moving past it leaves its state stale: it
+		// moves too, behind them, and its base is recomputed.
+		for v := range marked {
+			if !marked[v] || move[v] {
+				continue
+			}
+			for m := range move {
+				if m >= v {
+					continue
+				}
+				if done[v] {
+					return nil, nil, nil, fmt.Errorf("migrate: version %s is applied and was generated from a merged state that includes pending version %s, which would move behind it; renumber cannot change an applied migration, so renumbering that branch is not possible here", v, m)
+				}
+				if goVersion[v] {
+					return nil, nil, nil, fmt.Errorf("migrate: Go migration %s was generated from a merged state that includes %s, which would move; renumber cannot change the version of a Go migration", v, m)
+				}
+				move[v], grew = true, true
+				break
 			}
 		}
 	}
@@ -139,6 +207,10 @@ func (e *Engine) Renumber(applied []string) (removed []string, files map[string]
 		newVersion[v] = t.Add(time.Duration(i) * time.Second).Format(versionLayout)
 	}
 
+	snaps, err := renumberSnapshots(all, newVersion)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	added := memFS{}
 	var addedNames []string
 	out := map[string][]byte{}
@@ -151,16 +223,8 @@ func (e *Engine) Renumber(applied []string) (removed []string, files map[string]
 		name := nv + strings.TrimPrefix(f.Path, f.Version)
 		body := f.Body
 		if f.Kind == "snapshot" {
-			s, err := ReadSnapshot(bytes.NewReader(f.Body))
-			if err != nil {
-				return nil, nil, nil, fmt.Errorf("%s: %w", f.Path, err)
-			}
-			s.Version = nv
-			if p, ok := newVersion[s.ParentVersion]; ok {
-				s.ParentVersion = p
-			}
 			var buf bytes.Buffer
-			if err := WriteSnapshot(&buf, *s); err != nil {
+			if err := WriteSnapshot(&buf, snaps[f.Version]); err != nil {
 				return nil, nil, nil, err
 			}
 			body = buf.Bytes()

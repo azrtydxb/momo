@@ -408,7 +408,8 @@ Two branches that each add a migration merge with `git merge` and at most one
   version order, and each one contributes what it changed relative to its
   parent. A migration's base is its parent's stored snapshot, because that is
   what it was generated from; a migration written by `diff` or `new --custom`
-  after a merge records `"base": "derived:<sha256>"` in its snapshot, which makes
+  after a merge records `"base": "derived:v1:<sha256>"` in its snapshot (`v1` names the encoding
+  of the hash), which makes
   the parent's derived schema its base, so a later deliberate drop of the other
   branch's table is a change and not swallowed. The hash fingerprints that
   derived schema: when an older branch merges later and changes it, the marked
@@ -467,7 +468,13 @@ migrations and rewriting their `momo.sum` lines, and changes no schema and no
 SQL. It reads the applied versions from the database, or takes them from
 `--applied V1,V2` offline, and it refuses to touch an applied migration. A
 pending migration that builds on a moved one moves with it; an applied one that
-builds on a pending migration is refused. A pending Go migration cannot be moved,
+builds on a pending migration is refused. A migration that `diff` wrote after a
+merge (marked `base`) includes every older migration, so when a pending one
+moves behind it, it moves too, takes the migration before it as its parent and
+gets its marker recomputed; when it is applied, `renumber` refuses before it
+writes anything and names it. `drift` compares the database with the schema of
+the applied migrations only, so a pending older branch is not reported as
+missing. A pending Go migration cannot be moved,
 because its version is set in code: an engine that has it
 (`migrate.WithGoMigrations`) refuses and names it, and the command line, which
 has no Go migrations, cannot see it and says so; give such a migration a later

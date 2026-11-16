@@ -133,12 +133,24 @@ func countObjs(objs map[string]*schema.Schema) int {
 	return n
 }
 
-// stateFingerprint returns a hash of the objects of s, in key order.
+// fingerprintVersion names the canonical encoding stateFingerprint hashes. A
+// marker records it, so a later encoding gets a new version instead of
+// silently invalidating every marker written before.
+const fingerprintVersion = "v1"
+
+// stateFingerprint returns the hash of the objects of s under encoding v1: for
+// each object in key order, the key, a newline, the bytes the object would have
+// as a format-1 snapshot schema (indented JSON, format_version 1) and a
+// newline. The encoding is pinned by a test against a literal hash: changing
+// what goes into it (a schema field, its JSON tags) changes the hash, and the
+// change needs a new fingerprintVersion, not an edit of this one.
 func stateFingerprint(s *schema.Schema) string {
 	h := sha256.New()
 	objs := splitObjects(s)
 	for _, k := range slices.Sorted(maps.Keys(objs)) {
-		b, _ := json.Marshal(objs[k])
+		c := *objs[k]
+		c.FormatVersion = 1
+		b, _ := json.MarshalIndent(&c, "", "  ")
 		h.Write([]byte(k + "\n"))
 		h.Write(b)
 		h.Write([]byte("\n"))
@@ -434,8 +446,26 @@ func foldChain(entries []chainEntry) ([]*schema.Schema, []error) {
 		// A snapshot generated from a derived state is only as good as that
 		// state: when a branch merged since, it is stale.
 		if baseIsDerived(e.snap.Base) && e.snap.Base != derivedBase(states[p]) {
-			problems = append(problems, fmt.Errorf("%w: %s was generated from the merged state after %s, which has changed since (an older branch merged after it was written); regenerate it: delete it and run momo migrate diff, or run momo migrate rebase (see docs/migrations.md)",
-				ErrBranchConflict, e.path, e.snap.ParentVersion))
+			// The state changed because a branch older than the parent merged after
+			// this migration was written. The hash cannot say which, so name the
+			// migrations on other branches older than the parent.
+			onChain := map[int]bool{}
+			for j := p; ; {
+				onChain[j] = true
+				pv := entries[j].snap.ParentVersion
+				if pv == "" {
+					break
+				}
+				j = idx[pv]
+			}
+			var late []string
+			for j := 0; j < p; j++ {
+				if !onChain[j] && len(late) < 5 {
+					late = append(late, entries[j].path)
+				}
+			}
+			problems = append(problems, fmt.Errorf("%w: %s was generated from the merged state after %s, which has changed since: a branch with an older version was merged after it was written (candidates, not on the path to %s: %s); rebase or renumber that branch so it sorts after %s, and if %s is not applied yet, delete it and run momo migrate diff again (see docs/migrations.md)",
+				ErrBranchConflict, e.path, e.snap.ParentVersion, e.snap.ParentVersion, strings.Join(late, ", "), e.snap.ParentVersion, e.path))
 			states[i] = states[i-1]
 			continue
 		}
@@ -594,23 +624,40 @@ func LatestState(fsys fs.FS) (*SnapshotFile, error) {
 	return &out, nil
 }
 
-// stateUpTo is LatestState for the migrations at or before version: the schema
-// after the greatest snapshot not after it, or nil when there is none. A
-// migration without a snapshot of its own leaves the state of the one before it.
-func stateUpTo(fsys fs.FS, version string) (*SnapshotFile, error) {
-	snap, err := snapshotUpTo(fsys, version)
-	if err != nil || snap == nil {
-		return snap, err
-	}
-	entries, err := snapshotEntries(fsys, snap.Version)
+// stateUpTo is LatestState for the migrations the database has applied, at or
+// before version: the schema after the greatest applied snapshot not after it,
+// or nil when there is none. A pending migration older than the newest applied
+// one (a branch merged late) is not part of the database yet and is left out,
+// so drift does not report its objects as missing. A migration without a
+// snapshot of its own leaves the state of the one before it. When none of the
+// snapshots belongs to an applied version, every snapshot up to version counts.
+func stateUpTo(fsys fs.FS, version string, applied map[string]bool) (*SnapshotFile, error) {
+	entries, err := snapshotEntries(fsys, version)
 	if err != nil {
 		return nil, err
 	}
-	st, _, err := deriveState(entries)
+	var kept []chainEntry
+	for _, e := range entries {
+		if applied[e.snap.Version] {
+			kept = append(kept, e)
+		}
+	}
+	if len(kept) == 0 {
+		snap, err := snapshotUpTo(fsys, version)
+		if err != nil || snap == nil {
+			return snap, err
+		}
+		if entries, err = snapshotEntries(fsys, snap.Version); err != nil {
+			return nil, err
+		}
+		kept = entries
+	}
+	snap := kept[len(kept)-1].snap
+	st, _, err := deriveState(kept)
 	if err != nil {
 		return nil, err
 	}
-	out := *snap
+	out := snap
 	out.Schema = st
 	return &out, nil
 }
