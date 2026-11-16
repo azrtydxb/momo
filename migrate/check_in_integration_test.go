@@ -155,13 +155,14 @@ func TestCheckInRoundTrip(t *testing.T) {
 		ctx := context.Background()
 		r := &checkInRun{t: t, db: db, d: d, files: map[string][]byte{}, at: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
 
-		r.migrate(checkInTable(d, "a", "b"), "init", migrate.DiffOptions{})
+		// A list of one value, which PostgreSQL and MySQL store as an equality.
+		r.migrate(checkInTable(d, "a"), "init", migrate.DiffOptions{})
 		r.mustAccept(1, "a")
 		r.mustReject(2, "c")
 		r.mustBeClean()
 
-		// Add a value: one migration, applied, enforced.
-		r.onlyChange(r.migrate(checkInTable(d, "c", "a", "b"), "add_c", migrate.DiffOptions{}), []string{"c"}, nil)
+		// Add values: one migration, applied, enforced.
+		r.onlyChange(r.migrate(checkInTable(d, "c", "a", "b"), "add_bc", migrate.DiffOptions{}), []string{"b", "c"}, nil)
 		r.mustAccept(3, "c")
 		r.mustReject(4, "zzz")
 		r.mustBeClean()

@@ -112,8 +112,11 @@ func ParseCheckIn(expr string) (column string, values []string, ok bool) {
 	switch {
 	case !w[i].punct && !w[i].str && !w[i].quoted && strings.EqualFold(w[i].text, "in"):
 		i++
-	case w[i].punct && w[i].text == "=" && i+2 < len(w) && strings.EqualFold(w[i+1].text, "any") && strings.EqualFold(w[i+2].text, "array"):
+	case w[i].punct && w[i].text == "=" && i+2 < len(w) && !w[i+1].str && strings.EqualFold(w[i+1].text, "any") && strings.EqualFold(w[i+2].text, "array"):
 		i += 3
+	case w[i].punct && w[i].text == "=" && len(w) == 3 && w[2].str:
+		// PostgreSQL and MySQL report a list of one value as an equality.
+		i++
 	default:
 		return "", nil, false
 	}

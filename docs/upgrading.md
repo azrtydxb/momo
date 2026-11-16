@@ -14,7 +14,10 @@ drops it on its next migration; rerun the import to get the declaration.
 `Config.CheckIn` declares a check over a list of values that `migrate diff`
 compares as a set; `momo generate --from-db` now writes a constraint of that
 shape as a `Config.CheckIn` declaration, and a snapshot written without the
-value list still diffs as before.
+value list still diffs as before. On SQLite a named table-level
+`CHECK (col IN (...))` now inspects as a check with a value list, and
+`--from-db` writes it as `Config.CheckIn`, instead of as an enum column; an
+unnamed column check is unchanged.
 
 ## Upgrading to 0.15.0
 
