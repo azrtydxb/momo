@@ -138,10 +138,17 @@ func tmVectorMySQL(t *testing.T, db *momo.DB, cell string) {
 		{ID: 3, Emb: vector.Vector{math.Float32frombits(0x00800000), 0, 0}},
 		{ID: 4, Emb: vector.Vector{0, 0, 0}},
 	}
+	// Diagnostic: does any server refuse a float32 literal just above the limit?
+	if _, err := momo.Exec(ctx, db, "CREATE TABLE tm_flit (v float)"); err == nil {
+		for _, lit := range []string{"3.4028235e+38", "3.4028234e+38", "-3.4028235e+38"} {
+			_, err := momo.Exec(ctx, db, "INSERT INTO tm_flit (v) VALUES ("+lit+")")
+			t.Errorf("diagnostic FLOAT literal %s: err = %v", lit, err)
+		}
+	}
 	// Diagnostic: which texts does the server take for a vector component?
 	if db.Dialect().Flavor == dialect.FlavorMariaDB {
-		for i, txt := range []string{"[3e38,0,0]", "[1e38,0,0]", "[3.4e38,0,0]", "[3.40282e38,0,0]", "[3.4028234e38,0,0]",
-			"[3.40282346e38,0,0]", "[3.4028235e38,0,0]", "[-3.4028234e38,0,0]", "[1e-38,0,0]", "[1.1754944e-38,0,0]"} {
+		for i, txt := range []string{"[1e30,0,0]", "[1e33,0,0]", "[1e35,0,0]", "[1e36,0,0]", "[1e37,0,0]", "[5e37,0,0]",
+			"[-1e30,0,0]", "[1e-30,0,0]", "[0,0,0]", "[1e38,1e38,1e38]"} {
 			_, err := momo.Exec(ctx, db, fmt.Sprintf("INSERT INTO tm_vec (id, emb) VALUES (%d, VEC_FromText(?))", 100+i), txt)
 			t.Errorf("diagnostic %s: err = %v", txt, err)
 		}
