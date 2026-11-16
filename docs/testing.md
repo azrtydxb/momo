@@ -85,11 +85,18 @@ a `momotest_` schema. The option needs:
 - Session-capable connections. A pooler in transaction mode breaks the
   advisory locks, and a pooler that serves one database cannot reach the clone.
 - The `postgres` database to take the locks on when the role may connect to it;
-  database names are cluster-wide, so every process locks in one place.
+  database names are cluster-wide, so every process locks in one place. When
+  `postgres` does not exist or refuses the role, the locks move to the URL's own
+  database, and processes that lock on different databases do not exclude each
+  other.
+- A `postgres://` or `postgresql://` URL. A keyword/value DSN falls back to the
+  schema path, with the reason logged once.
 
-The template build retires templates that no test binary used for seven days:
-each use stamps the template's comment with the time, and the next build drops
-the older ones.
+The template build retires templates that no test binary has a session on and
+that the current role owns. Each use stamps the template's comment with the
+time, and the next build drops a template unused for seven days. A build that
+was started and never finished carries a creation stamp, and the next build
+drops it once it is an hour old.
 
 ## A rollback per test: NewTx
 
@@ -196,8 +203,9 @@ recreating it, or with `DROP SCHEMA momotest_<hex> CASCADE` for each name in
 `DROP DATABASE momotest_db_<hex> WITH (FORCE)` for each `momotest_db_%` name in
 `pg_database`. Template schemas `momotest_tpl_*` stay; template databases
 `momotest_tpldb_*` stay while a test binary uses them and are dropped by the next
-template build once unused for seven days. A half-built template database from a
-killed run is replaced by the next run. Apart from that sweep, `momotest` never
+template build once unused for seven days, or an hour after a build that never
+finished. A run that needs the same half-built template replaces it at once.
+Apart from that sweep, `momotest` never
 drops a schema or database it did not create in the current test.
 
 ## Fixtures: Seed

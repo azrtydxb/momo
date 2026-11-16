@@ -351,6 +351,113 @@ func TestOldTemplatesAreSweptWhenATemplateIsBuilt(t *testing.T) {
 	}
 }
 
+// plantTemplate creates a database named like a template with the given comment
+// and owner (empty for the current role), and drops it when the test ends.
+func plantTemplate(t *testing.T, admin *pgx.Conn, name, owner, comment string) {
+	t.Helper()
+	stmt := "CREATE DATABASE " + pgx.Identifier{name}.Sanitize()
+	if owner != "" {
+		stmt += " OWNER " + pgx.Identifier{owner}.Sanitize()
+	}
+	if _, err := admin.Exec(t.Context(), stmt); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = dropDatabaseOn(context.WithoutCancel(t.Context()), admin, name) })
+	if comment != "" {
+		if _, err := admin.Exec(t.Context(), "COMMENT ON DATABASE "+pgx.Identifier{name}.Sanitize()+" IS '"+comment+"'"); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestSweepDropsAbandonedBuildsAndSkipsForeignOnes plants an old unfinished
+// build, a fresh one, and an old ready template owned by another role, then runs
+// the sweep. It catches a sweep that leaves the abandoned build (it never frees
+// the half-built databases), one that drops a build that may still be running
+// (the fresh one), and one that drops a template of another owner.
+func TestSweepDropsAbandonedBuildsAndSkipsForeignOnes(t *testing.T) {
+	admin := adminConn(t)
+	var super bool
+	if err := admin.QueryRow(t.Context(), "SELECT rolsuper FROM pg_roles WHERE rolname = current_user").Scan(&super); err != nil {
+		t.Fatal(err)
+	}
+	if !super {
+		t.Skip("creating a database for another role needs a superuser")
+	}
+	role := randomName("momotest_owner_")
+	quotedRole := pgx.Identifier{role}.Sanitize()
+	if _, err := admin.Exec(t.Context(), "CREATE ROLE "+quotedRole); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx := context.WithoutCancel(t.Context())
+		for _, stmt := range []string{"DROP OWNED BY " + quotedRole, "DROP ROLE " + quotedRole} {
+			if _, err := admin.Exec(ctx, stmt); err != nil {
+				t.Errorf("%s: %v", stmt, err)
+			}
+		}
+	})
+	at := func(age time.Duration) string { return strconv.FormatInt(time.Now().Add(-age).Unix(), 10) }
+	abandoned := randomName(templateDBPrefix + "bld")
+	fresh := randomName(templateDBPrefix + "new")
+	foreign := randomName(templateDBPrefix + "own")
+	plantTemplate(t, admin, abandoned, "", buildingPrefix+at(abandonedBuildAfter+time.Hour))
+	plantTemplate(t, admin, fresh, "", buildingPrefix+at(time.Minute))
+	plantTemplate(t, admin, foreign, role, readyPrefix+at(sweepAfter+time.Hour))
+
+	sweepTemplates(t.Context(), admin, "momotest_tpldb_keep")
+	if n := databaseCount(t, admin, "datname = $1", abandoned); n != 0 {
+		t.Errorf("the abandoned build %s was not swept", abandoned)
+	}
+	if n := databaseCount(t, admin, "datname = $1", fresh); n != 1 {
+		t.Errorf("the recent build %s was swept", fresh)
+	}
+	if n := databaseCount(t, admin, "datname = $1", foreign); n != 1 {
+		t.Errorf("the template %s owned by another role was swept", foreign)
+	}
+}
+
+// TestWaitReadyReturnsWhenTheBuilderDropped catches a wait that never looks at
+// whether the database still exists: the builder failed and dropped it, and the
+// waiter would spin until its context ends instead of building it itself.
+func TestWaitReadyReturnsWhenTheBuilderDropped(t *testing.T) {
+	admin := adminConn(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	gone, err := waitReady(ctx, admin, randomName(templateDBPrefix+"missing"))
+	if err != nil || !gone {
+		t.Fatalf("waitReady on a missing database = gone %v, err %v; want gone and no error", gone, err)
+	}
+}
+
+// TestAbandonedTemplateIsRebuiltByTheWaiter leaves a database of the template's
+// name with no ready marker and no session, as a killed builder would, and runs
+// the create step that meets it (CREATE DATABASE fails as a duplicate). It
+// catches a waiter that waits for a marker that never comes instead of dropping
+// the abandoned database and building it.
+func TestAbandonedTemplateIsRebuiltByTheWaiter(t *testing.T) {
+	admin := adminConn(t)
+	old := abandonedAfter
+	abandonedAfter = time.Second
+	t.Cleanup(func() { abandonedAfter = old })
+
+	fsys := cloneMigrations(randomName("aband_"), "")
+	c := newConfig([]Option{WithMigrations(fsys)})
+	tpl := templateOf(t, admin, WithMigrations(fsys))
+	plantTemplate(t, admin, tpl, "", "")
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	reason, err := c.createTemplate(ctx, admin, os.Getenv(DefaultEnv), tpl)
+	if err != nil || reason != "" {
+		t.Fatalf("createTemplate = %q, %v; want the abandoned database rebuilt", reason, err)
+	}
+	ready, exists, err := templateState(ctx, admin, tpl)
+	if err != nil || !ready || !exists {
+		t.Fatalf("template state = ready %v exists %v err %v, want ready", ready, exists, err)
+	}
+}
+
 // TestNewFallsBackToASchemaWithoutCreateDB runs New with WithTemplateClone as a
 // role with no CREATEDB. It must build a schema of its own in the shared
 // database, create no template database, and still give the test its tables. It

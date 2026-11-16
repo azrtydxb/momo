@@ -34,6 +34,12 @@ const (
 	// readyPrefix starts the comment of a finished template database; the rest
 	// is the Unix time of its last use, which the sweep reads.
 	readyPrefix = "momotest:ready:"
+	// buildingPrefix starts the comment of a template database that is created
+	// and not yet filled; the rest is the Unix time of its creation.
+	buildingPrefix = "momotest:building:"
+	// abandonedBuildAfter is how old an unfinished build with no session must be
+	// before the sweep drops it.
+	abandonedBuildAfter = time.Hour
 	// sweepAfter is how long a template database may go unused before the next
 	// template build drops it.
 	sweepAfter = 7 * 24 * time.Hour
@@ -91,15 +97,25 @@ func hasPgCode(err error, code string) bool {
 // lockConn opens the administrator connection that takes the template and clone
 // locks. Advisory locks are per database but template and clone names are
 // cluster-wide, so every process locks on the same database: postgres, or the
-// URL's own when the role cannot connect there.
+// URL's own when postgres does not exist or the role may not connect to it
+// (SQLSTATE 3D000, 28000, 42501). Any other connect error fails the test: it
+// would fail on the URL's own database too. Processes that lock on different
+// databases do not exclude each other.
 func lockConn(ctx context.Context, t testing.TB, raw string) *pgx.Conn {
 	t.Helper()
-	if u, err := databaseURL(raw, lockDatabase); err == nil {
-		if conn, err := pgx.Connect(ctx, u); err == nil {
-			return conn
-		}
+	u, err := databaseURL(raw, lockDatabase)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return connect(ctx, t, raw)
+	conn, err := pgx.Connect(ctx, u)
+	switch {
+	case err == nil:
+		return conn
+	case hasPgCode(err, "3D000"), hasPgCode(err, "28000"), hasPgCode(err, sqlstateInsufficientPrivilege):
+		return connect(ctx, t, raw)
+	}
+	t.Fatalf("momotest: connect to the %s database for the locks: %v", lockDatabase, err)
+	return nil
 }
 
 // hashTemplateDB names the template database. On top of the schema template
@@ -197,16 +213,48 @@ func markReady(ctx context.Context, conn *pgx.Conn, name string) error {
 	return ddl(ctx, conn, "COMMENT ON DATABASE %s IS '"+readyPrefix+strconv.FormatInt(time.Now().Unix(), 10)+"'", name)
 }
 
-// waitReady polls until another process has finished building name.
-func waitReady(ctx context.Context, conn *pgx.Conn, name string) error {
+// markBuilding stamps a template database that was just created and is not
+// filled yet, so the sweep can tell an abandoned build from a running one.
+func markBuilding(ctx context.Context, conn *pgx.Conn, name string) error {
+	return ddl(ctx, conn, "COMMENT ON DATABASE %s IS '"+buildingPrefix+strconv.FormatInt(time.Now().Unix(), 10)+"'", name)
+}
+
+// abandonedAfter is how long waitReady sees a template database with no
+// session and no ready marker before it calls the build abandoned. A live build
+// has gaps with no session (between its connections), but not this long.
+var abandonedAfter = 20 * time.Second
+
+// waitReady waits for the build of name that another process runs. It returns
+// gone=true when the database no longer exists (the builder failed and dropped
+// it) or was abandoned and dropped here, and the caller creates it again. It
+// returns with gone=false once the database is ready.
+func waitReady(ctx context.Context, conn *pgx.Conn, name string) (gone bool, err error) {
+	var idleSince time.Time
 	for {
-		ready, _, err := templateState(ctx, conn, name)
-		if err != nil || ready {
-			return err
+		ready, exists, err := templateState(ctx, conn, name)
+		switch {
+		case err != nil:
+			return false, err
+		case ready:
+			return false, nil
+		case !exists:
+			return true, nil
+		}
+		var sessions int
+		if err := conn.QueryRow(ctx, "SELECT count(*) FROM pg_stat_activity WHERE datname = $1", name).Scan(&sessions); err != nil {
+			return false, err
+		}
+		switch {
+		case sessions > 0:
+			idleSince = time.Time{}
+		case idleSince.IsZero():
+			idleSince = time.Now()
+		case time.Since(idleSince) >= abandonedAfter:
+			return true, dropDatabaseOn(ctx, conn, name)
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("template database %s was never marked ready: %w", name, ctx.Err())
+			return false, fmt.Errorf("template database %s was never marked ready: %w", name, ctx.Err())
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
@@ -229,11 +277,15 @@ func dropDatabaseOn(ctx context.Context, conn *pgx.Conn, name string) error {
 	return ddl(ctx, conn, "DROP DATABASE IF EXISTS %s", name)
 }
 
-// sweepTemplates drops the template databases, other than keep, that no process
-// has used for sweepAfter. Best effort: a failure leaves them for the next run.
+// sweepTemplates drops the template databases, other than keep, that the current
+// role owns, that have no session, and that either no process has used for
+// sweepAfter or whose build was abandoned abandonedBuildAfter ago. Best effort:
+// a failure leaves them for the next run.
 func sweepTemplates(ctx context.Context, conn *pgx.Conn, keep string) {
-	rows, err := conn.Query(ctx, `SELECT datname, coalesce(shobj_description(oid, 'pg_database'), '') FROM pg_database
-WHERE datname LIKE 'momotest\_tpldb\_%' AND datname <> $1`, keep)
+	rows, err := conn.Query(ctx, `SELECT d.datname, coalesce(shobj_description(d.oid, 'pg_database'), '') FROM pg_database d
+WHERE d.datname LIKE 'momotest\_tpldb\_%' AND d.datname <> $1
+AND pg_get_userbyid(d.datdba) = current_user
+AND NOT EXISTS (SELECT 1 FROM pg_stat_activity a WHERE a.datname = d.datname)`, keep)
 	if err != nil {
 		return
 	}
@@ -243,11 +295,16 @@ WHERE datname LIKE 'momotest\_tpldb\_%' AND datname <> $1`, keep)
 		if err := rows.Scan(&name, &comment); err != nil {
 			break
 		}
+		limit := sweepAfter
 		stamp, ok := strings.CutPrefix(comment, readyPrefix)
 		if !ok {
-			continue
+			// An unfinished build that no session works on any more.
+			if stamp, ok = strings.CutPrefix(comment, buildingPrefix); !ok {
+				continue
+			}
+			limit = abandonedBuildAfter
 		}
-		if at, err := strconv.ParseInt(stamp, 10, 64); err == nil && time.Since(time.Unix(at, 0)) > sweepAfter {
+		if at, err := strconv.ParseInt(stamp, 10, 64); err == nil && time.Since(time.Unix(at, 0)) > limit {
 			stale = append(stale, name)
 		}
 	}
@@ -309,15 +366,30 @@ func (c *config) buildTemplateDatabase(t testing.TB, raw, schemaName string) (na
 
 // createTemplate creates database name, fills it and marks it ready. A database
 // of that name that appears meanwhile belongs to a process that locks elsewhere;
-// createTemplate waits for it to be ready instead of touching it.
+// createTemplate waits for it to be ready instead of touching it, and creates the
+// database itself when that process failed or was killed and the database is gone.
 func (c *config) createTemplate(ctx context.Context, conn *pgx.Conn, raw, name string) (reason string, err error) {
-	err = ddl(ctx, conn, "CREATE DATABASE %s", name)
+	for {
+		err = ddl(ctx, conn, "CREATE DATABASE %s", name)
+		if !hasPgCode(err, sqlstateDuplicateDatabase) {
+			break
+		}
+		gone, werr := waitReady(ctx, conn, name)
+		if werr != nil {
+			return "", werr
+		}
+		if !gone {
+			return "", nil
+		}
+	}
 	switch {
-	case hasPgCode(err, sqlstateDuplicateDatabase):
-		return "", waitReady(ctx, conn, name)
 	case hasPgCode(err, sqlstateInsufficientPrivilege):
 		return "the server refused CREATE DATABASE", nil
 	case err != nil:
+		return "", err
+	}
+	if err := markBuilding(ctx, conn, name); err != nil {
+		_ = dropDatabaseOn(context.WithoutCancel(ctx), conn, name)
 		return "", err
 	}
 	if err := c.fillTemplateDatabase(ctx, raw, name); err != nil {
@@ -395,6 +467,11 @@ func dropDatabase(t testing.TB, raw, name string) {
 // or nil after logging why the schema path must run instead.
 func (c *config) newClone(t testing.TB, raw string) *momo.DB {
 	t.Helper()
+	// A keyword/value DSN cannot name another database.
+	if _, err := databaseURL(raw, "x"); err != nil {
+		logOnce(t, "momotest: New rebuilds a schema per test (the server URL is not a postgres:// URL; the migrations run for every test)")
+		return nil
+	}
 	template, reason := c.templateDatabase(t, raw)
 	if template == "" {
 		logOnce(t, "momotest: New rebuilds a schema per test ("+reason+"; the migrations run for every test)")
