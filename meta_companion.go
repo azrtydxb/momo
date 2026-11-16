@@ -27,6 +27,20 @@ type CheckInOpts struct{}
 // no-ops at runtime.
 type ForeignKeyOpts struct{}
 
+// SequenceOpts carries the optional parts of a standalone sequence
+// declaration. Its methods are read statically by the generator and are no-ops
+// at runtime.
+type SequenceOpts struct{}
+
+// Sequence declares a PostgreSQL sequence that no column owns, such as the one
+// a column default names with nextval('name'). A serial or identity column owns
+// its sequence and does not need this. Chain Schema, As, Start, Increment,
+// MinValue, MaxValue, Cache and Cycle for what differs from the PostgreSQL
+// defaults. It is a PostgreSQL declaration: generating for SQLite, MySQL or
+// MariaDB refuses it. Read statically by the generator; never executed for its
+// effect.
+func (c *Config) Sequence(name string) *SequenceOpts { return &SequenceOpts{} }
+
 // Index declares a non-unique index over the given field references. Read
 // statically by the generator; never executed for its effect.
 func (c *Config) Index(name string, cols ...any) *IndexOpts { return &IndexOpts{} }
@@ -201,6 +215,41 @@ func (o *FullTextOpts) Expression() *FullTextOpts { return o }
 // -- momo:no-transaction; dialects without a concurrent build ignore it, as
 // they do for an ordinary index.
 func (o *FullTextOpts) Concurrently() *FullTextOpts { return o }
+
+// Schema places the sequence in a PostgreSQL schema other than the current one.
+// Read statically; no-op at runtime.
+func (o *SequenceOpts) Schema(name string) *SequenceOpts { return o }
+
+// As sets the data type of the sequence: "smallint", "integer" or "bigint"
+// (the default). Read statically; no-op at runtime.
+func (o *SequenceOpts) As(dataType string) *SequenceOpts { return o }
+
+// Start sets the first value. The default is MinValue for an ascending
+// sequence and MaxValue for a descending one. Read statically; no-op at
+// runtime.
+func (o *SequenceOpts) Start(n int64) *SequenceOpts { return o }
+
+// Increment sets the step. The default is 1; a negative step makes the
+// sequence descending, and it is never 0. Read statically; no-op at runtime.
+func (o *SequenceOpts) Increment(n int64) *SequenceOpts { return o }
+
+// MinValue sets the lowest value. The default is 1 for an ascending sequence
+// and the smallest value of the type for a descending one. Read statically;
+// no-op at runtime.
+func (o *SequenceOpts) MinValue(n int64) *SequenceOpts { return o }
+
+// MaxValue sets the highest value. The default is the largest value of the
+// type for an ascending sequence and -1 for a descending one. Read statically;
+// no-op at runtime.
+func (o *SequenceOpts) MaxValue(n int64) *SequenceOpts { return o }
+
+// Cache sets how many values a session preallocates. The default is 1. Read
+// statically; no-op at runtime.
+func (o *SequenceOpts) Cache(n int64) *SequenceOpts { return o }
+
+// Cycle makes the sequence wrap around at its bound instead of failing. Read
+// statically; no-op at runtime.
+func (o *SequenceOpts) Cycle() *SequenceOpts { return o }
 
 // Name sets the constraint name of a CheckIn declaration, in place of
 // <table>_<column>_check. Read statically; no-op at runtime.

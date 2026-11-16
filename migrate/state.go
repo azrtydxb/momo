@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"maps"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -78,6 +79,10 @@ func splitObjects(s *schema.Schema) map[string]*schema.Schema {
 	for _, x := range s.Enums {
 		o := one("enum:" + x.Name)
 		o.Enums = append(o.Enums, x)
+	}
+	for _, x := range s.Sequences {
+		o := one(objectKey("sequence", x.Schema, x.Name))
+		o.Sequences = append(o.Sequences, x)
 	}
 	for _, x := range s.Tables {
 		o := one(objectKey("table", x.Schema, x.Name))
@@ -263,6 +268,96 @@ func removesShared(keys map[string]bool, base map[string]*schema.Schema) bool {
 	return false
 }
 
+var (
+	nextvalCall    = regexp.MustCompile(`(?i)nextval\s*\(`)
+	nextvalLiteral = regexp.MustCompile(`(?i)nextval\s*\(\s*'([^']*)'`)
+)
+
+// bareSeqName returns the sequence name of a nextval literal or an object key
+// name without its schema and quotes.
+func bareSeqName(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.LastIndex(s, "."); i >= 0 {
+		s = s[i+1:]
+	}
+	return strings.Trim(s, `"`)
+}
+
+// refsSequence reports whether text may call nextval on the sequence bare: a
+// literal that names it, or a nextval whose argument is not a plain literal and
+// so cannot be read reliably (which counts as a reference, to fail safe).
+func refsSequence(text, bare string) bool {
+	calls := len(nextvalCall.FindAllStringIndex(text, -1))
+	if calls == 0 {
+		return false
+	}
+	lits := nextvalLiteral.FindAllStringSubmatch(text, -1)
+	if len(lits) != calls {
+		return true
+	}
+	for _, m := range lits {
+		if strings.EqualFold(bareSeqName(m[1]), bare) {
+			return true
+		}
+	}
+	return false
+}
+
+// objectRefsSequence reports whether a table or view object reads the sequence
+// bare: a column default or generation expression, a check, or a view query.
+func objectRefsSequence(o *schema.Schema, bare string) bool {
+	if o == nil {
+		return false
+	}
+	for _, t := range o.Tables {
+		for _, c := range t.Columns {
+			if refsSequence(c.Default, bare) || refsSequence(c.Generated, bare) {
+				return true
+			}
+		}
+		for _, ck := range t.Checks {
+			if refsSequence(ck.Expr, bare) {
+				return true
+			}
+		}
+	}
+	for _, v := range o.Views {
+		if refsSequence(v.Query, bare) {
+			return true
+		}
+	}
+	return false
+}
+
+// sequenceDependent reports whether a changed sequence of seqKeys may be used
+// by a table or view the other side changed (as it was before or is after: a
+// column that gains a default on nextval, or loses it): a column default, check
+// or view query that calls nextval on the sequence by name, or on anything that
+// cannot be read as a literal. A function, trigger or policy change is opaque
+// and counts too.
+func sequenceDependent(seqKeys, otherKeys map[string]bool, otherObjs ...map[string]*schema.Schema) bool {
+	for sk := range seqKeys {
+		if keyKind(sk) != "sequence" {
+			continue
+		}
+		_, name, _ := strings.Cut(sk, ":")
+		bare := bareSeqName(name)
+		for ok := range otherKeys {
+			switch keyKind(ok) {
+			case "function", "trigger", "policy":
+				return true
+			case "table", "view":
+				for _, objs := range otherObjs {
+					if objectRefsSequence(objs[ok], bare) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 // opaqueChanged reports whether the change from before to after of the keys
 // touches an object whose body can refer to any table: a function, a trigger
 // or a policy.
@@ -295,6 +390,7 @@ func assemble(d *schema.Schema, objs map[string]*schema.Schema) (*schema.Schema,
 		out.Schemas = append(out.Schemas, o.Schemas...)
 		out.Extensions = append(out.Extensions, o.Extensions...)
 		out.Enums = append(out.Enums, o.Enums...)
+		out.Sequences = append(out.Sequences, o.Sequences...)
 		out.Tables = append(out.Tables, o.Tables...)
 		out.Views = append(out.Views, o.Views...)
 		out.Functions = append(out.Functions, o.Functions...)
@@ -514,6 +610,10 @@ func foldChain(entries []chainEntry) ([]*schema.Schema, []error) {
 			opaqueChanged(runKeys, base, running) && hasKind(mineKeys, "table", "view", "function") {
 			j := other(i, func(t map[string]bool) bool { return len(t) > 0 })
 			conflict("%s and %s: one changes a function, trigger or policy, whose body can refer to any table, view or function, while the other changes a table, view or function", name(j), e.path)
+		}
+		if sequenceDependent(mineKeys, runKeys, base, running) || sequenceDependent(runKeys, mineKeys, base, mine) {
+			j := other(i, func(t map[string]bool) bool { return len(t) > 0 })
+			conflict("%s and %s: one changes a sequence that a table or view of the other may use through nextval (or changes a function, trigger or policy)", name(j), e.path)
 		}
 		if removesShared(mineKeys, base) && hasKind(runKeys, "table", "view", "function") ||
 			removesShared(runKeys, base) && hasKind(mineKeys, "table", "view", "function") {

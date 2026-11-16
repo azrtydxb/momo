@@ -912,11 +912,15 @@ type objectSpec[T any] struct {
 	ident                 func(*T) (schema, table, name string)
 	equal                 func(a, b *T) bool
 	create, drop, replace ChangeKind
+	// destructiveDrop marks a drop that loses state the schema cannot restore.
+	destructiveDrop bool
 }
 
 func viewKey(v *schema.View) string { return v.Schema + "\x00" + v.Name }
 
 func funcKey(f *schema.Function) string { return f.Schema + "\x00" + f.Name + "\x00" + f.Args }
+
+func sequenceKey(q *schema.Sequence) string { return q.Schema + "\x00" + q.Name }
 
 func triggerKey(t *schema.Trigger) string { return t.Schema + "\x00" + t.Table + "\x00" + t.Name }
 
@@ -937,7 +941,7 @@ func diffObjects[T any](d *differ, s objectSpec[T], fromN, toN, fromO, toO []T) 
 	fromNM, toNM, fromOM, toOM := index(fromN), index(toN), index(fromO), index(toO)
 	change := func(kind ChangeKind, o, before, after *T) {
 		sch, tbl, name := s.ident(o)
-		c := Change{Kind: kind, Schema: sch, Table: tbl, Name: name}
+		c := Change{Kind: kind, Schema: sch, Table: tbl, Name: name, Destructive: s.destructiveDrop && kind == s.drop}
 		if before != nil {
 			c.Before = cp(*before)
 		}
@@ -984,6 +988,15 @@ var (
 		equal:  func(a, b *schema.Function) bool { return *a == *b },
 		create: CreateFunction, drop: DropFunction, replace: ReplaceFunction,
 	}
+	// A sequence has no body to replace: an altered one is one alter_sequence
+	// change, and a dropped one loses its counter, so it is destructive.
+	sequenceSpec = objectSpec[schema.Sequence]{
+		key:    sequenceKey,
+		ident:  func(q *schema.Sequence) (string, string, string) { return q.Schema, "", q.Name },
+		equal:  func(a, b *schema.Sequence) bool { return reflect.DeepEqual(*a, *b) },
+		create: CreateSequence, drop: DropSequence, replace: AlterSequence,
+		destructiveDrop: true,
+	}
 	triggerSpec = objectSpec[schema.Trigger]{
 		key:    triggerKey,
 		ident:  func(t *schema.Trigger) (string, string, string) { return t.Schema, t.Table, t.Name },
@@ -998,8 +1011,9 @@ var (
 	}
 )
 
-// objects diffs the views, functions, triggers and policies.
+// objects diffs the sequences, views, functions, triggers and policies.
 func (d *differ) objects(from, to *schema.Schema) {
+	diffObjects(d, sequenceSpec, d.fromNorm.Sequences, d.toNorm.Sequences, from.Sequences, to.Sequences)
 	diffObjects(d, viewSpec, d.fromNorm.Views, d.toNorm.Views, from.Views, to.Views)
 	diffObjects(d, functionSpec, d.fromNorm.Functions, d.toNorm.Functions, from.Functions, to.Functions)
 	diffObjects(d, triggerSpec, d.fromNorm.Triggers, d.toNorm.Triggers, from.Triggers, to.Triggers)

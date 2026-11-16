@@ -69,6 +69,13 @@ Adding the optional column field `generated_virtual` (a VIRTUAL generated
 column on MySQL and SQLite) did not bump `format_version`: a snapshot without
 it loads and its generated columns are STORED.
 
+The same holds for the optional `sequences` key, the standalone PostgreSQL
+sequences (section 7): a snapshot without it loads with none, and the format
+version stays the same. A momo release that predates the key reads a snapshot
+that has it without an error and ignores the sequences, so it plans neither
+their creation nor their drop and reports no drift for them. Read and write
+snapshots with one momo release.
+
 ### Diff
 
 `momo migrate diff <name>` runs offline (no database, no driver). It loads the
@@ -268,9 +275,11 @@ finding:
 | `unverified: <kind> <name>`        | Not compared and does not affect the exit code (below).                                                                                                                                                                   |
 
 - Extension versions are ignored when either side leaves the version empty.
+- A sequence no column owns is a `sequence` object: `missing`, `unmanaged` or
+  `changed` (the differing fields, such as `increment`) like any other.
 - Hide objects you do not manage with `migrate.exclude` (globs over `name` or
-  `schema.name`; they apply to tables, views, functions, enums, extensions,
-  triggers and policies). Example: `exclude: ["pg_stat_statements", "audit_*"]`.
+  `schema.name`; they apply to tables, views, functions, enums, sequences,
+  extensions, triggers and policies). Example: `exclude: ["pg_stat_statements", "audit_*"]`.
   PostgreSQL inspection applies the globs while it reads, before an object is
   examined: a matching table is skipped before its columns, constraints, indexes
   and partitions are read, a matching view or function before its definition is
@@ -438,6 +447,12 @@ Two branches that each add a migration merge with `git merge` and at most one
     recorded, the other branch must change no table;
   - when one branch changes a function, a trigger or a policy, whose body is
     opaque, the other changes no table, view or function;
+  - a sequence is its own object: when one branch changes a sequence, the
+    other changes no table or view whose column default, generation expression,
+    check or query calls `nextval` on it by name, or calls `nextval` on anything
+    that cannot be read as a plain literal, and no function, trigger or policy;
+    two different sequences, or a sequence beside tables that do not use it, are
+    independent;
   - when one branch removes or alters an enum, an extension or a schema
     namespace, the other changes no table, view or function, because any of
     them may use it (adding one is independent);
@@ -1556,6 +1571,80 @@ role that has `CREATE` on the database (for example the owner role), or grant it
 for that run. It takes the lock and refuses on dirty or checksum problems like
 `apply`.
 
+### Standalone sequences
+
+A column default can call `nextval` on a sequence that no column owns, for
+example `DEFAULT nextval('jobs_seq')`. A `serial` or identity column owns its
+sequence, and the column declares it. Any other sequence is a schema object of
+its own, kept in the snapshot as `schema.Sequence` and declared by a model with
+`momo.Config.Sequence`:
+
+```go
+package main
+
+import (
+	"fmt"
+
+	"github.com/azrtydxb/momo"
+)
+
+type Job struct {
+	momo.Model `momo:"table:jobs"`
+	ID         int64 `momo:"pk"`
+	Target     string
+}
+
+func (j *Job) MomoConfig(c *momo.Config) {
+	c.Default(&j.ID, "nextval('jobs_seq'::regclass)")
+	c.Sequence("jobs_seq").Start(1000).Increment(10).Cache(20)
+}
+
+func main() {
+	var j Job
+	j.MomoConfig(&momo.Config{})
+	fmt.Println("declared", j.ID)
+}
+```
+
+The chain of `momo.SequenceOpts` sets the schema name, the data type with `As`
+(`"smallint"`, `"integer"` or `"bigint"`), `Start`, `Increment`, `MinValue`,
+`MaxValue`, `Cache` and `Cycle`, with integer literals for the numbers. A declaration names only what
+differs from the PostgreSQL defaults (bigint, increment 1, cache 1, bounds from
+the type and the direction, start at the minimum), so a bare `c.Sequence` equals
+the sequence PostgreSQL reports for `CREATE SEQUENCE name`. A value you name is
+kept as written, including 0 (`Start(0).MinValue(0)` is a counter that starts at
+zero). The generator refuses a sequence PostgreSQL would reject: a type other
+than the three above, `MinValue` above `MaxValue`, a bound outside the range
+of the type, a `Start` outside the bounds, or an `Increment` of 0.
+
+- `momo generate --from-db` reads every sequence that no column owns (a
+  sequence with an `OWNED BY` column, a serial column's or an identity column's,
+  is not one), writes a `c.Sequence` call for each on the first model and keeps
+  it in the init snapshot. The init migration then creates the sequence before
+  the tables whose defaults call it.
+- `diff` renders `CREATE SEQUENCE` before the tables, one `ALTER SEQUENCE` for a
+  changed option, and `DROP SEQUENCE` after the tables that used it. A drop
+  loses the counter, so it needs `--allow-destructive`. `AutoMigrate` creates a
+  missing sequence and leaves an alteration or a drop to a migration.
+- `drift` and `baseline` compare sequences like any other object, so a sequence
+  that is only in the database is `unmanaged: sequence <name>`. Hide one with
+  `migrate.exclude`.
+- Narrowing the bounds of a sequence past its current value, or flipping its
+  increment so that the value falls outside the new bounds, fails at apply with
+  PostgreSQL's own error (SQLSTATE 22023); momo never adds a `RESTART`. Run an
+  explicit `ALTER SEQUENCE ... RESTART` in a custom migration first.
+- A sequence has a current value, which is data and not part of the schema. A
+  new environment starts at the declared start; set the counter of a loaded
+  database with `setval` in a custom migration.
+- A sequence that is later attached to a column with `ALTER SEQUENCE` and
+  `OWNED BY` becomes column-owned and is no longer a standalone sequence, so
+  remove its `c.Sequence` declaration.
+- `introspect.only` (`migrate.Config.OnlyTables`) does not filter sequences,
+  the same as views and functions; use `migrate.exclude` to hide one.
+- SQLite, MySQL and MariaDB have no sequence in the schema model: generating
+  for them refuses a `c.Sequence` call, and rendering a sequence change for them
+  fails with `momo.ErrUnsupported`.
+
 ### Roles and extensions (verified)
 
 Checked on CI with a role that is not a superuser and has no `CREATE` on the
@@ -1639,9 +1728,10 @@ step on a copy of production.
 2. **Declare what you do not own.** Put the extension a superuser installs in
    `migrate.external_extensions`. Put tables, views and functions that stay
    outside the models (an analytics schema, an audit table, Prisma's
-   `_prisma_migrations`) in `migrate.exclude`. Roles, grants and sequences
-   outside a column are not part of the schema model; they stay in hand-written
-   SQL.
+   `_prisma_migrations`) in `migrate.exclude`. Roles and grants are not
+   part of the schema model; they stay in hand-written SQL. A sequence no
+   column owns is: declare it with `c.Sequence` (section 7), or hide it with
+   `migrate.exclude`.
 3. **Write the initial migration.** `momo migrate diff init` against an empty
    directory. Do not apply it. Read the generated SQL: it is what a new
    environment would run, and it must build the schema you have.
@@ -1819,7 +1909,7 @@ default, and the history table is left out.
 column is `AUTO_INCREMENT` (`by_default`; `always` and `serial` are refused). A
 default that is not a literal or `CURRENT_TIMESTAMP` is wrapped in parentheses,
 as MySQL requires. Partial indexes, storage parameters, operator classes,
-enums, views, functions, triggers and policies have no MySQL rendering yet and
+enums, sequences, views, functions, triggers and policies have no MySQL rendering yet and
 are refused. The `hash` index method is refused: InnoDB builds it as BTREE. Dropping a
 foreign key also drops the index MySQL built for it, when one exists, unless
 another foreign key of the table starts with the same column: that key may rely

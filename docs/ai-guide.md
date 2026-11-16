@@ -1418,10 +1418,21 @@ _, err = momo.Update[models.Task](q).Model(&cur).Exec(ctx)
   success your struct's version field is advanced. Reload the row and retry on
   `ErrOptimisticLock`.
 - Only `UpdateQuery.Model` checks and advances the version. A `UpdateQuery.Set`-based update,
-  `Upsert` and relation helpers do NOT. DON'T `Column.Set` the version, pk, soft-delete,
-  created_at or updated_at column directly (`ErrValidation`); writing a
+  `Upsert` and relation helpers do NOT. DON'T `Column.Set` the version, pk (see
+  `AllowKeyChange` below), soft-delete, created_at or updated_at column directly (`ErrValidation`); writing a
   `read_only`, `immutable` (on update) or identity column is `ErrValidation`.
   `Rows` is not supported on a versioned `Model` update; use `Exec`.
+- To rename a primary key, add `.AllowKeyChange()` to an update that assigns the key
+  with `UpdateQuery.Set` and find the row by its old key in `UpdateQuery.Where`.
+  Without it a key assignment is `ErrValidation`. Every key column of a composite
+  key may be set. A key held by another row is `ErrUniqueViolation`; foreign keys
+  declared `ON UPDATE CASCADE` follow the new key (SQLite needs foreign keys on,
+  which `sqlitedriver` does by default). Read the row back by the NEW key.
+  `Returning` yields the new key on PostgreSQL and SQLite; MySQL and MariaDB have
+  no `UPDATE ... RETURNING` (`ErrUnsupported`), so select by the new key instead.
+  `UpdateQuery.Model`, `BulkUpdate`, the `OnUpdate` field hook and an identity key
+  still refuse a key assignment, and `AllowKeyChange` on a `BulkUpdate` is
+  `ErrValidation`.
 - `updated_at` is set automatically on `Update` (Set or Model), not on raw SQL
   and not on relation helpers.
 - An `Update` with no assignment is a touch when the model has an `updated_at`

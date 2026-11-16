@@ -114,7 +114,7 @@ func planRounds(s *schema.Schema, tablesOnly bool) []*canonRound {
 	var rounds []*canonRound
 	round := func(i int) *canonRound {
 		for len(rounds) <= i {
-			rounds = append(rounds, &canonRound{sub: &schema.Schema{Dialect: dialect.Postgres, Enums: s.Enums}})
+			rounds = append(rounds, &canonRound{sub: &schema.Schema{Dialect: dialect.Postgres, Enums: s.Enums, Sequences: s.Sequences}})
 		}
 		return rounds[i]
 	}
@@ -310,7 +310,7 @@ func (d Dialect) canonicalizeRound(ctx context.Context, c momo.PinnedConn, r *ca
 // a failure of one table's statements aborts the round.
 func (d Dialect) createEachTable(ctx context.Context, c momo.PinnedConn, sub *schema.Schema) ([]int, error) {
 	empty := &schema.Schema{Dialect: dialect.Postgres}
-	base, err := scratchModel(&schema.Schema{Dialect: dialect.Postgres, Enums: sub.Enums})
+	base, err := scratchModel(&schema.Schema{Dialect: dialect.Postgres, Enums: sub.Enums, Sequences: sub.Sequences})
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +323,7 @@ func (d Dialect) createEachTable(ctx context.Context, c momo.PinnedConn, sub *sc
 	}
 	var failed []int
 	for k, t := range sub.Tables {
-		one, err := scratchModel(&schema.Schema{Dialect: dialect.Postgres, Enums: sub.Enums, Tables: []schema.Table{t}})
+		one, err := scratchModel(&schema.Schema{Dialect: dialect.Postgres, Enums: sub.Enums, Sequences: sub.Sequences, Tables: []schema.Table{t}})
 		if err != nil {
 			return nil, err
 		}
@@ -430,6 +430,13 @@ func scratchModel(s *schema.Schema) (*schema.Schema, error) {
 		}
 		seen[k] = true
 		return nil
+	}
+	for i := range m.Sequences {
+		q := &m.Sequences[i]
+		q.Schema = ""
+		if err := dup("sequence", q.Name); err != nil {
+			return nil, err
+		}
 	}
 	for i := range m.Tables {
 		t := &m.Tables[i]

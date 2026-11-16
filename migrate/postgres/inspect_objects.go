@@ -31,6 +31,15 @@ JOIN pg_class rc ON rc.oid = d.refobjid
 JOIN pg_namespace rn ON rn.oid = rc.relnamespace
 WHERE v.oid = $1 AND rc.oid <> v.oid AND d.classid = 'pg_rewrite'::regclass AND d.refclassid = 'pg_class'::regclass
 ORDER BY 1,2`
+	// Only sequences no column depends on: deptype 'a' is the auto dependency of
+	// an OWNED BY sequence (a serial column's) and 'i' the internal one of an
+	// identity column's. Those belong to their column and are read with it.
+	qSequences = `SELECT n.nspname, c.relname, format_type(s.seqtypid, NULL), s.seqstart, s.seqincrement,
+  s.seqmin, s.seqmax, s.seqcache, s.seqcycle
+FROM pg_sequence s JOIN pg_class c ON c.oid = s.seqrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = ANY($1)
+  AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype IN ('a','i','e'))
+ORDER BY 1,2`
 	qFunctions = `SELECT n.nspname, p.proname, pg_get_function_arguments(p.oid), pg_get_function_result(p.oid),
   l.lanname, p.provolatile::text, p.prosrc, p.proisstrict, p.prosecdef
 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace JOIN pg_language l ON l.oid = p.prolang
@@ -79,7 +88,7 @@ const (
 	trigInstead  = 64
 )
 
-// inspectObjects fills Views, Functions, Triggers and Policies of s from the
+// inspectObjects fills Sequences, Views, Functions, Triggers and Policies of s from the
 // given schemas. Table-level RLS flags and partition information are read
 // with the tables themselves (inspect.go); partition children are tables
 // carrying PartitionOf.
@@ -92,6 +101,9 @@ func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.
 		return fmt.Errorf("current_schema() is NULL: the search_path names no existing schema")
 	}
 	in := &inspector{c: c, current: *cur, managed: schemas, exclude: exclude, only: only}
+	if err := in.sequences(ctx, s); err != nil {
+		return fmt.Errorf("sequences: %w", err)
+	}
 	if err := in.views(ctx, s); err != nil {
 		return fmt.Errorf("views: %w", err)
 	}
@@ -190,6 +202,26 @@ func (in *inspector) views(ctx context.Context, s *schema.Schema) error {
 		s.Views = append(s.Views, v)
 	}
 	return nil
+}
+
+// sequences reads the sequences that no column owns. Each one carries every
+// field, so it compares equal to a declaration after NormalizeSequence.
+func (in *inspector) sequences(ctx context.Context, s *schema.Schema) error {
+	return forEach(ctx, in.c, qSequences, []any{in.managed}, func(r momo.Rows) error {
+		var ns string
+		var q schema.Sequence
+		var start, minValue, maxValue int64
+		if err := r.Scan(&ns, &q.Name, &q.AsType, &start, &q.Increment, &minValue, &maxValue, &q.Cache, &q.Cycle); err != nil {
+			return err
+		}
+		q.Start, q.MinValue, q.MaxValue = &start, &minValue, &maxValue
+		if in.excluded(ns, q.Name) {
+			return nil
+		}
+		q.Schema = in.optSchema(ns)
+		s.Sequences = append(s.Sequences, q)
+		return nil
+	})
 }
 
 func (in *inspector) functions(ctx context.Context, s *schema.Schema) error {

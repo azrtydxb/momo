@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/floatfmt"
 )
 
 // RowExpr is a row value, (a, b, ...), compared as a whole with another row
@@ -165,11 +166,10 @@ func litText(d dialect.Name, v any) (string, error) {
 		if math.IsNaN(f) || math.IsInf(f, 0) {
 			return "", errors.New("literal float must be finite")
 		}
-		bits := 64
+		s := strconv.FormatFloat(f, 'g', -1, 64)
 		if rv.Kind() == reflect.Float32 {
-			bits = 32
+			s = floatfmt.Float32(float32(f))
 		}
-		s := strconv.FormatFloat(f, 'g', -1, bits)
 		if !strings.ContainsAny(s, ".e") {
 			s += ".0"
 		}

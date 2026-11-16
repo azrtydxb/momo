@@ -129,6 +129,38 @@ func TestForkSharedTypeRemovalConflictsWithTableChange(t *testing.T) {
 	}
 }
 
+const seqS = `"sequences":[{"name":"s"}]`
+
+// A table whose id defaults to nextval of the sequence s.
+func tableUsingS() string {
+	return `{"name":"u","columns":[{"name":"id","type":"bigint","default":"nextval('s'::regclass)"}]}`
+}
+
+// A sequence on one branch and an unrelated table on the other are independent;
+// so are two different sequences.
+func TestForkSequenceIndependence(t *testing.T) {
+	root := rootWith(noKeyTable("t", "bigint"))
+	seq := pbBranchWith(root, pbVA, "add_s", pbSnapshotExtra(pbVA, []string{noKeyTable("t", "bigint")}, seqS))
+	table := pbBranchWith(root, pbVB, "add_u", pbTablesOnly(pbVB, noKeyTable("t", "bigint"), noKeyTable("u", "bigint")))
+	wantMerge(t, pbMerge(t, seq, table))
+	other := pbBranchWith(root, pbVB, "add_r", pbSnapshotExtra(pbVB, []string{noKeyTable("t", "bigint")}, `"sequences":[{"name":"r"}]`))
+	wantMerge(t, pbMerge(t, seq, other))
+}
+
+// A sequence dropped on one side while the other adds a column defaulting to
+// its nextval conflicts; so does the same sequence changed on both sides.
+func TestForkSequenceDropVersusNextvalDefault(t *testing.T) {
+	root := fstest.MapFS{
+		pbV0 + "_init.up.sql":        pbFile("-- momo:generated\nSELECT 1;\n"),
+		pbV0 + "_init.snapshot.json": pbFile(strings.Replace(pbSnapshotExtra(pbV0, []string{noKeyTable("t", "bigint")}, seqS), `"parent":"`+pbV0+`"`, `"parent":""`, 1)),
+	}
+	drop := pbBranchWith(root, pbVA, "drop_s", pbSnapshotExtra(pbVA, []string{noKeyTable("t", "bigint")}, `"sequences":[]`))
+	use := pbBranchWith(root, pbVB, "add_u", pbSnapshotExtra(pbVB, []string{noKeyTable("t", "bigint"), tableUsingS()}, seqS))
+	wantConflict(t, pbMerge(t, drop, use), "sequence")
+	alter := pbBranchWith(root, pbVB, "alter_s", pbSnapshotExtra(pbVB, []string{noKeyTable("t", "bigint")}, `"sequences":[{"name":"s","cache":5}]`))
+	wantConflict(t, pbMerge(t, drop, alter), `sequence "s"`)
+}
+
 // Adding an enum next to a table change is independent.
 func TestForkAddingAnEnumMergesWithTableChange(t *testing.T) {
 	root := rootWith(noKeyTable("t", "bigint"))

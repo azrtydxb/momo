@@ -1,6 +1,6 @@
 # M2: SQLite + sqlite-vec parity
 
-Status: open
+Status: done 2026-11-16
 Created: 2026-11-04
 
 ## Goal

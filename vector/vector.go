@@ -10,6 +10,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	"github.com/azrtydxb/momo/internal/floatfmt"
 )
 
 // MaxDim is the storage limit for the dimension of vector and halfvec
@@ -200,9 +202,8 @@ func (b Bits) Value() (driver.Value, error) {
 	return string(out), nil
 }
 
-func formatFloat(x float32) string {
-	return strconv.FormatFloat(float64(x), 'g', -1, 32)
-}
+// formatFloat is the text of x that a server accepts; see floatfmt.Float32.
+func formatFloat(x float32) string { return floatfmt.Float32(x) }
 
 func formatDense(v []float32) string {
 	var sb strings.Builder
