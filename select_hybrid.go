@@ -364,7 +364,7 @@ vec_hits AS (
     SELECT t.%[1]s AS pk, VEC_DISTANCE_COSINE(t.%[5]s, VEC_FromText(?)) AS dist
     FROM %[3]s t
     WHERE t.%[5]s IS NOT NULL%[6]s
-    ORDER BY dist ASC
+    ORDER BY dist ASC, t.%[1]s ASC
     LIMIT ?
   ) s
   WHERE dist IS NOT NULL

@@ -11,6 +11,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/fakedriver"
+	"github.com/azrtydxb/momo/internal/obstest"
 	"github.com/azrtydxb/momo/schema"
 	"github.com/azrtydxb/momo/vector"
 )
@@ -94,6 +95,39 @@ func TestHybridSearchEmptyTextLegGolden(t *testing.T) {
 		}
 		if len(c.Args) != 6 || c.Args[0] != 100 || c.Args[2] != 100 || c.Args[3] != 60 || c.Args[4] != 60 || c.Args[5] != 10 {
 			t.Errorf("%s: args = %#v", name, c.Args)
+		}
+	}
+}
+
+// Catches: a sensitive text column leaving the query text visible in a hook
+// event, at either of the two places MariaDB binds it.
+func TestHybridSearchSensitiveTextMariaDB(t *testing.T) {
+	rec := &obstest.Recorder{}
+	db := momo.New(mariaDBFake(), momo.WithHook(rec), momo.WithArgLogging())
+	spec := hybridSpec()
+	spec.Text = momo.NewColumn[string]("docs", "body", momo.FlagSensitive)
+	spec.Query = "secret words"
+	if _, err := momo.HybridSearch[searchDoc](db, spec).All(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	var ev *obstest.Event
+	for _, e := range rec.Events() {
+		if e.Op == "select" {
+			e := e
+			ev = &e
+		}
+	}
+	if ev == nil {
+		t.Fatalf("no select event recorded: %v", rec.Events())
+	}
+	// MATCH is rendered twice (the score and the filter), so the query text is
+	// bound at positions 0 and 1.
+	if len(ev.Args) < 2 || ev.Args[0] != momo.RedactedArg || ev.Args[1] != momo.RedactedArg {
+		t.Fatalf("hook saw args %v, want both query-text binds as RedactedArg", ev.Args)
+	}
+	for _, a := range ev.Args {
+		if s, ok := a.(string); ok && strings.Contains(s, "secret") {
+			t.Errorf("hook saw the query text: %v", ev.Args)
 		}
 	}
 }
