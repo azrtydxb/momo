@@ -91,18 +91,28 @@ position, in the form `source: kind: Model.Field: message`.
 Read the report before you trust the converted models. `importer.Report.Has(kind)` and
 `importer.Report.Of(kind)` filter it in code. The kinds are:
 
-| Kind                  | Meaning                                                                                                                                  |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `zero-value-handling` | the source ORM treats a zero value as unset and applies a default; Momo writes the zero value (use a pointer to leave it unset)          |
-| `implicit-save`       | the source ORM saves an association together with its parent; Momo writes only the model you pass                                        |
-| `go-default`          | the source ORM computes a default in Go (timestamps, generated values); Momo needs a tag or a database default                           |
-| `unsupported`         | something the reader cannot convert (an unreadable tag, an unknown builder call, a type with no mapping); convert it by hand             |
-| `renamed-type`        | the field type changes on import, for example `gorm.DeletedAt` becomes `*time.Time`, and the automatic filter does not carry over        |
-| `dropped-field`       | a field that does not become a column (ignored with `-`, scan-only, relation fields) is not imported                                     |
-| `dropped-index`       | an index Momo's tags cannot express (a composite index, a second index tag on a field) is not imported; declare it in the companion file |
-| `naming`              | a table, column, constraint or foreign key name that Momo derives itself, or a naming strategy the reader cannot see; check the names    |
-| `version-mapped`      | a migration version was renumbered while importing migration history (`importer/history`)                                                |
-| `go-side-rule`        | a validator, immutable field, hook or policy that the source ORM runs in Go and Momo does not                                            |
+| Kind                  | Meaning                                                                                                                                                   |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zero-value-handling` | the source ORM treats a zero value as unset and applies a default; Momo writes the zero value (use a pointer to leave it unset)                           |
+| `implicit-save`       | the source ORM saves an association together with its parent; Momo writes only the model you pass                                                         |
+| `go-default`          | the source ORM computes a default in Go (timestamps, generated values); Momo needs a tag or a database default                                            |
+| `unsupported`         | something the reader cannot convert (an unreadable tag, an unknown builder call, a type with no mapping); convert it by hand                              |
+| `renamed-type`        | the field type changes on import, for example `gorm.DeletedAt` becomes `*time.Time`, and the automatic filter does not carry over                         |
+| `dropped-field`       | a field that does not become a column (ignored with `-`, scan-only, relation fields) is not imported                                                      |
+| `dropped-index`       | a second index or unique constraint on one field, which Momo's one-index-per-field tags cannot express, is not imported; declare it in the companion file |
+| `naming`              | a table, column, constraint or foreign key name that Momo derives itself, or a naming strategy the reader cannot see; check the names                     |
+| `version-mapped`      | a migration version was renumbered while importing migration history (`importer/history`)                                                                 |
+| `go-side-rule`        | a validator, immutable field, hook or policy that the source ORM runs in Go and Momo does not                                                             |
 
 The importer never drops one of these silently: an empty report means the
 reader found nothing to flag, not that it checked behaviour it cannot see.
+
+A composite index is not in the report: the importers write it as a
+`c.Index(name, &m.A, &m.B)` call, with `.Unique()` for a unique one, in a
+`MomoConfig` method of the model. GORM columns follow the `priority` of each
+`index` or `uniqueIndex` tag and the field order, a Bun column follows the
+field order of its `unique:name` group, and an Ent index keeps the order of
+`index.Fields`. What stays in the report is a second index or unique
+constraint on one field, an index option such as `where` or `type` that the
+tags cannot carry (`unsupported`), and an index whose column has no field in
+the imported model.

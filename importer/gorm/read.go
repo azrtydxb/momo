@@ -43,9 +43,10 @@ var namer = naming.GORM{}
 // field with a default (GORM replaces a zero value with the default on create,
 // and skips zero fields in struct updates), go-default for a default that is a
 // Go-side value, and unsupported for what cannot be converted. Constraint and
-// unique names Momo cannot carry, and indexes it cannot express (composite
-// ones), are reported as naming and dropped-index changes and do not block the
-// import.
+// unique names Momo cannot carry, and indexes it cannot express (a second
+// index tag on one field), are reported as naming and dropped-index changes
+// and do not block the import. Indexes that several fields share by name
+// become composite indexes of the model.
 func Read(dir string) ([]importer.Model, *importer.Report, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -350,7 +351,21 @@ func (r *reader) localStruct(t ast.Expr) *structInfo {
 type modelState struct {
 	explicitPK   bool
 	explicitAuto map[string]bool // field name -> autoIncrement:true was written
+	// idx holds every index tag of the model in source order; finishModel
+	// turns the ones that share a name into composite indexes.
+	idx []indexTag
 }
+
+// indexTag is one index or uniqueIndex tag on a field.
+type indexTag struct {
+	name     string
+	field    string
+	unique   bool
+	priority int
+}
+
+// defaultPriority is the priority GORM gives an index field without one.
+const defaultPriority = 10
 
 func (r *reader) build() ([]importer.Model, *importer.Report, error) {
 	r.classify()
@@ -626,7 +641,7 @@ func (r *reader) column(m *importer.Model, st *modelState, si *structInfo, f *as
 		return
 	}
 	r.applyDefault(m, &fld, tag, base, pos)
-	r.applyIndexes(&fld, tag, all, m)
+	r.applyIndexes(&fld, tag, all, m, st)
 	for _, auto := range [][2]string{{"CreatedAt", "AUTOCREATETIME"}, {"UpdatedAt", "AUTOUPDATETIME"}} {
 		name, key := auto[0], auto[1]
 		if n.Name == name && !has(tag, key) && (kind == "time" || bits != 0) {
@@ -679,58 +694,57 @@ func defaultIndexName(m *importer.Model, fld *importer.Field) string {
 	return "idx_" + m.Table + "_" + namer.ColumnName(fld.Name)
 }
 
-// applyIndexes reads unique, index and uniqueIndex. A field can carry several
-// index tags; Momo's tags name one index per field, so the first is kept and
-// the others are reported as dropped.
-func (r *reader) applyIndexes(fld *importer.Field, tag map[string]string, all map[string][]string, m *importer.Model) {
+// applyIndexes reads unique, index and uniqueIndex. The index tags are only
+// recorded here: finishModel decides which ones are composite, and for the
+// rest a field carries one index tag (Momo's tags name one index per field), so
+// the first is kept and the others are reported as dropped.
+func (r *reader) applyIndexes(fld *importer.Field, tag map[string]string, all map[string][]string, m *importer.Model, st *modelState) {
 	if has(tag, "UNIQUE") && tag["UNIQUE"] != "false" {
 		fld.Unique = true // a UNIQUE constraint, which GORM names uni_<table>_<column>
 		fld.UniqueName = "uni_" + m.Table + "_" + fld.Column
 	}
-	kept := false
 	for _, key := range []string{"INDEX", "UNIQUEINDEX"} {
 		for _, v := range all[key] {
 			name, opts, _ := strings.Cut(v, ",")
-			if name == "" {
-				name = defaultIndexName(m, fld)
-			}
 			unique := key == "UNIQUEINDEX"
-			composite := false
+			priority := defaultPriority
+			group := ""
+			rejected := false
 			for _, o := range strings.Split(opts, ",") {
 				switch o = strings.TrimSpace(o); {
 				case o == "":
 				case o == "unique":
 					unique = true
 				case strings.HasPrefix(o, "priority:"):
-					// the order of a field inside a composite index
+					p, err := strconv.Atoi(strings.TrimPrefix(o, "priority:"))
+					if err != nil {
+						r.rep.Add(importer.Change{Kind: importer.Unsupported, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "index option " + o + " is not a number"})
+						continue
+					}
+					priority = p
+				case strings.HasPrefix(o, "composite:") && strings.TrimPrefix(o, "composite:") != "":
+					group = strings.TrimPrefix(o, "composite:")
 				case o == "composite" || strings.HasPrefix(o, "composite:"):
-					composite = true
+					r.rep.Add(importer.Change{Kind: importer.DroppedIndex, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "an index tag has the composite option without a name, which GORM rejects; the index is not imported"})
+					rejected = true
 				default:
 					r.rep.Add(importer.Change{Kind: importer.Unsupported, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "index option " + o + " is not imported"})
 				}
 			}
-			if composite {
-				r.rep.Add(importer.Change{Kind: importer.DroppedIndex, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "index " + name + " is composite (composite option); composite indexes are not imported, declare it in the companion file"})
+			if rejected {
 				continue
 			}
-			if kept {
-				r.rep.Add(importer.Change{Kind: importer.DroppedIndex, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "a field carries several index tags; only the first is kept, index " + name + " is dropped"})
-				continue
-			}
-			kept = true
-			if unique {
-				if fld.Unique && !fld.UniqueIndex {
-					r.rep.Add(importer.Change{Kind: importer.DroppedIndex, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "the field has both unique and a unique index; the unique constraint " + fld.UniqueName + " is dropped, the unique index " + name + " stays"})
+			if name == "" {
+				// GORM names an index without a name after the composite group
+				// when there is one, and after the field otherwise.
+				if group != "" {
+					name = "idx_" + m.Table + "_" + namer.ColumnName(group)
+				} else {
+					name = defaultIndexName(m, fld)
 				}
-				fld.UniqueIndex, fld.Unique = true, true
-				fld.UniqueName = name
-			} else {
-				fld.Index, fld.IndexName = true, name
 			}
+			st.idx = append(st.idx, indexTag{name: name, field: fld.Name, unique: unique, priority: priority})
 		}
-	}
-	if fld.Index && fld.IndexName == "" {
-		fld.IndexName = defaultIndexName(m, fld)
 	}
 }
 
@@ -748,49 +762,71 @@ func (r *reader) finishModel(m *importer.Model, st *modelState) {
 			f.Serial = false // a composite key does not auto-increment unless asked to
 		}
 	}
-	// Two fields that share an index name make one composite index. Momo's
-	// tags cannot express it, and two tags with one name would collide, so the
-	// index is dropped from every field and reported.
-	users := map[string][]int{}
-	for i, f := range m.Fields {
-		for _, name := range []string{ifx(f.Index, f.IndexName), ifx(f.UniqueIndex, f.UniqueName)} {
-			if name != "" {
-				users[name] = append(users[name], i)
-			}
-		}
+	r.settleIndexes(m, st)
+}
+
+// settleIndexes turns the recorded index tags into indexes. Two fields that
+// share an index name make one composite index, ordered by priority and then
+// by field order, as GORM orders it; it is unique when any of its tags is.
+// A name used by one field stays a tag on that field.
+func (r *reader) settleIndexes(m *importer.Model, st *modelState) {
+	users := map[string][]indexTag{}
+	for _, t := range st.idx {
+		users[t.name] = append(users[t.name], t)
 	}
 	names := make([]string, 0, len(users))
 	for name := range users {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	composite := map[string]bool{}
 	for _, name := range names {
-		idx := users[name]
-		if len(idx) < 2 {
+		tags := users[name]
+		fields := map[string]bool{}
+		unique := false
+		for _, t := range tags {
+			fields[t.field] = true
+			unique = unique || t.unique
+		}
+		if len(fields) < 2 {
 			continue
 		}
-		var spans []string
-		for _, i := range idx {
-			f := &m.Fields[i]
-			spans = append(spans, f.Name)
-			if f.IndexName == name {
-				f.Index, f.IndexName = false, ""
-			}
-			if f.UniqueName == name {
-				f.UniqueIndex, f.UniqueName = false, ""
-				f.Unique = false
+		composite[name] = true
+		sort.SliceStable(tags, func(i, j int) bool { return tags[i].priority < tags[j].priority })
+		ix := importer.Index{Name: name, Unique: unique}
+		seen := map[string]bool{}
+		for _, t := range tags {
+			if !seen[t.field] {
+				seen[t.field] = true
+				ix.Fields = append(ix.Fields, t.field)
 			}
 		}
-		r.rep.Add(importer.Change{Kind: importer.DroppedIndex, Source: m.Fields[idx[0]].Source, Model: m.Name, Field: m.Fields[idx[0]].Name,
-			Message: "index " + name + " spans " + strings.Join(spans, ", ") + "; composite indexes are not imported, declare it in the companion file"})
+		m.Indexes = append(m.Indexes, ix)
 	}
-}
-
-func ifx(ok bool, s string) string {
-	if ok {
-		return s
+	kept := map[string]bool{}
+	for _, t := range st.idx {
+		if composite[t.name] {
+			continue
+		}
+		fld := findField(m, t.field)
+		if fld == nil {
+			continue
+		}
+		if kept[t.field] {
+			r.rep.Add(importer.Change{Kind: importer.DroppedIndex, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "a field carries several index tags; only the first is kept, index " + t.name + " is dropped"})
+			continue
+		}
+		kept[t.field] = true
+		if t.unique {
+			if fld.Unique && !fld.UniqueIndex {
+				r.rep.Add(importer.Change{Kind: importer.DroppedIndex, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "the field has both unique and a unique index; the unique constraint " + fld.UniqueName + " is dropped, the unique index " + t.name + " stays"})
+			}
+			fld.UniqueIndex, fld.Unique = true, true
+			fld.UniqueName = t.name
+		} else {
+			fld.Index, fld.IndexName = true, t.name
+		}
 	}
-	return ""
 }
 
 // resolveRelations turns associations into foreign keys. A belongs-to field
