@@ -83,6 +83,13 @@ type Change struct {
 	// took the object with it.
 	IfExists bool
 	Rebuild  bool // SQLite: requires 12-step rebuild
+	// FullTextColumn is set on an AlterColumn that changes the generation
+	// expression of the generated tsvector column a full-text index declares.
+	// Such an expression cannot be altered in place, so a renderer that supports
+	// full-text declarations drops and adds the column again. The mark comes from
+	// the desired schema, so it holds when the change is rendered on its own.
+	// The dialect-agnostic differ sets it; only the PostgreSQL renderer reads it.
+	FullTextColumn bool
 }
 
 // Migration is one migration version.

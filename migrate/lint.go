@@ -58,9 +58,32 @@ var (
 	lintDropTable    = regexp.MustCompile(`^(?:drop table|drop schema|drop type|truncate)\b`)
 	lintDropColumn   = regexp.MustCompile(`\bdrop column\b`)
 
+	lintDropColumnName = regexp.MustCompile(`\bdrop column (?:if exists )?("[^"]+"|\w+)`)
+	lintAddGenerated   = regexp.MustCompile(`\badd column (?:if not exists )?("[^"]+"|\w+) .*\bgenerated always as\b`)
 	lintTSVectorColumn = regexp.MustCompile(`\badd (?:column )?(?:if not exists )?\S+ .*\bgenerated always as \(.*\bto_tsvector\(.*\) stored$`)
 	lintFullTextIndex  = regexp.MustCompile(`^create fulltext index (?:if not exists )?\S+ on (\S+)`)
 )
+
+// lintRegeneratedColumns returns the table.column keys that a migration adds
+// as a GENERATED ALWAYS AS column. Dropping such a column in the same
+// migration loses no data, because the add computes every value again.
+func lintRegeneratedColumns(stmts []Statement) map[string]bool {
+	var out map[string]bool
+	for _, st := range stmts {
+		low, _ := lintClean(st.SQL)
+		m := lintAlterTable.FindStringSubmatch(low)
+		if m == nil {
+			continue
+		}
+		if a := lintAddGenerated.FindStringSubmatch(m[2]); a != nil {
+			if out == nil {
+				out = map[string]bool{}
+			}
+			out[m[1]+"."+a[1]] = true
+		}
+	}
+	return out
+}
 
 // lintClean strips comments, collapses whitespace and trims the trailing
 // semicolon. It returns the text lowercased, for keyword matching, and as
@@ -126,6 +149,7 @@ func lintStatements(version string, stmts []Statement, parentTables map[string]b
 	add := func(n int, sev Severity, rule, msg, alt string) {
 		out = append(out, Finding{Severity: sev, Rule: rule, Version: version, Statement: n + 1, Message: msg, Alternative: alt})
 	}
+	regenerated := lintRegeneratedColumns(stmts)
 	var addedValues []string
 	// notNullChecks maps table.constraint to the column of a CHECK (col IS NOT
 	// NULL) added in this migration; validated holds the ones validated here.
@@ -162,6 +186,11 @@ func lintStatements(version string, stmts []Statement, parentTables map[string]b
 			destructive := lintDropTable.MatchString(low)
 			if m := lintAlterTable.FindStringSubmatch(low); m != nil && lintDropColumn.MatchString(m[2]) {
 				destructive = true
+				// A column dropped and added again as a generated column (a
+				// changed full-text declaration) loses no data.
+				if d := lintDropColumnName.FindStringSubmatch(m[2]); d != nil && regenerated[m[1]+"."+d[1]] {
+					destructive = false
+				}
 			}
 			if destructive {
 				add(i, SeverityError, RuleDestructiveWithoutDirective,
