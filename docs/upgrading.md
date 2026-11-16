@@ -7,12 +7,16 @@ later releases can break more.
 
 ## Upgrading to 0.16.0
 
-No edit is needed in your code. A PostgreSQL sequence that no column owns, such
-as the one a column default names with `nextval('jobs_seq')`, is now part of
-the schema model: `momo generate --from-db` writes a `c.Sequence` call for it
-and keeps it in the init snapshot, and `momo migrate` creates, alters, drops and
-compares it like any other object, so an init migration built from such a
-database applies on an empty one.
+No edit is needed in your code. The GORM, Bun and Ent importers now write a
+composite index of the source model as a `c.Index` declaration in a
+`MomoConfig` method of the generated model, so a converted project no longer
+drops it on its next migration; rerun the import to get the declaration. A
+PostgreSQL sequence that no column owns, such as the one a column default names
+with `nextval('jobs_seq')`, is now part of the schema model:
+`momo generate --from-db` writes a `c.Sequence` call for it and keeps it in the
+init snapshot, and `momo migrate` creates, alters, drops and compares it like
+any other object, so an init migration built from such a database applies on an
+empty one.
 
 ### Declare a standalone sequence
 

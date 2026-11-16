@@ -57,7 +57,8 @@ var namer = naming.Bun{}
 // soft_delete field (the automatic filter does not carry over), dropped-field
 // for fields that do not become columns (scanonly, "-", has-one, has-many and
 // m2m relation fields) and for options that only change Bun's runtime,
-// dropped-index for unique constraints Momo's tags cannot express, and
+// dropped-index for a second unique constraint on one field (a unique group
+// across fields becomes a composite unique index of the model), and
 // unsupported for what cannot be converted.
 //
 // Bun creates no relation constraint and no index from a struct tag alone, and
@@ -817,12 +818,11 @@ func (r *reader) uniques(mb *modelBuild) {
 			continue
 		}
 		if len(idxs) > 1 {
-			var spans []string
+			var fields []string
 			for _, i := range idxs {
-				spans = append(spans, m.Fields[i].Name)
+				fields = append(fields, m.Fields[i].Name)
 			}
-			r.add(importer.Change{Kind: importer.DroppedIndex, Source: m.Fields[idxs[0]].Source, Model: m.Name, Field: m.Fields[idxs[0]].Name,
-				Message: "the unique constraint " + key + " spans " + strings.Join(spans, ", ") + "; composite unique constraints are not imported, declare it in the companion file"})
+			m.Indexes = append(m.Indexes, importer.Index{Name: key, Fields: fields, Unique: true})
 			continue
 		}
 		set(idxs[0], key)
