@@ -82,8 +82,9 @@ it. Unsigned Go integers map to the unsigned column types: `uint8` to
 `uint` to `bigint unsigned` and `uint64` to `bigint unsigned`. `int8` maps to
 `tinyint`, and `bool` to `tinyint(1)`. A `vector.Vector` column needs MySQL 9.0
 or MariaDB 11.7; MySQL 8.4 has no `vector` type. MariaDB 11.8 refuses a vector
-component of large magnitude (1e30 and above, error 1292), and MySQL 9.7 takes
-the full float32 range.
+components of large magnitude with error 1292 (1e30 and `math.MaxFloat32` are
+refused; MariaDB does not document the threshold), and MySQL 9.7 takes the full
+float32 range.
 `types.Numeric` with a `precision` tag is `decimal(p,s)` (precision up to 65,
 scale up to 30, scale not above precision; a precision alone is scale 0, and
 `NaN` and infinity cannot be stored); without one it stays text, because a bare

@@ -140,7 +140,7 @@ func tmVectorMySQL(t *testing.T, db *momo.DB, cell string) {
 		{ID: 4, Emb: vector.Vector{0, 0, 0}},
 	}
 	if db.Dialect().Flavor == dialect.FlavorMariaDB {
-		// MariaDB refuses a component of large magnitude (1e30 and above), so
+		// MariaDB refuses a component of large magnitude (1e30 is refused; the threshold is not documented), so
 		// the largest float32 is a MySQL-only edge value.
 		for _, big := range []float32{1e30, -1e30, math.MaxFloat32} {
 			if _, err := momo.Insert[tmVec](db).Models([]tmVec{{ID: 100, Emb: vector.Vector{big, 0, 0}}}).Exec(ctx); err == nil {
