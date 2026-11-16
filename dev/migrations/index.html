@@ -761,6 +761,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="2. CLI">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parallel-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parallel branches
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1851,6 +1868,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="2. CLI">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parallel-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parallel branches
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2313,11 +2347,11 @@ set <code>migrate.dir.postgres</code> or <code>--dir</code>). <code>diff</code> 
 </tr>
 <tr>
 <td><code>&lt;version&gt;_&lt;name&gt;.snapshot.json</code></td>
-<td>The whole schema after this migration, wrapped as <code>{format_version, version, parent, schema}</code>. <code>schema</code> carries its own <code>format_version</code>.</td>
+<td>The schema after this migration as <code>{format_version, version, parent, schema}</code>; <code>parent</code> is the migration it was generated from. <code>schema</code> has its own <code>format_version</code>.</td>
 </tr>
 <tr>
 <td><code>momo.sum</code></td>
-<td>Checksum manifest of every file in the directory, rewritten by <code>diff</code>.</td>
+<td>Checksum manifest of every file in the directory, one line per file, extended by <code>diff</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -2362,8 +2396,8 @@ set <code>migrate.dir.postgres</code> or <code>--dir</code>). <code>diff</code> 
 <tr>
 <td><code>momo.sum</code></td>
 <td>header <code># momo.sum format=N</code></td>
-<td>1</td>
-<td>read error</td>
+<td>2 (reads 1)</td>
+<td><code>migrate.ErrNewerFormat</code></td>
 </tr>
 <tr>
 <td>History table</td>
@@ -2385,8 +2419,10 @@ their creation nor their drop and reports no drift for them. Read and write
 snapshots with one momo release.</p>
 <h3 id="diff">Diff<a class="headerlink" href="#diff" title="Permanent link">&para;</a></h3>
 <p><code>momo migrate diff &lt;name&gt;</code> runs offline (no database, no driver). It loads the
-models, compares them with the snapshot of the highest version in the
-directory (the empty schema when there is none), orders the changes by
+models, compares them with the schema after the latest migration in the
+directory (the snapshot of the highest version, or after a merge of branches
+the derived schema described under Parallel branches; the empty schema when
+there is none), orders the changes by
 dependency and renders SQL. No difference: prints <code>no changes</code>, exit 0, writes
 nothing.</p>
 <ul>
@@ -2462,8 +2498,18 @@ are refused.</p>
 <li><code>momo.sum</code> must match the directory: every file present, none added,
    removed or changed. <code>Engine.Apply</code>, <code>Status</code> and <code>Baseline</code> refuse otherwise
    (<code>ErrChecksumMismatch</code>, naming the files). A missing <code>momo.sum</code> is an error
-   that names <code>momo migrate hash</code>. <code>momo.sum</code> itself carries a directory hash;
-   a hand-edited <code>momo.sum</code> is rejected.</li>
+   that names <code>momo migrate hash</code>.
+   <code>momo.sum</code> format 2 is the header <code># momo.sum format=2</code> and one
+   <code>&lt;sha256&gt;  &lt;file name&gt;</code> line per file, in any order (<code>hash</code> and <code>diff</code> write
+   them sorted). It has no directory hash, so a line that is not a checksum
+   line, such as a leftover conflict marker, is rejected, and so is a file name
+   listed with two different checksums. Format 1, which has an <code>h1:</code>
+   directory-hash line after the header, is still read and still rejects a
+   hand-edit that left the hash stale. <code>diff</code> and <code>new --custom</code> keep the format
+   of the <code>momo.sum</code> they extend; <code>momo migrate hash</code> writes format 2, which
+   upgrades a format 1 file, and <code>momo migrate hash --sum-format 1</code> writes
+   format 1 again. A momo that predates format 2 stops at the header with
+   <code>migrate.ErrNewerFormat</code>, so it never misreads the file.</li>
 <li>The history row of an applied migration stores the checksum of its up file.
    <code>Engine.Apply</code> refuses when that file changed since (the error says
    <code>... changed after version V was applied</code>).</li>
@@ -2755,9 +2801,9 @@ finding:</p>
 <td>any problem or unhealthy status</td>
 </tr>
 <tr>
-<td><code>hash</code></td>
+<td><code>hash [--sum-format N]</code></td>
 <td>no</td>
-<td>Recompute <code>momo.sum</code>, list files it accepts as <code>changed:</code>/<code>added:</code>/<code>removed:</code>, write it.</td>
+<td>Write <code>momo.sum</code> (format 2; <code>--sum-format 1</code> for 1), list <code>changed:</code>/<code>added:</code>/<code>removed:</code>.</td>
 <td>never</td>
 </tr>
 <tr>
@@ -2808,24 +2854,129 @@ finding:</p>
 <td>Regenerate this branch's generated migrations on top of <code>&lt;dir&gt;</code> (section 4).</td>
 <td>the result is not a valid chain, or a branch file is hand-written</td>
 </tr>
+<tr>
+<td><code>rebase --renumber [--applied V1,V2]</code></td>
+<td>yes (or list)</td>
+<td>Move pending migrations older than the newest applied one after it (section 4).</td>
+<td>an applied migration builds on a pending one, or the result is not a valid chain</td>
+</tr>
 </tbody>
 </table>
 <p><code>validate</code> checks: files parse and directives are known; <code>momo.sum</code> matches;
-versions unique and increasing; each snapshot's parent exists; no two snapshots
-share a parent (branch conflict); each up file has a snapshot; a hand-written
-migration (no <code>-- momo:generated</code> and no <code>-- momo:imported</code>) has a snapshot
-equal to its parent's. Use it in CI. <code>apply</code> runs the chain checks too (fork, missing parent, cycle, gap) and
-refuses with the same message (a fork is <code>ErrBranchConflict</code>; a missing parent,
-cycle or gap is <code>ErrChainInvalid</code>; both exit 1, like <code>validate</code> findings), and it
-refuses with <code>ErrOutOfOrder</code> (exit 1) when a pending version is older than the
-latest applied one, so a late-merged older migration is never applied after newer
-ones (<code>TestApplyRefusesForkedChain</code>, <code>TestApplyRefusesPendingOlderThanApplied</code>,
-<code>TestApplyRefusesBrokenChain</code>, <code>TestMigrateChainRefusalsExitOne</code>).</p>
-<p>Recovering from <code>ErrBranchConflict</code> or <code>ErrOutOfOrder</code>. Both mean two teammates branched from the same snapshot and both
-merged: two snapshots share a parent, and one of the new migrations has a
-version older than the other. Fix it in the files of the branch that merged
-last, before it is applied anywhere. The late migration is still pending, so it
-needs no <code>rehash</code>:</p>
+versions unique and increasing; each snapshot's parent exists and is older; two
+snapshots may share a parent only when they change different tables (below);
+each up file has a snapshot; a hand-written migration (no <code>-- momo:generated</code>
+and no <code>-- momo:imported</code>) has a snapshot equal to its parent's schema. Use it
+in CI. <code>apply</code> runs the chain checks too (a fork of the same table, a missing
+parent, a cycle, a parent that is not older) and
+refuses with the same message (a fork of the same table is
+<code>migrate.ErrBranchConflict</code>; a missing parent, cycle or newer parent is
+<code>migrate.ErrChainInvalid</code>; both exit 1, like <code>validate</code> findings), and it
+refuses with <code>migrate.ErrOutOfOrder</code> (exit 1) when a pending version is older
+than the latest applied one, so a late-merged older migration is never applied
+after newer ones (<code>TestApplyRefusesForkedChain</code>,
+<code>TestApplyRefusesPendingOlderThanApplied</code>, <code>TestApplyRefusesBrokenChain</code>,
+<code>TestMigrateChainRefusalsExitOne</code>).</p>
+<h3 id="parallel-branches">Parallel branches<a class="headerlink" href="#parallel-branches" title="Permanent link">&para;</a></h3>
+<p>Two branches that each add a migration merge with <code>git merge</code> and at most one
+<code>momo migrate hash</code>, and <code>validate</code> passes, when they change different tables
+(<code>TestParallelBranchesMergeValidates</code>, <code>TestParallelBranchesApply</code>).</p>
+<ul>
+<li>Add a line such as <code>migrations/**/momo.sum merge=union</code> to <code>.gitattributes</code>.
+  Momo does not write that file. Union is built into git, so
+  no per-clone configuration is needed. Both branches' new checksum lines
+  survive the merge, in any order, and <code>momo migrate hash</code> writes them sorted.
+  Without the rule <code>momo.sum</code> conflicts on the lines both branches added at its
+  end; resolve it by keeping every line and running <code>momo migrate hash</code>, or by
+  running <code>momo migrate hash</code> alone on the merged files. Review the <code>changed:</code>
+  list first: <code>hash</code> accepts every file as it is.</li>
+<li><code>parent</code> in a snapshot is the migration it was generated from, so two
+  branches off one migration both write the same parent. The schema after a
+  migration is not read from its snapshot alone: the migrations are folded in
+  version order, and each one contributes what it changed relative to its
+  parent. A migration's base is its parent's stored snapshot, because that is
+  what it was generated from; a migration written by <code>diff</code> or <code>new --custom</code>
+  after a merge records <code>"base": "derived:v1:&lt;sha256&gt;"</code> in its snapshot (<code>v1</code> names the encoding
+  of the hash), which makes
+  the parent's derived schema its base, so a later deliberate drop of the other
+  branch's table is a change and not swallowed. The hash fingerprints that
+  derived schema: when an older branch merges later and changes it, the marked
+  migration is stale, and <code>validate</code> reports a <code>migrate.ErrBranchConflict</code>
+  naming it; delete it and run <code>momo migrate diff</code> again, or run
+  <code>momo migrate rebase</code>. A <code>base</code> value this momo does not know is refused with
+  <code>migrate.ErrNewerFormat</code>. The next <code>diff</code> and <code>drift</code> read
+  the derived schema (<code>migrate.LatestState</code>), so after the merge <code>diff</code> builds on
+  the work of both branches and does not undo either. A chain with no fork is
+  unchanged: every derived schema is its snapshot. A migration built on one
+  branch's migration after the merge, such as the second migration of a
+  renumbered branch, keeps the other branch's work.</li>
+<li>The rule is that independence must be shown, and what cannot be shown is a
+  <code>migrate.ErrBranchConflict</code> at <code>validate</code>, naming both migrations and the
+  object, never a failure at <code>apply</code>. The unit of change is one table with its
+  triggers and policies, one view, one enum, one extension, one function or one
+  schema. Two root migrations with no parent are a conflict. Two migrations
+  are independent when all of these hold:</li>
+<li>they change different objects. Branches that change the same table
+    conflict, because rendered SQL restates the whole object (a SQLite table
+    rebuild, or dropping and adding a constraint) and so does not commute.
+    Branches that make the identical change conflict too: both SQL files would
+    run and the second would fail;</li>
+<li>a view one branch changes does not read a table (or view) the other changes,
+    by the view's recorded sources; when the sources of a changed view are not
+    recorded, the other branch must change no table;</li>
+<li>when one branch changes a function, a trigger or a policy, whose body is
+    opaque, the other changes no table, view or function;</li>
+<li>a sequence is its own object: when one branch changes a sequence, the
+    other changes no table or view whose column default, generation expression,
+    check or query calls <code>nextval</code> on it by name, or calls <code>nextval</code> on anything
+    that cannot be read as a plain literal, and no function, trigger or policy;
+    two different sequences, or a sequence beside tables that do not use it, are
+    independent;</li>
+<li>when one branch removes or alters an enum, an extension or a schema
+    namespace, the other changes no table, view or function, because any of
+    them may use it (adding one is independent);</li>
+<li>every foreign key of the merged schema that was valid on either side is
+    still valid: the referenced table and columns exist, the column types match
+    and a primary key, a unique constraint or a unique index backs the
+    referenced columns. A dropped or retyped referenced column, or a dropped
+    key, is a conflict.</li>
+<li>A hand-written migration has a snapshot equal to its parent's stored or
+  derived schema, so it changes nothing and never conflicts.</li>
+<li><code>momo migrate hash</code> and <code>momo migrate validate</code> print a warning on standard
+  error when the directory is inside a git work tree and no <code>.gitattributes</code>
+  rule gives <code>momo.sum</code> the <code>merge=union</code> driver. It does not change the exit
+  code.</li>
+</ul>
+<p>Resolve a conflict with <code>momo migrate rebase</code> (below). When no branch has
+committed a migration yet, one <code>momo migrate diff</code> after the merge is enough.</p>
+<p>Recovering from <code>migrate.ErrBranchConflict</code> or <code>migrate.ErrOutOfOrder</code>. The
+first means two teammates changed the same table from the same snapshot and
+both merged. The second means a migration was merged with a version older than
+one that is already applied: two branches were generated before either was
+deployed, and the other one was deployed first. For
+<code>migrate.ErrOutOfOrder</code> alone, <code>momo migrate rebase --renumber</code> is enough: it
+moves the pending migrations that sort before the newest applied one to later
+versions, renaming their files, setting the parent links of the moved
+migrations and rewriting their <code>momo.sum</code> lines, and changes no schema and no
+SQL. It reads the applied versions from the database, or takes them from
+<code>--applied V1,V2</code> offline, and it refuses to touch an applied migration. A
+pending migration that builds on a moved one moves with it; an applied one that
+builds on a pending migration is refused. A migration that <code>diff</code> wrote after a
+merge (marked <code>base</code>) includes every older migration, so when a pending one
+moves behind it, it moves too, takes the migration before it as its parent and
+gets its marker recomputed; when it is applied, <code>renumber</code> refuses before it
+writes anything and names it. <code>drift</code> compares the database with the schema of
+the applied migrations only, so a pending older branch is not reported as
+missing. A pending Go migration cannot be moved,
+because its version is set in code: an engine that has it
+(<code>migrate.WithGoMigrations</code>) refuses and names it, and the command line, which
+has no Go migrations, cannot see it and says so; give such a migration a later
+<code>Version</code> in its code. The new files and <code>momo.sum</code> are written before the old
+files are removed. The result is validated, so a moved
+migration that changes the same table as one it now follows is reported as a
+conflict. For a conflict, fix it in the files of the branch that merged last,
+before it is applied anywhere. The late migration is still pending, so it needs
+no <code>rehash</code>:</p>
 <p>With a checkout of the target branch's migration directory (Momo has no git
 dependency, so make it with <code>git archive</code> or a second checkout),
 <code>momo migrate rebase --onto &lt;dir&gt; [name]</code> does steps 1 and 2 below in one

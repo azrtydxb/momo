@@ -1111,6 +1111,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#momosum-format-2-and-parallel-migration-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        momo.sum format 2 and parallel migration branches
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#importers-write-composite-indexes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Importers write composite indexes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#declare-a-value-list-check" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2325,6 +2347,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#momosum-format-2-and-parallel-migration-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        momo.sum format 2 and parallel migration branches
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#importers-write-composite-indexes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Importers write composite indexes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#declare-a-value-list-check" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3427,10 +3471,24 @@
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
 <h2 id="upgrading-to-0160">Upgrading to 0.16.0<a class="headerlink" href="#upgrading-to-0160" title="Permanent link">&para;</a></h2>
-<p>No edit is needed in your code. The GORM, Bun and Ent importers now write a
-composite index of the source model as a <code>c.Index</code> declaration in a
-<code>MomoConfig</code> method of the generated model, so a converted project no longer
-drops it on its next migration; rerun the import to get the declaration.</p>
+<p><code>momo.sum</code> has a new format 2 that an older momo binary refuses with
+<code>migrate.ErrNewerFormat</code>, so upgrade every binary that reads a migration
+directory (CI included) before <code>momo migrate hash</code> rewrites it; apart from that,
+no edit is needed in your code.</p>
+<h3 id="momosum-format-2-and-parallel-migration-branches"><code>momo.sum</code> format 2 and parallel migration branches<a class="headerlink" href="#momosum-format-2-and-parallel-migration-branches" title="Permanent link">&para;</a></h3>
+<p>Format 2 is one checksum line per file with no directory hash. It is written
+by <code>momo migrate hash</code>, while <code>diff</code> and <code>new --custom</code> leave a format 1 file as
+it is; run <code>momo migrate hash --sum-format 1</code> to keep format 1. Two branches
+that each add a migration for different tables now merge with <code>git merge</code>, plus
+<code>momo migrate hash</code> when <code>.gitattributes</code> has no <code>momo.sum merge=union</code> rule,
+and validate; a fork of the same table stays a <code>migrate.ErrBranchConflict</code> that
+names the table, and <code>momo migrate rebase --renumber</code> moves pending migrations
+after the newest applied one. See <a href="../migrations/#parallel-branches">migrations</a>.</p>
+<h3 id="importers-write-composite-indexes">Importers write composite indexes<a class="headerlink" href="#importers-write-composite-indexes" title="Permanent link">&para;</a></h3>
+<p>The GORM, Bun and Ent importers now write a composite index of the source model
+as a <code>c.Index</code> declaration in a <code>MomoConfig</code> method of the generated model, so a
+converted project no longer drops it on its next migration; rerun the import to
+get the declaration.</p>
 <h3 id="declare-a-value-list-check">Declare a value-list check<a class="headerlink" href="#declare-a-value-list-check" title="Permanent link">&para;</a></h3>
 <p><code>Config.CheckIn</code> declares a check over a list of values that <code>migrate diff</code>
 compares as a set; <code>momo generate --from-db</code> now writes a constraint of that

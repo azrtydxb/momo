@@ -5997,6 +5997,11 @@
 <td>AutoReport is the result of an automatic migration.</td>
 </tr>
 <tr>
+<td><code>migrate.BaseDerived</code></td>
+<td>const</td>
+<td>BaseDerived is the prefix of SnapshotFile.Base of a snapshot generated from the schema derived by folding the chain up to its parent.</td>
+</tr>
+<tr>
 <td><code>migrate.BaselineApplyID</code></td>
 <td>const</td>
 <td>BaselineApplyID is the apply_id of the history rows Baseline writes.</td>
@@ -6009,7 +6014,7 @@
 <tr>
 <td><code>migrate.Chain</code></td>
 <td>func</td>
-<td>Chain returns the snapshots in fsys ordered root to head.</td>
+<td>Chain returns the snapshots in fsys ordered by version.</td>
 </tr>
 <tr>
 <td><code>migrate.Change</code></td>
@@ -6197,6 +6202,11 @@
 <td>Engine plans and applies the migrations of one directory on one database.</td>
 </tr>
 <tr>
+<td><code>migrate.Engine.AppliedVersions</code></td>
+<td>method</td>
+<td>AppliedVersions returns the versions the history holds, sorted: every row but a rolled-back one (a failed or running row counts, so a dirty migration is never moved).</td>
+</tr>
+<tr>
 <td><code>migrate.Engine.Apply</code></td>
 <td>method</td>
 <td>Apply runs the pending migrations in version order, each with its own history row, and stops at the first failure.</td>
@@ -6214,7 +6224,7 @@
 <tr>
 <td><code>migrate.Engine.Diff</code></td>
 <td>method</td>
-<td>Diff compares desired with the schema of the latest snapshot in the migration directory (the empty schema when there is none) and renders the difference as a new migration.</td>
+<td>Diff compares desired with the schema after the latest migration in the migration directory (LatestState: the latest snapshot for a linear chain, the work of every merged branch after a fork; the empty schema when there is none) and renders the difference as a new migration.</td>
 </tr>
 <tr>
 <td><code>migrate.Engine.Drift</code></td>
@@ -6260,6 +6270,11 @@
 <td><code>migrate.Engine.Rehash</code></td>
 <td>method</td>
 <td>Rehash compares the checksum recorded in the history row of an applied version with the checksum of its file.</td>
+</tr>
+<tr>
+<td><code>migrate.Engine.Renumber</code></td>
+<td>method</td>
+<td>Renumber moves the pending migrations that sort before the newest applied one to versions after every existing version, so they stop being ErrOutOfOrder.</td>
 </tr>
 <tr>
 <td><code>migrate.Engine.Resolve</code></td>
@@ -6437,6 +6452,11 @@
 <td>LatestSnapshot returns the snapshot with the greatest version in the top level of fsys, or nil and ErrNoSnapshot when there is none.</td>
 </tr>
 <tr>
+<td><code>migrate.LatestState</code></td>
+<td>func</td>
+<td>LatestState returns the latest snapshot of fsys with its schema derived from the whole chain, which is what the next migration builds on.</td>
+</tr>
+<tr>
 <td><code>migrate.LintSQL</code></td>
 <td>func</td>
 <td>LintSQL checks the statements of one migration for operations that lock a table for long, rewrite it, or lose data, and reports each with a severity and a safer alternative.</td>
@@ -6509,7 +6529,7 @@
 <tr>
 <td><code>migrate.ParseSum</code></td>
 <td>func</td>
-<td>ParseSum reads a momo.sum.</td>
+<td>ParseSum reads a momo.sum of format 1 or 2.</td>
 </tr>
 <tr>
 <td><code>migrate.Pending</code></td>
@@ -6555,6 +6575,11 @@
 <td><code>migrate.RenameTable</code></td>
 <td>const</td>
 <td>Change kinds produced by Diff.</td>
+</tr>
+<tr>
+<td><code>migrate.Renumbered</code></td>
+<td>type</td>
+<td>Renumbered is one migration Renumber moved to a later version.</td>
 </tr>
 <tr>
 <td><code>migrate.ReplaceFunction</code></td>
@@ -6779,7 +6804,7 @@
 <tr>
 <td><code>migrate.Sum.Write</code></td>
 <td>method</td>
-<td>Write writes s in momo.sum format with the file lines in name order.</td>
+<td>Write writes s in the momo.sum format s.Format names (SumFormat when unset) with the file lines in name order.</td>
 </tr>
 <tr>
 <td><code>migrate.SumFileName</code></td>
@@ -6789,7 +6814,12 @@
 <tr>
 <td><code>migrate.SumFormat</code></td>
 <td>const</td>
-<td>SumFormat is the momo.sum format version this momo writes and reads up to.</td>
+<td>SumFormat is the momo.sum format version this momo writes by default and reads up to.</td>
+</tr>
+<tr>
+<td><code>migrate.SumFormatLegacy</code></td>
+<td>const</td>
+<td>SumFormatLegacy is the momo.sum format that carries a directory hash.</td>
 </tr>
 <tr>
 <td><code>migrate.TableCanonicalizer</code></td>

@@ -1769,7 +1769,7 @@ and the allocation gate (<code>make bench-gate</code>).</p>
 </tr>
 <tr>
 <td><code>momo.yaml</code>, migration files, <code>momo.sum</code>, snapshots</td>
-<td>format versions <code>1</code> (<code>schema.FormatVersion</code>, <code>migrate.SnapshotFormat</code>, <code>migrate.SumFormat</code>); a newer snapshot format is refused with <code>schema.ErrNewerFormat</code></td>
+<td>format versions <code>1</code>, <code>momo.sum</code> at <code>2</code> (<code>schema.FormatVersion</code>, <code>migrate.SnapshotFormat</code>, <code>migrate.SumFormat</code>); newer ones fail with <code>schema.ErrNewerFormat</code></td>
 <td><code>migrate/</code></td>
 </tr>
 </tbody>
