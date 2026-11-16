@@ -107,7 +107,7 @@ func describe(c migrate.Change) string {
 var tableKinds = map[migrate.ChangeKind]bool{
 	migrate.AddColumn: true, migrate.DropColumn: true, migrate.RenameColumn: true, migrate.AlterColumn: true,
 	migrate.AddPrimaryKey: true, migrate.DropPrimaryKey: true, migrate.AddUnique: true, migrate.DropUnique: true,
-	migrate.AddCheck: true, migrate.DropCheck: true, migrate.AddFK: true, migrate.DropFK: true,
+	migrate.AddCheck: true, migrate.DropCheck: true, migrate.AlterCheckIn: true, migrate.AddFK: true, migrate.DropFK: true,
 	migrate.CreateIndex: true, migrate.DropIndex: true,
 }
 
@@ -561,7 +561,7 @@ func createTableSQL(name string, t schema.Table, enums map[string][]string) (str
 		parts = append(parts, "CHECK ("+ident(col.Name)+" IN ("+strings.Join(lits, ", ")+"))")
 	}
 	for _, ck := range t.Checks {
-		parts = append(parts, constraintName(ck.Name)+"CHECK ("+ck.Expr+")")
+		parts = append(parts, constraintName(ck.Name)+"CHECK ("+ck.ExprFor(dialect.SQLite)+")")
 	}
 	for _, fk := range t.ForeignKeys {
 		def, err := fkSQL(fk)

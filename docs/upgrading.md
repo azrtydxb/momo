@@ -10,17 +10,32 @@ later releases can break more.
 No edit is needed in your code. The GORM, Bun and Ent importers now write a
 composite index of the source model as a `c.Index` declaration in a
 `MomoConfig` method of the generated model, so a converted project no longer
-drops it on its next migration; rerun the import to get the declaration. A
-PostgreSQL sequence that no column owns, such as the one a column default names
-with `nextval('jobs_seq')`, is now part of the schema model:
-`momo generate --from-db` writes a `c.Sequence` call for it and keeps it in the
-init snapshot, and `momo migrate` creates, alters, drops and compares it like
-any other object, so an init migration built from such a database applies on an
-empty one.
+drops it on its next migration; rerun the import to get the declaration.
+
+### Declare a value-list check
+
+`Config.CheckIn` declares a check over a list of values that `migrate diff`
+compares as a set; `momo generate --from-db` now writes a constraint of that
+shape as a `Config.CheckIn` declaration, and a snapshot written without the
+value list still diffs as before. On SQLite a named table-level
+`CHECK (col IN (...))` now inspects as a check with a value list, and
+`--from-db` writes it as `Config.CheckIn`, instead of as an enum column; an
+unnamed column check is unchanged.
+
+### Clone a template database in tests
+
+`momotest.WithTemplateClone` makes `momotest.New` clone a template database per
+test instead of building a schema per test; without the option `momotest.New`
+behaves as before.
 
 ### Declare a standalone sequence
 
-Declare one with `momo.Config.Sequence` in a model's `MomoConfig`, for example
+A PostgreSQL sequence that no column owns, such as the one a column default
+names with `nextval('jobs_seq')`, is now part of the schema model:
+`momo generate --from-db` writes a `c.Sequence` call for it and keeps it in the
+init snapshot, and `momo migrate` creates, alters, drops and compares it like
+any other object, so an init migration built from such a database applies on an
+empty one. Declare one with `momo.Config.Sequence` in a model's `MomoConfig`, for example
 `c.Sequence("jobs_seq").Start(1000).Increment(10)`; the chain of
 `momo.SequenceOpts` sets the schema, the data type, the bounds, the cache and
 `Cycle`. Run `momo generate --from-db` again to adopt the sequences of an

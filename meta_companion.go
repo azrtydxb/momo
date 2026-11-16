@@ -18,6 +18,10 @@ type IndexOpts struct{}
 // Its methods are read statically by the generator and are no-ops at runtime.
 type FullTextOpts struct{}
 
+// CheckInOpts carries the optional parts of a value-list check declaration.
+// Its methods are read statically by the generator and are no-ops at runtime.
+type CheckInOpts struct{}
+
 // ForeignKeyOpts carries the optional referential actions of a foreign key
 // declaration. Its methods are read statically by the generator and are
 // no-ops at runtime.
@@ -70,6 +74,16 @@ func (c *Config) ForeignKey(name string, cols []any, refTable string, refColumns
 // Check declares a named check constraint. Read statically by the generator;
 // never executed for its effect.
 func (c *Config) Check(name, expr string) {}
+
+// CheckIn restricts a string field to a list of values with a check constraint,
+// CHECK (column IN ('a', 'b')). Write one value per line, so that two branches
+// that each add a value merge without a conflict; the values are compared as a
+// set, so their order never matters. The constraint is named
+// <table>_<column>_check unless Name says otherwise. The values are string
+// literals; an empty list, a repeated value, a field that is not a string, and
+// an enum column are diagnostics. Read statically by the generator; never
+// executed for its effect.
+func (c *Config) CheckIn(field any, values ...string) *CheckInOpts { return &CheckInOpts{} }
 
 // Enum declares a named enum type with its values. Read statically by the
 // generator; never executed for its effect.
@@ -236,6 +250,10 @@ func (o *SequenceOpts) Cache(n int64) *SequenceOpts { return o }
 // Cycle makes the sequence wrap around at its bound instead of failing. Read
 // statically; no-op at runtime.
 func (o *SequenceOpts) Cycle() *SequenceOpts { return o }
+
+// Name sets the constraint name of a CheckIn declaration, in place of
+// <table>_<column>_check. Read statically; no-op at runtime.
+func (o *CheckInOpts) Name(name string) *CheckInOpts { return o }
 
 // OnDelete sets the ON DELETE action of a foreign key ("CASCADE", "RESTRICT",
 // "SET NULL", "SET DEFAULT" or "NO ACTION"). Read statically; no-op at runtime.

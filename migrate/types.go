@@ -48,6 +48,7 @@ const (
 	DropUnique        ChangeKind = "drop_unique"
 	AddCheck          ChangeKind = "add_check"
 	DropCheck         ChangeKind = "drop_check"
+	AlterCheckIn      ChangeKind = "alter_check_in"
 	AddFK             ChangeKind = "add_fk"
 	DropFK            ChangeKind = "drop_fk"
 	CreateIndex       ChangeKind = "create_index"
@@ -93,6 +94,11 @@ type Change struct {
 	// the desired schema, so it holds when the change is rendered on its own.
 	// The dialect-agnostic differ sets it; only the PostgreSQL renderer reads it.
 	FullTextColumn bool
+	// Added and Removed are the values an AlterCheckIn adds to and removes from
+	// the value list of a check constraint, sorted. Before and After hold the
+	// whole schema.Check on each side. A change with Removed values is
+	// Destructive: rows that hold a removed value fail the new constraint.
+	Added, Removed []string
 }
 
 // Migration is one migration version.

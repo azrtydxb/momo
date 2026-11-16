@@ -868,6 +868,32 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 		checks[ck.Name] = "MomoConfig"
 		t.Checks = append(t.Checks, ck)
 	}
+	for _, ci := range c.CheckIns {
+		if prev, dup := checks[ci.Name]; dup {
+			b.diag(m.Pos, fmt.Sprintf("check name %q is declared by both %s and MomoConfig", ci.Name, prev))
+			continue
+		}
+		col, ok := t.Column(ci.Column)
+		switch {
+		case !ok:
+			b.diag(m.Pos, fmt.Sprintf("MomoConfig: CheckIn %q: column %q is not a column of table %s", ci.Name, ci.Column, t.Name))
+			continue
+		case col.Enum != "":
+			b.diag(m.Pos, fmt.Sprintf("MomoConfig: CheckIn %q: column %q has the enum type %q, which already restricts its values; declare the values on the enum", ci.Name, ci.Column, col.Enum))
+			continue
+		}
+		if typ := b.searchTextProblem(t, ci.Column); typ != "" {
+			b.diag(m.Pos, fmt.Sprintf("MomoConfig: CheckIn %q: column %q is %s, not a text column", ci.Name, ci.Column, typ))
+			continue
+		}
+		in := schema.CheckIn{Column: ci.Column, Values: schema.SortedValues(ci.Values)}
+		if err := in.Validate(); err != nil {
+			b.diag(m.Pos, fmt.Sprintf("MomoConfig: CheckIn %q: %v", ci.Name, err))
+			continue
+		}
+		checks[ci.Name] = "MomoConfig"
+		t.Checks = append(t.Checks, schema.Check{Name: ci.Name, Expr: schema.CheckInExpr(b.primary, in.Column, in.Values), In: &in})
+	}
 	b.columnText(m, t, "default", c.Defaults, func(c *schema.Column) *string { return &c.Default })
 	b.columnText(m, t, "generated", c.Generated, func(c *schema.Column) *string { return &c.Generated })
 	b.checkVirtual(m, t, c.GeneratedVirtual)

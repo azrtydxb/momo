@@ -38,7 +38,7 @@ var phases = [][]ChangeKind{
 	{CreateTable},
 	{AddColumn},
 	{AlterColumn},
-	{AddPrimaryKey, AddUnique, AddCheck},
+	{AddPrimaryKey, AddUnique, AddCheck, AlterCheckIn},
 	{CreateIndex},
 	{AddFK},
 	{CreateFunction, ReplaceFunction},

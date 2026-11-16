@@ -30,6 +30,8 @@ const (
 	RuleFullTextRewrite = "fulltext-column-rewrite"
 	// RuleFullTextFirstIndex: CREATE FULLTEXT INDEX on an existing table (the first one adds FTS_DOC_ID and rebuilds the table).
 	RuleFullTextFirstIndex = "fulltext-first-index"
+	// RuleCheckValueRemoval: a migration whose snapshot removes a value from a value-list check (schema.CheckIn) without -- momo:destructive.
+	RuleCheckValueRemoval = "check-value-removal"
 )
 
 // Severities of a lint Finding.
@@ -365,8 +367,97 @@ func (e *Engine) lintPending(pending []Pending) ([]Finding, error) {
 			cache[key] = parent
 		}
 		out = append(out, lintStatements(p.Version, p.Statements, parent, name, dirs[p.Version].Destructive)...)
+		if !dirs[p.Version].Destructive {
+			removals, err := checkValueRemovals(snaps, best, p.Version)
+			if err != nil {
+				return nil, err
+			}
+			for _, r := range removals {
+				out = append(out, Finding{
+					Severity:    SeverityError,
+					Rule:        RuleCheckValueRemoval,
+					Version:     p.Version,
+					Statement:   lintStatementOf(p.Statements, r.check),
+					Message:     fmt.Sprintf("the value list of %s loses %s and the migration has no -- momo:destructive directive; rows that hold a removed value fail the new constraint", r.check, r.values),
+					Alternative: "backfill the rows that hold " + r.values + " in an earlier migration, then add -- momo:destructive after a review",
+				})
+			}
+		}
 	}
 	return out, nil
+}
+
+// checkRemoval is a value-list check that loses values between two snapshots.
+type checkRemoval struct{ check, values string }
+
+// checkValueRemovals compares the snapshot of version with its parent snapshot
+// and lists the value-list checks that lose values. A migration without a
+// snapshot of its own, or without a parent, has none.
+func checkValueRemovals(snaps []File, parent *File, version string) ([]checkRemoval, error) {
+	if parent == nil {
+		return nil, nil
+	}
+	var own *File
+	for i := range snaps {
+		if snaps[i].Version == version {
+			own = &snaps[i]
+		}
+	}
+	if own == nil {
+		return nil, nil
+	}
+	read := func(f *File) (*SnapshotFile, error) {
+		s, err := ReadSnapshot(strings.NewReader(string(f.Body)))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", f.Path, err)
+		}
+		return s, nil
+	}
+	before, err := read(parent)
+	if err != nil {
+		return nil, err
+	}
+	after, err := read(own)
+	if err != nil {
+		return nil, err
+	}
+	var out []checkRemoval
+	for _, bt := range before.Schema.Tables {
+		at, ok := after.Schema.Table(bt.Name)
+		if !ok {
+			continue
+		}
+		for _, bc := range bt.Checks {
+			if bc.In == nil {
+				continue
+			}
+			for _, ac := range at.Checks {
+				if ac.Name != bc.Name || ac.In == nil || ac.In.Column != bc.In.Column {
+					continue
+				}
+				if _, removed := valueDelta(bc.In.Values, ac.In.Values); len(removed) > 0 {
+					lits := make([]string, len(removed))
+					for i, v := range removed {
+						lits[i] = "'" + v + "'"
+					}
+					out = append(out, checkRemoval{check: bt.Name + "." + bc.Name, values: strings.Join(lits, ", ")})
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+// lintStatementOf returns the 1-based position of the first statement that
+// names the check (table.constraint), or 1 when none does.
+func lintStatementOf(stmts []Statement, check string) int {
+	_, name, _ := strings.Cut(check, ".")
+	for i, st := range stmts {
+		if strings.Contains(strings.ToLower(st.SQL), strings.ToLower(name)) {
+			return i + 1
+		}
+	}
+	return 1
 }
 
 // latestSnapshotBefore returns the snapshot with the greatest version older

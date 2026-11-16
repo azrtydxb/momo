@@ -114,6 +114,12 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 			return nil, err
 		}
 		return renderAddCheck(c, ck), nil
+	case migrate.AlterCheckIn:
+		ck, err := get[schema.Check](c.After)
+		if err != nil {
+			return nil, err
+		}
+		return renderAlterCheckIn(c, ck), nil
 	case migrate.AddFK:
 		fk, err := get[schema.ForeignKey](c.After)
 		if err != nil {
@@ -433,8 +439,22 @@ func renderAddCheck(c migrate.Change, ck schema.Check) []migrate.Statement {
 	}
 }
 
+// renderAlterCheckIn replaces the value list of a check constraint. PostgreSQL
+// cannot change a constraint in place, so the old one is dropped and the new
+// one added NOT VALID in the same transaction, which never leaves the table
+// without a constraint; the validation is a NoTx statement that Diff moves to
+// the trailing no-transaction migration.
+func renderAlterCheckIn(c migrate.Change, ck schema.Check) []migrate.Statement {
+	t := tableRef(c.Schema, c.Table)
+	return []migrate.Statement{
+		{SQL: "ALTER TABLE " + t + " DROP CONSTRAINT " + ident(ck.Name)},
+		{SQL: "ALTER TABLE " + t + " ADD " + checkDef(ck) + " NOT VALID"},
+		{SQL: "ALTER TABLE " + t + " VALIDATE CONSTRAINT " + ident(ck.Name), NoTx: true},
+	}
+}
+
 func checkDef(c schema.Check) string {
-	return "CONSTRAINT " + ident(c.Name) + " CHECK (" + c.Expr + ")"
+	return "CONSTRAINT " + ident(c.Name) + " CHECK (" + c.ExprFor(dialect.Postgres) + ")"
 }
 
 func fkDef(fk schema.ForeignKey) (string, error) {
