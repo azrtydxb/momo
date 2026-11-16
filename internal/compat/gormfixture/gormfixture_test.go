@@ -45,8 +45,8 @@ func TestImportGORM(t *testing.T) {
 	if rep.Has(importer.Unsupported) {
 		t.Fatalf("the fixture must import cleanly: %s", rep)
 	}
-	if got := rep.Of(importer.DroppedIndex); len(got) != 1 {
-		t.Fatalf("the composite index must be reported once: %s", rep)
+	if got := rep.Of(importer.DroppedIndex); len(got) != 0 {
+		t.Fatalf("the composite index is imported, not reported: %s", rep)
 	}
 
 	// 3. the schema the real generator derives from the emitted models
@@ -56,12 +56,12 @@ func TestImportGORM(t *testing.T) {
 	}
 	desired := schemafixture.Emitted(t, dir, "imported", models, rep)
 
-	// 4. the only difference is the composite index the importer reported
+	// 4. the imported models describe the GORM schema exactly, composite index included
 	changes, _, err := migrate.Diff(source, desired, migrate.DiffOptions{AllowDestructive: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(changes) != 1 || changes[0].Kind != migrate.DropIndex || changes[0].Name != "idx_comment_kind_body" {
-		t.Fatalf("imported models differ from the GORM schema beyond the reported composite index: %+v", changes)
+	if len(changes) != 0 {
+		t.Fatalf("imported models differ from the GORM schema: %+v", changes)
 	}
 }
