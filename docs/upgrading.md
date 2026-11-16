@@ -42,7 +42,11 @@ columns is `momo.ErrValidation`. InnoDB does not index a word shorter than
 `innodb_ft_min_token_size` (3 by default), and a stopword of its list (such as
 `the` or `it`) in a required term matches nothing, so a search that needs such a
 word finds nothing; a row inserted in an open transaction is not found by a search until the
-transaction commits.
+transaction commits. `momo.HybridSearch` now also runs on SQLite (FTS5 and
+sqlite-vec) and MariaDB 11.8: `HybridSpec.Text` must be a column of the model's
+full-text declaration, `TextConfig` is ignored there, and the query text is read
+like an `fts.Web` query; MySQL has no vector distance function and fails the
+build with `momo.ErrUnsupported`. PostgreSQL SQL and arguments are unchanged.
 
 ### Declare full-text search on a model
 
