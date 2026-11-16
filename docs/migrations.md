@@ -615,6 +615,59 @@ transaction. `AutoMigrate` skips any change to an existing table that needs a re
 no collation in the schema, so a collation on an index key is not compared.
 Collation on a column is.
 
+## 3b. Full-text search structures
+
+A model declares full-text search once, with the `search` tag or `c.FullText`
+(see [full-text search](fulltext.md#declare-a-search)). The schema snapshot
+records the declaration only: the columns, and the configuration, weights,
+tokenizer, parser and expression flag a dialect honours. Each dialect derives
+its own structures from it, in the same step for the desired schema and for the
+snapshot, so `diff` compares like with like and a second `diff` after `apply`
+is empty.
+
+| Dialect           | Structures created                                                                          | Needs                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| PostgreSQL        | a stored generated tsvector column `<index>_tsv` and a GIN index on it, or a GIN expression | PostgreSQL 12 or newer, a `Config` in the declaration                    |
+| SQLite            | the external-content FTS5 table `<table>_fts` and the triggers `_ai`, `_ad` and `_au`       | FTS5 in the SQLite build, a rowid table with one `INTEGER` primary key   |
+| MySQL and MariaDB | a `FULLTEXT` index, with `WITH PARSER` when a parser is declared (MySQL)                    | an InnoDB table, `CHAR`, `VARCHAR` or `TEXT` columns, at most 16 of them |
+
+**PostgreSQL.** The generated column makes a trigger unnecessary. Changing the
+columns, the configuration, the weights or the expression flag drops the index,
+drops and adds the generated column (a table rewrite under an
+`ACCESS EXCLUSIVE` lock) and creates the index again. `fulltext-column-rewrite`
+of `momo migrate lint` flags it. The index is a plain `CREATE INDEX`, which
+blocks writes while it builds. When the declaration ends in `.Concurrently()`
+(`c.FullText(...).Concurrently()`), the work is split in two migrations: the
+generated column, and the drop of the old index when the declaration changes,
+stay in the transactional migration, and `CREATE INDEX CONCURRENTLY` follows in
+a `-- momo:no-transaction` migration. That drop is a plain `DROP INDEX` inside
+the transaction that recreates the column. SQLite and MySQL have no concurrent
+build and ignore `Concurrently()` on a full-text index, as they do on any
+index.
+
+**SQLite.** `CREATE VIRTUAL TABLE "<table>_fts" USING fts5(...)` with
+`content='<table>'`, `content_rowid` and the declared `tokenize` clause, then
+the FTS5 `'rebuild'` command to fill it from the table, in the same migration.
+The three triggers keep it in step with every insert, update and delete of the
+table, including raw SQL. After a bulk load that ran with the triggers disabled,
+or after an `INSERT OR REPLACE` on a database without
+`PRAGMA recursive_triggers = ON`, run
+`INSERT INTO <table>_fts(<table>_fts) VALUES('rebuild')` to repair the index; it
+is not run for you. Removing the declaration or the table drops the triggers
+first and then the FTS5 table. A build without FTS5 fails the migration with
+`ErrUnsupported` naming FTS5.
+
+**MySQL and MariaDB.** `CREATE FULLTEXT INDEX`. The first full-text index of an
+InnoDB table adds the hidden `FTS_DOC_ID` column and rebuilds the table, so on a
+large table run it in a low-traffic window. `fulltext-first-index` of
+`momo migrate lint` reports every `CREATE FULLTEXT INDEX` on an existing table,
+not only the first. A parser is MySQL only; the offline commands cannot tell
+MariaDB from MySQL, so MariaDB rejects a parser when the migration is applied.
+
+`momo migrate drift` and `generate --from-db` read these structures back (see
+[inspection](fulltext.md#inspection-and-migration-tools)); drift reports a
+missing or altered SQLite sync trigger.
+
 ## 4. Failure and recovery
 
 Check state with `momo migrate status` (exit 1 when anything is dirty,
@@ -901,12 +954,11 @@ built.
   alternative: `examples/custom-sql-migration`. A full-text index on an existing
   PostgreSQL table is such an index: declare it with
   `c.FullText("articles_search", &a.Title).Config("english").Concurrently()`,
-  or the generated `CREATE INDEX ... USING gin` fails `blocking-index` in lint.
-  SQLite and MySQL ignore `Concurrently()` on a full-text index as they do on
-  any index.
-  Dropping that index when its declaration changes is a plain `DROP INDEX` inside
-  the transaction that recreates the generated column, which holds an
-  `ACCESS EXCLUSIVE` lock for that step.
+  or the generated `CREATE INDEX ... USING gin` fails `blocking-index` in lint
+  (see section 3b). SQLite and MySQL ignore `Concurrently()` on a full-text
+  index as they do on any index. Dropping that index when its declaration
+  changes is a plain `DROP INDEX` inside the transaction that recreates the
+  generated column, which holds an `ACCESS EXCLUSIVE` lock for that step.
 - **Lock timeout**: the default 5 s lock wait fails fast instead of queuing
   behind a long transaction. A retry is safe for transactional migrations.
 - **Deploy order**: migrate first, then roll out code, with every migration

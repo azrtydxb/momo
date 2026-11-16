@@ -228,6 +228,50 @@ func TestFeatureIdentifiersExist(t *testing.T) {
 	}
 }
 
+// Catches: the generated capabilities table losing the full-text and hybrid
+// search rows, or showing a dialect the wrong value (hybrid search needs a
+// cosine distance function, which MySQL lacks).
+func TestCapabilitiesBlockHasSearchRows(t *testing.T) {
+	block, err := Render(repoRoot(t), "capabilities")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][]string{
+		"`FullText`":     {"yes", "yes", "yes", "yes"},
+		"`HybridSearch`": {"yes", "yes", "no", "yes"},
+	}
+	var header []string
+	rows := map[string][]string{}
+	for _, line := range strings.Split(block, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "|") {
+			continue
+		}
+		var cells []string
+		for _, c := range strings.Split(strings.Trim(line, "|"), "|") {
+			cells = append(cells, strings.TrimSpace(c))
+		}
+		if header == nil {
+			header = cells
+			continue
+		}
+		rows[cells[0]] = cells[1:]
+	}
+	if strings.Join(header[1:], ",") != "PostgreSQL,SQLite,MySQL,MariaDB" {
+		t.Fatalf("capabilities columns = %v, want PostgreSQL, SQLite, MySQL, MariaDB", header[1:])
+	}
+	for label, cells := range want {
+		got, ok := rows[label]
+		if !ok {
+			t.Errorf("capabilities block lacks %s", label)
+			continue
+		}
+		if strings.Join(got, ",") != strings.Join(cells, ",") {
+			t.Errorf("capabilities row %s = %v, want %v", label, got, cells)
+		}
+	}
+}
+
 // Catches: the generator growing a dependency on a database driver or a cgo
 // package, which would stop it running on the lint job's Go setup.
 func TestGeneratorNeedsNoCgoOrDatabase(t *testing.T) {

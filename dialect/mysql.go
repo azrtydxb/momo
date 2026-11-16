@@ -11,7 +11,7 @@ var mysqlBase = Dialect{
 	Name: MySQL, MaxParams: 65535,
 	OnDuplicateKey: true, Locking: true, DefaultInUpdate: true, DefaultInValues: true,
 	RecursiveCTE: true, RowValues: true, Savepoints: true, IsolationLevels: true,
-	WindowFunctions: true,
+	WindowFunctions: true, FullText: true,
 }
 
 // MySQLFlavor returns the MySQL-family dialect for the given flavor, or nil
@@ -31,6 +31,7 @@ func MySQLFlavor(f Flavor) *Dialect {
 	case FlavorMariaDB:
 		d.InsertReturning = true
 		d.DeleteReturning = true
+		d.HybridSearch = true
 		d.Vector = VectorCaps{
 			Storage: true,
 			Metrics: []Metric{MetricL2, MetricCosine},
