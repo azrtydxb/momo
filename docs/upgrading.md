@@ -7,19 +7,38 @@ later releases can break more.
 
 ## Upgrading to 0.16.0
 
-No edit is needed in your code. The GORM, Bun and Ent importers now write a
-composite index of the source model as a `c.Index` declaration in a
-`MomoConfig` method of the generated model, so a converted project no longer
-drops it on its next migration; rerun the import to get the declaration.
-`momo.sum` has a format 2, one checksum line per file and no directory hash,
-which `momo migrate hash` writes. An older momo binary refuses it with
-`migrate.ErrNewerFormat`, so upgrade every binary that reads the directory (CI
-included) before you run `hash`, or run `momo migrate hash --sum-format 1` to
-keep format 1; a format 1 file keeps working and `diff` does not change it. Two
-branches that each add a migration for different tables now merge and validate,
-a fork of the same table stays a `migrate.ErrBranchConflict` that names the
-table, and `momo migrate rebase --renumber` moves pending migrations after the
-newest applied one.
+`momo.sum` has a new format 2 that an older momo binary refuses with
+`migrate.ErrNewerFormat`, so upgrade every binary that reads a migration
+directory (CI included) before `momo migrate hash` rewrites it; apart from that,
+no edit is needed in your code.
+
+### `momo.sum` format 2 and parallel migration branches
+
+Format 2 is one checksum line per file with no directory hash. It is written
+by `momo migrate hash`, while `diff` and `new --custom` leave a format 1 file as
+it is; run `momo migrate hash --sum-format 1` to keep format 1. Two branches
+that each add a migration for different tables now merge with `git merge`, plus
+`momo migrate hash` when `.gitattributes` has no `momo.sum merge=union` rule,
+and validate; a fork of the same table stays a `migrate.ErrBranchConflict` that
+names the table, and `momo migrate rebase --renumber` moves pending migrations
+after the newest applied one. See [migrations](migrations.md#parallel-branches).
+
+### Importers write composite indexes
+
+The GORM, Bun and Ent importers now write a composite index of the source model
+as a `c.Index` declaration in a `MomoConfig` method of the generated model, so a
+converted project no longer drops it on its next migration; rerun the import to
+get the declaration.
+
+### Check constraints over a value list
+
+`Config.CheckIn` declares a check over a list of values that `migrate diff`
+compares as a set; `momo generate --from-db` now writes a constraint of that
+shape as a `Config.CheckIn` declaration, and a snapshot written without the
+value list still diffs as before. On SQLite a named table-level
+`CHECK (col IN (...))` now inspects as a check with a value list, and
+`--from-db` writes it as `Config.CheckIn`, instead of as an enum column; an
+unnamed column check is unchanged.
 
 ## Upgrading to 0.15.0
 

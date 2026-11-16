@@ -29,8 +29,10 @@ type CompanionResult struct {
 	// ForeignKeys are the foreign keys declared with Config.ForeignKey.
 	ForeignKeys []schema.ForeignKey
 	Checks      []schema.Check
-	Enums       []schema.Enum
-	Defaults    map[string]string
+	// CheckIns are the value-list checks declared with Config.CheckIn.
+	CheckIns []CheckInDecl
+	Enums    []schema.Enum
+	Defaults map[string]string
 	// Generated maps a column to the expression set by a Generated call.
 	Generated map[string]string
 	// GeneratedVirtual marks the columns declared with a GeneratedVirtual call;
@@ -52,6 +54,15 @@ type CompanionResult struct {
 	RLS         *schema.RLS
 	Partition   *schema.Partition
 	PartitionOf *schema.PartitionOf
+}
+
+// CheckInDecl is one value-list check read from a Config.CheckIn call: the
+// column, the values in source order and the constraint name, which is
+// <table>_<column>_check unless the declaration names it.
+type CheckInDecl struct {
+	Name   string
+	Column string
+	Values []string
 }
 
 // structuredTypes maps the structured companion methods to their schema type.
@@ -275,6 +286,8 @@ func (r *companionReader) readStmt(s ast.Stmt) {
 			want = "ForeignKeyOpts"
 		case "FullText":
 			want = "FullTextOpts"
+		case "CheckIn":
+			want = "CheckInOpts"
 		}
 		if i == 0 {
 			want = "Config"
@@ -291,6 +304,9 @@ func (r *companionReader) readStmt(s ast.Stmt) {
 		return
 	case "FullText":
 		r.fullText(calls)
+		return
+	case "CheckIn":
+		r.checkIn(calls)
 		return
 	case "ForeignKey":
 		r.foreignKey(calls)
@@ -563,6 +579,69 @@ func (r *companionReader) fullText(calls []call) {
 	}
 	ix.FullText = &ft
 	r.res.Indexes = append(r.res.Indexes, ix)
+}
+
+// checkIn reads c.CheckIn(&m.Kind, "a", "b") with its optional Name. The field
+// must be a string field, the values distinct string literals, and the
+// constraint name unused by a tag or another declaration.
+func (r *companionReader) checkIn(calls []call) {
+	first := calls[0]
+	args := first.expr.Args
+	if len(args) == 0 || first.expr.Ellipsis.IsValid() {
+		r.unsupported(first.expr)
+		return
+	}
+	startDiags := len(r.diags)
+	f, fieldOK := r.field(args[0])
+	if fieldOK && f.BaseType != "string" {
+		r.diag(args[0].Pos(), fmt.Sprintf("CheckIn field %s must be a string field, it is %s", r.source(args[0]), f.GoType))
+	}
+	if len(args) == 1 {
+		r.diag(first.expr.Pos(), "CheckIn lists no values; it needs at least one")
+	}
+	var values []string
+	seen := map[string]bool{}
+	for _, a := range args[1:] {
+		v, ok := r.str(a)
+		if !ok {
+			continue
+		}
+		if seen[v] {
+			r.diag(a.Pos(), fmt.Sprintf("CheckIn repeats the value %q", v))
+			continue
+		}
+		seen[v] = true
+		values = append(values, v)
+	}
+	name, named := "", false
+	for _, c := range calls[1:] {
+		if c.name != "Name" || len(c.expr.Args) != 1 {
+			r.unsupported(c.expr)
+			continue
+		}
+		if named {
+			r.diag(c.expr.Pos(), "duplicate Name on CheckIn")
+			continue
+		}
+		named = true
+		if s, ok := r.str(c.expr.Args[0]); ok {
+			if s == "" {
+				r.diag(c.expr.Args[0].Pos(), "CheckIn Name is empty")
+				continue
+			}
+			name = s
+		}
+	}
+	if len(r.diags) != startDiags || f == nil {
+		return
+	}
+	if name == "" {
+		name = r.m.Table + "_" + f.Column + "_check"
+	}
+	if !r.declare(r.checkAt, "check", name, args[0].Pos()) {
+		return
+	}
+	r.res.CheckIns = append(r.res.CheckIns, CheckInDecl{Name: name, Column: f.Column, Values: values})
 }
 
 // foreignKey reads c.ForeignKey(name, []any{&m.A, &m.B}, "table", []string{"x", "y"})

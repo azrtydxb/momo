@@ -259,6 +259,10 @@ type ForeignKey struct {
 type Check struct {
 	Name string `json:"name"`
 	Expr string `json:"expr"`
+	// In is set when the constraint restricts a text column to a list of values.
+	// The differ then compares the values as a set, and Expr holds the canonical
+	// rendering of the sorted values.
+	In *CheckIn `json:"in,omitempty"`
 }
 
 // Table returns the table with the given name.
@@ -318,6 +322,11 @@ func (s *Schema) Sort() {
 		slices.SortFunc(t.Indexes, func(a, b Index) int { return byName(a.Name, b.Name) })
 		slices.SortFunc(t.ForeignKeys, func(a, b ForeignKey) int { return byName(a.Name, b.Name) })
 		slices.SortFunc(t.Checks, func(a, b Check) int { return byName(a.Name, b.Name) })
+		for j := range t.Checks {
+			if in := t.Checks[j].In; in != nil {
+				in.Values = sortedSet(in.Values)
+			}
+		}
 	}
 }
 

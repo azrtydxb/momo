@@ -202,6 +202,9 @@ func flatten(s *schema.Schema, exact bool) map[string]object {
 			add(object{ref: ObjectRef{Kind: "fk", Schema: t.Schema, Name: t.Name + "." + f.Name}, body: mustJSON(f), parent: tbl.key(), child: true})
 		}
 		for _, c := range chs {
+			// The value list is another view of the expression, which is what
+			// the database stores and what the two sides are compared on.
+			c.In = nil
 			add(object{ref: ObjectRef{Kind: "check", Schema: t.Schema, Name: t.Name + "." + c.Name}, body: mustJSON(c), parent: tbl.key(), child: true})
 		}
 	}
@@ -277,6 +280,50 @@ func reconcileExtensions(a, b *schema.Schema) {
 	}
 }
 
+// reconcileCheckLists makes a value-list check of a that holds the same set of
+// values as the check of the same name in b spell its expression as a does, so
+// the two compare equal whatever dialect spelled the expression: a model whose
+// primary dialect is not the one it runs on stores another quoting, and a
+// database reports its own. b's list is its In, or the list read from its
+// expression. The schemas' tables are cloned before a check is changed, so pass
+// shallow copies.
+func reconcileCheckLists(a, b *schema.Schema) {
+	a.Tables, b.Tables = slices.Clone(a.Tables), slices.Clone(b.Tables)
+	for i := range a.Tables {
+		ta := &a.Tables[i]
+		for j := range b.Tables {
+			tb := &b.Tables[j]
+			if ta.Schema != tb.Schema || ta.Name != tb.Name {
+				continue
+			}
+			ta.Checks, tb.Checks = slices.Clone(ta.Checks), slices.Clone(tb.Checks)
+			for x := range ta.Checks {
+				ca := &ta.Checks[x]
+				if ca.In == nil {
+					continue
+				}
+				for y := range tb.Checks {
+					cb := &tb.Checks[y]
+					if cb.Name != ca.Name {
+						continue
+					}
+					in := cb.In
+					if in == nil {
+						col, vals, ok := schema.ParseCheckIn(cb.Expr)
+						if !ok {
+							continue
+						}
+						in = &schema.CheckIn{Column: col, Values: vals}
+					}
+					if in.Column == ca.In.Column && slices.Equal(schema.SortedValues(in.Values), schema.SortedValues(ca.In.Values)) {
+						cb.Expr = ca.Expr
+					}
+				}
+			}
+		}
+	}
+}
+
 // compare reports how live differs from snapshot. Top-level objects only in the
 // snapshot are Missing, only in the live database Unmanaged. A column, index
 // or constraint of a table present on both sides that exists on one side only
@@ -287,6 +334,7 @@ func compare(snapshot, live *schema.Schema, exact bool, invalid []string) *Drift
 	a, b := *snapshot, *live
 	a.Extensions, b.Extensions = slices.Clone(snapshot.Extensions), slices.Clone(live.Extensions)
 	reconcileExtensions(&a, &b)
+	reconcileCheckLists(&a, &b)
 	from, to := flatten(&a, exact), flatten(&b, exact)
 	rep := &DriftReport{}
 	changed := map[string]*ObjectDiff{}
