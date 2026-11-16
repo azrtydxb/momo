@@ -2045,16 +2045,18 @@ bound allows. <code>strict_order</code> (hnsw only) keeps exact distance order w
 scans.</p>
 <h2 id="hybrid-search">Hybrid search<a class="headerlink" href="#hybrid-search" title="Permanent link">&para;</a></h2>
 <p><code>momo.HybridSearch</code> fuses a full-text leg and a cosine-distance
-vector leg with reciprocal rank fusion (RRF) in one statement. Each leg picks
+vector leg with reciprocal rank fusion (RRF) in one statement. It runs on
+PostgreSQL, on SQLite (FTS5 and sqlite-vec) and on MariaDB 11.8. Each leg picks
 its own best <code>TextCandidates</code> and <code>VectorCandidates</code> rows (default 100, at most
 1000), ranks them, and a row scores the sum of <code>1/(RRFK+rank)</code> over the legs it
-appears in (<code>RRFK</code> defaults to 60 and must be at least 1). The text leg ranks
-with <code>ts_rank_cd</code> over <code>websearch_to_tsquery</code>; the vector leg uses <code>&lt;=&gt;</code>.
+appears in (<code>RRFK</code> defaults to 60 and must be at least 1). On PostgreSQL the
+text leg ranks with <code>ts_rank_cd</code> over <code>websearch_to_tsquery</code> and the vector leg
+uses <code>&lt;=&gt;</code>.
 Ties break on the primary key ascending, in each leg's ranking and in the final
-order, so the result does not depend on insertion order. The vector leg orders
-by distance alone so an hnsw or ivfflat index can serve it; when rows tie on
-distance exactly at the candidate cut-off, which of them become candidates is
-not defined.</p>
+order, so the result does not depend on insertion order. On PostgreSQL the
+vector leg orders by distance alone so an hnsw or ivfflat index can serve it;
+when rows tie on distance exactly at the candidate cut-off, which of them become
+candidates is not defined.</p>
 <!-- docscheck:fragment -->
 
 <div class="highlight"><pre><span></span><code><span class="nx">hits</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">HybridSearch</span><span class="p">[</span><span class="nx">Article</span><span class="p">](</span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">HybridSpec</span><span class="p">{</span>
@@ -2076,14 +2078,20 @@ cosine distance is NaN (zero vectors).
 <code>HybridQuery.SQL</code> returns the statement and its arguments without running it.</p>
 <p>On SQLite and MariaDB 11.8 the same call runs with the same knobs and
 tie-breaks. The text leg searches the structure of the model's full-text
-declaration (the FTS5 table ordered by <code>bm25</code>, or <code>MATCH ... AGAINST</code> in
-boolean mode), so <code>HybridSpec.Text</code> must be one of the declared columns
+declaration (see <a href="../fulltext/#declare-a-search">full-text search</a>): the FTS5
+table ordered by <code>bm25</code>, or <code>MATCH ... AGAINST</code> in boolean mode over all
+declared columns. <code>HybridSpec.Text</code> must be one of the declared columns
 (<code>momo.ErrValidation</code> otherwise), <code>TextConfig</code> is ignored, and <code>Query</code> is read
 like a web-style <code>fts.Web</code> query. The vector leg uses <code>vec_distance_cosine</code> on
-SQLite and <code>VEC_DISTANCE_COSINE</code> on MariaDB. A query without a positive word
-leaves the text leg empty and the result is the vector leg alone. MySQL has no
-distance function, so the call returns <code>momo.ErrUnsupported</code> before any SQL is
-sent.</p>
+SQLite, which needs the cgo driver with sqlite-vec, and <code>VEC_DISTANCE_COSINE</code>
+on MariaDB. Unlike the PostgreSQL vector leg, which orders by distance alone,
+both of them order by distance and then the primary key, so rows that tie at the
+candidate cut-off are chosen by key. A query without a positive word leaves the
+text leg empty and the result is the vector leg alone. The text leg of MariaDB
+sees committed rows only, so a row inserted in the same transaction appears
+through the vector leg only. MySQL has no distance function, so the call
+returns <code>momo.ErrUnsupported</code> before any SQL is sent, and never falls back to a
+text-only search.</p>
 <p>On PostgreSQL the vector leg can use an hnsw or ivfflat index on the vector column with
 <code>vector_cosine_ops</code>. The text leg binds the configuration as a parameter, and a
 GIN expression index on <code>to_tsvector('english', body)</code> needs a constant

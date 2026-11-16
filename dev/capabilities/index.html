@@ -1844,6 +1844,20 @@ defaults to <code>CacheStatement</code> (not PgBouncer-safe), so set
 <td>yes</td>
 </tr>
 <tr>
+<td><code>FullText</code></td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>HybridSearch</code></td>
+<td>yes</td>
+<td>yes</td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
 <td><code>Vector.Storage</code></td>
 <td>yes</td>
 <td>yes</td>
@@ -2489,18 +2503,23 @@ covers MySQL only; for MariaDB see
 </tr>
 <tr>
 <td>Full-text search (<code>tsvector</code>, <code>@@</code>, rank, headline), see fulltext.md</td>
-<td>yes, package <code>fts</code> (<code>fts.Match</code>, <code>fts.Rank</code>, <code>fts.Headline</code>) and <code>types.TSVector</code></td>
-<td>no</td>
-<td><code>ErrUnsupported</code></td>
+<td>yes, package <code>fts</code>: <code>fts.Search</code>, <code>fts.Score</code>, <code>fts.Snippet</code> on a declared index; <code>fts.Match</code>, <code>fts.Rank</code>, <code>fts.Headline</code> on a tsvector</td>
+<td>yes, package <code>fts</code>: <code>fts.Search</code>, <code>fts.Score</code> (negated <code>bm25</code>) and <code>fts.Snippet</code> on an FTS5 table; needs FTS5 in the SQLite build</td>
+<td>yes</td>
 </tr>
 <tr>
 <td>Hybrid search (full text plus vector, RRF)</td>
 <td>yes, <code>momo.HybridSearch</code> (cosine distance, reciprocal rank fusion)</td>
-<td>no</td>
-<td>no</td>
+<td>yes, <code>momo.HybridSearch</code> (FTS5 <code>bm25</code> text leg, <code>vec_distance_cosine</code>; cgo driver with sqlite-vec)</td>
+<td><code>ErrUnsupported</code></td>
 </tr>
 </tbody>
 </table>
+<p>MariaDB 11.8 runs both rows: <code>fts.Search</code> and <code>fts.Score</code> over a <code>FULLTEXT</code>
+index (<code>fts.Snippet</code> is <code>ErrUnsupported</code>, as on MySQL) and <code>momo.HybridSearch</code>.
+MySQL searches text the same way but has no vector distance function, so hybrid
+search is <code>ErrUnsupported</code> there. See <a href="../fulltext/">full-text search</a> and
+<a href="../vectors/#hybrid-search">hybrid search</a>.</p>
 <h2 id="migrations">Migrations<a class="headerlink" href="#migrations" title="Permanent link">&para;</a></h2>
 <p>The <code>momo migrate</code> command selects the PostgreSQL dialect (see the generated
 status above for the library dialects). <code>diff</code>, <code>validate</code> (without <code>--db</code>) and

@@ -825,6 +825,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#3b-full-text-search-structures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3b. Full-text search structures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#4-failure-and-recovery" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1875,6 +1886,17 @@
     <span class="md-ellipsis">
       
         3a. SQLite
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3b-full-text-search-structures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3b. Full-text search structures
       
     </span>
   </a>
@@ -2983,6 +3005,72 @@ options do nothing on SQLite; busy handling is the driver's <code>busy_timeout</
 transaction. <code>AutoMigrate</code> skips any change to an existing table that needs a rebuild (an enum column, say) with the reason "requires a table rebuild; use a migration", because a rebuild writes the whole desired table and would also apply the changes AutoMigrate leaves alone (<code>TestSQLiteAutoMigrateSkipsRebuilds</code>). Index parts carry
 no collation in the schema, so a collation on an index key is not compared.
 Collation on a column is.</p>
+<h2 id="3b-full-text-search-structures">3b. Full-text search structures<a class="headerlink" href="#3b-full-text-search-structures" title="Permanent link">&para;</a></h2>
+<p>A model declares full-text search once, with the <code>search</code> tag or <code>c.FullText</code>
+(see <a href="../fulltext/#declare-a-search">full-text search</a>). The schema snapshot
+records the declaration only: the columns, and the configuration, weights,
+tokenizer, parser and expression flag a dialect honours. Each dialect derives
+its own structures from it, in the same step for the desired schema and for the
+snapshot, so <code>diff</code> compares like with like and a second <code>diff</code> after <code>apply</code>
+is empty.</p>
+<table>
+<thead>
+<tr>
+<th>Dialect</th>
+<th>Structures created</th>
+<th>Needs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PostgreSQL</td>
+<td>a stored generated tsvector column <code>&lt;index&gt;_tsv</code> and a GIN index on it, or a GIN expression</td>
+<td>PostgreSQL 12 or newer, a <code>Config</code> in the declaration</td>
+</tr>
+<tr>
+<td>SQLite</td>
+<td>the external-content FTS5 table <code>&lt;table&gt;_fts</code> and the triggers <code>_ai</code>, <code>_ad</code> and <code>_au</code></td>
+<td>FTS5 in the SQLite build, a rowid table with one <code>INTEGER</code> primary key</td>
+</tr>
+<tr>
+<td>MySQL and MariaDB</td>
+<td>a <code>FULLTEXT</code> index, with <code>WITH PARSER</code> when a parser is declared (MySQL)</td>
+<td>an InnoDB table, <code>CHAR</code>, <code>VARCHAR</code> or <code>TEXT</code> columns, at most 16 of them</td>
+</tr>
+</tbody>
+</table>
+<p><strong>PostgreSQL.</strong> The generated column makes a trigger unnecessary. Changing the
+columns, the configuration, the weights or the expression flag drops the index,
+drops and adds the generated column (a table rewrite under an
+<code>ACCESS EXCLUSIVE</code> lock) and creates the index again. <code>fulltext-column-rewrite</code>
+of <code>momo migrate lint</code> flags it. The index is a plain <code>CREATE INDEX</code>, which
+blocks writes while it builds. When the description of the index has its
+<code>Concurrently</code> flag set (<code>schema.Index</code>; <code>c.FullText</code> has no such option, so
+only a schema built in code sets it), the work is split in two migrations: the
+generated column, and the drop of the old index when the declaration changes,
+stay in the transactional migration, and <code>CREATE INDEX CONCURRENTLY</code> follows in
+a <code>-- momo:no-transaction</code> migration. That drop is a plain <code>DROP INDEX</code> inside
+the transaction that recreates the column.</p>
+<p><strong>SQLite.</strong> <code>CREATE VIRTUAL TABLE "&lt;table&gt;_fts" USING fts5(...)</code> with
+<code>content='&lt;table&gt;'</code>, <code>content_rowid</code> and the declared <code>tokenize</code> clause, then
+the FTS5 <code>'rebuild'</code> command to fill it from the table, in the same migration.
+The three triggers keep it in step with every insert, update and delete of the
+table, including raw SQL. After a bulk load that ran with the triggers disabled,
+or after an <code>INSERT OR REPLACE</code> on a database without
+<code>PRAGMA recursive_triggers = ON</code>, run
+<code>INSERT INTO &lt;table&gt;_fts(&lt;table&gt;_fts) VALUES('rebuild')</code> to repair the index; it
+is not run for you. Removing the declaration or the table drops the triggers
+first and then the FTS5 table. A build without FTS5 fails the migration with
+<code>ErrUnsupported</code> naming FTS5.</p>
+<p><strong>MySQL and MariaDB.</strong> <code>CREATE FULLTEXT INDEX</code>. The first full-text index of an
+InnoDB table adds the hidden <code>FTS_DOC_ID</code> column and rebuilds the table, so on a
+large table run it in a low-traffic window. <code>fulltext-first-index</code> of
+<code>momo migrate lint</code> reports every <code>CREATE FULLTEXT INDEX</code> on an existing table,
+not only the first. A parser is MySQL only; the offline commands cannot tell
+MariaDB from MySQL, so MariaDB rejects a parser when the migration is applied.</p>
+<p><code>momo migrate drift</code> and <code>generate --from-db</code> read these structures back (see
+<a href="../fulltext/#inspection-and-migration-tools">inspection</a>); drift reports a
+missing or altered SQLite sync trigger.</p>
 <h2 id="4-failure-and-recovery">4. Failure and recovery<a class="headerlink" href="#4-failure-and-recovery" title="Permanent link">&para;</a></h2>
 <p>Check state with <code>momo migrate status</code> (exit 1 when anything is dirty,
 mismatched or missing). Read <code>error</code>, shown after the colon.</p>
@@ -3298,11 +3386,12 @@ built.</p>
   <code>Concurrently()</code> the index is a plain <code>CREATE INDEX</code> that blocks writes while
   it builds. Set a role without <code>statement_timeout</code> for the run. A hand-written
   alternative: <code>examples/custom-sql-migration</code>. A full-text index on an existing
-  PostgreSQL table is such an index: declare it <code>Concurrently()</code> too, or the
-  generated <code>CREATE INDEX ... USING gin</code> fails <code>blocking-index</code> in lint.
-  Dropping that index when its declaration changes is a plain <code>DROP INDEX</code> inside
-  the transaction that recreates the generated column, which holds an
-  <code>ACCESS EXCLUSIVE</code> lock for that step.</li>
+  PostgreSQL table is such an index, but <code>c.FullText</code> has no <code>Concurrently</code>
+  option: the generated <code>CREATE INDEX ... USING gin</code> fails <code>blocking-index</code> in
+  lint unless the schema built in code sets <code>Concurrently</code> on its index (see
+  section 3b). Dropping that index when its declaration changes is a plain
+  <code>DROP INDEX</code> inside the transaction that recreates the generated column, which
+  holds an <code>ACCESS EXCLUSIVE</code> lock for that step.</li>
 <li><strong>Lock timeout</strong>: the default 5 s lock wait fails fast instead of queuing
   behind a long transaction. A retry is safe for transactional migrations.</li>
 <li><strong>Deploy order</strong>: migrate first, then roll out code, with every migration

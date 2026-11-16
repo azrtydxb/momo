@@ -1805,12 +1805,15 @@ DON'T, the call either fails, silently does the wrong thing, or is a known bug.<
 <li>Go 1.26.10 or newer (the go.mod floor, which carries the standard-library security fixes). Pre-v1: no compatibility promise; pin the exact version.</li>
 <li><code>diff</code> writes forward migrations only. <code>momo migrate rollback [--group]</code> runs a hand-written <code>.down.sql</code>, <code>momo migrate lint</code> reports risky operations, and <code>momo migrate rebase --onto &lt;dir&gt;</code> regenerates a branch's migrations on a target's.</li>
 <li><code>momo generate --from-db DATABASE_URL</code> turns a live PostgreSQL, MySQL or MariaDB database into models and an init snapshot (see <a href="../migrations/#7-adopting-an-existing-database">migrations</a> and <a href="../mysql/#models-from-a-database">MySQL and MariaDB</a>). SQLite: write models by hand.</li>
-<li>Reciprocal-rank-fusion hybrid search is <code>momo.HybridSearch</code> (PostgreSQL only,
-  see <a href="../vectors/#hybrid-search">vectors.md</a>). Full-text search
-  (<code>types.TSVector</code>, <code>fts.Match</code>, <code>fts.RankCD</code>, <code>fts.Headline</code>, the
-  query builders) exists on PostgreSQL; to weigh the signals yourself, combine
-  a vector distance with a text rank in one score as shown in
-  <a href="../fulltext/">fulltext.md</a>.</li>
+<li>Reciprocal-rank-fusion hybrid search is <code>momo.HybridSearch</code> (PostgreSQL,
+  SQLite and MariaDB; <code>ErrUnsupported</code> on MySQL, see
+  <a href="../vectors/#hybrid-search">vectors.md</a>). Full-text search runs on PostgreSQL,
+  SQLite and MySQL or MariaDB: declare it once on the model (the <code>search</code> tag or
+  <code>c.FullText</code>) and search with <code>fts.Search</code>, <code>fts.Score</code> and <code>fts.Snippet</code>
+  (see <a href="../fulltext/">fulltext.md</a>); <code>types.TSVector</code>, <code>fts.Match</code>,
+  <code>fts.RankCD</code>, <code>fts.Headline</code> and the query builders are PostgreSQL SQL. To
+  weigh the signals yourself, combine a vector distance with a text rank in one
+  score as shown in <a href="../fulltext/">fulltext.md</a>.</li>
 </ul>
 <p>Details: <a href="../capabilities/">capabilities.md</a>. Example: <a href="https://github.com/azrtydxb/momo/tree/main/examples/quickstart/">quickstart</a>.</p>
 <h2 id="2-install-and-tooling">2. Install and tooling<a class="headerlink" href="#2-install-and-tooling" title="Permanent link">&para;</a></h2>
@@ -3978,7 +3981,8 @@ or a missing extension: <code>ErrUnsupported</code>.</p>
   <code>pgxpool.NewWithConfig</code>, then <code>pgxdriver.WithVectorFormat(pgxdriver.VectorBinary)</code>
   with a describe-based exec mode). Default text transport is correct; skip unless
   profiling says otherwise. <code>NewPool</code> does not call <code>ConfigureVectors</code>.</li>
-<li>Reciprocal-rank-fusion hybrid search is <code>momo.HybridSearch</code> (PostgreSQL only,
+<li>Reciprocal-rank-fusion hybrid search is <code>momo.HybridSearch</code> (PostgreSQL,
+  SQLite and MariaDB; <code>ErrUnsupported</code> on MySQL,
   <a href="../vectors/#hybrid-search">vectors.md</a>); for a custom mix, combine a distance
   and a text rank in one score (<a href="../fulltext/">fulltext.md</a>).</li>
 </ul>
