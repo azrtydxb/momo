@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.16.0](https://github.com/azrtydxb/momo/compare/v0.15.0...v0.16.0) (2026-11-16)
+
+_Parallel migration branches merge without conflicts: `momo.sum` has a new format 2 that git merges line by line, and the derived schema folds each migration against its own base, so independent branches validate and dependent ones fail at validate, never at apply. Standalone PostgreSQL sequences, additive CHECK value lists and primary-key updates are now modelled. Upgrade every binary that reads a migration directory together, since an older one refuses a format 2 `momo.sum`; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.16.0/docs/upgrading.md) and [docs/migrations.md](https://github.com/azrtydxb/momo/blob/v0.16.0/docs/migrations.md). [Changes since 0.15.0](https://github.com/azrtydxb/momo/compare/v0.15.0...v0.16.0)._
+
+### ⚠ BREAKING CHANGES
+
+- **migrate:** `momo.sum` is written in format 2, one sorted checksum line per file under a `# momo.sum format=2` header and no `h1:` directory hash; an older momo refuses it with `migrate.ErrNewerFormat`. `momo migrate hash --sum-format 1` writes the old format for a fleet that cannot upgrade at once ([#214](https://github.com/azrtydxb/momo/pull/214), closes [#205](https://github.com/azrtydxb/momo/issues/205))
+
+### Features
+
+- **migrate:** two branches that each add migrations merge without a conflict when their changes are independent. With `momo.sum merge=union` in `.gitattributes` git merges `momo.sum`, and `migrate hash` and `validate` warn when the rule is missing. Branches that touch the same object, a view over a changed table, a foreign key's target, a sequence a default calls, an enum, extension or schema another change uses, or a function, trigger or policy body conflict at `validate` with `ErrBranchConflict` ([#214](https://github.com/azrtydxb/momo/pull/214))
+- **migrate:** `momo migrate rebase --renumber [--applied]` and `Engine.Renumber` move a pending branch that sorts before the newest applied version after it, writing the new files and `momo.sum` before removing the old ones; a migration it cannot move safely is named and refused before anything is written ([#214](https://github.com/azrtydxb/momo/pull/214))
+- **migrate:** standalone PostgreSQL sequences, such as one a column default calls with `nextval`, are part of the schema model. `c.Sequence(name)` declares one with `Start`, `Increment`, bounds, `Cache` and `Cycle`; `migrate` creates, alters and drops it, `--from-db` writes it, and `drift` reports an undeclared one as `unmanaged: sequence`. SQLite, MySQL and MariaDB refuse it with `ErrUnsupported` ([#212](https://github.com/azrtydxb/momo/pull/212), closes [#207](https://github.com/azrtydxb/momo/issues/207))
+- **schema:** `c.CheckIn(&m.Kind, vals...)` declares a CHECK over a list of values that `migrate diff` compares as a set, so adding a value is additive and removing one is flagged destructive by the `check-value-removal` lint rule; `--from-db` writes such constraints as `CheckIn` ([#216](https://github.com/azrtydxb/momo/pull/216), closes [#206](https://github.com/azrtydxb/momo/issues/206))
+- **update:** `UpdateQuery.AllowKeyChange()` lets `Set` assign a primary-key column on every dialect; a duplicate key is `ErrUniqueViolation` and an `ON UPDATE CASCADE` child follows the new key. Without it a key assignment is refused as before ([#209](https://github.com/azrtydxb/momo/pull/209), closes [#204](https://github.com/azrtydxb/momo/issues/204))
+- **importer:** the GORM, Bun and Ent importers write a composite index of the source model as a `c.Index` declaration, so a converted project no longer drops it on its next migration ([#198](https://github.com/azrtydxb/momo/pull/198))
+
+### Bug Fixes
+
+- **migrate:** the SQL splitter trims only the white space it scans and stops an identifier at a byte order mark, so a statement with non-ASCII white space is no longer split or rejoined differently from how PostgreSQL reads it ([#201](https://github.com/azrtydxb/momo/pull/201))
+
+### Performance Improvements
+
+- **momotest:** `momotest.WithTemplateClone()` builds the migrated schema once per server into a template database and gives each test its own clone, falling back to a schema per test when the role cannot create databases; without the option `momotest.New` is unchanged. `sqlitetest.NewTemplate` does the same for SQLite ([#219](https://github.com/azrtydxb/momo/pull/219), closes [#167](https://github.com/azrtydxb/momo/issues/167))
+
 ## [0.15.0](https://github.com/azrtydxb/momo/compare/v0.14.0...v0.15.0) (2026-11-16)
 
 _Full-text search on every dialect: a model declares it once, `momo migrate` renders the structure each database needs, and `fts.Search`, `fts.Score` and `fts.Snippet` query it portably. `momo.HybridSearch` now also runs on SQLite and MariaDB. No code change is needed to upgrade; the cgo SQLite driver needs `-tags sqlite_fts5` for FTS5. See [docs/fulltext.md](https://github.com/azrtydxb/momo/blob/v0.15.0/docs/fulltext.md) and [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.15.0/docs/upgrading.md). [Changes since 0.14.0](https://github.com/azrtydxb/momo/compare/v0.14.0...v0.15.0)._
