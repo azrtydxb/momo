@@ -156,6 +156,31 @@ func TestDiffAfterMergeThenDeliberateDrop(t *testing.T) {
 	}
 }
 
+// A migration generated after a merge records the derived state it was built
+// on. When an older branch merges later and changes that state, the stored
+// snapshot is stale: the fold must say so, not drop the late branch silently.
+func TestLateMergedBranchUnderMarkedChild(t *testing.T) {
+	ctx := context.Background()
+	merged := pbMergedIndependent(t)
+	m, err := offlineEngine(t, merged, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)).Diff(ctx, pbDesired("base", "a", "b", "c"), "add_c", migrate.DiffOptions{})
+	if err != nil || m == nil {
+		t.Fatalf("diff: %v %v", m, err)
+	}
+	withC := withFiles(merged, m.Files)
+	if p := pbProblems(t, withC); len(p) != 0 {
+		t.Fatalf("before the late merge: %v", p)
+	}
+	late := pbBranch(pbBase(), "20260101120000", "add_l", "CREATE TABLE l (id bigint NOT NULL);", pbTable("base"), pbTable("l"))
+	dir := pbMerge(t, withC, late)
+	_, err = migrate.LatestState(dir)
+	if !errors.Is(err, migrate.ErrBranchConflict) || !strings.Contains(err.Error(), m.Version+"_add_c.snapshot.json") {
+		t.Fatalf("a late-merged branch under a marked child must conflict naming the child, got %v", err)
+	}
+	if p := pbProblems(t, dir); len(p) == 0 {
+		t.Fatal("validate must report it")
+	}
+}
+
 func pbDesired(tables ...string) *schema.Schema {
 	s := &schema.Schema{Dialect: "postgres"}
 	for _, n := range tables {
