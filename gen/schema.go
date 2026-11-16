@@ -922,10 +922,26 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 		p := *c.PartitionOf
 		t.PartitionOf = &p
 	}
+	b.checkSequences(m, c.Sequences)
+	mergeObjects(b, &b.s.Sequences, "sequence", c.Sequences, func(q schema.Sequence) string { return q.Schema + "." + q.Name }, m.Pos)
 	mergeObjects(b, &b.s.Views, "view", c.Views, func(v schema.View) string { return v.Schema + "." + v.Name }, m.Pos)
 	mergeObjects(b, &b.s.Functions, "function", c.Functions, func(f schema.Function) string { return f.Schema + "." + f.Name + "(" + f.Args + ")" }, m.Pos)
 	mergeObjects(b, &b.s.Triggers, "trigger", c.Triggers, func(g schema.Trigger) string { return g.Schema + "." + g.Table + "." + g.Name }, m.Pos)
 	mergeObjects(b, &b.s.Policies, "policy", c.Policies, func(p schema.Policy) string { return p.Schema + "." + p.Table + "." + p.Name }, m.Pos)
+}
+
+// checkSequences reports each standalone sequence declared for a dialect that
+// has none: SQLite and MySQL (MariaDB included) are refused, because momo
+// renders CREATE SEQUENCE for PostgreSQL only, and a sequence a migration
+// cannot create would leave the column defaults that use it failing.
+func (b *schemaBuilder) checkSequences(m *Model, seqs []schema.Sequence) {
+	for _, q := range seqs {
+		for _, d := range append(slices.Clone(b.dialects), b.primary) {
+			if d != dialect.Postgres {
+				b.diag(m.Pos, fmt.Sprintf("sequence %q: a standalone sequence is not supported on %s (momo declares sequences for PostgreSQL only)", q.Name, d))
+			}
+		}
+	}
 }
 
 // checkVirtual finishes the virtual generated columns of t: the ones the

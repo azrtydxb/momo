@@ -1224,6 +1224,10 @@ func structLiteral(v any) (string, error) {
 // (triggers, policies, and the functions a table uses).
 func (g *generator) globals() {
 	if len(g.models) == 0 {
+		if len(g.clean.Sequences) > 0 {
+			g.add(SevWarn, "", "the database has sequences but no table to model: a model declares them, so they are left out of the snapshot")
+			g.clean.Sequences = nil
+		}
 		return
 	}
 	host := g.models[0]
@@ -1233,6 +1237,9 @@ func (g *generator) globals() {
 			args = append(args, strconv.Quote(v))
 		}
 		host.stmts = append(host.stmts, "c.Enum("+strings.Join(args, ", ")+")")
+	}
+	for _, q := range g.clean.Sequences {
+		host.stmts = append(host.stmts, sequenceStmt(q))
 	}
 	for i := range g.clean.Views {
 		v := &g.clean.Views[i]
@@ -1249,6 +1256,41 @@ func (g *generator) globals() {
 	for _, x := range g.clean.Policies {
 		g.owner(x.Schema, x.Table).global("Policy", x, g, x.Name)
 	}
+}
+
+// sequenceStmt renders c.Sequence(name) with the options that differ from what
+// the declaration would default to, so a plain sequence reads as one line.
+func sequenceStmt(q schema.Sequence) string {
+	n := schema.NormalizeSequence(q)
+	byStep := schema.NormalizeSequence(schema.Sequence{AsType: n.AsType, Increment: n.Increment})
+	byBounds := schema.NormalizeSequence(schema.Sequence{AsType: n.AsType, Increment: n.Increment, MinValue: n.MinValue, MaxValue: n.MaxValue})
+	num := func(v int64) string { return strconv.FormatInt(v, 10) }
+	s := "c.Sequence(" + strconv.Quote(q.Name) + ")"
+	if q.Schema != "" {
+		s += ".Schema(" + strconv.Quote(q.Schema) + ")"
+	}
+	if n.AsType != "bigint" {
+		s += ".As(" + strconv.Quote(n.AsType) + ")"
+	}
+	if n.Increment != 1 {
+		s += ".Increment(" + num(n.Increment) + ")"
+	}
+	if *n.MinValue != *byStep.MinValue {
+		s += ".MinValue(" + num(*n.MinValue) + ")"
+	}
+	if *n.MaxValue != *byStep.MaxValue {
+		s += ".MaxValue(" + num(*n.MaxValue) + ")"
+	}
+	if *n.Start != *byBounds.Start {
+		s += ".Start(" + num(*n.Start) + ")"
+	}
+	if n.Cache != 1 {
+		s += ".Cache(" + num(n.Cache) + ")"
+	}
+	if n.Cycle {
+		s += ".Cycle()"
+	}
+	return s
 }
 
 // owner returns the model of a table. Every trigger and policy has one:

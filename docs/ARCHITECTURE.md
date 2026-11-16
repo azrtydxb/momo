@@ -59,7 +59,7 @@ MySQL or MariaDB variant. The query builder consults these flags and returns
 ### `schema`
 
 The neutral description of a database schema: tables, columns, indexes,
-foreign keys, checks, enums, views, functions, triggers and policies. It is
+foreign keys, checks, enums, sequences, views, functions, triggers and policies. It is
 what the generator produces from your models, what a migration snapshot
 stores, and what each migration dialect inspects from a live database.
 `schema.Load` reads a stored schema and refuses a newer `schema.FormatVersion` with

@@ -57,7 +57,7 @@ var (
 	lintAddConstr    = regexp.MustCompile(`\badd (?:constraint \S+ )?(?:foreign key|check)\b`)
 	lintCreateIndex  = regexp.MustCompile(`^create (?:unique )?index (concurrently )?(?:if not exists )?(?:\S+ )?on (?:only )?(\S+)`)
 	lintAddEnumValue = regexp.MustCompile(`(?i)^alter type \S+ add value (?:if not exists )?'((?:[^']|'')*)'`)
-	lintDropTable    = regexp.MustCompile(`^(?:drop table|drop schema|drop type|truncate)\b`)
+	lintDropTable    = regexp.MustCompile(`^(?:drop table|drop schema|drop type|drop sequence|truncate)\b`)
 	lintDropColumn   = regexp.MustCompile(`\bdrop column\b`)
 
 	lintDropColumnName = regexp.MustCompile(`\bdrop column (?:if exists )?("[^"]+"|\w+)`)

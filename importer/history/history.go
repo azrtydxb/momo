@@ -170,7 +170,7 @@ func Baseline(ctx context.Context, scratch *momo.DB, d migrate.Dialect, conv []C
 	if err != nil {
 		return nil, fmt.Errorf("history: inspect the scratch database: %w", err)
 	}
-	if len(before.Tables)+len(before.Views)+len(before.Enums)+len(before.Functions) != 0 {
+	if len(before.Tables)+len(before.Views)+len(before.Enums)+len(before.Sequences)+len(before.Functions) != 0 {
 		return nil, errors.New("history: the scratch database is not empty; the baseline needs a database that starts empty")
 	}
 	var snaps []migrate.SnapshotFile
