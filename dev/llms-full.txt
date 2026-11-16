@@ -8637,9 +8637,51 @@ func TestSignup(t *testing.T) {
 }
 ```
 
-`New` creates a schema, applies the migrations to it and returns a `*momo.DB`.
-When the test ends the pool is closed and the schema is dropped. Code under test
-may open and commit its own transactions. Use this mode when it does.
+`New` creates a schema named `momotest_<hex>`, applies the migrations to it and
+returns a `*momo.DB`. When the test ends the pool is closed and the schema is
+dropped. Code under test may open and commit its own transactions. Use this mode
+when it does. Every test has a schema of its own, so `t.Parallel` is safe.
+
+### Cloning a template database
+
+On a schema with many tables the per-test migrations and the `DROP SCHEMA` cost
+more than the test. `momotest.WithTemplateClone` builds the migrations once and
+copies them for each test: pass it to `momotest.New` next to
+`momotest.WithMigrations`, and the `*momo.DB` you get is on a database no other
+test can see. The migrations run once, in the `public` schema of a template database named
+`momotest_tpldb_<hash>`. The hash covers the migration file names and contents,
+the extension list, the momo version, the server version and the version of each
+listed extension, so a changed input builds a new template and a stale one is
+never reused. Each `New` then runs `CREATE DATABASE momotest_db_<hex> TEMPLATE
+momotest_tpldb_<hash>`, a file copy that replays no DDL, and the test's pool
+connects to that clone. At the end the clone is dropped with `DROP DATABASE ...
+WITH (FORCE)`, which takes no lock per table, so the cost does not grow with the
+schema; before PostgreSQL 13 the sessions are terminated first and a plain
+`DROP DATABASE` follows. Extensions listed in `momotest.WithExtensions` are
+installed in the template, so a clone has them. The first call of a test binary
+logs which path ran (visible with `go test -v`).
+
+The tables live in the clone's `public` schema, so `current_schema()` is
+`public` and `current_database()` names the clone, where the default path gives
+a `momotest_` schema. The option needs:
+
+- A role with `CREATEDB` (or a superuser) that owns, or may copy, the template.
+  Without it `New` falls back to the schema path and logs that once.
+- Session-capable connections. A pooler in transaction mode breaks the
+  advisory locks, and a pooler that serves one database cannot reach the clone.
+- The `postgres` database to take the locks on when the role may connect to it;
+  database names are cluster-wide, so every process locks in one place. When
+  `postgres` does not exist or refuses the role, the locks move to the URL's own
+  database, and processes that lock on different databases do not exclude each
+  other.
+- A `postgres://` or `postgresql://` URL. A keyword/value DSN falls back to the
+  schema path, with the reason logged once.
+
+The template build retires templates that no test binary has a session on and
+that the current role owns. Each use stamps the template's comment with the
+time, and the next build drops a template unused for seven days. A build that
+was started and never finished carries a creation stamp, and the next build
+drops it once it is an hour old.
 
 ## A rollback per test: NewTx
 
@@ -8739,12 +8781,17 @@ example rewriting the directory an `os.DirFS` points at, is not supported.
 ## Leftover schemas
 
 Cleanup runs in `t.Cleanup`, so a killed test run (`kill -9`, a CI timeout)
-can leave `momotest_<hex>` schemas behind. They are harmless but accumulate. Drop
-them on a disposable server by recreating it, or with
-`DROP SCHEMA momotest_<hex> CASCADE` for each name in `pg_namespace` that matches
-`momotest\_%` and is not `momotest_tpl_%`. Template schemas `momotest_tpl_*` are
-meant to stay. `momotest` has no sweep helper: it never drops a schema it did
-not create in the current test.
+can leave `momotest_<hex>` schemas and `momotest_db_<hex>` databases behind.
+They are harmless but accumulate. Drop them on a disposable server by
+recreating it, or with `DROP SCHEMA momotest_<hex> CASCADE` for each name in
+`pg_namespace` that matches `momotest\_%` and is not `momotest_tpl_%`, and
+`DROP DATABASE momotest_db_<hex> WITH (FORCE)` for each `momotest_db_%` name in
+`pg_database`. Template schemas `momotest_tpl_*` stay; template databases
+`momotest_tpldb_*` stay while a test binary uses them and are dropped by the next
+template build once unused for seven days, or an hour after a build that never
+finished. A run that needs the same half-built template replaces it at once.
+Apart from that sweep, `momotest` never
+drops a schema or database it did not create in the current test.
 
 ## Fixtures: Seed
 
@@ -8813,6 +8860,17 @@ other database. The database starts empty: create the tables with your own DDL,
 for example `momo.SQLiteVectorType` for a vector column (see
 [Vector search](vectors.md)); `momotest.WithMigrations` and `momotest.NewTx` are
 PostgreSQL features and do not apply.
+
+A schema with many tables costs DDL on every test. `sqlitetest.NewTemplate`
+takes a function that creates the tables through a `*momo.DB`; keep the
+`*sqlitetest.Template` it returns in a package variable and call its `New(t,
+opts...)` method in each test. The function runs once per test binary, on the
+first call, and the result is kept as a snapshot made with `VACUUM INTO`; every
+`New` then writes that snapshot to a file of its own in the test's temporary
+directory and opens it, so no DDL runs again. A copy is independent of the
+other copies and of the template, so parallel tests do not see each other's
+rows. If the function fails, each test that uses the template fails with its
+error.
 
 SQLite lives in its own package, and not in `momotest`, because the SQLite
 driver is compiled from C sources: a test binary that imports only `momotest`
@@ -8970,16 +9028,22 @@ func run(ctx context.Context) error {
 | `momotest.WithExtensions(names)` | `CREATE EXTENSION IF NOT EXISTS` in `public` first; with `vector` the pool registers the codec. |
 | `momotest.WithMomoOptions(opts)` | Passed to `momo.New`, for example a hook.                                                       |
 | `momotest.WithMaxConns(n)`       | Pool size per test: 4 for `New`, 2 for `momotest.NewTx` by default.                             |
+| `momotest.WithTemplateClone()`   | Make `New` clone a template database per test instead of building a schema.                     |
 
 ## Concurrency
 
-Every call opens its own connection pool and, in `New`, its own schema, so
-`t.Parallel` and `-race` are safe. The one shared step, creating extensions and
-building a template, runs under a PostgreSQL advisory lock (keyed by
-`hashtext` of the names `momotest:extensions` and `momotest:template`), so tests
-in one binary and several test binaries running at once (`go test ./...`)
-cooperate. `New` also opens a short administrator connection to create and, at
-cleanup, drop its schema. A `momotest.NewTx` test holds one connection for its
+Every call opens its own connection pool and, in `New`, its own schema (or
+database with `momotest.WithTemplateClone`), so `t.Parallel` and `-race` are safe. The shared
+steps, creating extensions, building a template schema or database, and cloning
+a template database, run under PostgreSQL advisory locks (keyed by `hashtext` of
+the names `momotest:extensions`, `momotest:template`, `momotest:templatedb` and
+`momotest:clone`), so tests in one binary and several test binaries running at
+once (`go test ./...`) cooperate. A clone waits, and retries, while a template
+still has a closing connection. `New` also opens a short administrator
+connection to create and, at cleanup, drop its database or schema; the drop of a
+database takes no lock per table, so test binaries that finish together do not
+contend on the lock table the way parallel `DROP SCHEMA ... CASCADE` of a large
+schema does. A `momotest.NewTx` test holds one connection for its
 transaction, plus the pool's spare. Each parallel test holds a few connections; keep the server's
 `max_connections` above the number of parallel tests times the pool size, or
 lower the pool with `momotest.WithMaxConns` or the parallelism with `-parallel`.
@@ -10092,7 +10156,9 @@ shape as a `Config.CheckIn` declaration, and a snapshot written without the
 value list still diffs as before. On SQLite a named table-level
 `CHECK (col IN (...))` now inspects as a check with a value list, and
 `--from-db` writes it as `Config.CheckIn`, instead of as an enum column; an
-unnamed column check is unchanged.
+unnamed column check is unchanged. `momotest.WithTemplateClone` makes
+`momotest.New` clone a template database per test instead of building a schema
+per test; without the option `momotest.New` behaves as before.
 
 ## Upgrading to 0.15.0
 
@@ -13287,6 +13353,7 @@ Import path: `github.com/azrtydxb/momo/momotest`
 | `momotest.WithMaxConns`      | func  | WithMaxConns sets the pool size.                                                                                                                                                      |
 | `momotest.WithMigrations`    | func  | WithMigrations applies the migrations in fsys, typically an embed.FS narrowed with fs.Sub to the migrations directory, to the database before the test sees it.                       |
 | `momotest.WithMomoOptions`   | func  | WithMomoOptions passes opts to momo.New, for example momo.WithHook.                                                                                                                   |
+| `momotest.WithTemplateClone` | func  | WithTemplateClone makes New clone a template database instead of building a schema for each test.                                                                                     |
 
 ## advisory
 

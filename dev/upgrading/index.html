@@ -3337,7 +3337,9 @@ shape as a <code>Config.CheckIn</code> declaration, and a snapshot written witho
 value list still diffs as before. On SQLite a named table-level
 <code>CHECK (col IN (...))</code> now inspects as a check with a value list, and
 <code>--from-db</code> writes it as <code>Config.CheckIn</code>, instead of as an enum column; an
-unnamed column check is unchanged.</p>
+unnamed column check is unchanged. <code>momotest.WithTemplateClone</code> makes
+<code>momotest.New</code> clone a template database per test instead of building a schema
+per test; without the option <code>momotest.New</code> behaves as before.</p>
 <h2 id="upgrading-to-0150">Upgrading to 0.15.0<a class="headerlink" href="#upgrading-to-0150" title="Permanent link">&para;</a></h2>
 <p>No edit is needed in your code. A model can now declare full-text search, and
 the declaration is recorded in the model and in the schema snapshot. On
