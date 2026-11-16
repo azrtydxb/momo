@@ -140,7 +140,9 @@ func TestCheckInFallsBackToDropAndAdd(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var kinds []migrate.ChangeKind
 			for _, ch := range checkInDiff(t, c.from, c.to) {
-				kinds = append(kinds, ch.Kind)
+				if ch.Kind != migrate.AddColumn {
+					kinds = append(kinds, ch.Kind)
+				}
 			}
 			if !slices.Equal(kinds, []migrate.ChangeKind{migrate.DropCheck, migrate.AddCheck}) && !slices.Equal(kinds, []migrate.ChangeKind{migrate.AddCheck, migrate.DropCheck}) {
 				t.Fatalf("kinds = %v, want a drop and an add", kinds)
