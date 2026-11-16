@@ -1425,7 +1425,11 @@ survives a round trip, and where the edges are. The tables are checked by
 tests: <code>TestTypeMappingDoc</code> fails when a row here disagrees with the generator's
 type map or a codec's <code>SQLType</code>, and <code>TestTypeMapping</code> creates a column of each
 documented PostgreSQL type on a live server, and the generated SQLite type on a
-live SQLite database, and round-trips edge values through it.</p>
+live SQLite database, and round-trips edge values through it.
+<code>TestTypeMappingMySQL</code> does the same with the MySQL column on MySQL 8.4, MySQL
+9.7 and MariaDB 11.8, and <code>TestTypeMappingMySQLNull</code>,
+<code>TestTypeMappingMySQLUnsigned</code> and <code>TestTypeMappingMySQLLimits</code> check NULL, the
+unsigned types and the MySQL limits.</p>
 <h2 id="how-a-type-is-chosen">How a type is chosen<a class="headerlink" href="#how-a-type-is-chosen" title="Permanent link">&para;</a></h2>
 <ol>
 <li>A field whose type implements the codec contract (<code>types.Codec</code>: <code>Scan</code>,
@@ -1659,8 +1663,14 @@ has no array columns, so the generator rejects them there.</p>
 <!-- /generated:typemap -->
 
 <p>The MySQL column is what <code>typemap.Map</code> returns for MySQL and MariaDB, which share
-it. Unsigned Go integers (<code>uint8</code>, <code>uint16</code>, <code>uint32</code>, <code>uint</code> and <code>uint64</code>) map to
-the unsigned column types, <code>int8</code> to <code>tinyint</code>, and <code>bool</code> to <code>tinyint(1)</code>.
+it. Unsigned Go integers map to the unsigned column types: <code>uint8</code> to
+<code>tinyint unsigned</code>, <code>uint16</code> to <code>smallint unsigned</code>, <code>uint32</code> to <code>int unsigned</code>,
+<code>uint</code> to <code>bigint unsigned</code> and <code>uint64</code> to <code>bigint unsigned</code>. <code>int8</code> maps to
+<code>tinyint</code>, and <code>bool</code> to <code>tinyint(1)</code>. A <code>vector.Vector</code> column needs MySQL 9.0
+or MariaDB 11.7; MySQL 8.4 has no <code>vector</code> type. MariaDB 11.8 refuses a vector
+components of large magnitude with error 1292 (1e30 and <code>math.MaxFloat32</code> are
+refused; MariaDB does not document the threshold), and MySQL 9.7 takes the full
+float32 range.
 <code>types.Numeric</code> with a <code>precision</code> tag is <code>decimal(p,s)</code> (precision up to 65,
 scale up to 30, scale not above precision; a precision alone is scale 0, and
 <code>NaN</code> and infinity cannot be stored); without one it stays text, because a bare
@@ -1744,9 +1754,13 @@ document because nothing generates one.</p>
 </tbody>
 </table>
 <h2 id="edge-values-and-behavior">Edge values and behavior<a class="headerlink" href="#edge-values-and-behavior" title="Permanent link">&para;</a></h2>
-<p>Each statement below is asserted by a test against PostgreSQL. The generated
-SQLite column of every row is also round-tripped on a live SQLite database,
-except <code>NaN</code>, which SQLite does not have (see Floats).</p>
+<p>Each statement below is asserted by a test against PostgreSQL, and the ones
+about SQLite or MySQL and MariaDB by the SQLite and MySQL tests named at the
+top. The generated SQLite column of every row is also round-tripped on a live
+SQLite database, except <code>NaN</code>, which SQLite does not have (see Floats). The
+MySQL column of every row that has one is round-tripped on MySQL 8.4, MySQL 9.7
+and MariaDB 11.8 (<code>TestTypeMappingMySQL</code>), with the edge values the MySQL
+column holds.</p>
 <ul>
 <li>Integers: <code>math.MaxInt64</code> and <code>math.MinInt64</code> round-trip through <code>bigint</code>;
   <code>int</code> is 64-bit and maps to <code>bigint</code>. A value that does not fit the column
@@ -1757,7 +1771,14 @@ except <code>NaN</code>, which SQLite does not have (see Floats).</p>
   values and round-trip. Compare with <code>math.IsNaN</code>, since <code>NaN != NaN</code>. SQLite
   has no <code>NaN</code>: binding a <code>float32</code> or <code>float64</code> <code>NaN</code> (or a pointer to one) is
   <code>ErrValidation</code> and nothing is stored, rather than a silent <code>NULL</code>. <code>+Inf</code> and
-  <code>-Inf</code> are legal <code>REAL</code> values.</li>
+  <code>-Inf</code> are legal <code>REAL</code> values. MySQL and MariaDB have no <code>NaN</code> or infinity in
+  <code>float</code> and <code>double</code>: binding one is a database error.
+  A <code>float</code> column read by a query with no arguments comes back over the text
+  protocol, where MySQL 8.4, MySQL 9.7 and MariaDB 11.8 print it with six
+  significant digits (<code>math.MaxFloat32</code> reads back as <code>3.40282e+38</code>). A query
+  with an argument uses the binary protocol and returns the exact <code>float32</code>, as
+  does <code>CAST(col AS DOUBLE)</code> or <code>col + 0e0</code> in the select list. Use <code>double</code>
+  (<code>float64</code>) for a column whose exact value matters on every read path.</li>
 <li>Strings: any valid UTF-8 round-trips, including quotes and backslashes (they
   are bound, never interpolated). PostgreSQL rejects U+0000 in <code>text</code>. A string
   longer than <code>size</code> is a database error on <code>character varying(N)</code>.</li>
