@@ -14,12 +14,15 @@ import (
 
 // sequenceOnly is a schema with one sequence. The test database has the vector
 // extension installed, so the inspected schema lists it and the declared one
-// must too, as arraySchema does.
+// must too, as arraySchema does. Tables is an empty slice, not nil, because
+// schema.Equal compares the JSON form and an inspection of a database with no
+// table reads "tables": [] where a nil slice reads null.
 func sequenceOnly(q schema.Sequence) *schema.Schema {
 	return &schema.Schema{
 		Dialect:    "postgres",
 		Extensions: []schema.Extension{{Name: "vector"}},
 		Sequences:  []schema.Sequence{q},
+		Tables:     []schema.Table{},
 	}
 }
 
