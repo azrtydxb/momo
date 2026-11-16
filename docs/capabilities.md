@@ -98,6 +98,8 @@ defaults to `CacheStatement` (not PgBouncer-safe), so set
 | `ILike` (native ILIKE; emulated elsewhere)                      | yes                                              | no                                         | no                   | no                   |
 | `Merge`                                                         | yes                                              | no                                         | no                   | no                   |
 | `WindowFunctions`                                               | yes                                              | yes                                        | yes                  | yes                  |
+| `FullText`                                                      | yes                                              | yes                                        | yes                  | yes                  |
+| `HybridSearch`                                                  | yes                                              | yes                                        | no                   | yes                  |
 | `Vector.Storage`                                                | yes                                              | yes                                        | yes                  | yes                  |
 | `Vector.Metrics`                                                | `l2`, `ip`, `cosine`, `l1`, `hamming`, `jaccard` | `l2`, `l1`, `cosine`, `hamming`            | none                 | `l2`, `cosine`       |
 | `Vector.Indexes`                                                | `hnsw`, `ivfflat`                                | none                                       | none                 | `vector`             |
