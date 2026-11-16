@@ -80,7 +80,7 @@ func readSource(t *testing.T, src string) ([]importer.Model, *importer.Report) {
 }
 
 func TestReadCompositeIndexes(t *testing.T) {
-	models, rep := readSource(t, imports+`
+	models, rep := readSource(t, `
 type Row struct{ ent.Schema }
 
 func (Row) Fields() []ent.Field {
