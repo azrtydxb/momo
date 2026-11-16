@@ -21,6 +21,17 @@ unnamed column check is unchanged. `momotest.WithTemplateClone` makes
 `momotest.New` clone a template database per test instead of building a schema
 per test; without the option `momotest.New` behaves as before.
 
+### Change a primary key with `AllowKeyChange`
+
+`UpdateQuery.AllowKeyChange` is an opt-in that lets `UpdateQuery.Set` assign a
+primary-key column, for a row whose key a user chooses and may rename. Without
+it an assignment to a key column is refused with `ErrValidation`, as before.
+With it the statement runs as written, on every dialect, and a key that
+collides with another row fails with `ErrUniqueViolation`; foreign keys
+declared `ON UPDATE CASCADE` follow the new key. `UpdateQuery.Model`,
+`BulkUpdate`, the `OnUpdate` field hook and an identity key keep refusing a key
+assignment.
+
 ## Upgrading to 0.15.0
 
 No edit is needed in your code. A model can now declare full-text search, and

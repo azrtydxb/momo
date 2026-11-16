@@ -10,12 +10,15 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
 	"github.com/azrtydxb/momo/bench/adapters"
 )
 
 // OpenDB opens GORM on the pgx stdlib driver with the shared pool settings and
-// no implicit transaction around single writes, as Momo does not add one. The
+// no implicit transaction around single writes, as Momo does not add one. GORM's
+// logger is discarded: its slow-query warnings go to stdout and, on a slow
+// runner, split the benchmark result lines the allocation gate parses. The
 // returned function closes the underlying pool.
 func OpenDB(url string) (*gorm.DB, func() error, error) {
 	sqlDB, err := sql.Open("pgx", url)
@@ -23,7 +26,7 @@ func OpenDB(url string) (*gorm.DB, func() error, error) {
 		return nil, nil, err
 	}
 	adapters.ApplySQLDBSettings(sqlDB)
-	db, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{SkipDefaultTransaction: true})
+	db, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{SkipDefaultTransaction: true, Logger: logger.Discard})
 	if err != nil {
 		_ = sqlDB.Close()
 		return nil, nil, err

@@ -35,6 +35,8 @@ type UpdateQuery[T any] struct {
 	// not an unfiltered statement.
 	modelSet bool
 	allRows  bool
+	// allowKeyChange confirms that Set may assign primary-key columns.
+	allowKeyChange bool
 	// returning is the RETURNING list, read with Rows.
 	returning returningSet
 	// count counts the rows of the target table matching ps, soft-deleted
@@ -62,7 +64,8 @@ func Update[T any, PT Modeler[T]](q Querier) UpdateQuery[T] {
 // Set adds explicit column assignments. An assignment to a column that is
 // read-only, identity, create-only or immutable in the model's metadata is
 // refused with ErrValidation when the statement is built. A later assignment
-// to the same column replaces an earlier one.
+// to the same column replaces an earlier one. A primary-key column is refused
+// unless AllowKeyChange is set.
 func (u UpdateQuery[T]) Set(assigns ...Assignment) UpdateQuery[T] {
 	u.assigns = append(slices.Clip(u.assigns), assigns...)
 	return u
@@ -153,6 +156,21 @@ func (u UpdateQuery[T]) Model(m *T) UpdateQuery[T] { u.model, u.modelSet = m, tr
 
 // AllRows confirms that an UPDATE without WHERE is intended.
 func (u UpdateQuery[T]) AllRows() UpdateQuery[T] { u.allRows = true; return u }
+
+// AllowKeyChange confirms that Set may assign primary-key columns. Without it
+// an assignment to a key column is refused with ErrValidation, as before. With
+// it the statement runs as written, UPDATE t SET id = $1 WHERE id = $2, on
+// every dialect; a composite key may set any of its columns. A key that
+// collides with another row fails with ErrUniqueViolation. Foreign keys
+// declared ON UPDATE CASCADE follow the new key, as the database defines.
+// Locate the row by its old key in Where; AllowKeyChange does not check that
+// Where does. A read-back after the update uses the new key, and RETURNING
+// (PostgreSQL and SQLite) yields it.
+//
+// Only Set assigns a key. Model (which addresses the row by the key it holds),
+// BulkUpdate and the OnUpdate field hook keep refusing it, and an identity
+// key is still refused because the database generates it.
+func (u UpdateQuery[T]) AllowKeyChange() UpdateQuery[T] { u.allowKeyChange = true; return u }
 
 // Returning appends a RETURNING list; read the rows with Rows.
 func (u UpdateQuery[T]) Returning(cols ...ColumnRef) UpdateQuery[T] {
@@ -253,8 +271,13 @@ func (u UpdateQuery[T]) plan() ([]Assignment, []Predicate, error) {
 		if role := u.reservedRole(a.col); role != "" {
 			// Tasks 18 (soft delete) and 20 (updated-at) own these columns,
 			// and Model owns the key and version; a plain Set must not
-			// bypass them.
-			return nil, nil, u.fail(ErrValidation, fmt.Errorf("column %q is the %s column and cannot be set directly", a.col, role))
+			// bypass them. AllowKeyChange lifts the refusal for the key alone.
+			if role != "primary key" || !u.allowKeyChange {
+				return nil, nil, u.fail(ErrValidation, fmt.Errorf("column %q is the %s column and cannot be set directly", a.col, role))
+			}
+			if u.model != nil {
+				return nil, nil, u.fail(ErrValidation, fmt.Errorf("column %q is the primary key column and Model addresses the row by it; change a key with Where and Set, without Model", a.col))
+			}
 		}
 		for _, c := range u.meta.Columns {
 			if c.Name == a.col && !columnAssignable(writeUpdate, c.Flags) {
