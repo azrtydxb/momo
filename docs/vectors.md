@@ -23,8 +23,9 @@ MariaDB. This page describes what is built. Every Go snippet below is an `Exampl
 
 ## Not available
 
-- Hybrid search on SQLite and MySQL: `momo.HybridSearch` needs PostgreSQL and
-  returns `ErrUnsupported` elsewhere; see [Hybrid search](#hybrid-search).
+- Hybrid search on MySQL: `momo.HybridSearch` returns `momo.ErrUnsupported`
+  there, because MySQL has no cosine distance function; see
+  [Hybrid search](#hybrid-search).
 - MySQL: the server stores vectors but has no distance function, so a distance
   query fails with `ErrUnsupported`; see "MariaDB and MySQL" below. The
   `momo migrate` command does not run `migrate/mysql`, which renders its
@@ -327,7 +328,7 @@ scans.
 
 ## Hybrid search
 
-`momo.HybridSearch` fuses a PostgreSQL full-text leg and a cosine-distance
+`momo.HybridSearch` fuses a full-text leg and a cosine-distance
 vector leg with reciprocal rank fusion (RRF) in one statement. Each leg picks
 its own best `TextCandidates` and `VectorCandidates` rows (default 100, at most
 1000), ranks them, and a row scores the sum of `1/(RRFK+rank)` over the legs it
@@ -360,7 +361,19 @@ left out. The vector leg takes the dense `vector` type only (not `halfvec`,
 `sparsevec` or `bit`) and skips rows with a NULL embedding and rows whose
 cosine distance is NaN (zero vectors).
 `HybridQuery.SQL` returns the statement and its arguments without running it.
-The vector leg can use an hnsw or ivfflat index on the vector column with
+
+On SQLite and MariaDB 11.8 the same call runs with the same knobs and
+tie-breaks. The text leg searches the structure of the model's full-text
+declaration (the FTS5 table ordered by `bm25`, or `MATCH ... AGAINST` in
+boolean mode), so `HybridSpec.Text` must be one of the declared columns
+(`momo.ErrValidation` otherwise), `TextConfig` is ignored, and `Query` is read
+like a web-style `fts.Web` query. The vector leg uses `vec_distance_cosine` on
+SQLite and `VEC_DISTANCE_COSINE` on MariaDB. A query without a positive word
+leaves the text leg empty and the result is the vector leg alone. MySQL has no
+distance function, so the call returns `momo.ErrUnsupported` before any SQL is
+sent.
+
+On PostgreSQL the vector leg can use an hnsw or ivfflat index on the vector column with
 `vector_cosine_ops`. The text leg binds the configuration as a parameter, and a
 GIN expression index on `to_tsvector('english', body)` needs a constant
 configuration in its definition, so PostgreSQL may not match it to a bound
