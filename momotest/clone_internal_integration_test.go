@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -73,30 +75,35 @@ func databaseCount(t *testing.T, admin *pgx.Conn, where string, args ...any) int
 	return n
 }
 
-func templateOf(t *testing.T, fsys fstest.MapFS) string {
+// templateOf returns the name of the template database that opts select.
+func templateOf(t *testing.T, admin *pgx.Conn, opts ...Option) string {
 	t.Helper()
-	c := newConfig([]Option{WithMigrations(fsys)})
+	c := newConfig(opts)
 	schemaName, err := c.preparedTemplate()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return templateDBPrefix + strings.TrimPrefix(schemaName, "momotest_tpl_")
+	name, err := c.databaseTemplateName(t.Context(), admin, schemaName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return name
 }
 
-// TestNewClonesATemplateDatabase pins the path New takes on a role that may
-// create databases: the test's database is a clone of the ready template
-// database, it holds the migrated tables, it is gone when the test ends, and
-// the template has no session left, which the next clone needs. It catches a New
-// that falls back to the schema path on a capable role (the scope is the shared
-// database), a template never marked ready, a template build that leaks its pool
-// and a clone that outlives the test.
+// TestNewClonesATemplateDatabase pins the path New takes with WithTemplateClone
+// on a role that may create databases: the test's database is a clone of the
+// ready template database, it holds the migrated tables, it is gone when the
+// test ends, and the template has no session left, which the next clone needs.
+// It catches a New that falls back to the schema path on a capable role (the
+// scope is the shared database), a template never marked ready, a template
+// build that leaks its pool and a clone that outlives the test.
 func TestNewClonesATemplateDatabase(t *testing.T) {
 	admin := adminConn(t)
 	fsys := cloneMigrations(randomName("clone_"), "")
-	tpl := templateOf(t, fsys)
+	tpl := templateOf(t, admin, WithMigrations(fsys))
 	var clone string
 	t.Run("test", func(t *testing.T) {
-		db := New(t, WithMigrations(fsys))
+		db := New(t, WithTemplateClone(), WithMigrations(fsys))
 		clone = queryOne[string](t, db.Driver(), "SELECT current_database()")
 		if !strings.HasPrefix(clone, cloneDBPrefix) {
 			t.Fatalf("database %q is not a clone (prefix %s)", clone, cloneDBPrefix)
@@ -104,7 +111,7 @@ func TestNewClonesATemplateDatabase(t *testing.T) {
 		if got := queryOne[int64](t, db.Driver(), "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'items'"); got != 1 {
 			t.Fatalf("clone holds %d items tables, want 1", got)
 		}
-		if n := databaseCount(t, admin, "datname = $1 AND shobj_description(oid, 'pg_database') = $2", tpl, readyMarker); n != 1 {
+		if n := databaseCount(t, admin, "datname = $1 AND shobj_description(oid, 'pg_database') LIKE $2", tpl, readyPrefix+"%"); n != 1 {
 			t.Fatalf("template database %s is not marked ready", tpl)
 		}
 		var sessions int
@@ -126,6 +133,30 @@ func TestNewClonesATemplateDatabase(t *testing.T) {
 	}
 }
 
+// TestNewDefaultsToASchema pins that New without WithTemplateClone keeps the
+// schema per test in the shared database and creates no template database. It
+// catches a default flipped to cloning, which would move every suite's tables
+// out of its momotest_ schema.
+func TestNewDefaultsToASchema(t *testing.T) {
+	admin := adminConn(t)
+	var home string
+	if err := admin.QueryRow(t.Context(), "SELECT current_database()").Scan(&home); err != nil {
+		t.Fatal(err)
+	}
+	fsys := cloneMigrations(randomName("def_"), "")
+	tpl := templateOf(t, admin, WithMigrations(fsys))
+	db := New(t, WithMigrations(fsys))
+	if got := queryOne[string](t, db.Driver(), "SELECT current_database()"); got != home {
+		t.Fatalf("database = %s, want the shared %s", got, home)
+	}
+	if got := queryOne[string](t, db.Driver(), "SELECT current_schema()"); !strings.HasPrefix(got, "momotest_") {
+		t.Fatalf("schema = %s, want a momotest_ schema", got)
+	}
+	if n := databaseCount(t, admin, "datname = $1", tpl); n != 0 {
+		t.Fatalf("template database %s was created without WithTemplateClone", tpl)
+	}
+}
+
 // TestCloneParallelIsolation inserts the same unique name and commits in many
 // parallel clones. It catches a clone whose pool points at the template or at a
 // shared database (the second insert collides), and a clone that writes back
@@ -138,7 +169,7 @@ func TestCloneParallelIsolation(t *testing.T) {
 		for i := range 8 {
 			t.Run(fmt.Sprint(i), func(t *testing.T) {
 				t.Parallel()
-				db := New(t, WithMigrations(fsys))
+				db := New(t, WithTemplateClone(), WithMigrations(fsys))
 				ctx := t.Context()
 				if err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
 					_, err := momo.Exec(ctx, tx, "INSERT INTO items (name) VALUES (?)", "same")
@@ -164,16 +195,16 @@ func TestCloneParallelIsolation(t *testing.T) {
 	if len(seen) != 8 {
 		t.Errorf("saw %d databases, want 8", len(seen))
 	}
-	db := New(t, WithMigrations(fsys))
+	db := New(t, WithTemplateClone(), WithMigrations(fsys))
 	if n := queryOne[int64](t, db.Driver(), "SELECT count(*) FROM items"); n != 0 {
 		t.Fatalf("a fresh clone holds %d rows: a test wrote into the template", n)
 	}
 }
 
 // TestChangedMigrationBuildsANewTemplate builds a clone from one migration set
-// and then from a set with the same file name and different content. It catches a template name that ignores the file contents, or a
-// process-level cache keyed too coarsely: the second set would get the first
-// set's tables.
+// and then from a set with the same file name and different content. It catches
+// a template name that ignores the file contents, or a process-level cache keyed
+// too coarsely: the second set would get the first set's tables.
 func TestChangedMigrationBuildsANewTemplate(t *testing.T) {
 	admin := adminConn(t)
 	token := randomName("inv_")
@@ -181,7 +212,7 @@ func TestChangedMigrationBuildsANewTemplate(t *testing.T) {
 	second := cloneMigrations(token, ", note text NOT NULL DEFAULT 'x'")
 
 	columns := func(t *testing.T, fsys fstest.MapFS) int64 {
-		db := New(t, WithMigrations(fsys))
+		db := New(t, WithTemplateClone(), WithMigrations(fsys))
 		return queryOne[int64](t, db.Driver(), "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'items'")
 	}
 	if got := columns(t, first); got != 2 {
@@ -190,7 +221,7 @@ func TestChangedMigrationBuildsANewTemplate(t *testing.T) {
 	if got := columns(t, second); got != 3 {
 		t.Fatalf("changed set: items has %d columns, want 3: the old template was reused", got)
 	}
-	a, b := templateOf(t, first), templateOf(t, second)
+	a, b := templateOf(t, admin, WithMigrations(first)), templateOf(t, admin, WithMigrations(second))
 	if a == b {
 		t.Fatalf("both sets map to template %s", a)
 	}
@@ -201,27 +232,130 @@ func TestChangedMigrationBuildsANewTemplate(t *testing.T) {
 	}
 }
 
+// TestExtensionListChangesTheTemplate catches a template name that ignores the
+// extension list: a suite that adds an extension would clone the template built
+// without it.
+func TestExtensionListChangesTheTemplate(t *testing.T) {
+	admin := adminConn(t)
+	fsys := cloneMigrations(randomName("ext_"), "")
+	without := templateOf(t, admin, WithMigrations(fsys))
+	with := templateOf(t, admin, WithMigrations(fsys), WithExtensions("plpgsql"))
+	if without == with {
+		t.Fatalf("a changed extension list kept template %s", without)
+	}
+	if again := templateOf(t, admin, WithMigrations(fsys), WithExtensions("plpgsql")); again != with {
+		t.Fatalf("the same inputs gave %s and %s", with, again)
+	}
+}
+
 // TestIncompleteTemplateIsRebuilt leaves a database of the template's name with
 // no ready marker, as a killed run would, and expects New to replace it. It
 // catches a build that trusts the name alone: the clone would be empty.
 func TestIncompleteTemplateIsRebuilt(t *testing.T) {
 	admin := adminConn(t)
 	fsys := cloneMigrations(randomName("half_"), "")
-	tpl := templateOf(t, fsys)
+	tpl := templateOf(t, admin, WithMigrations(fsys))
 	if _, err := admin.Exec(t.Context(), "CREATE DATABASE "+pgx.Identifier{tpl}.Sanitize()); err != nil {
 		t.Fatal(err)
 	}
-	db := New(t, WithMigrations(fsys))
+	db := New(t, WithTemplateClone(), WithMigrations(fsys))
 	if got := queryOne[int64](t, db.Driver(), "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'items'"); got != 1 {
 		t.Fatalf("clone holds %d items tables, want 1: the half-built template was reused", got)
 	}
 }
 
-// TestNewFallsBackToASchemaWithoutCreateDB runs New as a role with no CREATEDB.
-// It must build a schema of its own in the shared database, create no template
-// database, and still give the test its tables. It catches a New that requires
-// CREATEDB (the test fails instead of falling back) and one that creates the
-// template anyway.
+// TestCloneWaitsForTemplateSessions holds a session on the template and starts a
+// clone. CREATE DATABASE ... TEMPLATE fails with "being accessed by other users"
+// while it lasts; the clone must wait and succeed once the session ends. It
+// catches a clone without the retry: it returns that error at once.
+func TestCloneWaitsForTemplateSessions(t *testing.T) {
+	admin := adminConn(t)
+	raw := os.Getenv(DefaultEnv)
+	fsys := cloneMigrations(randomName("busy_"), "")
+	tpl := templateOf(t, admin, WithMigrations(fsys))
+	New(t, WithTemplateClone(), WithMigrations(fsys)) // builds the template
+
+	u, err := databaseURL(raw, tpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	holder, err := pgx.Connect(t.Context(), u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := false
+	release := func() {
+		if !closed {
+			closed = true
+			_ = holder.Close(context.WithoutCancel(t.Context()))
+		}
+	}
+	t.Cleanup(release)
+
+	name := randomName(cloneDBPrefix)
+	t.Cleanup(func() { dropDatabase(t, raw, name) })
+	done := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		conn, err := pgx.Connect(ctx, raw)
+		if err != nil {
+			done <- err
+			return
+		}
+		defer func() { _ = conn.Close(ctx) }()
+		done <- cloneDatabase(ctx, conn, tpl, name)
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("the clone finished while the template had a session: %v", err)
+	case <-time.After(700 * time.Millisecond):
+	}
+	release()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("clone after the session ended: %v", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the clone did not finish after the session ended")
+	}
+}
+
+// TestOldTemplatesAreSweptWhenATemplateIsBuilt plants a ready template database
+// whose stamp is older than sweepAfter and builds another template. It catches a
+// sweep that never runs (the old one stays) and one that drops the template it
+// just built.
+func TestOldTemplatesAreSweptWhenATemplateIsBuilt(t *testing.T) {
+	admin := adminConn(t)
+	old := randomName(templateDBPrefix + "old")
+	stamp := strconv.FormatInt(time.Now().Add(-sweepAfter-time.Hour).Unix(), 10)
+	if _, err := admin.Exec(t.Context(), "CREATE DATABASE "+pgx.Identifier{old}.Sanitize()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = dropDatabaseOn(context.WithoutCancel(t.Context()), admin, old)
+	})
+	if _, err := admin.Exec(t.Context(), "COMMENT ON DATABASE "+pgx.Identifier{old}.Sanitize()+" IS '"+readyPrefix+stamp+"'"); err != nil {
+		t.Fatal(err)
+	}
+
+	fsys := cloneMigrations(randomName("sweep_"), "")
+	tpl := templateOf(t, admin, WithMigrations(fsys))
+	New(t, WithTemplateClone(), WithMigrations(fsys))
+	if n := databaseCount(t, admin, "datname = $1", old); n != 0 {
+		t.Fatalf("the template %s unused for more than %s is still there", old, sweepAfter)
+	}
+	if n := databaseCount(t, admin, "datname = $1", tpl); n != 1 {
+		t.Fatalf("the sweep dropped the template %s it had just built", tpl)
+	}
+}
+
+// TestNewFallsBackToASchemaWithoutCreateDB runs New with WithTemplateClone as a
+// role with no CREATEDB. It must build a schema of its own in the shared
+// database, create no template database, and still give the test its tables. It
+// catches a New that requires CREATEDB (the test fails instead of falling back)
+// and one that creates the template anyway.
 func TestNewFallsBackToASchemaWithoutCreateDB(t *testing.T) {
 	admin := adminConn(t)
 	var super bool
@@ -263,8 +397,8 @@ func TestNewFallsBackToASchemaWithoutCreateDB(t *testing.T) {
 	t.Setenv(env, u.String())
 
 	fsys := cloneMigrations(randomName("fb_"), "")
-	tpl := templateOf(t, fsys)
-	db := New(t, WithEnv(env), WithMigrations(fsys))
+	tpl := templateOf(t, admin, WithMigrations(fsys))
+	db := New(t, WithEnv(env), WithTemplateClone(), WithMigrations(fsys))
 	if got := queryOne[string](t, db.Driver(), "SELECT current_database()"); got != home {
 		t.Fatalf("database = %s, want the shared %s: New cloned without CREATEDB", got, home)
 	}
@@ -279,16 +413,52 @@ func TestNewFallsBackToASchemaWithoutCreateDB(t *testing.T) {
 	}
 }
 
-// TestWithSchemaPerTestSkipsTheClone pins the opt-out: on a role that may create
-// databases WithSchemaPerTest still gives a schema of its own in the shared
-// database. It catches an option that is read but ignored.
-func TestWithSchemaPerTestSkipsTheClone(t *testing.T) {
+// TestNewFallsBackWhenTheTemplateBelongsToAnotherRole builds a template as the
+// administrator, then runs New as a role that has CREATEDB but does not own the
+// template: copying it fails with permission denied. It catches a New that
+// treats that error as fatal instead of falling back to a schema.
+func TestNewFallsBackWhenTheTemplateBelongsToAnotherRole(t *testing.T) {
 	admin := adminConn(t)
+	var super bool
+	if err := admin.QueryRow(t.Context(), "SELECT rolsuper FROM pg_roles WHERE rolname = current_user").Scan(&super); err != nil {
+		t.Fatal(err)
+	}
+	if !super {
+		t.Skip("creating a role needs a superuser")
+	}
 	var home string
 	if err := admin.QueryRow(t.Context(), "SELECT current_database()").Scan(&home); err != nil {
 		t.Fatal(err)
 	}
-	db := New(t, WithSchemaPerTest(), WithMigrations(cloneMigrations(randomName("opt_"), "")))
+	fsys := cloneMigrations(randomName("own_"), "")
+	New(t, WithTemplateClone(), WithMigrations(fsys)) // the administrator builds the template
+
+	role := randomName("momotest_role_")
+	quotedRole := pgx.Identifier{role}.Sanitize()
+	const password = "momotest-role"
+	if _, err := admin.Exec(t.Context(), "CREATE ROLE "+quotedRole+" LOGIN CREATEDB PASSWORD '"+password+"'"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx := context.WithoutCancel(t.Context())
+		for _, stmt := range []string{"DROP OWNED BY " + quotedRole, "DROP ROLE " + quotedRole} {
+			if _, err := admin.Exec(ctx, stmt); err != nil {
+				t.Errorf("%s: %v", stmt, err)
+			}
+		}
+	})
+	if _, err := admin.Exec(t.Context(), "GRANT CREATE ON DATABASE "+pgx.Identifier{home}.Sanitize()+" TO "+quotedRole); err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(os.Getenv(DefaultEnv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.User = url.UserPassword(role, password)
+	const env = "MOMOTEST_OTHEROWNER_URL"
+	t.Setenv(env, u.String())
+
+	db := New(t, WithEnv(env), WithTemplateClone(), WithMigrations(fsys))
 	if got := queryOne[string](t, db.Driver(), "SELECT current_database()"); got != home {
 		t.Fatalf("database = %s, want the shared %s", got, home)
 	}

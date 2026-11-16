@@ -162,7 +162,7 @@ func TestWithMigrationsWhenPublicIsMigrated(t *testing.T) {
 	}
 	for _, name := range []string{"first", "second"} {
 		t.Run("New/"+name, func(t *testing.T) {
-			db := momotest.New(t, momotest.WithEnv(ownURLEnv), momotest.WithSchemaPerTest(), momotest.WithMigrations(issue115Migrations()))
+			db := momotest.New(t, momotest.WithEnv(ownURLEnv), momotest.WithMigrations(issue115Migrations()))
 			schema := scalar[string](t, db.Driver(), "SELECT current_schema()")
 			insert(t, db)
 			for _, rel := range []string{"issue115_items", "issue115_items_name", "momo_migrations"} {
@@ -215,7 +215,7 @@ func TestWithMigrationsFailsWhenNothingLandsInTestSchema(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		momotest.New(g, momotest.WithEnv(ownURLEnv), momotest.WithSchemaPerTest(), momotest.WithMigrations(fsys))
+		momotest.New(g, momotest.WithEnv(ownURLEnv), momotest.WithMigrations(fsys))
 	}()
 	<-done
 	if len(g.errs) != 1 {
@@ -251,7 +251,7 @@ CREATE TABLE keep (id bigint PRIMARY KEY);`)},
 			t.Fatalf("after %s: public.legacy has %d rows, err %v; a migration dropped a table of public", when, n, err)
 		}
 	}
-	momotest.New(t, momotest.WithEnv(ownURLEnv), momotest.WithSchemaPerTest(), momotest.WithMigrations(fsys))
+	momotest.New(t, momotest.WithEnv(ownURLEnv), momotest.WithMigrations(fsys))
 	legacyRows(t, "New")
 	momotest.NewTx(t, momotest.WithEnv(ownURLEnv), momotest.WithMigrations(fsys))
 	legacyRows(t, "NewTx")

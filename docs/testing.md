@@ -52,34 +52,44 @@ func TestSignup(t *testing.T) {
 }
 ```
 
-`New` returns a `*momo.DB` on a database no other test can see. When the test
-ends the pool is closed and the database is dropped. Code under test may open
-and commit its own transactions. Use this mode when it does.
+`New` creates a schema named `momotest_<hex>`, applies the migrations to it and
+returns a `*momo.DB`. When the test ends the pool is closed and the schema is
+dropped. Code under test may open and commit its own transactions. Use this mode
+when it does. Every test has a schema of its own, so `t.Parallel` is safe.
 
-Two paths produce that database, and the first call of a test binary logs which
-one ran (visible with `go test -v`):
+### Cloning a template database
 
-- Template database, the fast path. When the role has `CREATEDB` (or is a
-  superuser), the migrations run once, in the `public` schema of a template
-  database named `momotest_tpldb_<hash>`. The hash covers the migration file
-  names and contents, the extension list and the momo version, so a changed
-  migration builds a new template and a stale one is never reused. Each `New`
-  then runs `CREATE DATABASE momotest_db_<hex> TEMPLATE momotest_tpldb_<hash>`,
-  a file copy that replays no DDL, and the test's pool connects to that clone.
-  At the end `DROP DATABASE ... WITH (FORCE)` removes it; that statement takes no
-  lock per table, so the cost does not grow with the schema. Extensions listed in
-  `momotest.WithExtensions` are installed in the template, so a clone has them.
-- Schema per test, the fallback. When the role cannot create databases, or the
-  test passes `momotest.WithSchemaPerTest`, `New` creates a schema named
-  `momotest_<hex>`, applies the migrations to it and drops it with a cascading
-  `DROP SCHEMA`, as described under [Migrations must stay in their
-  schema](#migrations-must-stay-in-their-schema). Use the option when a test
-  reads `current_schema()` and expects a named schema, or when the URL goes
-  through a pooler that serves one database only.
+On a schema with many tables the per-test migrations and the `DROP SCHEMA` cost
+more than the test. `momotest.WithTemplateClone` builds the migrations once and
+copies them for each test: pass it to `momotest.New` next to
+`momotest.WithMigrations`, and the `*momo.DB` you get is on a database no other
+test can see. The migrations run once, in the `public` schema of a template database named
+`momotest_tpldb_<hash>`. The hash covers the migration file names and contents,
+the extension list, the momo version, the server version and the version of each
+listed extension, so a changed input builds a new template and a stale one is
+never reused. Each `New` then runs `CREATE DATABASE momotest_db_<hex> TEMPLATE
+momotest_tpldb_<hash>`, a file copy that replays no DDL, and the test's pool
+connects to that clone. At the end the clone is dropped with `DROP DATABASE ...
+WITH (FORCE)`, which takes no lock per table, so the cost does not grow with the
+schema; before PostgreSQL 13 the sessions are terminated first and a plain
+`DROP DATABASE` follows. Extensions listed in `momotest.WithExtensions` are
+installed in the template, so a clone has them. The first call of a test binary
+logs which path ran (visible with `go test -v`).
 
-On the template path the tables live in the clone's `public` schema, so
-`current_schema()` is `public` and `current_database()` names the clone. Every
-test has its own database on either path, so `t.Parallel` is safe.
+The tables live in the clone's `public` schema, so `current_schema()` is
+`public` and `current_database()` names the clone, where the default path gives
+a `momotest_` schema. The option needs:
+
+- A role with `CREATEDB` (or a superuser) that owns, or may copy, the template.
+  Without it `New` falls back to the schema path and logs that once.
+- Session-capable connections. A pooler in transaction mode breaks the
+  advisory locks, and a pooler that serves one database cannot reach the clone.
+- The `postgres` database to take the locks on when the role may connect to it;
+  database names are cluster-wide, so every process locks in one place.
+
+The template build retires templates that no test binary used for seven days:
+each use stamps the template's comment with the time, and the next build drops
+the older ones.
 
 ## A rollback per test: NewTx
 
@@ -184,9 +194,10 @@ They are harmless but accumulate. Drop them on a disposable server by
 recreating it, or with `DROP SCHEMA momotest_<hex> CASCADE` for each name in
 `pg_namespace` that matches `momotest\_%` and is not `momotest_tpl_%`, and
 `DROP DATABASE momotest_db_<hex> WITH (FORCE)` for each `momotest_db_%` name in
-`pg_database`. Template schemas `momotest_tpl_*` and template databases
-`momotest_tpldb_*` are meant to stay; a half-built template database from a
-killed run is replaced by the next run. `momotest` has no sweep helper: it never
+`pg_database`. Template schemas `momotest_tpl_*` stay; template databases
+`momotest_tpldb_*` stay while a test binary uses them and are dropped by the next
+template build once unused for seven days. A half-built template database from a
+killed run is replaced by the next run. Apart from that sweep, `momotest` never
 drops a schema or database it did not create in the current test.
 
 ## Fixtures: Seed
@@ -424,12 +435,12 @@ func run(ctx context.Context) error {
 | `momotest.WithExtensions(names)` | `CREATE EXTENSION IF NOT EXISTS` in `public` first; with `vector` the pool registers the codec. |
 | `momotest.WithMomoOptions(opts)` | Passed to `momo.New`, for example a hook.                                                       |
 | `momotest.WithMaxConns(n)`       | Pool size per test: 4 for `New`, 2 for `momotest.NewTx` by default.                             |
-| `momotest.WithSchemaPerTest()`   | Make `New` build a schema per test instead of cloning a template database.                      |
+| `momotest.WithTemplateClone()`   | Make `New` clone a template database per test instead of building a schema.                     |
 
 ## Concurrency
 
-Every call opens its own connection pool and, in `New`, its own database (or
-schema on the fallback path), so `t.Parallel` and `-race` are safe. The shared
+Every call opens its own connection pool and, in `New`, its own schema (or
+database with `momotest.WithTemplateClone`), so `t.Parallel` and `-race` are safe. The shared
 steps, creating extensions, building a template schema or database, and cloning
 a template database, run under PostgreSQL advisory locks (keyed by `hashtext` of
 the names `momotest:extensions`, `momotest:template`, `momotest:templatedb` and

@@ -7,6 +7,8 @@ package sqlitetest_test
 import (
 	"context"
 	"fmt"
+	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -76,6 +78,35 @@ func TestTemplateIsBuiltOnceAndCopiesAreIsolated(t *testing.T) {
 	}
 	if got := builds.Load(); got != 1 {
 		t.Fatalf("build ran %d times, want 1", got)
+	}
+}
+
+// recordTB records Fatalf and stops the calling goroutine, as the real one does.
+type recordTB struct {
+	testing.TB
+	msg string
+}
+
+func (r *recordTB) Helper() {}
+
+func (r *recordTB) Fatalf(format string, args ...any) {
+	r.msg = fmt.Sprintf(format, args...)
+	runtime.Goexit()
+}
+
+// TestTemplateBuildPanicFailsEveryTest catches a Template whose build panics:
+// the Once is spent, so without a recover the next tests would get no image and
+// open an empty database or crash. Each use must fail naming the panic.
+func TestTemplateBuildPanicFailsEveryTest(t *testing.T) {
+	tpl := sqlitetest.NewTemplate(func(context.Context, *momo.DB) error { panic("boom") })
+	for range 2 {
+		r := &recordTB{TB: t}
+		done := make(chan struct{})
+		go func() { defer close(done); tpl.New(r) }()
+		<-done
+		if !strings.Contains(r.msg, "boom") {
+			t.Fatalf("New reported %q, want the panic value", r.msg)
+		}
 	}
 }
 

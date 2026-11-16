@@ -17,10 +17,9 @@ shape as a `Config.CheckIn` declaration, and a snapshot written without the
 value list still diffs as before. On SQLite a named table-level
 `CHECK (col IN (...))` now inspects as a check with a value list, and
 `--from-db` writes it as `Config.CheckIn`, instead of as an enum column; an
-unnamed column check is unchanged. `momotest.New` now clones a template
-database per test when the role may create databases, so the test's tables are
-in the `public` schema of a database of its own; a role without `CREATEDB`, or
-`momotest.WithSchemaPerTest`, keeps the schema per test.
+unnamed column check is unchanged. `momotest.WithTemplateClone` makes
+`momotest.New` clone a template database per test instead of building a schema
+per test; without the option `momotest.New` behaves as before.
 
 ## Upgrading to 0.15.0
 

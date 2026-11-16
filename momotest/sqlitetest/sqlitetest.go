@@ -68,7 +68,7 @@ func (tp *Template) New(tb testing.TB, opts ...momo.Option) *momo.DB {
 		tb.Skipf("sqlitetest: SQLite needs cgo and a non-Windows build: %v", tp.err)
 		return nil
 	}
-	if tp.err != nil {
+	if tp.err != nil || len(tp.image) == 0 {
 		tb.Fatalf("sqlitetest: build template: %v", tp.err)
 		return nil
 	}
@@ -84,6 +84,13 @@ func (tp *Template) New(tb testing.TB, opts ...momo.Option) *momo.DB {
 // snapshot of it in memory (VACUUM INTO writes one file with no journal), so no
 // file is left behind for a process-exit hook to remove.
 func (tp *Template) load() {
+	// A panic in build must not leave the Once spent with no image: every test
+	// then fails with the cause instead of opening an empty database.
+	defer func() {
+		if r := recover(); r != nil {
+			tp.image, tp.err = nil, fmt.Errorf("build panicked: %v", r)
+		}
+	}()
 	dir, err := os.MkdirTemp("", "sqlitetest-template-")
 	if err != nil {
 		tp.err = err

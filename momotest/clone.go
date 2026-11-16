@@ -4,8 +4,12 @@ package momotest
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -19,30 +23,42 @@ import (
 )
 
 const (
-	// Template databases and clones. The template name carries the same hash as
-	// a template schema (see templateName), so a changed migration, extension
-	// list or momo version builds a new one.
+	// Template databases and clones. Database names are cluster-wide, so the
+	// locks that guard them are taken on one fixed database (lockDatabase).
 	templateDBPrefix = "momotest_tpldb_"
 	cloneDBPrefix    = "momotest_db_"
+	lockDatabase     = "postgres"
 
 	templateDBLockKey = "momotest:templatedb"
 	cloneLockKey      = "momotest:clone"
+	// readyPrefix starts the comment of a finished template database; the rest
+	// is the Unix time of its last use, which the sweep reads.
+	readyPrefix = "momotest:ready:"
+	// sweepAfter is how long a template database may go unused before the next
+	// template build drops it.
+	sweepAfter = 7 * 24 * time.Hour
 	// cloneTimeout bounds one CREATE DATABASE ... TEMPLATE, including the wait
 	// for a template whose last connection is still closing.
 	cloneTimeout = 2 * time.Minute
 
 	// sqlstateObjectInUse is "source database is being accessed by other users".
 	sqlstateObjectInUse = "55006"
-	// sqlstateInsufficientPrivilege is "permission denied to create database".
+	// sqlstateInsufficientPrivilege is "permission denied".
 	sqlstateInsufficientPrivilege = "42501"
+	// sqlstateDuplicateDatabase is "database already exists".
+	sqlstateDuplicateDatabase = "42P04"
+
+	// forceDropVersion is the first server version with DROP DATABASE ... WITH
+	// (FORCE) (PostgreSQL 13).
+	forceDropVersion = 130000
 )
 
 var (
-	// databaseTemplateReady holds raw URL + NUL + template database name, after
-	// this process has found or built the template database.
+	// databaseTemplateReady holds raw URL + NUL + schema template name -> the
+	// ready template database name, after this process has found or built it.
 	databaseTemplateReady sync.Map
-	// noCreateDB holds raw URL -> reason, for a server whose role cannot create
-	// databases, so later tests go straight to the schema path.
+	// noCreateDB holds raw URL -> reason, for a server on which the role cannot
+	// create or copy databases, so later tests go straight to the schema path.
 	noCreateDB sync.Map
 	// pathLogged holds the messages t.Log already printed in this process.
 	pathLogged sync.Map
@@ -72,6 +88,59 @@ func hasPgCode(err error, code string) bool {
 	return errors.As(err, &pe) && pe.Code == code
 }
 
+// lockConn opens the administrator connection that takes the template and clone
+// locks. Advisory locks are per database but template and clone names are
+// cluster-wide, so every process locks on the same database: postgres, or the
+// URL's own when the role cannot connect there.
+func lockConn(ctx context.Context, t testing.TB, raw string) *pgx.Conn {
+	t.Helper()
+	if u, err := databaseURL(raw, lockDatabase); err == nil {
+		if conn, err := pgx.Connect(ctx, u); err == nil {
+			return conn
+		}
+	}
+	return connect(ctx, t, raw)
+}
+
+// hashTemplateDB names the template database. On top of the schema template
+// name (migrations, extension list, momo version) it covers the server version
+// and the version of every listed extension the server would install, because
+// a template built by another server or extension release is not the schema a
+// test on this one expects.
+func hashTemplateDB(schemaName, serverVersion string, extVersions []string) string {
+	h := sha256.New()
+	fmt.Fprintf(h, "momotest-templatedb-v1\x00%s\x00%s\x00%s", schemaName, serverVersion, strings.Join(extVersions, ","))
+	return templateDBPrefix + hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// databaseTemplateName reads the server version and the extension versions
+// through conn and names the template database.
+func (c *config) databaseTemplateName(ctx context.Context, conn *pgx.Conn, schemaName string) (string, error) {
+	var version string
+	if err := conn.QueryRow(ctx, "SELECT current_setting('server_version_num')").Scan(&version); err != nil {
+		return "", err
+	}
+	var exts []string
+	if len(c.extensions) > 0 {
+		rows, err := conn.Query(ctx, "SELECT name || '=' || coalesce(default_version, '') FROM pg_available_extensions WHERE name = ANY($1) ORDER BY name", c.extensions)
+		if err != nil {
+			return "", err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var s string
+			if err := rows.Scan(&s); err != nil {
+				return "", err
+			}
+			exts = append(exts, s)
+		}
+		if err := rows.Err(); err != nil {
+			return "", err
+		}
+	}
+	return hashTemplateDB(schemaName, version, exts), nil
+}
+
 // templateDatabase returns the name of the ready template database for this
 // configuration, building it first under an advisory lock. When the role cannot
 // create databases it returns an empty name and the reason.
@@ -81,37 +150,121 @@ func (c *config) templateDatabase(t testing.TB, raw string) (name, reason string
 	if err != nil {
 		t.Fatalf("momotest: %v", err)
 	}
-	name = templateDBPrefix + strings.TrimPrefix(schemaName, "momotest_tpl_")
-	key := raw + "\x00" + name
-	if _, ok := databaseTemplateReady.Load(key); ok {
-		return name, ""
+	key := raw + "\x00" + schemaName
+	cached := func() (string, string, bool) {
+		if v, ok := noCreateDB.Load(raw); ok {
+			return "", v.(string), true
+		}
+		if v, ok := databaseTemplateReady.Load(key); ok {
+			return v.(string), "", true
+		}
+		return "", "", false
 	}
-	if v, ok := noCreateDB.Load(raw); ok {
-		return "", v.(string)
+	if n, r, ok := cached(); ok {
+		return n, r
 	}
 	templateMu.Lock()
 	defer templateMu.Unlock()
-	if _, ok := databaseTemplateReady.Load(key); ok {
-		return name, ""
+	if n, r, ok := cached(); ok {
+		return n, r
 	}
-	if v, ok := noCreateDB.Load(raw); ok {
-		return "", v.(string)
-	}
-	if reason = c.buildTemplateDatabase(t, raw, name); reason != "" {
+	name, reason = c.buildTemplateDatabase(t, raw, schemaName)
+	if reason != "" {
 		noCreateDB.Store(raw, reason)
 		return "", reason
 	}
-	databaseTemplateReady.Store(key, struct{}{})
+	databaseTemplateReady.Store(key, name)
 	return name, ""
 }
 
-// buildTemplateDatabase creates and migrates the template database unless a
-// complete one exists. A non-empty result is the reason the role cannot do it.
-func (c *config) buildTemplateDatabase(t testing.TB, raw, name string) (reason string) {
+// templateState reports whether the template database name carries the ready
+// comment and whether it exists at all.
+func templateState(ctx context.Context, conn *pgx.Conn, name string) (ready, exists bool, err error) {
+	var comment *string
+	err = conn.QueryRow(ctx,
+		"SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname = $1", name).Scan(&comment)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return false, false, nil
+	case err != nil:
+		return false, false, err
+	}
+	return comment != nil && strings.HasPrefix(*comment, readyPrefix), true, nil
+}
+
+// markReady stamps the template database with the ready comment and now.
+func markReady(ctx context.Context, conn *pgx.Conn, name string) error {
+	return ddl(ctx, conn, "COMMENT ON DATABASE %s IS '"+readyPrefix+strconv.FormatInt(time.Now().Unix(), 10)+"'", name)
+}
+
+// waitReady polls until another process has finished building name.
+func waitReady(ctx context.Context, conn *pgx.Conn, name string) error {
+	for {
+		ready, _, err := templateState(ctx, conn, name)
+		if err != nil || ready {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("template database %s was never marked ready: %w", name, ctx.Err())
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+}
+
+// dropDatabaseOn drops name through conn. PostgreSQL 13 and newer disconnect
+// its sessions with WITH (FORCE); older servers get their backends terminated
+// first.
+func dropDatabaseOn(ctx context.Context, conn *pgx.Conn, name string) error {
+	var version int
+	if err := conn.QueryRow(ctx, "SELECT current_setting('server_version_num')::int").Scan(&version); err != nil {
+		return err
+	}
+	if version >= forceDropVersion {
+		return ddl(ctx, conn, "DROP DATABASE IF EXISTS %s WITH (FORCE)", name)
+	}
+	if _, err := conn.Exec(ctx, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()", name); err != nil {
+		return err
+	}
+	return ddl(ctx, conn, "DROP DATABASE IF EXISTS %s", name)
+}
+
+// sweepTemplates drops the template databases, other than keep, that no process
+// has used for sweepAfter. Best effort: a failure leaves them for the next run.
+func sweepTemplates(ctx context.Context, conn *pgx.Conn, keep string) {
+	rows, err := conn.Query(ctx, `SELECT datname, coalesce(shobj_description(oid, 'pg_database'), '') FROM pg_database
+WHERE datname LIKE 'momotest\_tpldb\_%' AND datname <> $1`, keep)
+	if err != nil {
+		return
+	}
+	var stale []string
+	for rows.Next() {
+		var name, comment string
+		if err := rows.Scan(&name, &comment); err != nil {
+			break
+		}
+		stamp, ok := strings.CutPrefix(comment, readyPrefix)
+		if !ok {
+			continue
+		}
+		if at, err := strconv.ParseInt(stamp, 10, 64); err == nil && time.Since(time.Unix(at, 0)) > sweepAfter {
+			stale = append(stale, name)
+		}
+	}
+	rows.Close()
+	for _, name := range stale {
+		_ = dropDatabaseOn(ctx, conn, name)
+	}
+}
+
+// buildTemplateDatabase names the template database, creates and migrates it
+// unless a complete one exists, stamps it as used now and sweeps old ones. A
+// non-empty reason means the role cannot do it.
+func (c *config) buildTemplateDatabase(t testing.TB, raw, schemaName string) (name, reason string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), applyTimeout)
 	defer cancel()
-	conn := connect(ctx, t, raw)
+	conn := lockConn(ctx, t, raw)
 	defer conn.Close(ctx)
 
 	var can bool
@@ -119,40 +272,59 @@ func (c *config) buildTemplateDatabase(t testing.TB, raw, name string) (reason s
 		t.Fatalf("momotest: read the role's privileges: %v", err)
 	}
 	if !can {
-		return "the role lacks CREATEDB"
+		return "", "the role lacks CREATEDB"
 	}
-	err := withLock(ctx, conn, templateDBLockKey, func() error {
-		var comment *string
-		err := conn.QueryRow(ctx,
-			"SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname = $1", name).Scan(&comment)
-		switch {
-		case err == nil && comment != nil && *comment == readyMarker:
-			return nil
-		case err == nil:
-			// A killed run left a half-built template; rebuild it.
-			if err := ddl(ctx, conn, "DROP DATABASE %s WITH (FORCE)", name); err != nil {
+	name, err := c.databaseTemplateName(ctx, conn, schemaName)
+	if err != nil {
+		t.Fatalf("momotest: name the template database: %v", err)
+	}
+	err = withLock(ctx, conn, templateDBLockKey, func() error {
+		ready, exists, err := templateState(ctx, conn, name)
+		if err != nil {
+			return err
+		}
+		if !ready {
+			if exists {
+				// A killed run left a half-built template; rebuild it.
+				if err := dropDatabaseOn(ctx, conn, name); err != nil {
+					return err
+				}
+			}
+			if reason, err = c.createTemplate(ctx, conn, raw, name); err != nil || reason != "" {
 				return err
 			}
-		case !errors.Is(err, pgx.ErrNoRows):
+		}
+		// Stamping is bookkeeping: a template that another role owns stays as it is.
+		if err := markReady(ctx, conn, name); err != nil && !hasPgCode(err, sqlstateInsufficientPrivilege) {
 			return err
 		}
-		if err := ddl(ctx, conn, "CREATE DATABASE %s", name); err != nil {
-			if hasPgCode(err, sqlstateInsufficientPrivilege) {
-				reason = "the server refused CREATE DATABASE"
-				return nil
-			}
-			return err
-		}
-		if err := c.fillTemplateDatabase(ctx, raw, name); err != nil {
-			_ = ddl(context.WithoutCancel(ctx), conn, "DROP DATABASE IF EXISTS %s WITH (FORCE)", name)
-			return err
-		}
-		return ddl(ctx, conn, "COMMENT ON DATABASE %s IS '"+readyMarker+"'", name)
+		sweepTemplates(ctx, conn, name)
+		return nil
 	})
 	if err != nil {
 		t.Fatalf("momotest: build template database %s: %v", name, err)
 	}
-	return reason
+	return name, reason
+}
+
+// createTemplate creates database name, fills it and marks it ready. A database
+// of that name that appears meanwhile belongs to a process that locks elsewhere;
+// createTemplate waits for it to be ready instead of touching it.
+func (c *config) createTemplate(ctx context.Context, conn *pgx.Conn, raw, name string) (reason string, err error) {
+	err = ddl(ctx, conn, "CREATE DATABASE %s", name)
+	switch {
+	case hasPgCode(err, sqlstateDuplicateDatabase):
+		return "", waitReady(ctx, conn, name)
+	case hasPgCode(err, sqlstateInsufficientPrivilege):
+		return "the server refused CREATE DATABASE", nil
+	case err != nil:
+		return "", err
+	}
+	if err := c.fillTemplateDatabase(ctx, raw, name); err != nil {
+		_ = dropDatabaseOn(context.WithoutCancel(ctx), conn, name)
+		return "", err
+	}
+	return "", markReady(ctx, conn, name)
 }
 
 // fillTemplateDatabase installs the extensions in the new database and applies
@@ -198,9 +370,9 @@ func cloneDatabase(ctx context.Context, conn *pgx.Conn, template, name string) e
 	})
 }
 
-// dropDatabase drops the clone name. WITH (FORCE) disconnects any session the
-// test leaked and takes no lock per relation, so the cost does not grow with the
-// number of tables.
+// dropDatabase drops the clone name. Where WITH (FORCE) exists it disconnects
+// any session the test leaked and takes no lock per relation, so the cost does
+// not grow with the number of tables.
 func dropDatabase(t testing.TB, raw, name string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), dropTimeout)
@@ -211,7 +383,10 @@ func dropDatabase(t testing.TB, raw, name string) {
 		return
 	}
 	defer conn.Close(ctx)
-	if err := ddl(ctx, conn, "DROP DATABASE IF EXISTS %s WITH (FORCE)", name); err != nil {
+	switch err := dropDatabaseOn(ctx, conn, name); {
+	case hasPgCode(err, sqlstateInsufficientPrivilege):
+		t.Logf("momotest: the role may not drop database %s: %v", name, err)
+	case err != nil:
 		t.Errorf("momotest: drop database %s: %v", name, err)
 	}
 }
@@ -225,19 +400,23 @@ func (c *config) newClone(t testing.TB, raw string) *momo.DB {
 		logOnce(t, "momotest: New rebuilds a schema per test ("+reason+"; the migrations run for every test)")
 		return nil
 	}
-	logOnce(t, "momotest: New clones a template database per test (CREATE DATABASE ... TEMPLATE)")
-
 	name := randomName(cloneDBPrefix)
 	ctx, cancel := context.WithTimeout(context.Background(), cloneTimeout)
 	defer cancel()
-	conn := connect(ctx, t, raw)
+	conn := lockConn(ctx, t, raw)
 	defer conn.Close(ctx)
-	// Registered before the CREATE, so a half-made clone is dropped too. The
-	// pool, registered later, is closed first.
-	t.Cleanup(func() { dropDatabase(t, raw, name) })
 	if err := cloneDatabase(ctx, conn, template, name); err != nil {
+		if hasPgCode(err, sqlstateInsufficientPrivilege) {
+			// The template belongs to another role: this one cannot copy it.
+			noCreateDB.Store(raw, "the role may not copy the template database")
+			logOnce(t, "momotest: New rebuilds a schema per test (the role may not copy the template database; the migrations run for every test)")
+			return nil
+		}
 		t.Fatalf("momotest: clone database %s from %s: %v", name, template, err)
 	}
+	logOnce(t, "momotest: New clones a template database per test (CREATE DATABASE ... TEMPLATE)")
+	// The pool, registered later, is closed first.
+	t.Cleanup(func() { dropDatabase(t, raw, name) })
 	u, err := databaseURL(raw, name)
 	if err != nil {
 		t.Fatal(err)

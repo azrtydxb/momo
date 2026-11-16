@@ -5,10 +5,10 @@
 //
 // Two modes cover the usual needs:
 //
-//   - New returns a *momo.DB on a database private to the test, cloned from a
-//     template database that holds the migrated schema (or, when the role
-//     cannot create databases, on a schema built per test). It is dropped when
-//     the test ends. Use it when the code under test commits transactions.
+//   - New returns a *momo.DB on a schema private to the test. The schema is
+//     created, the migrations are applied to it, and it is dropped when the
+//     test ends; WithTemplateClone clones a template database instead. Use it
+//     when the code under test commits transactions.
 //   - NewTx returns a *momo.Tx that is rolled back when the test ends. The
 //     migrations are applied once to a shared template schema, so each test
 //     only pays for a BEGIN. Use it for the fast path.
@@ -79,8 +79,8 @@ type config struct {
 	momoOpts   []momo.Option
 	extensions []string
 	maxConns   int32
-	// schemaPerTest forces New onto the schema path.
-	schemaPerTest bool
+	// templateClone makes New clone a template database.
+	templateClone bool
 }
 
 // Option configures New and NewTx.
@@ -99,7 +99,8 @@ func WithEnv(name string) Option { return func(c *config) { c.env = name } }
 // already holds momo_migrations and the application's tables (a CI job ran
 // momo migrate apply on the same database) does not make the migrations look
 // applied. If the migrations create tables and the test schema holds none
-// afterwards, New and NewTx fail naming the schema.
+// afterwards, New and NewTx fail naming the schema; WithTemplateClone checks
+// the public schema of the template database the same way.
 func WithMigrations(fsys fs.FS) Option { return func(c *config) { c.migrations = fsys } }
 
 // WithMomoOptions passes opts to momo.New, for example momo.WithHook.
@@ -118,14 +119,21 @@ func WithExtensions(names ...string) Option {
 // WithMaxConns sets the pool size. The default is 4 for New and 2 for NewTx.
 func WithMaxConns(n int32) Option { return func(c *config) { c.maxConns = n } }
 
-// WithSchemaPerTest makes New build a schema of its own for every test, as it
-// did before it learned to clone a template database: the schema is created,
-// the migrations run in it, and it is dropped when the test ends. New takes
-// this path by itself when the role cannot create databases. Use the option when
-// the tests need the schema to be a named schema next to public (for example
-// they read current_schema) or when the URL goes through a pooler that serves
-// one database only. NewTx is not affected.
-func WithSchemaPerTest() Option { return func(c *config) { c.schemaPerTest = true } }
+// WithTemplateClone makes New clone a template database instead of building a
+// schema for each test. The migrations run once, in the public schema of a
+// template database named after a hash of the migrations, the extension list,
+// the momo version, the server version and the extension versions; each New
+// then runs CREATE DATABASE ... TEMPLATE, which copies files and replays no DDL,
+// and drops the clone with DROP DATABASE when the test ends. The tests see their
+// tables in public, so current_schema() is public and not a momotest_ schema.
+//
+// The role needs CREATEDB (or to be a superuser), the connections must be
+// session-capable (a pooler in transaction mode breaks the advisory locks and
+// serves one database only), and the locks are taken on the postgres database
+// when the role can connect to it. When the role cannot create or copy
+// databases New falls back to the schema path and logs it once. NewTx is not
+// affected.
+func WithTemplateClone() Option { return func(c *config) { c.templateClone = true } }
 
 func newConfig(opts []Option) *config {
 	c := &config{env: DefaultEnv}
@@ -451,25 +459,21 @@ WHERE n.nspname = $1 AND c.relkind IN ('r', 'p') AND c.relname <> 'momo_migratio
 	return nil
 }
 
-// New returns a *momo.DB on a database private to t, with the migrations
-// applied. The pool is closed and the database dropped when t finishes. The
+// New returns a *momo.DB on a schema private to t, with the migrations
+// applied. The pool is closed and the schema dropped when t finishes. The
 // test is skipped when the server URL variable is unset.
 //
-// When the role may create databases, the migrations are applied once to a
-// template database named after a hash of their contents, the extension list
-// and the momo version, and each call clones it with CREATE DATABASE ...
-// TEMPLATE, a file copy that replays no DDL; the tables are in the clone's
-// public schema. When the role may not, or with WithSchemaPerTest, New creates
-// a schema of its own, applies the migrations to it and drops it at the end.
-// The first call of a process logs which path ran.
+// With WithTemplateClone, New returns a database private to t instead, cloned
+// from a template database that holds the migrated tables in its public schema;
+// it falls back to the schema when the role cannot create or copy databases.
 func New(t testing.TB, opts ...Option) *momo.DB {
 	t.Helper()
 	c := newConfig(opts)
 	raw := c.serverURL(t)
-	if c.schemaPerTest {
-		logOnce(t, "momotest: New rebuilds a schema per test (WithSchemaPerTest)")
-	} else if db := c.newClone(t, raw); db != nil {
-		return db
+	if c.templateClone {
+		if db := c.newClone(t, raw); db != nil {
+			return db
+		}
 	}
 	if err := c.checkMigrations(); err != nil {
 		t.Fatalf("momotest: %v", err)

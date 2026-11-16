@@ -1263,3 +1263,12 @@ Both stories are already built and tested in CI (vector codecs with TestVectorBi
 - Wait for the user to run `make bench` on dedicated hardware and commit bench/results.
 
 Decision (2026-11-16, the user, via AskUserQuestion): reword and close. The tooling and layout test are the deliverable; a published reference run is a separate story owned by the user.
+
+## momotest template cloning: default or opt-in (#167, PR #219, 2026-11-16, integrator)
+
+On the template database path the test's tables live in the clone's `public` schema, so a suite that relies on `momotest_*` schema names or `current_schema()` would change, and the path would depend on whether the role has CREATEDB.
+
+- Opt-in for 0.16.0 through `momotest.WithTemplateClone`; the default stays schema per test (recommended).
+- Default on, which breaks suites that read the schema name.
+
+Decision (2026-11-16, the user, via AskUserQuestion): opt-in for 0.16.0; the default stays schema-per-test.

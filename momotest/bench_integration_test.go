@@ -41,8 +41,8 @@ func wideMigrations(n int) fstest.MapFS {
 }
 
 // BenchmarkMomotestNew times one momotest.New plus its cleanup-free setup on a
-// 100-table schema: "schema" rebuilds the schema for every call (the path of a
-// role without CREATEDB), "clone" copies the template database. The template is
+// 100-table schema: "schema" rebuilds the schema for every call (the
+// default), "clone" (WithTemplateClone) copies the template database. The template is
 // built before the timer starts.
 func BenchmarkMomotestNew(b *testing.B) {
 	fsys := wideMigrations(100)
@@ -50,8 +50,8 @@ func BenchmarkMomotestNew(b *testing.B) {
 		name string
 		opts []momotest.Option
 	}{
-		{"schema", []momotest.Option{momotest.WithSchemaPerTest()}},
-		{"clone", nil},
+		{"schema", nil},
+		{"clone", []momotest.Option{momotest.WithTemplateClone()}},
 	} {
 		b.Run(mode.name, func(b *testing.B) {
 			opts := append([]momotest.Option{momotest.WithMigrations(fsys)}, mode.opts...)
