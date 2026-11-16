@@ -328,9 +328,18 @@ func TestTypeMappingMySQLLimits(t *testing.T) {
 		if _, err := momo.Exec(ctx, db, "INSERT INTO tm_f32 (v) VALUES (?)", float32(math.MaxFloat32)); err != nil {
 			t.Fatal(err)
 		}
-		f32, err := momo.Scalars[float32](ctx, db, "SELECT v FROM tm_f32")
-		if err != nil || len(f32) != 1 || math.Abs(float64(f32[0])-math.MaxFloat32)/math.MaxFloat32 > 1e-5 {
-			t.Fatalf("MaxFloat32 read back %v, %v; want within 1e-5", f32, err)
+		for name, q := range map[string]struct {
+			sql  string
+			args []any
+		}{
+			"binary protocol (query with an argument)": {"SELECT v FROM tm_f32 WHERE ? = 1", []any{1}},
+			"CAST AS DOUBLE": {"SELECT CAST(v AS DOUBLE) FROM tm_f32", nil},
+			"v + 0e0":        {"SELECT v + 0e0 FROM tm_f32", nil},
+		} {
+			got, err := momo.Scalars[float32](ctx, db, q.sql, q.args...)
+			if err != nil || len(got) != 1 || got[0] != math.MaxFloat32 {
+				t.Errorf("%s: MaxFloat32 read back %v, %v", name, got, err)
+			}
 		}
 
 		// decimal(p,s): the generator's type for a precision tag keeps every digit.

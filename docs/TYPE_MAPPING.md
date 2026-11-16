@@ -141,11 +141,7 @@ except `NaN`, which SQLite does not have (see Floats).
   has no `NaN`: binding a `float32` or `float64` `NaN` (or a pointer to one) is
   `ErrValidation` and nothing is stored, rather than a silent `NULL`. `+Inf` and
   `-Inf` are legal `REAL` values. MySQL and MariaDB have no `NaN` or infinity in
-  `float` and `double`: binding one is a database error. A `float` column is
-  read back with six significant digits, so a `float32` with more digits (such
-  as `math.MaxFloat32`) reads back within 1e-5 of what was stored, not
-  bit-identical; use `float64` (`double`) when the exact value matters.
-- Strings: any valid UTF-8 round-trips, including quotes and backslashes (they
+  `float` and `double`: binding one is a database error.- Strings: any valid UTF-8 round-trips, including quotes and backslashes (they
   are bound, never interpolated). PostgreSQL rejects U+0000 in `text`. A string
   longer than `size` is a database error on `character varying(N)`.
 - `[]byte`: `nil` stores NULL; an empty non-nil slice stores an empty `bytea`.
