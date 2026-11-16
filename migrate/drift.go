@@ -513,7 +513,7 @@ func (e *Engine) DriftWith(ctx context.Context, o DriftOptions) (*DriftReport, e
 	var skipped []ObjectRef
 	exact := false
 	if latest != "" {
-		snap, err := snapshotUpTo(e.dir, latest)
+		snap, err := stateUpTo(e.dir, latest)
 		if err != nil {
 			return nil, err
 		}

@@ -61,9 +61,9 @@ func TestApplyRefusesForkedChain(t *testing.T) {
 	db := &sfDB{tableExists: true}
 	fsys := fstest.MapFS{
 		"20260101000000_root.up.sql":        {Data: []byte("CREATE TABLE r (x int);")},
-		"20260101000000_root.snapshot.json": {Data: []byte(sfSnap("20260101000000", ""))},
-		"20260102000000_a.snapshot.json":    {Data: []byte(sfSnap("20260102000000", "20260101000000"))},
-		"20260102000001_b.snapshot.json":    {Data: []byte(sfSnap("20260102000001", "20260101000000"))},
+		"20260101000000_root.snapshot.json": {Data: []byte(sfSnapCol("20260101000000", "", "x"))},
+		"20260102000000_a.snapshot.json":    {Data: []byte(sfSnapCol("20260102000000", "20260101000000", "y"))},
+		"20260102000001_b.snapshot.json":    {Data: []byte(sfSnapCol("20260102000001", "20260101000000", "z"))},
 	}
 	_, err := sfEngine(t, db, fsys).Apply(context.Background(), migrate.ApplyOptions{})
 	if !errors.Is(err, migrate.ErrBranchConflict) {

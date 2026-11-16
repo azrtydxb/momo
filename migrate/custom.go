@@ -31,7 +31,7 @@ func (e *Engine) NewCustom(name string) (*Migration, error) {
 	if !migrationName.MatchString(name) {
 		return nil, fmt.Errorf("%w: %q must match %s", ErrInvalidName, name, migrationName)
 	}
-	snap, err := LatestSnapshot(e.dir)
+	snap, err := LatestState(e.dir)
 	if errors.Is(err, ErrNoSnapshot) {
 		return nil, fmt.Errorf("%w: a custom migration copies the latest snapshot; run momo migrate diff first", ErrNoSnapshot)
 	}

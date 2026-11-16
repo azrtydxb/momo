@@ -20,8 +20,15 @@ import (
 	"github.com/azrtydxb/momo/schema"
 )
 
-// SumFormat is the momo.sum format version this momo writes and reads up to.
-const SumFormat = 1
+// SumFormat is the momo.sum format version this momo writes by default and
+// reads up to. Format 2 is one "<sha256>  <file name>" line per file with no
+// directory hash, so two branches that each add a migration merge with a plain
+// union of lines. Format 1 has an "h1:" directory-hash line after the header;
+// it is still read and is written only when asked for (Sum.Format).
+const SumFormat = 2
+
+// SumFormatLegacy is the momo.sum format that carries a directory hash.
+const SumFormatLegacy = 1
 
 // SumFileName is the checksum file inside a migration directory.
 const SumFileName = "momo.sum"
@@ -32,8 +39,19 @@ var ErrNewerFormat = schema.ErrNewerFormat
 
 // Sum is the parsed content of momo.sum.
 type Sum struct {
-	DirHash string            // "h1:" + base64(sha256(manifest))
+	// Format is the file format: SumFormat or SumFormatLegacy. Zero means
+	// SumFormat. Write emits the format it names; AppendSum keeps it.
+	Format  int
+	DirHash string            // format 1 only: "h1:" + base64(sha256(manifest))
 	Files   map[string]string // file name -> hex sha256
+}
+
+// format returns the effective format of s.
+func (s *Sum) format() int {
+	if s.Format == 0 {
+		return SumFormat
+	}
+	return s.Format
 }
 
 var (
@@ -64,7 +82,7 @@ func ComputeSum(fsys fs.FS) (*Sum, error) {
 		}
 		return nil, fmt.Errorf("migrate: read migration directory: %w", err)
 	}
-	return &Sum{DirHash: dirHash(files), Files: files}, nil
+	return &Sum{Format: SumFormat, Files: files}, nil
 }
 
 func hashFile(fsys fs.FS, name string) (string, error) {
@@ -85,11 +103,19 @@ func dirHash(files map[string]string) string {
 	return "h1:" + base64.StdEncoding.EncodeToString(sum[:])
 }
 
-// Write writes s in momo.sum format with the file lines in name order.
+// Write writes s in the momo.sum format s.Format names (SumFormat when unset)
+// with the file lines in name order. Format 1 also writes the directory hash,
+// computed from the files; format 2 has none. Any other format is an error.
 func (s *Sum) Write(w io.Writer) error {
+	f := s.format()
+	if f != SumFormat && f != SumFormatLegacy {
+		return fmt.Errorf("migrate: cannot write %s format %d; this momo writes format %d or %d", SumFileName, f, SumFormatLegacy, SumFormat)
+	}
 	var b strings.Builder
-	b.WriteString("# momo.sum format=" + strconv.Itoa(SumFormat) + "\n")
-	b.WriteString(dirHash(s.Files) + "\n")
+	b.WriteString("# momo.sum format=" + strconv.Itoa(f) + "\n")
+	if f == SumFormatLegacy {
+		b.WriteString(dirHash(s.Files) + "\n")
+	}
 	for _, name := range slices.Sorted(maps.Keys(s.Files)) {
 		b.WriteString(s.Files[name] + "  " + name + "\n")
 	}
@@ -97,9 +123,12 @@ func (s *Sum) Write(w io.Writer) error {
 	return err
 }
 
-// ParseSum reads a momo.sum. A format above SumFormat returns ErrNewerFormat.
-// A directory hash that does not match the listed files returns
-// ErrChecksumMismatch: the file was edited by hand.
+// ParseSum reads a momo.sum of format 1 or 2. A format above SumFormat returns
+// ErrNewerFormat. In format 1 a directory hash that does not match the listed
+// files returns ErrChecksumMismatch: the file was edited by hand. Format 2
+// lines may come in any order, so a file merged with git's union driver
+// parses; a name listed twice with different checksums is an error, and so is
+// any line that is not "<sha256>  <file name>" (a conflict marker, an h1: line).
 func ParseSum(r io.Reader) (*Sum, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
@@ -127,23 +156,35 @@ func ParseSum(r io.Reader) (*Sum, error) {
 	if got > SumFormat {
 		return nil, fmt.Errorf("%w (momo.sum format %d, this momo reads up to %d)", ErrNewerFormat, got, SumFormat)
 	}
-	if len(lines) < 2 || !strings.HasPrefix(lines[1], "h1:") {
-		return nil, fmt.Errorf("migrate: %s line 2: want an h1: directory hash", SumFileName)
+	s := &Sum{Format: got, Files: map[string]string{}}
+	first := 1
+	if got == SumFormatLegacy {
+		if len(lines) < 2 || !strings.HasPrefix(lines[1], "h1:") {
+			return nil, fmt.Errorf("migrate: %s line 2: want an h1: directory hash", SumFileName)
+		}
+		s.DirHash = lines[1]
+		first = 2
 	}
-	s := &Sum{DirHash: lines[1], Files: map[string]string{}}
-	for i, line := range lines[2:] {
-		n := i + 3
+	for i, line := range lines[first:] {
+		n := i + first + 1
 		sum, name, ok := strings.Cut(line, "  ")
 		if !ok || !hexSHA256.MatchString(sum) || name == "" || name != strings.TrimSpace(name) {
 			return nil, fmt.Errorf("migrate: %s line %d: want %q", SumFileName, n, "<sha256 hex>  <file name>")
 		}
-		if _, dup := s.Files[name]; dup {
+		if prev, dup := s.Files[name]; dup {
+			// A union merge can leave the same line twice; two different
+			// checksums for one file are a real conflict.
+			if got == SumFormat && prev == sum {
+				continue
+			}
 			return nil, fmt.Errorf("migrate: %s line %d: duplicate entry for %s", SumFileName, n, name)
 		}
 		s.Files[name] = sum
 	}
-	if want := dirHash(s.Files); want != s.DirHash {
-		return nil, fmt.Errorf("%w: %s directory hash does not match its file lines; the file was edited by hand", ErrChecksumMismatch, SumFileName)
+	if got == SumFormatLegacy {
+		if want := dirHash(s.Files); want != s.DirHash {
+			return nil, fmt.Errorf("%w: %s directory hash does not match its file lines; the file was edited by hand", ErrChecksumMismatch, SumFileName)
+		}
 	}
 	return s, nil
 }
@@ -176,11 +217,15 @@ func VerifySum(fsys fs.FS, want *Sum) []string {
 
 // AppendSum returns a copy of existing with entries for the added files. It
 // never changes an existing entry; an added name that is already recorded, or
-// that is not in fsys, is an error naming it.
+// that is not in fsys, is an error naming it. The result keeps the format of
+// existing (SumFormat when existing is nil), so a directory is upgraded only by
+// momo migrate hash.
 func AppendSum(existing *Sum, fsys fs.FS, added []string) (*Sum, error) {
 	files := map[string]string{}
+	format := SumFormat
 	if existing != nil {
 		maps.Copy(files, existing.Files)
+		format = existing.format()
 	}
 	for _, name := range added {
 		if _, ok := files[name]; ok {
@@ -195,5 +240,9 @@ func AppendSum(existing *Sum, fsys fs.FS, added []string) (*Sum, error) {
 		}
 		files[name] = h
 	}
-	return &Sum{DirHash: dirHash(files), Files: files}, nil
+	out := &Sum{Format: format, Files: files}
+	if format == SumFormatLegacy {
+		out.DirHash = dirHash(files)
+	}
+	return out, nil
 }

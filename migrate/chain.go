@@ -6,25 +6,41 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"maps"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/azrtydxb/momo/schema"
 )
 
 // versionLayout is the UTC timestamp layout of a migration version.
 const versionLayout = "20060102150405"
 
-// chainEntry is one snapshot together with the file it came from.
+// chainEntry is one snapshot together with the file it came from. state is the
+// schema after this migration, derived by folding the chain (see foldChain);
+// it is nil until loadChain has folded without a problem.
 type chainEntry struct {
-	path string
-	snap SnapshotFile
+	path  string
+	snap  SnapshotFile
+	state *schema.Schema
 }
 
-// loadChain reads every snapshot in fsys and checks that they form one linear
-// chain. It returns the snapshots ordered root to head, and one error per
-// problem; the order is only meaningful when there are no problems. Each error
-// names the offending files.
+// derived returns the schema after this migration: the folded state when the
+// chain folded, else the snapshot file. After a merge the file lacks the other
+// branch's work and the state has it.
+func (e chainEntry) derived() *schema.Schema {
+	if e.state != nil {
+		return e.state
+	}
+	return e.snap.Schema
+}
+
+// loadChain reads every snapshot in fsys and checks that they form a chain:
+// one root, every parent present and older than its child, no cycle, and every
+// fork mergeable (the branches change different tables, see foldChain). It
+// returns the snapshots ordered by version, and one error per problem; the
+// order is only meaningful when there are no problems. Each error names the
+// offending files.
 func loadChain(files []File) ([]chainEntry, []error) {
 	var problems []error
 	byVersion := map[string]chainEntry{}
@@ -46,32 +62,27 @@ func loadChain(files []File) ([]chainEntry, []error) {
 		versions = append(versions, f.Version)
 	}
 	slices.Sort(versions)
-	structural := len(problems)
 
-	// Forks: no two snapshots may share a parent, and only one may be a root.
-	children := map[string][]string{}
+	// Only one snapshot may be a root. Two branches that each start the history
+	// have no common base to merge from.
+	var roots []string
 	for _, v := range versions {
-		p := byVersion[v].snap.ParentVersion
-		children[p] = append(children[p], v)
-	}
-	for _, parent := range slices.Sorted(maps.Keys(children)) {
-		kids := children[parent]
-		for _, other := range kids[1:] {
-			a, b := byVersion[kids[0]].path, byVersion[other].path
-			if parent == "" {
-				problems = append(problems, fmt.Errorf("%w: %s and %s both have no parent; rebase one branch by hand (see docs/migrations.md)", ErrBranchConflict, a, b))
-			} else {
-				problems = append(problems, fmt.Errorf("%w: %s and %s both have parent %s; rebase one branch by hand (see docs/migrations.md)", ErrBranchConflict, a, b, parent))
-			}
+		if byVersion[v].snap.ParentVersion == "" {
+			roots = append(roots, v)
 		}
 	}
+	for _, other := range roots[min(1, len(roots)):] {
+		problems = append(problems, fmt.Errorf("%w: %s and %s both have no parent; rebase one branch by hand (see docs/migrations.md)", ErrBranchConflict, byVersion[roots[0]].path, byVersion[other].path))
+	}
 
-	// Parents must exist.
+	// Parents must exist and be older than their child.
 	for _, v := range versions {
 		e := byVersion[v]
 		if p := e.snap.ParentVersion; p != "" {
 			if _, ok := byVersion[p]; !ok {
 				problems = append(problems, fmt.Errorf("migrate: %s: parent snapshot %s is missing", e.path, p))
+			} else if p >= v {
+				problems = append(problems, fmt.Errorf("migrate: %s: parent %s is not older than version %s (a migration builds on an earlier one)", e.path, p, v))
 			}
 		}
 	}
@@ -105,33 +116,29 @@ func loadChain(files []File) ([]chainEntry, []error) {
 		}
 	}
 
-	// Linearity: each snapshot's parent is the snapshot just before it.
-	if len(problems) == structural {
-		prev := ""
-		for _, v := range versions {
-			e := byVersion[v]
-			if e.snap.ParentVersion != prev {
-				want := "none"
-				if prev != "" {
-					want = prev
-				}
-				problems = append(problems, fmt.Errorf("migrate: %s: parent is %q but the previous snapshot is %s (gap or out-of-order version)", e.path, e.snap.ParentVersion, want))
-			}
-			prev = v
-		}
-	}
-
 	entries := make([]chainEntry, 0, len(versions))
 	for _, v := range versions {
 		entries = append(entries, byVersion[v])
 	}
+	// Forks: fold the chain in version order. A fork whose branches change
+	// different tables merges; one that changes the same table is a conflict.
+	if len(problems) == 0 {
+		states, foldProblems := foldChain(entries)
+		problems = append(problems, foldProblems...)
+		if len(foldProblems) == 0 {
+			for i := range entries {
+				entries[i].state = states[i]
+			}
+		}
+	}
 	return entries, problems
 }
 
-// Chain returns the snapshots in fsys ordered root to head. It fails when the
-// snapshots do not form one linear chain: a fork (the error wraps
-// ErrBranchConflict), a missing parent, a cycle, or a parent that is not the
-// previous version. Every error names the offending files.
+// Chain returns the snapshots in fsys ordered by version. It fails when the
+// snapshots do not form a valid chain: a fork whose branches change the same
+// table or a second root (the error wraps ErrBranchConflict), a missing parent,
+// a cycle, or a parent that is not older than its child. Every error names the
+// offending files.
 func Chain(fsys fs.FS) ([]SnapshotFile, error) {
 	files, err := Discover(fsys)
 	if err != nil {

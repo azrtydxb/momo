@@ -55,20 +55,51 @@ func wantProblem(t *testing.T, problems []string, parts ...string) {
 	t.Fatalf("no problem containing %q in %q", parts, problems)
 }
 
+// snapCol is a snapshot with one table t that has the column id and one more.
+func snapCol(version, parent, col string) string {
+	return `{"format_version":1,"version":"` + version + `","parent":"` + parent + `","schema":{"format_version":1,"dialect":"postgres","tables":[{"name":"t","columns":[{"name":"id","type":"bigint"},{"name":"` + col + `","type":"text"}]}]}}`
+}
+
+// Two branches off one parent that change the same table are a conflict, and
+// the message names the table and both migrations.
 func TestMigrationBranchConflict(t *testing.T) {
 	fsys := fstest.MapFS{
-		"20260101000000_root.snapshot.json": {Data: []byte(snap("20260101000000", ""))},
-		"20260102000000_a.snapshot.json":    {Data: []byte(snap("20260102000000", "20260101000000"))},
-		"20260102000001_b.snapshot.json":    {Data: []byte(snap("20260102000001", "20260101000000"))},
+		"20260101000000_root.snapshot.json": {Data: []byte(snapTable("20260101000000", "", "t"))},
+		"20260102000000_a.snapshot.json":    {Data: []byte(snapCol("20260102000000", "20260101000000", "x"))},
+		"20260102000001_b.snapshot.json":    {Data: []byte(snapCol("20260102000001", "20260101000000", "y"))},
 	}
 	_, err := Chain(fsys)
 	if !errors.Is(err, ErrBranchConflict) {
 		t.Fatalf("want ErrBranchConflict, got %v", err)
 	}
-	for _, f := range []string{"20260102000000_a.snapshot.json", "20260102000001_b.snapshot.json"} {
+	for _, f := range []string{"20260102000000_a.snapshot.json", "20260102000001_b.snapshot.json", `table "t"`} {
 		if !strings.Contains(err.Error(), f) {
 			t.Fatalf("error must name %s: %v", f, err)
 		}
+	}
+}
+
+// Two branches off one parent that change different tables are not a conflict.
+func TestMigrationForkOfDifferentTablesIsValid(t *testing.T) {
+	fsys := fstest.MapFS{
+		"20260101000000_root.snapshot.json": {Data: []byte(snap("20260101000000", ""))},
+		"20260102000000_a.snapshot.json":    {Data: []byte(snapTable("20260102000000", "20260101000000", "a"))},
+		"20260102000001_b.snapshot.json":    {Data: []byte(snapTable("20260102000001", "20260101000000", "b"))},
+	}
+	got, err := Chain(fsys)
+	if err != nil || len(got) != 3 {
+		t.Fatalf("a fork of different tables is a valid chain: %v %v", got, err)
+	}
+}
+
+// Two roots have no common base, so they stay a conflict.
+func TestMigrationTwoRootsConflict(t *testing.T) {
+	fsys := fstest.MapFS{
+		"20260101000000_a.snapshot.json": {Data: []byte(snapTable("20260101000000", "", "a"))},
+		"20260101000001_b.snapshot.json": {Data: []byte(snapTable("20260101000001", "", "b"))},
+	}
+	if _, err := Chain(fsys); !errors.Is(err, ErrBranchConflict) {
+		t.Fatalf("want ErrBranchConflict, got %v", err)
 	}
 }
 
@@ -128,25 +159,28 @@ func TestValidateOfflineCycle(t *testing.T) {
 }
 
 func TestValidateOfflineParentNotPrevious(t *testing.T) {
-	// b names a later version as its parent and c names a: no fork, no
-	// missing parent, but the order is wrong.
+	// b names a later version as its parent and c names a: no missing
+	// parent, but a parent must be older than its child.
 	m := fstest.MapFS{
 		"20260101000000_a.snapshot.json": {Data: []byte(snap("20260101000000", ""))},
 		"20260102000000_b.snapshot.json": {Data: []byte(snap("20260102000000", "20260103000000"))},
 		"20260103000000_c.snapshot.json": {Data: []byte(snap("20260103000000", "20260101000000"))},
 	}
 	_, err := Chain(m)
-	if err == nil || !strings.Contains(err.Error(), "20260102000000_b.snapshot.json") || !strings.Contains(err.Error(), "previous") {
-		t.Fatalf("parent that is not the previous version must be reported: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "20260102000000_b.snapshot.json") || !strings.Contains(err.Error(), "not older") {
+		t.Fatalf("a parent that is not older must be reported: %v", err)
 	}
 }
 
 func TestValidateOfflineGap(t *testing.T) {
-	// c skips b: b has no child, c's parent is a, a has two children.
+	// third skips next: both are built on root and both change table b, one
+	// with an extra column, so the fork cannot merge. (A third that only
+	// added another table would merge.)
 	m := goodChain()
-	m["20260103000000_third.up.sql"] = &fstest.MapFile{Data: []byte("-- momo:generated\nCREATE TABLE c (id bigint);")}
-	m["20260103000000_third.snapshot.json"] = &fstest.MapFile{Data: []byte(snapTable("20260103000000", "20260101000000", "c"))}
-	wantProblem(t, problemsOf(t, sealed(t, m)), "20260103000000_third.snapshot.json")
+	m["20260103000000_third.up.sql"] = &fstest.MapFile{Data: []byte("-- momo:generated\nCREATE TABLE b (id bigint, x text);")}
+	third := strings.Replace(snapTable("20260103000000", "20260101000000", "b"), `"type":"bigint"}]`, `"type":"bigint"},{"name":"x","type":"text"}]`, 1)
+	m["20260103000000_third.snapshot.json"] = &fstest.MapFile{Data: []byte(third)}
+	wantProblem(t, problemsOf(t, sealed(t, m)), "20260103000000_third.snapshot.json", `table "b"`)
 }
 
 func TestValidateOfflineSumMismatch(t *testing.T) {

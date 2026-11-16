@@ -1,0 +1,174 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package migrate
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"maps"
+	"slices"
+	"strings"
+	"time"
+)
+
+// Renumbered is one migration Renumber moved to a later version.
+type Renumbered struct{ Name, Old, New string }
+
+// AppliedVersions returns the versions the history holds, sorted: every row but
+// a rolled-back one (a failed or running row counts, so a dirty migration is
+// never moved). It is read-only and takes no lock.
+func (e *Engine) AppliedVersions(ctx context.Context) ([]string, error) {
+	c, err := e.pin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = c.Release() }()
+	hist, err := e.readHistory(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, r := range hist {
+		if r.Status != StatusRolledBack {
+			out = append(out, r.Version)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
+// Renumber moves the pending migrations that sort before the newest applied
+// one to versions after every existing version, so they stop being
+// ErrOutOfOrder. applied lists the versions the database has applied; a
+// migration is pending when it is not in it. Only pending migrations move: an
+// applied one never changes, and a pending migration that builds on a moved one
+// moves with it. The relative order of the moved migrations is kept.
+//
+// Each moved migration gets new file names (up, down and snapshot), its
+// snapshot records the new version and the new parent links, and momo.sum is
+// updated; the schema in the snapshot and the SQL are untouched. It does not
+// touch the database or write files. removed lists, sorted, the paths the
+// caller should delete; files holds the new files, including momo.sum, keyed by
+// file name, like Migration.Files. When nothing is out of order, both are empty
+// and the directory is left as it is.
+//
+// Renumber refuses, changing nothing, when a moved migration lies in a
+// subdirectory, or when an applied migration builds on one that would move. A
+// version moved past a migration of the other branch is checked by validate
+// afterwards: two migrations that change the same table are then a conflict.
+func (e *Engine) Renumber(applied []string) (removed []string, files map[string][]byte, moved []Renumbered, err error) {
+	newest := ""
+	done := map[string]bool{}
+	for _, v := range applied {
+		done[v] = true
+		newest = max(newest, v)
+	}
+	all, err := Discover(e.dir)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	parentOf := map[string]string{}
+	for _, f := range all {
+		if f.Kind != "snapshot" {
+			continue
+		}
+		s, err := ReadSnapshot(strings.NewReader(string(f.Body)))
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("%s: %w", f.Path, err)
+		}
+		parentOf[f.Version] = s.ParentVersion
+	}
+	move := map[string]bool{}
+	for _, f := range all {
+		if f.Kind == "up" && !done[f.Version] && f.Version < newest {
+			move[f.Version] = true
+		}
+	}
+	// A migration built on a moved one moves too, so its parent stays older.
+	for grew := true; grew; {
+		grew = false
+		for v, p := range parentOf {
+			if move[p] && !move[v] {
+				if done[v] {
+					return nil, nil, nil, fmt.Errorf("migrate: version %s is applied but is built on %s, which is pending and would move; renumber cannot change applied migrations", v, p)
+				}
+				move[v], grew = true, true
+			}
+		}
+	}
+	if len(move) == 0 {
+		return nil, nil, nil, nil
+	}
+	for _, f := range all {
+		if move[f.Version] && strings.Contains(f.Path, "/") {
+			return nil, nil, nil, fmt.Errorf("migrate: %s is in a subdirectory; renumber moves files in the top level of the migration directory only", f.Path)
+		}
+	}
+	first, err := NextVersion(e.opts.clock, e.dir)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	t, err := time.Parse(versionLayout, first)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("migrate: renumber: %w", err)
+	}
+	newVersion := map[string]string{}
+	for i, v := range slices.Sorted(maps.Keys(move)) {
+		newVersion[v] = t.Add(time.Duration(i) * time.Second).Format(versionLayout)
+	}
+
+	added := memFS{}
+	var addedNames []string
+	out := map[string][]byte{}
+	for _, f := range all {
+		nv, ok := newVersion[f.Version]
+		if !ok {
+			continue
+		}
+		removed = append(removed, f.Path)
+		name := nv + strings.TrimPrefix(f.Path, f.Version)
+		body := f.Body
+		if f.Kind == "snapshot" {
+			s, err := ReadSnapshot(bytes.NewReader(f.Body))
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("%s: %w", f.Path, err)
+			}
+			s.Version = nv
+			if p, ok := newVersion[s.ParentVersion]; ok {
+				s.ParentVersion = p
+			}
+			var buf bytes.Buffer
+			if err := WriteSnapshot(&buf, *s); err != nil {
+				return nil, nil, nil, err
+			}
+			body = buf.Bytes()
+		}
+		added[name], out[name] = body, body
+		addedNames = append(addedNames, name)
+		if f.Kind == "up" {
+			moved = append(moved, Renumbered{Name: f.Name, Old: f.Version, New: nv})
+		}
+	}
+	slices.Sort(removed)
+	slices.SortFunc(moved, func(a, b Renumbered) int { return strings.Compare(a.Old, b.Old) })
+
+	existing, err := e.existingSum()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	kept := &Sum{Format: existing.Format, Files: maps.Clone(existing.Files)}
+	for _, p := range removed {
+		delete(kept.Files, p)
+	}
+	sum, err := AppendSum(kept, added, addedNames)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	var buf bytes.Buffer
+	if err := sum.Write(&buf); err != nil {
+		return nil, nil, nil, err
+	}
+	out[SumFileName] = buf.Bytes()
+	return removed, out, moved, nil
+}

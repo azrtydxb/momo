@@ -19,10 +19,13 @@ type ValidateReport struct{ Problems []string }
 //  1. every migration file parses and its directives are known;
 //  2. momo.sum exists and matches the files;
 //  3. versions are unique and strictly increasing;
-//  4. every snapshot names a parent that exists (or none for the first);
-//  5. no two snapshots share a parent (the ErrBranchConflict text);
+//  4. every snapshot names a parent that exists and is older (or none for
+//     the first);
+//  5. two snapshots may share a parent (two branches) only when they change
+//     different tables; otherwise it is the ErrBranchConflict text naming the
+//     table and both migrations;
 //  6. every migration has a snapshot, and a custom (not generated)
-//     migration's snapshot equals its parent's.
+//     migration's snapshot equals its parent's derived schema.
 //
 // Go migrations have no file, so only the application knows them: pass the
 // ones registered with WithGoMigrations and each is checked like a custom
@@ -89,7 +92,7 @@ func ValidateOffline(fsys fs.FS, goMigrations ...GoMigration) (*ValidateReport, 
 		if !ok {
 			continue // reported as a missing parent
 		}
-		if !schemaEqual(e.snap.Schema, parent.snap.Schema) {
+		if !schemaEqual(e.snap.Schema, parent.derived()) {
 			add("%s: custom migration %s must not change the schema, but its snapshot differs from its parent's %s", e.path, f.Path, parent.path)
 		}
 	}

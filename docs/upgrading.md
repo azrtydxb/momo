@@ -11,6 +11,15 @@ No edit is needed in your code. The GORM, Bun and Ent importers now write a
 composite index of the source model as a `c.Index` declaration in a
 `MomoConfig` method of the generated model, so a converted project no longer
 drops it on its next migration; rerun the import to get the declaration.
+`momo.sum` has a format 2, one checksum line per file and no directory hash,
+which `momo migrate hash` writes. An older momo binary refuses it with
+`migrate.ErrNewerFormat`, so upgrade every binary that reads the directory (CI
+included) before you run `hash`, or run `momo migrate hash --sum-format 1` to
+keep format 1; a format 1 file keeps working and `diff` does not change it. Two
+branches that each add a migration for different tables now merge and validate,
+a fork of the same table stays a `migrate.ErrBranchConflict` that names the
+table, and `momo migrate rebase --renumber` moves pending migrations after the
+newest applied one.
 
 ## Upgrading to 0.15.0
 
