@@ -210,9 +210,11 @@ func (in *inspector) sequences(ctx context.Context, s *schema.Schema) error {
 	return forEach(ctx, in.c, qSequences, []any{in.managed}, func(r momo.Rows) error {
 		var ns string
 		var q schema.Sequence
-		if err := r.Scan(&ns, &q.Name, &q.AsType, &q.Start, &q.Increment, &q.MinValue, &q.MaxValue, &q.Cache, &q.Cycle); err != nil {
+		var start, minValue, maxValue int64
+		if err := r.Scan(&ns, &q.Name, &q.AsType, &start, &q.Increment, &minValue, &maxValue, &q.Cache, &q.Cycle); err != nil {
 			return err
 		}
+		q.Start, q.MinValue, q.MaxValue = &start, &minValue, &maxValue
 		if in.excluded(ns, q.Name) {
 			return nil
 		}

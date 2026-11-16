@@ -624,13 +624,13 @@ func (r *companionReader) sequence(calls []call) {
 			}
 			switch c.name {
 			case "Start":
-				q.Start = n
+				q.Start = &n
 			case "Increment":
 				q.Increment = n
 			case "MinValue":
-				q.MinValue = n
+				q.MinValue = &n
 			case "MaxValue":
-				q.MaxValue = n
+				q.MaxValue = &n
 			default:
 				q.Cache = n
 			}

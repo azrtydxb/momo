@@ -1418,8 +1418,9 @@ or `"bigint"`), `Start`, `Increment`, `MinValue`, `MaxValue`, `Cache` and
 `Cycle`, with integer literals for the numbers. A declaration names only what
 differs from the PostgreSQL defaults (bigint, increment 1, cache 1, bounds from
 the type and the direction, start at the minimum), so a bare `c.Sequence` equals
-the sequence PostgreSQL reports for `CREATE SEQUENCE name`. A bound or start of
-exactly 0 cannot be told from unset.
+the sequence PostgreSQL reports for `CREATE SEQUENCE name`. A value you name is
+kept as written, including 0 (`Start(0).MinValue(0)` is a counter that starts at
+zero).
 
 - `momo generate --from-db` reads every sequence that no column owns (a
   sequence with an `OWNED BY` column, a serial column's or an identity column's,

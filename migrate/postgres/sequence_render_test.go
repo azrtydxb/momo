@@ -24,8 +24,13 @@ func TestRenderCreateSequence(t *testing.T) {
 		},
 		{
 			"options",
-			schema.Sequence{Schema: "app", Name: "ids", AsType: "integer", Start: 100, Increment: 10, MinValue: 100, MaxValue: 1000, Cache: 5, Cycle: true},
+			schema.Sequence{Schema: "app", Name: "ids", AsType: "integer", Start: schema.Int64(100), Increment: 10, MinValue: schema.Int64(100), MaxValue: schema.Int64(1000), Cache: 5, Cycle: true},
 			`CREATE SEQUENCE "app"."ids" AS integer INCREMENT BY 10 MINVALUE 100 MAXVALUE 1000 START WITH 100 CACHE 5 CYCLE`,
+		},
+		{
+			"zero start",
+			schema.Sequence{Name: "counter", Start: schema.Int64(0), MinValue: schema.Int64(0)},
+			`CREATE SEQUENCE "counter" AS bigint INCREMENT BY 1 MINVALUE 0 MAXVALUE 9223372036854775807 START WITH 0 CACHE 1 NO CYCLE`,
 		},
 		{
 			"descending",

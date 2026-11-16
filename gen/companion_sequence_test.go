@@ -3,6 +3,7 @@
 package gen
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -25,15 +26,16 @@ func TestCompanionSequenceDeclaration(t *testing.T) {
 		t.Fatalf("schema diagnostics: %v", sdiags)
 	}
 	want := []schema.Sequence{
-		{Name: "countdown_seq", Increment: -1, MinValue: -9223372036854775808, MaxValue: -1},
+		{Name: "countdown_seq", Increment: -1, MinValue: schema.Int64(-9223372036854775808), MaxValue: schema.Int64(-1)},
+		{Name: "counter_seq", Start: schema.Int64(0), MinValue: schema.Int64(0)},
 		{Name: "jobs_seq"},
-		{Schema: "app", Name: "ticket_seq", AsType: "integer", Start: 1000, Increment: 10, MinValue: 1000, MaxValue: 99999, Cache: 20, Cycle: true},
+		{Schema: "app", Name: "ticket_seq", AsType: "integer", Start: schema.Int64(1000), Increment: 10, MinValue: schema.Int64(1000), MaxValue: schema.Int64(99999), Cache: 20, Cycle: true},
 	}
 	if len(s.Sequences) != len(want) {
 		t.Fatalf("sequences = %+v, want %+v", s.Sequences, want)
 	}
 	for i := range want {
-		if s.Sequences[i] != want[i] {
+		if !reflect.DeepEqual(s.Sequences[i], want[i]) {
 			t.Errorf("sequence %d = %+v, want %+v", i, s.Sequences[i], want[i])
 		}
 	}

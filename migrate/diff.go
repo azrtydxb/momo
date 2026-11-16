@@ -901,7 +901,7 @@ var (
 	sequenceSpec = objectSpec[schema.Sequence]{
 		key:    sequenceKey,
 		ident:  func(q *schema.Sequence) (string, string, string) { return q.Schema, "", q.Name },
-		equal:  func(a, b *schema.Sequence) bool { return *a == *b },
+		equal:  func(a, b *schema.Sequence) bool { return reflect.DeepEqual(*a, *b) },
 		create: CreateSequence, drop: DropSequence, replace: AlterSequence,
 		destructiveDrop: true,
 	}

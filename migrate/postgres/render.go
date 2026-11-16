@@ -328,9 +328,9 @@ func renderSequence(c migrate.Change) ([]migrate.Statement, error) {
 	}
 	opts := " AS " + q.AsType +
 		" INCREMENT BY " + strconv.FormatInt(q.Increment, 10) +
-		" MINVALUE " + strconv.FormatInt(q.MinValue, 10) +
-		" MAXVALUE " + strconv.FormatInt(q.MaxValue, 10) +
-		" START WITH " + strconv.FormatInt(q.Start, 10) +
+		" MINVALUE " + strconv.FormatInt(*q.MinValue, 10) +
+		" MAXVALUE " + strconv.FormatInt(*q.MaxValue, 10) +
+		" START WITH " + strconv.FormatInt(*q.Start, 10) +
 		" CACHE " + strconv.FormatInt(q.Cache, 10) + " " + cycle
 	verb := "CREATE SEQUENCE "
 	if c.Kind == migrate.AlterSequence {

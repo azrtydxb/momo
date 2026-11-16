@@ -67,11 +67,11 @@ type Enum struct {
 // column default names with nextval('name'). A column that is serial or
 // identity owns its sequence, which is part of the column and not listed here.
 //
-// A zero numeric field and an empty AsType mean the PostgreSQL default for the
-// rest of the declaration (see NormalizeSequence), so a declaration names only
-// what differs. An inspected sequence carries every field. A bound or start of
-// exactly 0 cannot be told from "not set"; PostgreSQL's own defaults never use
-// it.
+// An empty AsType, a nil Start, MinValue or MaxValue, and a zero Increment or
+// Cache mean the PostgreSQL default for the rest of the declaration (see
+// NormalizeSequence), so a declaration names only what differs. A pointer
+// keeps an explicit 0 apart from "not set". An inspected sequence carries
+// every field.
 type Sequence struct {
 	// Schema is the PostgreSQL namespace. Empty means the connection's
 	// current_schema().
@@ -80,15 +80,15 @@ type Sequence struct {
 	// AsType is the data type of the sequence: "smallint", "integer" or
 	// "bigint". Empty means bigint.
 	AsType string `json:"as_type,omitempty"`
-	// Start is the first value (START WITH). Zero means MinValue for an
+	// Start is the first value (START WITH). Nil means MinValue for an
 	// ascending sequence and MaxValue for a descending one.
-	Start int64 `json:"start,omitempty"`
+	Start *int64 `json:"start,omitempty"`
 	// Increment is the step (INCREMENT BY). Zero means 1; it is never 0.
 	Increment int64 `json:"increment,omitempty"`
-	// MinValue and MaxValue bound the sequence. Zero means the default for
+	// MinValue and MaxValue bound the sequence. Nil means the default for
 	// the type and direction.
-	MinValue int64 `json:"min_value,omitempty"`
-	MaxValue int64 `json:"max_value,omitempty"`
+	MinValue *int64 `json:"min_value,omitempty"`
+	MaxValue *int64 `json:"max_value,omitempty"`
 	// Cache is the number of values a session preallocates. Zero means 1.
 	Cache int64 `json:"cache,omitempty"`
 	// Cycle wraps the sequence around at its bound (CYCLE) instead of failing.

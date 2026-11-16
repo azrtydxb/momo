@@ -1224,14 +1224,14 @@ func sequenceStmt(q schema.Sequence) string {
 	if n.Increment != 1 {
 		s += ".Increment(" + num(n.Increment) + ")"
 	}
-	if n.MinValue != byStep.MinValue {
-		s += ".MinValue(" + num(n.MinValue) + ")"
+	if *n.MinValue != *byStep.MinValue {
+		s += ".MinValue(" + num(*n.MinValue) + ")"
 	}
-	if n.MaxValue != byStep.MaxValue {
-		s += ".MaxValue(" + num(n.MaxValue) + ")"
+	if *n.MaxValue != *byStep.MaxValue {
+		s += ".MaxValue(" + num(*n.MaxValue) + ")"
 	}
-	if n.Start != byBounds.Start {
-		s += ".Start(" + num(n.Start) + ")"
+	if *n.Start != *byBounds.Start {
+		s += ".Start(" + num(*n.Start) + ")"
 	}
 	if n.Cache != 1 {
 		s += ".Cache(" + num(n.Cache) + ")"

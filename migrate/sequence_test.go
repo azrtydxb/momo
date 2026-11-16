@@ -44,7 +44,7 @@ func TestDiffSequenceCreateBeforeTable(t *testing.T) {
 //
 // Catches: a drop and create of the sequence, which would reset its counter.
 func TestDiffSequenceAlterIsOneChange(t *testing.T) {
-	from := seqSchema(schema.Sequence{Name: "jobs_seq", AsType: "bigint", Start: 1, Increment: 1, MinValue: 1, MaxValue: 9223372036854775807, Cache: 1})
+	from := seqSchema(schema.Sequence{Name: "jobs_seq", AsType: "bigint", Start: schema.Int64(1), Increment: 1, MinValue: schema.Int64(1), MaxValue: schema.Int64(9223372036854775807), Cache: 1})
 	same, _, err := Diff(from, seqSchema(schema.Sequence{Name: "jobs_seq"}), DiffOptions{})
 	if err != nil || len(same) != 0 {
 		t.Fatalf("a minimal declaration of the inspected sequence must be no change, got %v, %v", same, err)
@@ -58,6 +58,31 @@ func TestDiffSequenceAlterIsOneChange(t *testing.T) {
 	}
 	if changes[0].Before == nil || changes[0].After == nil {
 		t.Fatalf("alter_sequence must carry both sides: %+v", changes[0])
+	}
+}
+
+// TestDiffSequenceExplicitZeroRoundTrips: a counter that starts at 0 and a
+// descending sequence with MAXVALUE -1, each as inspected, are no change
+// against their declaration, and moving the start to the default is one.
+//
+// Catches: an explicit 0 read as unset, which would render START WITH 1 and
+// then differ from the database on every diff.
+func TestDiffSequenceExplicitZeroRoundTrips(t *testing.T) {
+	counter := schema.Sequence{Name: "counter_seq", Start: schema.Int64(0), MinValue: schema.Int64(0)}
+	inspectedCounter := schema.Sequence{Name: "counter_seq", AsType: "bigint", Start: schema.Int64(0), Increment: 1, MinValue: schema.Int64(0), MaxValue: schema.Int64(9223372036854775807), Cache: 1}
+	down := schema.Sequence{Name: "down_seq", Increment: -1, MaxValue: schema.Int64(-1)}
+	inspectedDown := schema.Sequence{Name: "down_seq", AsType: "bigint", Start: schema.Int64(-1), Increment: -1, MinValue: schema.Int64(-9223372036854775808), MaxValue: schema.Int64(-1), Cache: 1}
+	changes, _, err := Diff(seqSchema(inspectedCounter, inspectedDown), seqSchema(counter, down), DiffOptions{})
+	if err != nil || len(changes) != 0 {
+		t.Fatalf("a declaration of the inspected sequences must be no change, got %v, %v", changes, err)
+	}
+	changes, _, err = Diff(seqSchema(inspectedCounter), seqSchema(schema.Sequence{Name: "counter_seq"}), DiffOptions{})
+	if err != nil || len(changes) != 1 || changes[0].Kind != AlterSequence {
+		t.Fatalf("a counter that loses START 0 MINVALUE 0 is one alter_sequence, got %v, %v", changes, err)
+	}
+	rep := compare(seqSchema(counter, down), seqSchema(inspectedCounter, inspectedDown), false, nil)
+	if !rep.Clean() {
+		t.Fatalf("drift must be clean: %+v", rep)
 	}
 }
 

@@ -22,6 +22,10 @@ import (
 var sequenceDDL = []string{
 	`CREATE SEQUENCE redirect_jobs_seq AS bigint INCREMENT BY 1 START WITH 1000 MINVALUE 1000 CACHE 1`,
 	`CREATE SEQUENCE ticket_seq AS integer INCREMENT BY 5 MINVALUE 1 MAXVALUE 100000 START WITH 1 CACHE 10 CYCLE`,
+	// A counter that starts at 0 and a descending sequence whose maximum is -1:
+	// the values the defaults would otherwise replace.
+	`CREATE SEQUENCE counter_seq MINVALUE 0 START WITH 0`,
+	`CREATE SEQUENCE countdown_seq INCREMENT BY -1 MAXVALUE -1 MINVALUE -1000 START WITH -1`,
 	`CREATE TABLE redirect_jobs (
 		id bigint PRIMARY KEY DEFAULT nextval('redirect_jobs_seq'::regclass),
 		target text NOT NULL)`,
@@ -89,7 +93,7 @@ func TestGenerateFromDBStandaloneSequence(t *testing.T) {
 	t.Run("empty database", emptyDatabaseBuilds)
 
 	models := readText(t, filepath.Join(root, "models", "redirect_jobs_model.go")) + readText(t, filepath.Join(root, "models", "tickets_model.go"))
-	for _, want := range []string{`c.Sequence("redirect_jobs_seq")`, `c.Sequence("ticket_seq")`} {
+	for _, want := range []string{`c.Sequence("redirect_jobs_seq")`, `c.Sequence("ticket_seq")`, `c.Sequence("counter_seq").MinValue(0)`, `c.Sequence("countdown_seq").Increment(-1).MinValue(-1000)`} {
 		if !strings.Contains(models, want) {
 			t.Fatalf("the models do not declare %s:\n%s", want, models)
 		}
@@ -144,6 +148,21 @@ func emptyDatabaseBuilds(t *testing.T) {
 	}
 	if start != 1 || incr != 5 || cache != 10 || !cycle {
 		t.Fatalf("ticket_seq = start %d increment %d cache %d cycle %v", start, incr, cache, cycle)
+	}
+	var minValue, maxValue int64
+	row = db.QueryRowContext(context.Background(), `SELECT seqstart, seqmin FROM pg_sequence WHERE seqrelid = 'counter_seq'::regclass`)
+	if err := row.Scan(&start, &minValue); err != nil {
+		t.Fatal(err)
+	}
+	if start != 0 || minValue != 0 {
+		t.Fatalf("counter_seq = start %d min %d, want START 0 MINVALUE 0", start, minValue)
+	}
+	row = db.QueryRowContext(context.Background(), `SELECT seqstart, seqmax FROM pg_sequence WHERE seqrelid = 'countdown_seq'::regclass`)
+	if err := row.Scan(&start, &maxValue); err != nil {
+		t.Fatal(err)
+	}
+	if start != -1 || maxValue != -1 {
+		t.Fatalf("countdown_seq = start %d max %d, want START -1 MAXVALUE -1", start, maxValue)
 	}
 }
 
