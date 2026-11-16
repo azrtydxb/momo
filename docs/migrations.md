@@ -1406,16 +1406,16 @@ sequence, and the column declares it. Any other sequence is a schema object of
 its own, kept in the snapshot as `schema.Sequence` and declared by a model with
 `momo.Config.Sequence`:
 
-```go
+```text
 func (j *Job) MomoConfig(c *momo.Config) {
 	c.Default(&j.ID, "nextval('jobs_seq'::regclass)")
 	c.Sequence("jobs_seq").Start(1000).Increment(10).Cache(20)
 }
 ```
 
-The chain of `momo.SequenceOpts` takes `Schema`, `As` (`"smallint"`, `"integer"`
-or `"bigint"`), `Start`, `Increment`, `MinValue`, `MaxValue`, `Cache` and
-`Cycle`, with integer literals for the numbers. A declaration names only what
+The chain of `momo.SequenceOpts` sets the schema name, the data type with `As`
+(`"smallint"`, `"integer"` or `"bigint"`), `Start`, `Increment`, `MinValue`,
+`MaxValue`, `Cache` and `Cycle`, with integer literals for the numbers. A declaration names only what
 differs from the PostgreSQL defaults (bigint, increment 1, cache 1, bounds from
 the type and the direction, start at the minimum), so a bare `c.Sequence` equals
 the sequence PostgreSQL reports for `CREATE SEQUENCE name`. A value you name is
