@@ -15,8 +15,8 @@ import (
 
 // TestLitFloat32LimitStaysInRange: the shortest text that round-trips the
 // largest float32, 3.4028235e+38, is above the largest float32 when a server
-// reads it as a double, and MariaDB refuses such a value in a FLOAT context
-// (error 1292). An inlined float32 literal must stay within the range.
+// reads it as a double, and MySQL and MariaDB refuse such a value in a FLOAT
+// column (error 1264). An inlined float32 literal must stay within the range.
 //
 // Catches: a float32 literal written with strconv's shortest form, which
 // prints math.MaxFloat32 one digit too high.

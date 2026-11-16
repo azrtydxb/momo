@@ -11,9 +11,9 @@ import (
 )
 
 // TestVectorTextStaysInFloat32Range: a server that parses the text form as a
-// double and then range-checks it against the float32 limit (MariaDB, error
-// 1292) refuses a component that prints above math.MaxFloat32. The shortest
-// text that round-trips the largest float32, 3.4028235e+38, is such a value.
+// double and then range-checks it against the float32 limit (error 1264 on a
+// FLOAT column) refuses a number that prints above math.MaxFloat32. The
+// shortest text that round-trips the largest float32, 3.4028235e+38, is such a value.
 //
 // Catches: a text form whose magnitude, read as a double, exceeds the largest
 // float32.

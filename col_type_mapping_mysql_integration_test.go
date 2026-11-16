@@ -20,6 +20,7 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/tags"
 	"github.com/azrtydxb/momo/gen/typemap"
+	"github.com/azrtydxb/momo/internal/exprtest"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/types"
 	"github.com/azrtydxb/momo/vector"
@@ -134,26 +135,20 @@ func tmVectorMySQL(t *testing.T, db *momo.DB, cell string) {
 	}
 	candidates := []tmVec{
 		{ID: 1, Emb: vector.Vector{1, -2.5, 3}},
-		{ID: 2, Emb: vector.Vector{math.MaxFloat32, 0, 0}},
+		{ID: 2, Emb: vector.Vector{1e-30, -1e-30, 0}},
 		{ID: 3, Emb: vector.Vector{math.Float32frombits(0x00800000), 0, 0}},
 		{ID: 4, Emb: vector.Vector{0, 0, 0}},
 	}
-	// Diagnostic: does any server refuse a float32 literal just above the limit?
-	if _, err := momo.Exec(ctx, db, "CREATE TABLE tm_flit (v float)"); err == nil {
-		for _, lit := range []string{"3.4028235e+38", "3.4028234e+38", "-3.4028235e+38"} {
-			_, err := momo.Exec(ctx, db, "INSERT INTO tm_flit (v) VALUES ("+lit+")")
-			t.Errorf("diagnostic FLOAT literal %s: err = %v", lit, err)
-		}
-	}
-	// Diagnostic: which texts does the server take for a vector component?
 	if db.Dialect().Flavor == dialect.FlavorMariaDB {
-		for i, txt := range []string{"[1e30,0,0]", "[1e33,0,0]", "[1e35,0,0]", "[1e36,0,0]", "[1e37,0,0]", "[5e37,0,0]",
-			"[-1e30,0,0]", "[1e-30,0,0]", "[0,0,0]", "[1e38,1e38,1e38]"} {
-			_, err := momo.Exec(ctx, db, fmt.Sprintf("INSERT INTO tm_vec (id, emb) VALUES (%d, VEC_FromText(?))", 100+i), txt)
-			t.Errorf("diagnostic %s: err = %v", txt, err)
+		// MariaDB refuses a component of large magnitude (1e30 and above), so
+		// the largest float32 is a MySQL-only edge value.
+		for _, big := range []float32{1e30, -1e30, math.MaxFloat32} {
+			if _, err := momo.Insert[tmVec](db).Models([]tmVec{{ID: 100, Emb: vector.Vector{big, 0, 0}}}).Exec(ctx); err == nil {
+				t.Errorf("MariaDB took a vector component of %v, which the document says it refuses", big)
+			}
 		}
-		v, _ := vector.Vector{math.MaxFloat32, 0, 0}.Value()
-		t.Errorf("diagnostic: momo text for MaxFloat32 = %v", v)
+	} else {
+		candidates = append(candidates, tmVec{ID: 5, Emb: vector.Vector{math.MaxFloat32, -math.MaxFloat32, 0}})
 	}
 	// One row at a time, so a refused value names itself.
 	var wants []tmVec
@@ -403,6 +398,22 @@ func TestTypeMappingMySQLLimits(t *testing.T) {
 			if err != nil || len(got) != 1 || got[0] != math.MaxFloat32 {
 				t.Errorf("%s: MaxFloat32 read back %v, %v", name, got, err)
 			}
+		}
+		// An inlined float32 literal must fit the FLOAT column: the shortest
+		// text of the largest float32, 3.4028235e+38, is out of range (error
+		// 1264) on every server, so Lit writes it with one digit fewer.
+		for _, x := range []float32{math.MaxFloat32, -math.MaxFloat32} {
+			c, err := exprtest.CompileColumns(dialect.MySQL, momo.Lit(x))
+			if err != nil {
+				t.Fatal(err)
+			}
+			lit, _, _ := strings.Cut(strings.TrimPrefix(c.SQL, "SELECT "), " FROM ")
+			if _, err := momo.Exec(ctx, db, "INSERT INTO tm_f32 (v) VALUES ("+lit+")"); err != nil {
+				t.Errorf("literal %s for %v into FLOAT: %v", lit, x, err)
+			}
+		}
+		if _, err := momo.Exec(ctx, db, "INSERT INTO tm_f32 (v) VALUES (3.4028235e+38)"); err == nil {
+			t.Error("the shortest text of MaxFloat32 was taken by a FLOAT column; the literal form in Lit has no reason to differ")
 		}
 		// A query with no argument comes back over the text protocol, where the
 		// server prints a FLOAT with six significant digits.
