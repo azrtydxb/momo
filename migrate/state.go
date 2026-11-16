@@ -203,7 +203,7 @@ func impliedKeys(keys map[string]bool, srcs ...map[string]*schema.Schema) (out m
 // or a policy.
 func opaqueChanged(keys map[string]bool, before, after map[string]*schema.Schema) bool {
 	body := func(o *schema.Schema) string {
-		if o == nil {
+		if o == nil || len(o.Triggers)+len(o.Policies) == 0 {
 			return ""
 		}
 		b, _ := json.Marshal([]any{o.Triggers, o.Policies})
