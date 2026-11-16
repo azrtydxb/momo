@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
@@ -69,6 +70,33 @@ func bomAt(b []byte, i int) bool {
 	return bytes.HasPrefix(b[i:], utf8BOM)
 }
 
+// wideSpaceAt returns the byte length of the non-ASCII white space rune that
+// starts at b[i], or 0. emit trims these from a statement, so the scanner must
+// skip them as white space too, or a re-split of the trimmed text disagrees.
+func wideSpaceAt(b []byte, i int) int {
+	if b[i] < utf8.RuneSelf {
+		return 0
+	}
+	r, n := utf8.DecodeRune(b[i:])
+	if unicode.IsSpace(r) {
+		return n
+	}
+	return 0
+}
+
+// identBefore reports whether the text before b[i] ends in an identifier
+// character. A BOM or other white space that emit trims ends no identifier,
+// even though its bytes are above 0x7f.
+func identBefore(b []byte, i int) bool {
+	if i == 0 {
+		return false
+	}
+	if r, _ := utf8.DecodeLastRune(b[:i]); r == 0xFEFF || unicode.IsSpace(r) {
+		return false
+	}
+	return isIdent(b[i-1])
+}
+
 func trimSpaceBOM(text string) string {
 	return strings.TrimFunc(text, func(r rune) bool { return r == '\uFEFF' || unicode.IsSpace(r) })
 }
@@ -103,6 +131,8 @@ func (s *splitter) onlyTrivia(text string) bool {
 			i++
 		case bomAt(b, i):
 			i += len(utf8BOM)
+		case wideSpaceAt(b, i) > 0:
+			i += wideSpaceAt(b, i)
 		case s.lineCommentAt(b, i):
 			i = skipLine(b, i)
 		case b[i] == '/' && i+1 < len(b) && b[i+1] == '*':
@@ -183,6 +213,8 @@ func (s *splitter) run() ([]string, error) {
 			i++
 		case bomAt(b, i):
 			i += len(utf8BOM)
+		case wideSpaceAt(b, i) > 0:
+			i += wideSpaceAt(b, i)
 		case s.lineCommentAt(b, i):
 			i = skipLine(b, i)
 		case c == '/' && i+1 < len(b) && b[i+1] == '*':
@@ -193,7 +225,7 @@ func (s *splitter) run() ([]string, error) {
 			i = end
 		case c == '\'' || c == '"':
 			esc := s.mysql
-			if s.pg && c == '\'' && i > 0 && (b[i-1] == 'e' || b[i-1] == 'E') && (i == 1 || !isIdent(b[i-2])) {
+			if s.pg && c == '\'' && i > 0 && (b[i-1] == 'e' || b[i-1] == 'E') && !identBefore(b, i-1) {
 				esc = true
 			}
 			end := quoted(b, i, c, esc)
@@ -217,7 +249,7 @@ func (s *splitter) run() ([]string, error) {
 			}
 			s.lastWord = ""
 			i += end + 2
-		case c == '$' && s.pg && (i == 0 || !isIdent(b[i-1])):
+		case c == '$' && s.pg && !identBefore(b, i):
 			j := i + 1
 			if j < len(b) && !(b[j] >= '0' && b[j] <= '9') {
 				for j < len(b) && isIdent(b[j]) && b[j] != '$' {
