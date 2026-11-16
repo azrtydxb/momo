@@ -4,7 +4,6 @@ package momo
 
 import (
 	"fmt"
-	"slices"
 	"strconv"
 
 	"github.com/azrtydxb/momo/dialect"
@@ -67,23 +66,4 @@ func SQLiteBitsType(column string, n int) (string, error) {
 func sqliteBlobCheck(column, bytes string) string {
 	d := dialect.For(dialect.SQLite)
 	return "BLOB CHECK (length(" + string(d.AppendIdent(nil, column)) + ") = " + bytes + ")"
-}
-
-// checkVectorIndexMethod reports whether d offers the vector index method:
-// "hnsw" and "ivfflat" on PostgreSQL, "vector" on MariaDB. Any other pair,
-// every method on SQLite (sqlite-vec compares by brute force and has no
-// index) and every method on MySQL is an error wrapping ErrUnsupported that
-// names the dialect. It checks availability only; schema.ValidateVectorIndex
-// and its MariaDB counterpart check the index definition. Migration code
-// calls this before it renders a vector index.
-func checkVectorIndexMethod(d *dialect.Dialect, method string) error {
-	if slices.Contains(d.Vector.Indexes, method) {
-		return nil
-	}
-	have := "none"
-	if len(d.Vector.Indexes) > 0 {
-		have = fmt.Sprint(d.Vector.Indexes)
-	}
-	return &Error{Kind: ErrUnsupported, Op: "migrate",
-		Err: fmt.Errorf("vector index method %q is not available on %s (available: %s)", method, d.Name, have)}
 }
