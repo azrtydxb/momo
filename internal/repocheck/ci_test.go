@@ -164,6 +164,24 @@ func TestCIWorkflowCoverage(t *testing.T) {
 	if !matrixHas(integ.Strategy.Matrix["pg"], "0.8.7-pg17") || !matrixHas(integ.Strategy.Matrix["pg"], "0.8.7-pg16") {
 		t.Error("the integration matrix must test pgvector pg17 and one older major")
 	}
+	my, ok := w.Jobs["integration-mysql"]
+	if !ok {
+		t.Fatal("ci.yml has no integration-mysql job")
+	}
+	if my.If != "" || my.ContinueOnError == true {
+		t.Error("job integration-mysql may be skipped")
+	}
+	for _, d := range []string{"mysql84", "mysql97", "mariadb"} {
+		if !matrixHas(my.Strategy.Matrix["dialect"], d) {
+			t.Errorf("the integration-mysql matrix does not enable %s", d)
+		}
+	}
+	if !matrixHas(my.Strategy.Matrix["go"], "1.26") || !matrixHas(my.Strategy.Matrix["go"], "1.27") {
+		t.Error("job integration-mysql does not test Go 1.26 and 1.27")
+	}
+	if !runsContain(my, "make test-integration-${{ matrix.dialect }}") {
+		t.Error("job integration-mysql does not run make test-integration-<dialect>")
+	}
 	for _, name := range []string{"windows", "macos"} {
 		if _, ok := w.Jobs[name]; !ok {
 			t.Errorf("ci.yml has no %s job", name)
