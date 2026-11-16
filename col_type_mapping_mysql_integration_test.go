@@ -402,17 +402,20 @@ func TestTypeMappingMySQLLimits(t *testing.T) {
 		// An inlined float32 literal must fit the FLOAT column: the shortest
 		// text of the largest float32, 3.4028235e+38, is out of range (error
 		// 1264) on every server, so Lit writes it with one digit fewer.
+		if _, err := momo.Exec(ctx, db, "CREATE TABLE tm_flit (v float)"); err != nil {
+			t.Fatal(err)
+		}
 		for _, x := range []float32{math.MaxFloat32, -math.MaxFloat32} {
 			c, err := exprtest.CompileColumns(dialect.MySQL, momo.Lit(x))
 			if err != nil {
 				t.Fatal(err)
 			}
 			lit, _, _ := strings.Cut(strings.TrimPrefix(c.SQL, "SELECT "), " FROM ")
-			if _, err := momo.Exec(ctx, db, "INSERT INTO tm_f32 (v) VALUES ("+lit+")"); err != nil {
+			if _, err := momo.Exec(ctx, db, "INSERT INTO tm_flit (v) VALUES ("+lit+")"); err != nil {
 				t.Errorf("literal %s for %v into FLOAT: %v", lit, x, err)
 			}
 		}
-		if _, err := momo.Exec(ctx, db, "INSERT INTO tm_f32 (v) VALUES (3.4028235e+38)"); err == nil {
+		if _, err := momo.Exec(ctx, db, "INSERT INTO tm_flit (v) VALUES (3.4028235e+38)"); err == nil {
 			t.Error("the shortest text of MaxFloat32 was taken by a FLOAT column; the literal form in Lit has no reason to differ")
 		}
 		// A query with no argument comes back over the text protocol, where the
