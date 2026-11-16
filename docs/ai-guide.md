@@ -377,10 +377,20 @@ A check that restricts a string field to a list of values is `Config.CheckIn`.
 Write one value per line; the values are string literals. `CheckInOpts.Name`
 names the constraint, which is `<table>_<column>_check` by default.
 
-<!-- docscheck:fragment -->
-
 ```go
-func (n *Note) MomoConfig(c *momo.Config) {
+package main
+
+import "github.com/azrtydxb/momo"
+
+func main() {}
+
+type Ticket struct {
+	momo.Model `momo:"table:tickets"`
+	ID         int64 `momo:"pk,identity"`
+	Kind       string
+}
+
+func (n *Ticket) MomoConfig(c *momo.Config) {
 	c.CheckIn(&n.Kind,
 		"archived",
 		"draft",
