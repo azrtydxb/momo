@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.16.0](https://github.com/azrtydxb/momo/compare/v0.15.0...v0.16.0) (2026-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **migrate:** momo.sum is written in format 2 (header `# momo.sum format=2`, one sorted `<sha256>  <name>` line per file, no h1: aggregate line). A release before this one refuses a format 2 file with ErrNewerFormat; `momo migrate hash --sum-format 1` writes the old format for a mixed fleet.
+
+### Features
+
+* **importer:** import composite indexes as c.Index declarations ([#198](https://github.com/azrtydxb/momo/issues/198)) ([a32ac1c](https://github.com/azrtydxb/momo/commit/a32ac1cf571e37af72b8d7f00ccc2c7a4fd5ab27))
+* **migrate:** merge parallel migration branches without conflicts ([#214](https://github.com/azrtydxb/momo/issues/214)) ([47a6e44](https://github.com/azrtydxb/momo/commit/47a6e4482c76c42f396b72b2bf273eff302ce7ef)), closes [#205](https://github.com/azrtydxb/momo/issues/205)
+* **migrate:** model standalone sequences and their nextval defaults ([#212](https://github.com/azrtydxb/momo/issues/212)) ([e17950c](https://github.com/azrtydxb/momo/commit/e17950cf22d903e12ced4d56accb51326b8bfa02)), closes [#207](https://github.com/azrtydxb/momo/issues/207)
+* **schema:** order-independent additive CHECK value lists ([#216](https://github.com/azrtydxb/momo/issues/216)) ([df5cd15](https://github.com/azrtydxb/momo/commit/df5cd1548edd71791ab24eb2ecbf59a25f095d1a)), closes [#206](https://github.com/azrtydxb/momo/issues/206)
+* **update:** AllowKeyChange lets Set assign a primary key ([#209](https://github.com/azrtydxb/momo/issues/209)) ([f890bb1](https://github.com/azrtydxb/momo/commit/f890bb18935eeda918dbec12c3f5330a48cc8c9e)), closes [#204](https://github.com/azrtydxb/momo/issues/204)
+
+
+### Bug Fixes
+
+* **migrate:** trim only the white space the splitter scans ([#201](https://github.com/azrtydxb/momo/issues/201)) ([facb21f](https://github.com/azrtydxb/momo/commit/facb21feb4051b2f70fc40ac88a7d1e135c5088a))
+
+
+### Performance Improvements
+
+* **momotest:** opt-in clone of a template database per test ([#219](https://github.com/azrtydxb/momo/issues/219)) ([ac86d0b](https://github.com/azrtydxb/momo/commit/ac86d0be504568147732d369ef8d1c50c5b3a9bd)), closes [#167](https://github.com/azrtydxb/momo/issues/167)
+
 ## [0.15.0](https://github.com/azrtydxb/momo/compare/v0.14.0...v0.15.0) (2026-11-16)
 
 _Full-text search on every dialect: a model declares it once, `momo migrate` renders the structure each database needs, and `fts.Search`, `fts.Score` and `fts.Snippet` query it portably. `momo.HybridSearch` now also runs on SQLite and MariaDB. No code change is needed to upgrade; the cgo SQLite driver needs `-tags sqlite_fts5` for FTS5. See [docs/fulltext.md](https://github.com/azrtydxb/momo/blob/v0.15.0/docs/fulltext.md) and [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.15.0/docs/upgrading.md). [Changes since 0.14.0](https://github.com/azrtydxb/momo/compare/v0.14.0...v0.15.0)._
