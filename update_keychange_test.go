@@ -30,7 +30,7 @@ func TestUpdateAllowKeyChangeRenders(t *testing.T) {
 	where := []momo.Predicate{bulkRegion.Eq("eu"), bulkSKU.Eq(1)}
 	c, err := momo.Update[bulkStock](bulkDB(dialect.For(dialect.Postgres))).
 		Set(bulkRegion.Set("us"), bulkSKU.Set(2)).Where(where...).AllowKeyChange().SQL()
-	want := `UPDATE "bulk_stock" SET "region" = $1, "sku" = $2 WHERE "bulk_stock"."region" = $3 AND "bulk_stock"."sku" = $4`
+	want := `UPDATE "bulk_stock" SET "region" = $1, "sku" = $2 WHERE ("bulk_stock"."region" = $3) AND ("bulk_stock"."sku" = $4)`
 	if err != nil || c.SQL != want || len(c.Args) != 4 {
 		t.Fatalf("postgres = %q %v, want %q", c.SQL, err, want)
 	}
