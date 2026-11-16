@@ -1664,8 +1664,9 @@ MariaDB. This page describes what is built. Every Go snippet below is an <code>E
 </ul>
 <h2 id="not-available">Not available<a class="headerlink" href="#not-available" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Hybrid search on SQLite and MySQL: <code>momo.HybridSearch</code> needs PostgreSQL and
-  returns <code>ErrUnsupported</code> elsewhere; see <a href="#hybrid-search">Hybrid search</a>.</li>
+<li>Hybrid search on MySQL: <code>momo.HybridSearch</code> returns <code>momo.ErrUnsupported</code>
+  there, because MySQL has no cosine distance function; see
+  <a href="#hybrid-search">Hybrid search</a>.</li>
 <li>MySQL: the server stores vectors but has no distance function, so a distance
   query fails with <code>ErrUnsupported</code>; see "MariaDB and MySQL" below. The
   <code>momo migrate</code> command does not run <code>migrate/mysql</code>, which renders its
@@ -2043,7 +2044,7 @@ and it can be shorter than k when the filter matches fewer rows than that
 bound allows. <code>strict_order</code> (hnsw only) keeps exact distance order while it
 scans.</p>
 <h2 id="hybrid-search">Hybrid search<a class="headerlink" href="#hybrid-search" title="Permanent link">&para;</a></h2>
-<p><code>momo.HybridSearch</code> fuses a PostgreSQL full-text leg and a cosine-distance
+<p><code>momo.HybridSearch</code> fuses a full-text leg and a cosine-distance
 vector leg with reciprocal rank fusion (RRF) in one statement. Each leg picks
 its own best <code>TextCandidates</code> and <code>VectorCandidates</code> rows (default 100, at most
 1000), ranks them, and a row scores the sum of <code>1/(RRFK+rank)</code> over the legs it
@@ -2072,8 +2073,18 @@ model's table; otherwise the call returns <code>ErrValidation</code>. Soft-delet
 left out. The vector leg takes the dense <code>vector</code> type only (not <code>halfvec</code>,
 <code>sparsevec</code> or <code>bit</code>) and skips rows with a NULL embedding and rows whose
 cosine distance is NaN (zero vectors).
-<code>HybridQuery.SQL</code> returns the statement and its arguments without running it.
-The vector leg can use an hnsw or ivfflat index on the vector column with
+<code>HybridQuery.SQL</code> returns the statement and its arguments without running it.</p>
+<p>On SQLite and MariaDB 11.8 the same call runs with the same knobs and
+tie-breaks. The text leg searches the structure of the model's full-text
+declaration (the FTS5 table ordered by <code>bm25</code>, or <code>MATCH ... AGAINST</code> in
+boolean mode), so <code>HybridSpec.Text</code> must be one of the declared columns
+(<code>momo.ErrValidation</code> otherwise), <code>TextConfig</code> is ignored, and <code>Query</code> is read
+like a web-style <code>fts.Web</code> query. The vector leg uses <code>vec_distance_cosine</code> on
+SQLite and <code>VEC_DISTANCE_COSINE</code> on MariaDB. A query without a positive word
+leaves the text leg empty and the result is the vector leg alone. MySQL has no
+distance function, so the call returns <code>momo.ErrUnsupported</code> before any SQL is
+sent.</p>
+<p>On PostgreSQL the vector leg can use an hnsw or ivfflat index on the vector column with
 <code>vector_cosine_ops</code>. The text leg binds the configuration as a parameter, and a
 GIN expression index on <code>to_tsvector('english', body)</code> needs a constant
 configuration in its definition, so PostgreSQL may not match it to a bound
