@@ -25,12 +25,11 @@ var pg = dialect.For(dialect.Postgres)
 // identifier is quoted, every literal comes through quoteLiteral, and the
 // output depends only on the plan, never on map order.
 func (Dialect) Render(plan []migrate.Change) ([]migrate.Statement, error) {
-	ftCols := fullTextColumns(plan)
 	var out []migrate.Statement
 	for _, c := range plan {
 		var stmts []migrate.Statement
 		var err error
-		if c.Kind == migrate.AlterColumn && ftCols[[3]string{c.Schema, c.Table, c.Name}] {
+		if c.Kind == migrate.AlterColumn && c.FullTextColumn {
 			stmts, err = renderRecreateGenerated(c)
 		} else {
 			stmts, err = renderChange(c)
@@ -138,7 +137,10 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		if err != nil {
 			return nil, err
 		}
-		concurrently := ix.Concurrently && !c.Partitioned // not allowed on a partitioned table
+		// Not allowed on a partitioned table. A full-text index on a generated
+		// column is dropped inside the transaction that drops or recreates that
+		// column, so a CONCURRENTLY drop would be split away from it.
+		concurrently := ix.Concurrently && !c.Partitioned && !dropsWithColumn(ix)
 		sql := "DROP INDEX "
 		if concurrently {
 			sql += "CONCURRENTLY "
