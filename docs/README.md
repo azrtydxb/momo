@@ -17,7 +17,7 @@ New here? Start with [getting started](getting-started.md).
 - [Go to SQL type mapping](TYPE_MAPPING.md): column type per Go type, edge values, null handling.
 - [Vector search](vectors.md): pgvector types, metrics, limits, search settings and the binary codec.
 - [MySQL and MariaDB](mysql.md): supported servers, DSN requirements, the capability matrix, write and locking differences, error mapping, and what is not available yet.
-- [Full-text search](fulltext.md): the tsvector column type, the match, query, rank and headline builders, and a hybrid vector plus text ranking pattern.
+- [Full-text search](fulltext.md): declaring a search on a model, what each dialect creates, the portable search, score and snippet calls, the comparison table and limits, the PostgreSQL tsvector builders, and hybrid vector plus text search.
 - [Projections](projections.md): declaring a projection, `From` and `Columns`, the generated metadata, tuple rows (`Row1` to `Row10`), the soft-delete filter.
 - [Relations](relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
 - [Migration safety and recovery](migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, CLI reference.

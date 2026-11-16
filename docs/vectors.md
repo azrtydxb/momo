@@ -23,8 +23,9 @@ MariaDB. This page describes what is built. Every Go snippet below is an `Exampl
 
 ## Not available
 
-- Hybrid search on SQLite and MySQL: `momo.HybridSearch` needs PostgreSQL and
-  returns `ErrUnsupported` elsewhere; see [Hybrid search](#hybrid-search).
+- Hybrid search on MySQL: `momo.HybridSearch` returns `ErrUnsupported` there,
+  because MySQL has no cosine distance function; see
+  [Hybrid search](#hybrid-search).
 - MySQL: the server stores vectors but has no distance function, so a distance
   query fails with `ErrUnsupported`; see "MariaDB and MySQL" below. The
   `momo migrate` command does not run `migrate/mysql`, which renders its
@@ -327,12 +328,14 @@ scans.
 
 ## Hybrid search
 
-`momo.HybridSearch` fuses a PostgreSQL full-text leg and a cosine-distance
-vector leg with reciprocal rank fusion (RRF) in one statement. Each leg picks
+`momo.HybridSearch` fuses a full-text leg and a cosine-distance vector leg with
+reciprocal rank fusion (RRF) in one statement. It runs on PostgreSQL, on SQLite
+(FTS5 and sqlite-vec) and on MariaDB 11.8. Each leg picks
 its own best `TextCandidates` and `VectorCandidates` rows (default 100, at most
 1000), ranks them, and a row scores the sum of `1/(RRFK+rank)` over the legs it
-appears in (`RRFK` defaults to 60 and must be at least 1). The text leg ranks
-with `ts_rank_cd` over `websearch_to_tsquery`; the vector leg uses `<=>`.
+appears in (`RRFK` defaults to 60 and must be at least 1). On PostgreSQL the
+text leg ranks with `ts_rank_cd` over `websearch_to_tsquery` and the vector leg
+uses `<=>`.
 Ties break on the primary key ascending, in each leg's ranking and in the final
 order, so the result does not depend on insertion order. The vector leg orders
 by distance alone so an hnsw or ivfflat index can serve it; when rows tie on
@@ -360,7 +363,23 @@ left out. The vector leg takes the dense `vector` type only (not `halfvec`,
 `sparsevec` or `bit`) and skips rows with a NULL embedding and rows whose
 cosine distance is NaN (zero vectors).
 `HybridQuery.SQL` returns the statement and its arguments without running it.
-The vector leg can use an hnsw or ivfflat index on the vector column with
+
+On SQLite and MariaDB the same call runs with the same knobs and tie-breaks. The
+text leg searches the structure of the model's full-text declaration (see
+[full-text search](fulltext.md#declare-a-search)): the FTS5 table, ordered by
+`bm25`, on SQLite, and a boolean-mode `MATCH ... AGAINST` over all declared
+columns on MariaDB. `HybridSpec.Text` must be one of the declared columns, or
+the call is `ErrValidation`; `HybridSpec.TextConfig` is ignored; and
+`HybridSpec.Query` is read like an `fts.Web` query. The vector leg is
+`vec_distance_cosine` on SQLite, which needs the cgo driver with sqlite-vec,
+and `VEC_DISTANCE_COSINE` on MariaDB. A query without a positive word leaves the
+text leg empty, and the result is the vector leg alone. The text leg of MariaDB
+sees committed rows only, so a row inserted in the same transaction appears
+through the vector leg only. MySQL has no distance function: the call returns
+`ErrUnsupported` before any SQL is sent, and never degrades to a text-only
+search.
+
+On PostgreSQL the vector leg can use an hnsw or ivfflat index on the vector column with
 `vector_cosine_ops`. The text leg binds the configuration as a parameter, and a
 GIN expression index on `to_tsvector('english', body)` needs a constant
 configuration in its definition, so PostgreSQL may not match it to a bound
