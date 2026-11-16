@@ -1093,6 +1093,7 @@ Import path: `github.com/azrtydxb/momo/momotest`
 | `momotest.WithMaxConns`      | func  | WithMaxConns sets the pool size.                                                                                                                                                      |
 | `momotest.WithMigrations`    | func  | WithMigrations applies the migrations in fsys, typically an embed.FS narrowed with fs.Sub to the migrations directory, to the database before the test sees it.                       |
 | `momotest.WithMomoOptions`   | func  | WithMomoOptions passes opts to momo.New, for example momo.WithHook.                                                                                                                   |
+| `momotest.WithTemplateClone` | func  | WithTemplateClone makes New clone a template database instead of building a schema for each test.                                                                                     |
 
 ## advisory
 

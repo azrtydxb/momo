@@ -1326,3 +1326,12 @@ The read-only audit of M1 to M4 found criteria whose wording no longer matches t
 - S-16: `TestSQLiteVectorParity`, `TestSQLiteANNIndexUnsupported`, `TestSQLiteRenderRefusesVectorIndexMethod`.
 - S-23: Go blocks are compiled when complete and parse-checked when fragments (ceiling `maxFragmentBlocks` in internal/docscheck/codeblocks_test.go).
 - S-31: `TestTypeMappingMySQL` added for the MySQL column.
+
+## momotest template cloning: default or opt-in (#167, PR #219, 2026-11-16, integrator)
+
+On the template database path the test's tables live in the clone's `public` schema, so a suite that relies on `momotest_*` schema names or `current_schema()` would change, and the path would depend on whether the role has CREATEDB.
+
+- Opt-in for 0.16.0 through `momotest.WithTemplateClone`; the default stays schema per test (recommended).
+- Default on, which breaks suites that read the schema name.
+
+Decision (2026-11-16, the user, via AskUserQuestion): opt-in for 0.16.0; the default stays schema-per-test.

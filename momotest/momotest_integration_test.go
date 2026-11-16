@@ -54,15 +54,35 @@ func countItems(t *testing.T, q rowQuerier) int64 {
 	return scalar[int64](t, q, "SELECT count(*) FROM items")
 }
 
-func schemaExists(t *testing.T, name string) bool {
+// scopeOf names what isolates db: its database and schema. A clone is its own
+// database; the schema path shares the server's database and has its own schema.
+func scopeOf(t *testing.T, q rowQuerier) string {
+	t.Helper()
+	return scalar[string](t, q, "SELECT current_database() || '/' || current_schema()")
+}
+
+// scopeExists reports whether the database or schema that scopeOf named is
+// still on the server.
+func scopeExists(t *testing.T, scope string) bool {
 	t.Helper()
 	conn, err := pgx.Connect(t.Context(), os.Getenv(momotest.DefaultEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close(context.WithoutCancel(t.Context()))
+	var home string
+	if err := conn.QueryRow(t.Context(), "SELECT current_database()").Scan(&home); err != nil {
+		t.Fatal(err)
+	}
+	db, schema, _ := strings.Cut(scope, "/")
 	var n int
-	if err := conn.QueryRow(t.Context(), "SELECT count(*) FROM pg_namespace WHERE nspname = $1", name).Scan(&n); err != nil {
+	if db != home {
+		if err := conn.QueryRow(t.Context(), "SELECT count(*) FROM pg_database WHERE datname = $1", db).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n > 0
+	}
+	if err := conn.QueryRow(t.Context(), "SELECT count(*) FROM pg_namespace WHERE nspname = $1", schema).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	return n > 0
@@ -100,7 +120,7 @@ func TestNewParallelIsolation(t *testing.T) {
 				if n := countItems(t, db.Driver()); n != 2 {
 					t.Fatalf("items after commit = %d, want 2", n)
 				}
-				schemas <- scalar[string](t, db.Driver(), "SELECT current_schema()")
+				schemas <- scopeOf(t, db.Driver())
 			})
 		}
 	})
@@ -111,8 +131,8 @@ func TestNewParallelIsolation(t *testing.T) {
 			t.Errorf("schema %s was used by two tests", s)
 		}
 		seen[s] = true
-		if schemaExists(t, s) {
-			t.Errorf("schema %s still exists after its test finished", s)
+		if scopeExists(t, s) {
+			t.Errorf("%s still exists after its test finished", s)
 		}
 	}
 	if len(seen) != 8 {
