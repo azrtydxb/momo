@@ -1243,6 +1243,54 @@ Decision (2026-11-15, the user, via AskUserQuestion): accept all fallbacks and t
 - Review follow-up: `ForDialect` also clears the PostgreSQL-only `Expression` on SQLite and MySQL, or those dialects would diff it forever. `isTextType` compares the base type (length stripped) against an exact set and rejects arrays, so `text[]` and an enum named `text_kind` are not text. The FTS5 `remove_diacritics` option is allowed only on `unicode61`.
 - An older momo's `schema.Load` does not reject the new `fulltext` key: it uses plain `json.Unmarshal` (no `DisallowUnknownFields`), so it reads the snapshot and drops the declaration silently.
 
+## Make the MySQL and MariaDB CI jobs required checks on main (2026-11-16, integrator)
+
+The epic audit found that branch protection on main requires only the PostgreSQL integration cells (plus lint, unit, race, compile-fail, govulncheck, windows, macos, title, apidiff-docs). The six `integration-mysql` cells (mysql84, mysql97, mariadb on Go 1.26 and 1.27), `fuzz-smoke`, `bench-module` and `docs` are not required, so a MySQL or MariaDB regression can merge.
+
+- Require the six integration-mysql cells (recommended): a MySQL/MariaDB regression blocks the merge like a PostgreSQL one.
+- Require integration-mysql plus fuzz-smoke, bench-module and docs.
+- Leave branch protection as it is.
+
+Decision (2026-11-16, the user, via AskUserQuestion): require the six integration-mysql cells. Done the same day through the branch-protection API; main now also requires `integration-mysql (1.26|1.27, mysql84|mysql97|mariadb)`.
+
+## MySQL FLOAT columns read back with six significant digits on argument-less queries (2026-11-16, integrator)
+
+PR #196's live type-mapping test found that on MySQL 8.4, 9.7 and MariaDB 11.8 a `float` (float32) column holding `math.MaxFloat32` reads back as `3.40282e+38` when the query has no arguments: the server formats FLOAT with six significant digits in the text protocol. A query with arguments (binary protocol), `CAST(v AS DOUBLE)` and `v + 0e0` all read the exact value. momo's scan path is not the cause.
+
+- Document it (recommended by the agent): docs/TYPE_MAPPING.md states the text-protocol behaviour, the three servers and the workarounds (use DOUBLE, or a query with an argument); the test asserts it. No runtime cost.
+- Always use the binary protocol on MySQL: the driver prepares argument-less queries too, so every read is exact; costs a prepare round trip per such query (or a statement cache).
+- Render FLOAT columns as `col + 0e0` in momo-built select lists: exact for typed queries at no round-trip cost; raw SQL keeps the six-digit text format.
+
+Decision (2026-11-16, the user, via AskUserQuestion): document it. docs/TYPE_MAPPING.md states the behaviour and workarounds, and the test pins it.
+
+## Issues #204 to #207 and #167: when to take them (2026-11-16, integrator)
+
+Open: #204 Update opt-in to change a primary key; #205 parallel migration branches conflict on momo.sum and the snapshot chain; #206 additive CHECK value lists; #207 standalone sequences; #167 momotest per-test schema rebuild is slow. #204 and #207 are bounded; #205 and #206 change file formats and the differ and need a design first.
+
+- Start now in parallel (recommended): fix agents for #204 and #207; a design spec for #205 and #206 put to the user before code; #167 after.
+- After the milestone close-out: finish the open audit PRs and the backlog PR first, then take the issues.
+- Only #204 and #207 now; leave #205, #206 and #167 for a later sprint.
+
+Decision (2026-11-16, the user, via AskUserQuestion): start now in parallel. Fix agents for #204 and #207; a design for #205 and #206 goes to the user before any code; #167 after.
+
+## Design for #205 (parallel migration branches) and #206 (additive CHECK value lists) (2026-11-16, integrator)
+
+Design read against the code. #205 root causes: the `h1:` aggregate line in momo.sum changes with every file; new versions always append at the tail; the chain stores full state per migration, so it allows one child per parent; rebase regenerates only generated files; apply refuses a pending migration older than the newest applied (`ErrOutOfOrder`). #206 root cause: `schema.Check` is an opaque string, so a value change is Drop+Add of the whole constraint, and the declaration is one source line.
+
+Recommended package:
+
+- #205: momo.sum format 2 (one line per file, sorted, no aggregate; a `merge=union` .gitattributes line plus `momo migrate hash` resolve merges; old momo refuses format 2 with ErrNewerFormat; `hash --sum-format 1` downgrades). Chain C1: `parent` is the base a migration was generated from; validate derives state by a 3-way fold in version order, so forks touching different tables pass and a same-table fork stays ErrBranchConflict (resolved by rebase). `rebase --renumber` for pending versions instead of allowing out-of-order apply. Later phases: patch files instead of full snapshots (C2); rebase of hand-written migrations (C4).
+- #206: `c.CheckIn(&m.Kind, "a", "b", ...)` rendered one value per line, a structured `In` on schema.Check (no snapshot format bump), set diff with a new AlterCheckIn change; PG keeps NOT VALID + `_no_tx` VALIDATE; SQLite rebuilds and its inspector maps named table-level IN checks to Check{In} instead of Enum; MySQL renders one ALTER and is version-gated. Removing a value is a destructive change needing the destructive opt-in, with a hint and a lint rule. The schema-changing custom migration marker is deferred.
+
+Options:
+
+- Accept the recommended package (recommended).
+- Accept it, but allow out-of-order apply of a pending migration disjoint from later applied ones instead of `rebase --renumber`.
+- Accept it, but keep momo.sum format 1 (aggregate kept) and ship a git merge driver instead.
+- Do #206 only now; leave #205 for a later sprint.
+
+Decision (2026-11-16, the user, via AskUserQuestion): accept the recommended package. #205 phase 1 (momo.sum format 2, the fold chain C1, `rebase --renumber`) and #206 in full; C2, C4 and the schema-changing custom-migration marker later.
+
 ## Closing milestones M1 to M4 after 0.15.0 (2026-11-16, integrator)
 
 All four milestones are open on the board; two stories are open (momo-07 Task 8 pgx binary vector codecs, momo-12 Task 5 Ent and Bun adapters), every epic shows spec drift, and the parity and full-text work of 0.12.0 to 0.15.0 has no stories.
@@ -1263,6 +1311,21 @@ Both stories are already built and tested in CI (vector codecs with TestVectorBi
 - Wait for the user to run `make bench` on dedicated hardware and commit bench/results.
 
 Decision (2026-11-16, the user, via AskUserQuestion): reword and close. The tooling and layout test are the deliverable; a published reference run is a separate story owned by the user.
+
+## Spec criteria reworded to what shipped (2026-11-16, integrator)
+
+The read-only audit of M1 to M4 found criteria whose wording no longer matches the shipped, tested behaviour. The user approved the close-out flow "build the two stories, then audit, then close" (decision "Closing milestones M1 to M4 after 0.15.0"); the rewordings below follow that flow and the earlier decisions named beside each. Each cites test names confirmed in the code.
+
+- S-25: version tags (`@vN`) with declared permissions, enforced by `TestWorkflowsUseVersionTags` (decision "GitHub Actions: version tags or commit SHAs").
+- S-49: `TestCodeQLAndGosecRunOnPullRequests`.
+- S-34: `TestNewTxRollsBack` and `TestNewTxRefusesCommit` (per-test transactions on PostgreSQL), `TestMomotestSQLAssert`, `TestMomotestFixtures`, `TestMomotestSQLiteEphemeral` (SQLite uses throwaway files).
+- S-94: Go migrations are forward-only (rollback refused with ErrNoDown); `TestGoMigrationOrderedWithSQLRunsOnce`, `TestRefuseGoRollback`, `TestRollbackGroup` (decision "Carried plan stories (2026-11-11, the user, via AskUserQuestion)").
+- S-19 and S-50: `make bench` writes raw output, environment and pinned versions under bench/results, layout enforced by `TestBenchResultsLayout`; a published reference run is a separate story (decision "The two open stories need a benchmark run on dedicated hardware").
+- S-89: the pure-Go adapter's own suite (driver/sqlitepure, internal/sqlshared) runs with CGO_ENABLED=0; the root suite uses the cgo driver.
+- S-11: PostgreSQL test names kept; added `TestSQLiteStagedChange`, `TestSQLiteConcurrentApply`, `TestMySQLStagedChange`, `TestMySQLConcurrentApply`, `TestMySQLApplyRefusedWhileLockHeld`.
+- S-16: `TestSQLiteVectorParity`, `TestSQLiteANNIndexUnsupported`, `TestSQLiteRenderRefusesVectorIndexMethod`.
+- S-23: Go blocks are compiled when complete and parse-checked when fragments (ceiling `maxFragmentBlocks` in internal/docscheck/codeblocks_test.go).
+- S-31: `TestTypeMappingMySQL` added for the MySQL column.
 
 ## momotest template cloning: default or opt-in (#167, PR #219, 2026-11-16, integrator)
 

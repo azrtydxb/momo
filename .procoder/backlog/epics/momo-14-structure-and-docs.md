@@ -1,6 +1,6 @@
 # momo-14-structure-and-docs
 
-Status: open
+Status: done 2026-11-16
 Created: 2026-11-08
 
 ## Description
