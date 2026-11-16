@@ -7213,6 +7213,11 @@
 <td>BM25 is bm25("table", weights...) over an FTS5 table, the relevance of the row matched in the same query; lower (more negative) is better.</td>
 </tr>
 <tr>
+<td><code>fts.Boolean</code></td>
+<td>const</td>
+<td>Boolean is IN BOOLEAN MODE: the text carries the operators + - &gt; &lt; ( ) ~ * and "phrases".</td>
+</tr>
+<tr>
 <td><code>fts.Expr</code></td>
 <td>type</td>
 <td>Expr is a full-text function call whose SQL result type corresponds to T.</td>
@@ -7241,6 +7246,31 @@
 <td><code>fts.Match</code></td>
 <td>func</td>
 <td>Match is vec @@ q: true when the document matches the query.</td>
+</tr>
+<tr>
+<td><code>fts.MySQLMatch</code></td>
+<td>func</td>
+<td>MySQLMatch is MATCH(cols) AGAINST (q mode) &gt; 0 on MySQL and MariaDB: true when the row matches.</td>
+</tr>
+<tr>
+<td><code>fts.MySQLMode</code></td>
+<td>type</td>
+<td>MySQLMode is the search modifier of MATCH AGAINST on MySQL and MariaDB.</td>
+</tr>
+<tr>
+<td><code>fts.MySQLRelevance</code></td>
+<td>func</td>
+<td>MySQLRelevance is MATCH(cols) AGAINST (q mode) as a value: the relevance of the row, 0 for a row that does not match.</td>
+</tr>
+<tr>
+<td><code>fts.NaturalLanguage</code></td>
+<td>const</td>
+<td>NaturalLanguage is IN NATURAL LANGUAGE MODE: the text is read as words, and a word present in half the rows or more counts for nothing.</td>
+</tr>
+<tr>
+<td><code>fts.NaturalLanguageWithExpansion</code></td>
+<td>const</td>
+<td>NaturalLanguageWithExpansion is IN NATURAL LANGUAGE MODE WITH QUERY EXPANSION: a second pass adds the words of the best matches.</td>
 </tr>
 <tr>
 <td><code>fts.Over</code></td>
@@ -7295,12 +7325,12 @@
 <tr>
 <td><code>fts.Score</code></td>
 <td>func</td>
-<td>Score is the relevance of a row for q: higher is better on every dialect (ts_rank_cd on PostgreSQL, the negated bm25 on SQLite).</td>
+<td>Score is the relevance of a row for q: higher is better on every dialect (ts_rank_cd on PostgreSQL, the negated bm25 on SQLite, the MATCH relevance on MySQL and MariaDB).</td>
 </tr>
 <tr>
 <td><code>fts.Search</code></td>
 <td>func</td>
-<td>Search is the predicate that matches the rows whose searchable columns match q: ts @@ tsquery on PostgreSQL, a MATCH on the FTS5 table on SQLite.</td>
+<td>Search is the predicate that matches the rows whose searchable columns match q: ts @@ tsquery on PostgreSQL, a MATCH on the FTS5 table on SQLite, MATCH AGAINST in boolean mode on MySQL and MariaDB.</td>
 </tr>
 <tr>
 <td><code>fts.Snippet</code></td>

@@ -3329,7 +3329,18 @@ exist fails with <code>momo.ErrUnsupported</code> naming the table. The existing
 builders keep their signatures and their PostgreSQL SQL. On the cgo SQLite
 driver FTS5 needs the build flag <code>-tags sqlite_fts5</code> (or
 <code>CGO_CFLAGS=-DSQLITE_ENABLE_FTS5</code>); the pure-Go driver <code>driver/sqlitepure</code>
-includes FTS5.</p>
+includes FTS5. On MySQL and MariaDB the same functions render
+<code>MATCH(...) AGAINST (? IN BOOLEAN MODE)</code> over the <code>FULLTEXT</code> index of the
+declaration, with a boolean-mode string built from the parsed words only, so
+no typed character acts as an operator; the columns given to <code>fts.Over</code> must be
+exactly the indexed columns in their order, and <code>fts.Snippet</code> fails with
+<code>momo.ErrUnsupported</code>. <code>fts.MySQLMatch</code> and <code>fts.MySQLRelevance</code> take a mode
+and a text of your own. A <code>MATCH</code> without a <code>FULLTEXT</code> index over exactly its
+columns is <code>momo.ErrValidation</code>. InnoDB does not index a word shorter than
+<code>innodb_ft_min_token_size</code> (3 by default), and a stopword of its list (such as
+<code>the</code> or <code>it</code>) in a required term matches nothing, so a search that needs such a
+word finds nothing; a row inserted in an open transaction is not found by a search until the
+transaction commits.</p>
 <h3 id="declare-full-text-search-on-a-model">Declare full-text search on a model<a class="headerlink" href="#declare-full-text-search-on-a-model" title="Permanent link">&para;</a></h3>
 <p>A model can declare one full-text search index, either with the <code>search</code> tag on
 each text field (the index is named <code>&lt;table&gt;_search</code> and covers the tagged
