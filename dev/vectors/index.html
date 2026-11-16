@@ -2168,8 +2168,9 @@ a later patch release of the same minor). The same typed builders that serve pgv
 render sqlite-vec's scalar functions, and the integration tests run them
 against a real SQLite database: <code>col_vector_sqlite_integration_test.go</code> in the root
 package and <code>TestSQLiteVectorParity</code> in <code>driver/sqlitedriver</code>. It needs cgo and
-does not build on Windows. The generator refuses vector fields on SQLite, so you create the table with your
-own DDL.</p>
+does not build on Windows. The generator reports vector fields and vector
+indexes as unsupported when SQLite is a target dialect, so you create the table
+with your own DDL.</p>
 <p><strong>Columns.</strong> A vector is a plain <code>BLOB</code> column; sqlite-vec has no declared
 dimension, so the length is guarded by a <code>CHECK</code>. <code>momo.SQLiteVectorType</code> and
 <code>momo.SQLiteBitsType</code> return the definition to put after the column name:
@@ -2241,12 +2242,12 @@ the same vectors into pgvector and requires the same ids for cosine, L2 and L1.<
 <p><strong>Indexes.</strong> sqlite-vec compares every row, so it has no approximate index and
 <code>dialect.For(dialect.SQLite).Vector.Indexes</code> is empty, and
 <code>schema.ValidateVectorIndex</code> rejects an index for SQLite with
-<code>schema.ErrInvalidVectorIndex</code>. An internal check turns a request for any index
-method on a dialect that lists none into <code>ErrUnsupported</code>; it becomes public
-when a SQLite migration dialect needs it. SQLite itself does not parse an index method, so
-nothing is accepted silently. <code>ExactSearch</code> in <code>vecsearch.Settings</code> is a no-op (every
-search is exact) and any other setting is <code>ErrUnsupported</code>. The sqlite-vec
-virtual tables (<code>vec0</code>, which have an index of their own) are not wrapped.</p>
+<code>schema.ErrInvalidVectorIndex</code>. The SQLite migration dialect in <code>migrate/sqlite</code>
+refuses a <code>CREATE INDEX</code> that names any access method other than <code>btree</code>
+(<code>hnsw</code> and <code>ivfflat</code> included) with <code>ErrUnsupported</code>, because SQLite itself
+does not parse an index method; nothing is accepted silently. <code>ExactSearch</code> in
+<code>vecsearch.Settings</code> is a no-op (every search is exact) and any other setting
+is <code>ErrUnsupported</code>. The sqlite-vec virtual tables (<code>vec0</code>, which have an index of their own) are not wrapped.</p>
 <p>Bring up a throwaway database for your own tests with
 <a href="../testing/#sqlite-without-a-server-sqlitetest"><code>momotest/sqlitetest</code></a>.</p>
 <h2 id="mariadb-and-mysql">MariaDB and MySQL<a class="headerlink" href="#mariadb-and-mysql" title="Permanent link">&para;</a></h2>

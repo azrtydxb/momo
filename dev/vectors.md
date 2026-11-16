@@ -468,8 +468,9 @@ a later patch release of the same minor). The same typed builders that serve pgv
 render sqlite-vec's scalar functions, and the integration tests run them
 against a real SQLite database: `col_vector_sqlite_integration_test.go` in the root
 package and `TestSQLiteVectorParity` in `driver/sqlitedriver`. It needs cgo and
-does not build on Windows. The generator refuses vector fields on SQLite, so you create the table with your
-own DDL.
+does not build on Windows. The generator reports vector fields and vector
+indexes as unsupported when SQLite is a target dialect, so you create the table
+with your own DDL.
 
 **Columns.** A vector is a plain `BLOB` column; sqlite-vec has no declared
 dimension, so the length is guarded by a `CHECK`. `momo.SQLiteVectorType` and
@@ -514,12 +515,12 @@ the same vectors into pgvector and requires the same ids for cosine, L2 and L1.
 **Indexes.** sqlite-vec compares every row, so it has no approximate index and
 `dialect.For(dialect.SQLite).Vector.Indexes` is empty, and
 `schema.ValidateVectorIndex` rejects an index for SQLite with
-`schema.ErrInvalidVectorIndex`. An internal check turns a request for any index
-method on a dialect that lists none into `ErrUnsupported`; it becomes public
-when a SQLite migration dialect needs it. SQLite itself does not parse an index method, so
-nothing is accepted silently. `ExactSearch` in `vecsearch.Settings` is a no-op (every
-search is exact) and any other setting is `ErrUnsupported`. The sqlite-vec
-virtual tables (`vec0`, which have an index of their own) are not wrapped.
+`schema.ErrInvalidVectorIndex`. The SQLite migration dialect in `migrate/sqlite`
+refuses a `CREATE INDEX` that names any access method other than `btree`
+(`hnsw` and `ivfflat` included) with `ErrUnsupported`, because SQLite itself
+does not parse an index method; nothing is accepted silently. `ExactSearch` in
+`vecsearch.Settings` is a no-op (every search is exact) and any other setting
+is `ErrUnsupported`. The sqlite-vec virtual tables (`vec0`, which have an index of their own) are not wrapped.
 
 Bring up a throwaway database for your own tests with
 [`momotest/sqlitetest`](testing.md#sqlite-without-a-server-sqlitetest).
