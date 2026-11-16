@@ -137,8 +137,9 @@ What the migration does on each dialect:
   rows hold makes the statement fail.
 
 The expression is `"col" IN ('a','b')` (backticks on MySQL and MariaDB) with
-the values sorted. The inspectors do not need to read the list back: drift
-compares the stored expression. `momo generate --from-db` reads a constraint
+the values sorted. Drift reads the list out of the stored expression and
+compares it as a set with the snapshot's, so another quoting or order of the
+same values is not drift. `momo generate --from-db` reads a constraint
 over one text column that has this shape and writes it as a `Config.CheckIn`
 declaration, one sorted value per line. On SQLite a constraint that has a name
 is a declared check, and only an unnamed CHECK over a TEXT column is read as an
