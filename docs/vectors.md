@@ -518,9 +518,9 @@ the same vectors into pgvector and requires the same ids for cosine, L2 and L1.
 `schema.ErrInvalidVectorIndex`. The SQLite migration dialect in `migrate/sqlite`
 refuses a `CREATE INDEX` that names any access method other than `btree`
 (`hnsw` and `ivfflat` included) with `ErrUnsupported`, because SQLite itself
-does not parse an index method; nothing is accepted silently. `ExactSearch` in `vecsearch.Settings` is a no-op (every
-search is exact) and any other setting is `ErrUnsupported`. The sqlite-vec
-virtual tables (`vec0`, which have an index of their own) are not wrapped.
+does not parse an index method; nothing is accepted silently. `ExactSearch` in
+`vecsearch.Settings` is a no-op (every search is exact) and any other setting
+is `ErrUnsupported`. The sqlite-vec virtual tables (`vec0`, which have an index of their own) are not wrapped.
 
 Bring up a throwaway database for your own tests with
 [`momotest/sqlitetest`](testing.md#sqlite-without-a-server-sqlitetest).

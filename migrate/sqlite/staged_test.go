@@ -134,6 +134,7 @@ func TestSQLiteConcurrentApply(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
+	start := make(chan struct{})
 	for i := 0; i < 2; i++ {
 		wg.Add(1)
 		go func() {
@@ -143,16 +144,24 @@ func TestSQLiteConcurrentApply(t *testing.T) {
 				errs <- err
 				return
 			}
+			<-start
 			_, err = e.Apply(ctx, migrate.ApplyOptions{})
 			errs <- err
 		}()
 	}
+	close(start)
 	wg.Wait()
 	close(errs)
+	succeeded := 0
 	for err := range errs {
-		if err != nil && !errors.Is(err, migrate.ErrLocked) {
+		if err == nil {
+			succeeded++
+		} else if !errors.Is(err, migrate.ErrLocked) {
 			t.Fatal(err)
 		}
+	}
+	if succeeded == 0 {
+		t.Fatal("both runs reported ErrLocked; one of them must have applied the migrations")
 	}
 
 	c := pinned(t, db)
