@@ -318,6 +318,12 @@ type Row struct {
 	C     string `+"`gorm:\"uniqueIndex:idx_abc\"`"+`
 	Group string `+"`gorm:\"index:,composite:grp\"`"+`
 	Other string `+"`gorm:\"index:,composite:grp\"`"+`
+	U1    string `+"`gorm:\"index:idx_u\"`"+`
+	U2    string `+"`gorm:\"uniqueIndex:idx_u\"`"+`
+	V1    string `+"`gorm:\"index:idx_v\"`"+`
+	V2    string `+"`gorm:\"index:idx_v,unique\"`"+`
+	W1    string `+"`gorm:\"index:idx_w,composite\"`"+`
+	W2    string `+"`gorm:\"index:idx_w\"`"+`
 }
 `)
 	if got := rep.Of(importer.DroppedIndex); len(got) != 0 {
@@ -336,6 +342,15 @@ type Row struct {
 	if grp := got["idx_rows_grp"]; strings.Join(grp.Fields, " ") != "Group Other" || grp.Unique {
 		t.Fatalf("composite:name groups unnamed index tags: %+v", grp)
 	}
+	if u := got["idx_u"]; strings.Join(u.Fields, " ") != "U1 U2" || !u.Unique {
+		t.Fatalf("a uniqueIndex tag that is not the first makes the index unique: %+v", u)
+	}
+	if v := got["idx_v"]; strings.Join(v.Fields, " ") != "V1 V2" || !v.Unique {
+		t.Fatalf("the unique option on an index tag that is not the first makes the index unique: %+v", v)
+	}
+	if w := got["idx_w"]; strings.Join(w.Fields, " ") != "W1 W2" || w.Unique {
+		t.Fatalf("a bare composite option on a named index is valid and ignored: %+v", w)
+	}
 	if f := field(t, models[0], "A"); f.Index || f.UniqueIndex {
 		t.Fatalf("a composite index is not a tag on its fields: %+v", f)
 	}
@@ -351,10 +366,40 @@ type Row struct {
 		`c.Index("idx_ab", &m.B, &m.A)`,
 		`c.Index("idx_abc", &m.A, &m.B, &m.C).Unique()`,
 		`c.Index("idx_rows_grp", &m.Group, &m.Other)`,
+		`c.Index("idx_u", &m.U1, &m.U2).Unique()`,
+		`c.Index("idx_v", &m.V1, &m.V2).Unique()`,
+		`c.Index("idx_w", &m.W1, &m.W2)`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("emitted source lacks %q:\n%s", want, src)
 		}
+	}
+	for _, line := range strings.Split(src, "\n") {
+		if (strings.Contains(line, `"idx_ab"`) || strings.Contains(line, `"idx_rows_grp"`) || strings.Contains(line, `"idx_w"`)) && strings.Contains(line, ".Unique()") {
+			t.Errorf("a non-unique composite index emits .Unique(): %s", line)
+		}
+	}
+}
+
+func TestReadCompositeOptionNeedsAName(t *testing.T) {
+	models, rep := readSource(t, `package m
+
+type Row struct {
+	ID uint
+	A  string `+"`gorm:\"index:idx_x,composite\"`"+`
+	B  string `+"`gorm:\"index:idx_x\"`"+`
+	C  string `+"`gorm:\"index:,composite\"`"+`
+}
+`)
+	if len(models[0].Indexes) != 1 || models[0].Indexes[0].Name != "idx_x" || strings.Join(models[0].Indexes[0].Fields, " ") != "A B" {
+		t.Fatalf("index:idx_x,composite imports as the named index: %+v", models[0].Indexes)
+	}
+	got := rep.Of(importer.DroppedIndex)
+	if len(got) != 1 || got[0].Field != "C" {
+		t.Fatalf("only the nameless composite option is reported: %s", rep)
+	}
+	if f := field(t, models[0], "C"); f.Index {
+		t.Fatalf("the rejected tag is not imported: %+v", f)
 	}
 }
 

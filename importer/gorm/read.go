@@ -709,7 +709,7 @@ func (r *reader) applyIndexes(fld *importer.Field, tag map[string]string, all ma
 			unique := key == "UNIQUEINDEX"
 			priority := defaultPriority
 			group := ""
-			rejected := false
+			hasComposite := false
 			for _, o := range strings.Split(opts, ",") {
 				switch o = strings.TrimSpace(o); {
 				case o == "":
@@ -722,16 +722,16 @@ func (r *reader) applyIndexes(fld *importer.Field, tag map[string]string, all ma
 						continue
 					}
 					priority = p
-				case strings.HasPrefix(o, "composite:") && strings.TrimPrefix(o, "composite:") != "":
-					group = strings.TrimPrefix(o, "composite:")
 				case o == "composite" || strings.HasPrefix(o, "composite:"):
-					r.rep.Add(importer.Change{Kind: importer.DroppedIndex, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "an index tag has the composite option without a name, which GORM rejects; the index is not imported"})
-					rejected = true
+					// the group only names an index that has no name of its own
+					hasComposite = true
+					group = strings.TrimPrefix(strings.TrimPrefix(o, "composite"), ":")
 				default:
 					r.rep.Add(importer.Change{Kind: importer.Unsupported, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "index option " + o + " is not imported"})
 				}
 			}
-			if rejected {
+			if name == "" && hasComposite && group == "" {
+				r.rep.Add(importer.Change{Kind: importer.DroppedIndex, Source: fld.Source, Model: m.Name, Field: fld.Name, Message: "an index tag has the composite option without a group name and without an index name, which GORM rejects; the index is not imported"})
 				continue
 			}
 			if name == "" {
