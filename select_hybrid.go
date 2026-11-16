@@ -6,8 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/ftsquery"
+	"github.com/azrtydxb/momo/schema"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -24,7 +28,7 @@ const (
 	maxHybridLimit      = 1000
 )
 
-// HybridSpec describes a PostgreSQL hybrid search: a full-text leg and a
+// HybridSpec describes a hybrid search: a full-text leg and a
 // vector leg over one model, fused by reciprocal rank fusion (RRF).
 //
 // Each leg picks its own candidates (the best TextCandidates rows by
@@ -78,13 +82,20 @@ type HybridQuery[T any] struct {
 }
 
 // HybridSearch builds the fused full-text and vector query for model T. It
-// runs on PostgreSQL with pgvector only; on another dialect SQL and All
-// return an error that wraps ErrUnsupported. The model needs a single-column
-// primary key. Soft-deleted rows are excluded.
+// runs on PostgreSQL with pgvector, on SQLite with sqlite-vec and FTS5, and on
+// MariaDB 11.8; MySQL has no cosine distance function, so SQL and All return an
+// error that wraps ErrUnsupported there and send nothing. The model needs a
+// single-column primary key. Soft-deleted rows are excluded.
 //
-// The statement binds, in order: the text configuration, the query text, the
-// text candidate count, the query vector, the vector candidate count, the RRF
-// constant and the limit.
+// On SQLite and MariaDB the text leg searches the structure of the model's
+// full-text declaration: Text must be one of its columns, TextConfig is
+// ignored, and the query is read like the portable fts search text. A query
+// without a positive word gives an empty text leg, and the result is the
+// vector leg alone.
+//
+// On PostgreSQL the statement binds, in order: the text configuration, the
+// query text, the text candidate count, the query vector, the vector
+// candidate count, the RRF constant and the limit.
 func HybridSearch[T any, PT Modeler[T]](q Querier, spec HybridSpec) HybridQuery[T] {
 	return HybridQuery[T]{q: q, meta: metaOf[T, PT](), spec: spec}
 }
@@ -99,8 +110,12 @@ func (h HybridQuery[T]) normalize() (HybridSpec, error) {
 	if h.q == nil {
 		return s, noQuerier("select", h.meta.Table)
 	}
-	if h.q.Dialect() == nil || h.q.Dialect().Name != dialect.Postgres {
-		return s, &Error{Kind: ErrUnsupported, Op: "hybrid search", Table: h.meta.Table, Err: errors.New("hybrid search needs PostgreSQL with pgvector")}
+	d := h.q.Dialect()
+	if d == nil {
+		return s, &Error{Kind: ErrUnsupported, Op: "hybrid search", Table: h.meta.Table, Err: errors.New("hybrid search needs a dialect with a vector distance function")}
+	}
+	if !slices.Contains(d.Vector.Metrics, dialect.MetricCosine) {
+		return s, &Error{Kind: ErrUnsupported, Op: "hybrid search", Table: h.meta.Table, Err: errors.New("hybrid search needs a cosine distance function; MySQL has none")}
 	}
 	if h.meta.Table == "" {
 		return s, hybridInvalid("the result type is a projection, not a model with a table")
@@ -119,8 +134,12 @@ func (h HybridQuery[T]) normalize() (HybridSpec, error) {
 			return s, hybridInvalid("column of table %q does not belong to the model table %q", c.Table(), h.meta.Table)
 		}
 	}
-	if s.TextConfig == "" {
-		return s, hybridInvalid("TextConfig is empty; name a text search configuration such as english")
+	if d.Name == dialect.Postgres {
+		if s.TextConfig == "" {
+			return s, hybridInvalid("TextConfig is empty; name a text search configuration such as english")
+		}
+	} else if _, err := h.declaredText(s.Text.ColumnName()); err != nil {
+		return s, err
 	}
 	if s.TextCandidates == 0 {
 		s.TextCandidates = DefaultHybridCandidates
@@ -216,8 +235,21 @@ func (h HybridQuery[T]) SQL() (Compiled, error) {
 		}
 		cols += "t." + ident(c.Name)
 	}
-	sql := fmt.Sprintf(hybridSQL, table, pk, ident(s.Text.ColumnName()), ident(s.Vector.ColumnName()), softText, softVec, cols)
-	args := []any{s.TextConfig, s.Query, s.TextCandidates, s.QueryVector, s.VectorCandidates, s.RRFK, s.Limit}
+	var sql string
+	var args []any
+	if d.Name == dialect.Postgres {
+		sql = fmt.Sprintf(hybridSQL, table, pk, ident(s.Text.ColumnName()), ident(s.Vector.ColumnName()), softText, softVec, cols)
+		args = []any{s.TextConfig, s.Query, s.TextCandidates, s.QueryVector, s.VectorCandidates, s.RRFK, s.Limit}
+	} else {
+		ft, err := h.declaredText(s.Text.ColumnName())
+		if err != nil {
+			return Compiled{}, err
+		}
+		sql, args = buildHybridPortable(d, hybridPortable{
+			ident: ident, table: table, ftsTable: ident(schema.FTS5Table(h.meta.Table)), pk: pk,
+			vec: ident(s.Vector.ColumnName()), cols: cols, soft: softText, ft: ft,
+		}, s)
+	}
 	sensitive := FlagsOf(s.Text)&FlagSensitive != 0 || FlagsOf(s.Vector)&FlagSensitive != 0
 	return compile(d, func(b *Builder) {
 		prev := b.argSens
@@ -225,6 +257,133 @@ func (h HybridQuery[T]) SQL() (Compiled, error) {
 		b.appendRaw(sql, args)
 		b.argSens = prev
 	})
+}
+
+// declaredText returns the full-text declaration of the model's table when
+// col is one of its declared columns. SQLite and MariaDB search the text leg
+// through the structure that declaration creates.
+func (h HybridQuery[T]) declaredText(col string) (*schema.FullText, error) {
+	if h.meta.TableSchema != nil {
+		if idx, ok := h.meta.TableSchema.FullTextIndex(); ok && slices.Contains(idx.FullText.Columns, col) {
+			return idx.FullText, nil
+		}
+	}
+	return nil, hybridInvalid("column %q has no full-text declaration", col)
+}
+
+// hybridPortable holds the quoted pieces of the SQLite and MariaDB statements.
+type hybridPortable struct {
+	ident    func(string) string
+	table    string // quoted, schema-qualified
+	ftsTable string // quoted FTS5 table (SQLite)
+	pk       string // quoted
+	vec      string // quoted vector column
+	cols     string // the select list over alias t
+	soft     string // " AND <soft-delete filter>" or ""
+	ft       *schema.FullText
+}
+
+// hybridBM25Weight maps a declared weight letter to its FTS5 column weight.
+var hybridBM25Weight = map[string]string{"A": "1", "B": "0.4", "C": "0.2", "D": "0.1"}
+
+// buildHybridPortable composes the fused statement for SQLite (FTS5 and
+// sqlite-vec) and MariaDB (boolean-mode MATCH and VEC_DISTANCE_COSINE). The
+// text leg of a query without a positive word is empty by construction: no
+// MATCH is sent and the query text is not bound. The arguments are in textual
+// order of the placeholders.
+func buildHybridPortable(d *dialect.Dialect, p hybridPortable, s HybridSpec) (string, []any) {
+	parsed := ftsquery.Parse(s.Query, ftsquery.Web)
+	empty := parsed.Empty()
+	var args []any
+	var sb strings.Builder
+	one := "1.0"
+	if d.Name == dialect.SQLite {
+		var score, from, where string
+		if empty {
+			score, from, where = "0.0", p.table+" t", "1 = 0"+p.soft
+		} else {
+			w := ""
+			for _, l := range p.ft.Weights {
+				w += ", " + hybridBM25Weight[l]
+			}
+			score = "bm25(" + p.ftsTable + w + ")"
+			from = p.ftsTable + " JOIN " + p.table + " t ON t." + p.pk + " = " + p.ftsTable + ".rowid"
+			where = p.ftsTable + " MATCH ?" + p.soft
+			args = append(args, parsed.FTS5())
+		}
+		args = append(args, s.TextCandidates)
+		fmt.Fprintf(&sb, `WITH text_hits AS (
+  SELECT pk, row_number() OVER (ORDER BY score ASC, pk ASC) AS rnk
+  FROM (
+    SELECT t.%[1]s AS pk, %[2]s AS score
+    FROM %[3]s
+    WHERE %[4]s
+    ORDER BY score ASC, t.%[1]s ASC
+    LIMIT ?
+  )
+),
+vec_hits AS (
+  SELECT pk, row_number() OVER (ORDER BY dist ASC, pk ASC) AS rnk
+  FROM (
+    SELECT t.%[1]s AS pk, vec_distance_cosine(t.%[5]s, ?) AS dist
+    FROM %[6]s t
+    WHERE t.%[5]s IS NOT NULL%[7]s
+    ORDER BY dist ASC, t.%[1]s ASC
+    LIMIT ?
+  )
+  WHERE dist IS NOT NULL AND dist = dist
+),
+`, p.pk, score, from, where, p.vec, p.table, p.soft)
+	} else {
+		one = "1.0e0"
+		cols := make([]string, len(p.ft.Columns))
+		for i, c := range p.ft.Columns {
+			cols[i] = p.ident(c)
+		}
+		match := "MATCH(" + strings.Join(cols, ", ") + ") AGAINST (? IN BOOLEAN MODE)"
+		score, where := "0", "1 = 0"+p.soft
+		if !empty {
+			score, where = match, match+p.soft
+			q := parsed.MySQLBoolean()
+			args = append(args, q, q)
+		}
+		args = append(args, s.TextCandidates)
+		fmt.Fprintf(&sb, `WITH text_hits AS (
+  SELECT pk, row_number() OVER (ORDER BY score DESC, pk ASC) AS rnk
+  FROM (
+    SELECT t.%[1]s AS pk, %[2]s AS score
+    FROM %[3]s t
+    WHERE %[4]s
+    ORDER BY score DESC, t.%[1]s ASC
+    LIMIT ?
+  ) s
+),
+vec_hits AS (
+  SELECT pk, row_number() OVER (ORDER BY dist ASC, pk ASC) AS rnk
+  FROM (
+    SELECT t.%[1]s AS pk, VEC_DISTANCE_COSINE(t.%[5]s, VEC_FromText(?)) AS dist
+    FROM %[3]s t
+    WHERE t.%[5]s IS NOT NULL%[6]s
+    ORDER BY dist ASC
+    LIMIT ?
+  ) s
+  WHERE dist IS NOT NULL
+),
+`, p.pk, score, p.table, where, p.vec, p.soft)
+	}
+	args = append(args, s.QueryVector, s.VectorCandidates, s.RRFK, s.RRFK, s.Limit)
+	fmt.Fprintf(&sb, `fused AS (
+  SELECT pk, SUM(term) AS score FROM (
+    SELECT pk, %[1]s / (? + rnk) AS term FROM text_hits
+    UNION ALL
+    SELECT pk, %[1]s / (? + rnk) AS term FROM vec_hits
+  ) u GROUP BY pk
+)
+SELECT %[2]s, f.score
+FROM fused f JOIN %[3]s t ON t.%[4]s = f.pk
+ORDER BY f.score DESC, f.pk ASC
+LIMIT ?`, one, p.cols, p.table, p.pk)
+	return sb.String(), args
 }
 
 // All runs the query and returns the fused rows, best first.

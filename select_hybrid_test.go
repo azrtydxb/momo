@@ -127,14 +127,12 @@ func TestHybridValidation(t *testing.T) {
 	}
 }
 
-// Catches: hybrid search silently rendering PostgreSQL-only SQL for MySQL or
-// SQLite.
+// Catches: hybrid search silently rendering PostgreSQL SQL for MySQL, which has
+// no cosine distance function.
 func TestHybridUnsupportedDialects(t *testing.T) {
-	for _, d := range []dialect.Name{dialect.MySQL, dialect.SQLite} {
-		q := momo.New(fakedriver.New(d))
-		if _, err := momo.HybridSearch[hybridDoc](q, hybridSpec()).SQL(); !errors.Is(err, momo.ErrUnsupported) {
-			t.Errorf("%s: err = %v, want ErrUnsupported", d, err)
-		}
+	q := momo.New(fakedriver.New(dialect.MySQL))
+	if _, err := momo.HybridSearch[hybridDoc](q, hybridSpec()).SQL(); !errors.Is(err, momo.ErrUnsupported) {
+		t.Errorf("mysql: err = %v, want ErrUnsupported", err)
 	}
 }
 
