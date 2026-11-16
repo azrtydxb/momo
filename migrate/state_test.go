@@ -75,18 +75,84 @@ func TestLatestStateConflict(t *testing.T) {
 	}
 }
 
-// Both branches dropping the same table, or adding the same table the same
-// way, is one change and not a conflict.
-func TestForkWithSameChangeMerges(t *testing.T) {
+// Both branches making the identical change to a table is a conflict: both
+// SQL files would run, and the second would fail on apply.
+func TestForkWithSameChangeConflicts(t *testing.T) {
 	base := pbBase()
 	a := pbBranch(base, pbVA, "add_a", "CREATE TABLE a (id bigint PRIMARY KEY);", pbTable("base"), pbTable("a"))
 	b := pbBranch(base, pbVB, "add_a_too", "CREATE TABLE a (id bigint PRIMARY KEY);", pbTable("base"), pbTable("a"))
-	st, err := migrate.LatestState(pbMerge(t, a, b))
-	if err != nil {
-		t.Fatalf("identical changes must merge: %v", err)
+	_, err := migrate.LatestState(pbMerge(t, a, b))
+	if !errors.Is(err, migrate.ErrBranchConflict) || !strings.Contains(err.Error(), `table "a"`) {
+		t.Fatalf("identical changes on both branches must conflict, got %v", err)
 	}
-	if got := tableNames(st.Schema); !sameStrings(got, []string{"a", "base"}) {
-		t.Fatalf("tables = %v", got)
+}
+
+// A migration built on one branch's migration after the merge keeps the other
+// branch's work: P, A1, B1 (from P), B2 (from B1).
+func TestLatestStateChildOfMergedFork(t *testing.T) {
+	merged := pbMergedIndependent(t)
+	b2 := pbBranch(merged, "20260103000000", "add_b2", "CREATE TABLE b2 (id bigint PRIMARY KEY);", pbTable("base"), pbTable("b"), pbTable("b2"))
+	b2["20260103000000_add_b2.snapshot.json"] = pbFile(pbSnapshot("20260103000000", pbVB, pbTable("base"), pbTable("b"), pbTable("b2")))
+	b2 = pbMerge(t, b2, fstest.MapFS{})
+	if p := pbProblems(t, b2); len(p) != 0 {
+		t.Fatalf("validate: %v", p)
+	}
+	st, err := migrate.LatestState(b2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tableNames(st.Schema); !sameStrings(got, []string{"a", "b", "b2", "base"}) {
+		t.Fatalf("the child of a merged fork must keep the other branch's work, got %v", got)
+	}
+}
+
+// Renumbering a branch of two migrations leaves a child of a merged fork.
+func TestRenumberTwoMigrationBranch(t *testing.T) {
+	base := pbBase()
+	a1 := pbBranch(base, pbVA, "add_a1", "CREATE TABLE a1 (id bigint PRIMARY KEY);", pbTable("base"), pbTable("a1"))
+	a1["20260102000100_add_a2.up.sql"] = pbFile("-- momo:generated\nCREATE TABLE a2 (id bigint PRIMARY KEY);\n")
+	a1["20260102000100_add_a2.snapshot.json"] = pbFile(pbSnapshot("20260102000100", pbVA, pbTable("base"), pbTable("a1"), pbTable("a2")))
+	b := pbBranch(base, pbVB, "add_b", "CREATE TABLE b (id bigint PRIMARY KEY);", pbTable("base"), pbTable("b"))
+	dir := pbMerge(t, a1, b)
+	e := offlineEngine(t, dir, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	removed, files, moved, err := e.Renumber([]string{pbV0, pbVB})
+	if err != nil || len(moved) != 2 {
+		t.Fatalf("renumber: %+v %v", moved, err)
+	}
+	next := pbApplyRenumber(dir, removed, files)
+	if p := pbProblems(t, next); len(p) != 0 {
+		t.Fatalf("validate: %v", p)
+	}
+	st, err := migrate.LatestState(next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tableNames(st.Schema); !sameStrings(got, []string{"a1", "a2", "b", "base"}) {
+		t.Fatalf("after renumber the state must hold both branches, got %v", got)
+	}
+}
+
+// A diff after a merge builds on the derived state, and a later deliberate
+// drop of the other branch's table is a change, not swallowed by the fold.
+func TestDiffAfterMergeThenDeliberateDrop(t *testing.T) {
+	ctx := context.Background()
+	merged := pbMergedIndependent(t)
+	m1, err := offlineEngine(t, merged, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)).Diff(ctx, pbDesired("base", "a", "b", "c"), "add_c", migrate.DiffOptions{})
+	if err != nil || m1 == nil {
+		t.Fatalf("diff: %v %v", m1, err)
+	}
+	next := withFiles(merged, m1.Files)
+	m2, err := offlineEngine(t, next, time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)).Diff(ctx, pbDesired("base", "b", "c"), "drop_a", migrate.DiffOptions{AllowDestructive: true})
+	if err != nil || m2 == nil {
+		t.Fatalf("drop diff: %v %v", m2, err)
+	}
+	last := withFiles(next, m2.Files)
+	if p := pbProblems(t, last); len(p) != 0 {
+		t.Fatalf("validate: %v", p)
+	}
+	st, err := migrate.LatestState(last)
+	if err != nil || !sameStrings(tableNames(st.Schema), []string{"b", "base", "c"}) {
+		t.Fatalf("the drop must hold: %v %v", st, err)
 	}
 }
 
