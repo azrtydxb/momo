@@ -768,7 +768,11 @@ func (g *generator) constraints(m *model) {
 		uniques = append(uniques, u)
 	}
 	t.Uniques = uniques
-	for _, ck := range t.Checks {
+	for i := range t.Checks {
+		ck := &t.Checks[i]
+		if g.checkIn(m, ck) {
+			continue
+		}
 		m.stmts = append(m.stmts, "c.Check("+strconv.Quote(ck.Name)+", "+strconv.Quote(ck.Expr)+")")
 	}
 	var fks []schema.ForeignKey
@@ -786,6 +790,53 @@ func (g *generator) constraints(m *model) {
 	}
 	t.Indexes = ixs
 	g.tableObjects(m)
+}
+
+// checkIn declares ck with c.CheckIn when it restricts a string field over a
+// text column to a list of values: one value per line, sorted, with a trailing
+// comma, so that two edits to the list merge as text. It also gives ck the
+// value list the models will build, so the snapshot compares equal to them as
+// a set whatever the spelling of the stored expression. It reports whether it
+// declared the check.
+func (g *generator) checkIn(m *model, ck *schema.Check) bool {
+	col, values, ok := schema.ParseCheckIn(ck.Expr)
+	if !ok {
+		return false
+	}
+	f, found := m.byCol[col]
+	c := colByName(m.t, col)
+	if !found || c == nil || c.Enum != "" || (f.goType != "string" && f.goType != "*string") || !textColumn(g.o.Dialect, c) {
+		return false
+	}
+	in := schema.CheckIn{Column: col, Values: schema.SortedValues(values)}
+	if in.Validate() != nil {
+		return false
+	}
+	var b strings.Builder
+	b.WriteString("c.CheckIn(&m." + f.name + ",\n")
+	for _, v := range in.Values {
+		b.WriteString("\t" + strconv.Quote(v) + ",\n")
+	}
+	b.WriteString(")")
+	if ck.Name != m.t.Name+"_"+col+"_check" {
+		b.WriteString(".Name(" + strconv.Quote(ck.Name) + ")")
+	}
+	m.stmts = append(m.stmts, b.String())
+	ck.In = &in
+	return true
+}
+
+// textColumn reports whether col holds text: the column type CheckIn accepts.
+func textColumn(d dialect.Name, col *schema.Column) bool {
+	typ := strings.ToLower(schema.NormalizeType(d, col.Type))
+	if i := strings.IndexByte(typ, '('); i >= 0 {
+		typ = strings.TrimSpace(typ[:i])
+	}
+	switch typ {
+	case "text", "varchar", "char", "character", "character varying", "tinytext", "mediumtext", "longtext":
+		return true
+	}
+	return false
 }
 
 // fkNameOK is what a constraint name may hold to be written as an fk_name tag

@@ -21,11 +21,12 @@ var coreAllowed = map[string]bool{
 
 	// Pure mechanics split out of the root package; they import only the
 	// standard library and dialect, never the root.
-	modPath + "/internal/sqlscan": true,
-	modPath + "/internal/redact":  true,
-	modPath + "/internal/keyenc":  true,
-	modPath + "/internal/chunk":   true,
-	modPath + "/internal/snake":   true,
+	modPath + "/internal/sqlscan":  true,
+	modPath + "/internal/redact":   true,
+	modPath + "/internal/keyenc":   true,
+	modPath + "/internal/chunk":    true,
+	modPath + "/internal/snake":    true,
+	modPath + "/internal/floatfmt": true,
 
 	// The search-text parser of hybrid search; it imports only the standard
 	// library.

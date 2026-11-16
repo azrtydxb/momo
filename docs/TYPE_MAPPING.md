@@ -6,6 +6,10 @@ tests: `TestTypeMappingDoc` fails when a row here disagrees with the generator's
 type map or a codec's `SQLType`, and `TestTypeMapping` creates a column of each
 documented PostgreSQL type on a live server, and the generated SQLite type on a
 live SQLite database, and round-trips edge values through it.
+`TestTypeMappingMySQL` does the same with the MySQL column on MySQL 8.4, MySQL
+9.7 and MariaDB 11.8, and `TestTypeMappingMySQLNull`,
+`TestTypeMappingMySQLUnsigned` and `TestTypeMappingMySQLLimits` check NULL, the
+unsigned types and the MySQL limits.
 
 ## How a type is chosen
 
@@ -73,8 +77,14 @@ has no array columns, so the generator rejects them there.
 <!-- /generated:typemap -->
 
 The MySQL column is what `typemap.Map` returns for MySQL and MariaDB, which share
-it. Unsigned Go integers (`uint8`, `uint16`, `uint32`, `uint` and `uint64`) map to
-the unsigned column types, `int8` to `tinyint`, and `bool` to `tinyint(1)`.
+it. Unsigned Go integers map to the unsigned column types: `uint8` to
+`tinyint unsigned`, `uint16` to `smallint unsigned`, `uint32` to `int unsigned`,
+`uint` to `bigint unsigned` and `uint64` to `bigint unsigned`. `int8` maps to
+`tinyint`, and `bool` to `tinyint(1)`. A `vector.Vector` column needs MySQL 9.0
+or MariaDB 11.7; MySQL 8.4 has no `vector` type. MariaDB 11.8 refuses a vector
+components of large magnitude with error 1292 (1e30 and `math.MaxFloat32` are
+refused; MariaDB does not document the threshold), and MySQL 9.7 takes the full
+float32 range.
 `types.Numeric` with a `precision` tag is `decimal(p,s)` (precision up to 65,
 scale up to 30, scale not above precision; a precision alone is scale 0, and
 `NaN` and infinity cannot be stored); without one it stays text, because a bare
@@ -127,9 +137,13 @@ document because nothing generates one.
 
 ## Edge values and behavior
 
-Each statement below is asserted by a test against PostgreSQL. The generated
-SQLite column of every row is also round-tripped on a live SQLite database,
-except `NaN`, which SQLite does not have (see Floats).
+Each statement below is asserted by a test against PostgreSQL, and the ones
+about SQLite or MySQL and MariaDB by the SQLite and MySQL tests named at the
+top. The generated SQLite column of every row is also round-tripped on a live
+SQLite database, except `NaN`, which SQLite does not have (see Floats). The
+MySQL column of every row that has one is round-tripped on MySQL 8.4, MySQL 9.7
+and MariaDB 11.8 (`TestTypeMappingMySQL`), with the edge values the MySQL
+column holds.
 
 - Integers: `math.MaxInt64` and `math.MinInt64` round-trip through `bigint`;
   `int` is 64-bit and maps to `bigint`. A value that does not fit the column
@@ -140,7 +154,14 @@ except `NaN`, which SQLite does not have (see Floats).
   values and round-trip. Compare with `math.IsNaN`, since `NaN != NaN`. SQLite
   has no `NaN`: binding a `float32` or `float64` `NaN` (or a pointer to one) is
   `ErrValidation` and nothing is stored, rather than a silent `NULL`. `+Inf` and
-  `-Inf` are legal `REAL` values.
+  `-Inf` are legal `REAL` values. MySQL and MariaDB have no `NaN` or infinity in
+  `float` and `double`: binding one is a database error.
+  A `float` column read by a query with no arguments comes back over the text
+  protocol, where MySQL 8.4, MySQL 9.7 and MariaDB 11.8 print it with six
+  significant digits (`math.MaxFloat32` reads back as `3.40282e+38`). A query
+  with an argument uses the binary protocol and returns the exact `float32`, as
+  does `CAST(col AS DOUBLE)` or `col + 0e0` in the select list. Use `double`
+  (`float64`) for a column whose exact value matters on every read path.
 - Strings: any valid UTF-8 round-trips, including quotes and backslashes (they
   are bound, never interpolated). PostgreSQL rejects U+0000 in `text`. A string
   longer than `size` is a database error on `character varying(N)`.

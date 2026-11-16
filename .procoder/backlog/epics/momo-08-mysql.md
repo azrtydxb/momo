@@ -1,9 +1,9 @@
 # MySQL and MariaDB
 
-Status: open
+Status: done 2026-11-16
 Created: 2026-11-04
 Milestone: m3-mysql
-Spec: momo @ 2b5d484188a3
+Spec: momo @ d452f2ef1e4f
 
 ## Description
 

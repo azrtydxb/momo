@@ -11,13 +11,23 @@ No edit is needed in your code. The GORM, Bun and Ent importers now write a
 composite index of the source model as a `c.Index` declaration in a
 `MomoConfig` method of the generated model, so a converted project no longer
 drops it on its next migration; rerun the import to get the declaration.
-`UpdateQuery.AllowKeyChange` is an opt-in that lets `UpdateQuery.Set` assign a primary-key
-column, for a row whose key a user chooses and may rename. Without it an
-assignment to a key column is refused with `ErrValidation`, as before. With it
-the statement runs as written, on every dialect, and a key that collides with
-another row fails with `ErrUniqueViolation`; foreign keys declared
-`ON UPDATE CASCADE` follow the new key. `UpdateQuery.Model`, `BulkUpdate`, the
-`OnUpdate` field hook and an identity key keep refusing a key assignment.
+`Config.CheckIn` declares a check over a list of values that `migrate diff`
+compares as a set; `momo generate --from-db` now writes a constraint of that
+shape as a `Config.CheckIn` declaration, and a snapshot written without the
+value list still diffs as before. On SQLite a named table-level
+`CHECK (col IN (...))` now inspects as a check with a value list, and
+`--from-db` writes it as `Config.CheckIn`, instead of as an enum column; an
+unnamed column check is unchanged. `momotest.WithTemplateClone` makes
+`momotest.New` clone a template database per test instead of building a schema
+per test; without the option `momotest.New` behaves as before.
+`UpdateQuery.AllowKeyChange` is an opt-in that lets `UpdateQuery.Set` assign a
+primary-key column, for a row whose key a user chooses and may rename. Without
+it an assignment to a key column is refused with `ErrValidation`, as before.
+With it the statement runs as written, on every dialect, and a key that
+collides with another row fails with `ErrUniqueViolation`; foreign keys
+declared `ON UPDATE CASCADE` follow the new key. `UpdateQuery.Model`,
+`BulkUpdate`, the `OnUpdate` field hook and an identity key keep refusing a key
+assignment.
 
 ## Upgrading to 0.15.0
 
