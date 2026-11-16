@@ -376,6 +376,7 @@ func (d *differ) sameColumns(a, b *schema.Table) bool {
 }
 
 func (d *differ) createTable(t *schema.Table) {
+	d.validateCheckIns(t)
 	d.emit(Change{Kind: CreateTable, Schema: t.Schema, Table: t.Name, Name: t.Name, After: cp(*t)})
 	for i := range t.Indexes {
 		ix := &t.Indexes[i]
@@ -623,9 +624,99 @@ func (d *differ) uniques(fn, tn, to *schema.Table) {
 }
 
 func (d *differ) checks(fn, tn, to *schema.Table) {
-	diffNamed(d, fn.Checks, tn.Checks, to, func(c schema.Check) string { return c.Name },
+	d.validateCheckIns(tn)
+	name := func(c schema.Check) string { return c.Name }
+	// Two checks of one name that both hold a value list over the same column
+	// are compared as sets of values: equal sets are no change, whatever the
+	// order or the spelling of the expression, and a different set is one
+	// alter_check_in with the values added and removed.
+	paired := map[string]bool{}
+	var pairs [][2]schema.Check
+	for _, o := range fn.Checks {
+		n, ok := lookup(tn.Checks, name, o.Name)
+		if ok && o.In != nil && n.In != nil && o.In.Column == n.In.Column {
+			paired[o.Name] = true
+			pairs = append(pairs, [2]schema.Check{o, n})
+		}
+	}
+	rest := func(cs []schema.Check) []schema.Check {
+		if len(paired) == 0 {
+			return cs
+		}
+		return slices.DeleteFunc(slices.Clone(cs), func(c schema.Check) bool { return paired[c.Name] })
+	}
+	diffNamed(d, rest(fn.Checks), rest(tn.Checks), to, name,
 		func(a, b schema.Check) bool { return a.Expr == b.Expr }, DropCheck, AddCheck,
 		func(c schema.Check) goneUse { return usesGone(d.gone, nil, c.Expr) })
+	for _, p := range pairs {
+		d.alterCheckIn(to, p[0], p[1])
+	}
+}
+
+// validateCheckIns reports a value-list check that cannot be rendered: no
+// values, a value with a backslash or control character, a column the table
+// lacks, or a column of an enum type (the enum already is the value list).
+func (d *differ) validateCheckIns(t *schema.Table) {
+	for _, c := range t.Checks {
+		if c.In == nil {
+			continue
+		}
+		if err := c.In.Validate(); err != nil {
+			d.errs = append(d.errs, fmt.Errorf("migrate: table %s check %s: %w", t.Name, c.Name, err))
+			continue
+		}
+		col, ok := t.Column(c.In.Column)
+		switch {
+		case !ok:
+			d.errs = append(d.errs, fmt.Errorf("migrate: table %s check %s: the column %q is not a column of the table", t.Name, c.Name, c.In.Column))
+		case col.Enum != "":
+			d.errs = append(d.errs, fmt.Errorf("migrate: table %s check %s: the column %q has the enum type %q; the enum already restricts its values", t.Name, c.Name, c.In.Column, col.Enum))
+		}
+	}
+}
+
+// alterCheckIn emits the change from one value list to another, or nothing
+// when both hold the same set of values. Removing a value is destructive:
+// rows that hold it fail the new constraint.
+func (d *differ) alterCheckIn(t *schema.Table, before, after schema.Check) {
+	added, removed := valueDelta(before.In.Values, after.In.Values)
+	if len(added) == 0 && len(removed) == 0 {
+		return
+	}
+	c := Change{
+		Kind: AlterCheckIn, Schema: t.Schema, Table: t.Name, Name: after.Name,
+		Before: cp(before), After: cp(after), Added: added, Removed: removed,
+		Partitioned: t.Partition != nil,
+	}
+	if len(removed) == 0 {
+		d.emitRisky(c)
+		return
+	}
+	c.Destructive = true
+	lits := make([]string, len(removed))
+	for i, v := range removed {
+		lits[i] = "'" + v + "'"
+	}
+	d.emitRisky(c)
+	backfill := "backfill rows holding " + strings.Join(lits, ", ") + " first"
+	d.destructive[len(d.destructive)-1] += " (removes " + strings.Join(lits, ", ") + "; " + backfill + ")"
+	d.hint(fmt.Sprintf("alter_check_in %s removes %s: %s, or the new constraint rejects them", qualified(t.Schema, t.Name, after.Name), strings.Join(lits, ", "), backfill))
+}
+
+// valueDelta returns the values after has and before lacks, and the other way
+// round, each sorted and without duplicates.
+func valueDelta(before, after []string) (added, removed []string) {
+	for _, v := range after {
+		if !slices.Contains(before, v) {
+			added = append(added, v)
+		}
+	}
+	for _, v := range before {
+		if !slices.Contains(after, v) {
+			removed = append(removed, v)
+		}
+	}
+	return schema.SortedValues(added), schema.SortedValues(removed)
 }
 
 func (d *differ) foreignKeys(fn, tn, to *schema.Table) {
@@ -783,6 +874,7 @@ var riskNotes = map[ChangeKind]string{
 	DropFK:         "referential integrity is no longer enforced; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
 	AddUnique:      "built with CREATE UNIQUE INDEX CONCURRENTLY and adopted with USING INDEX in a no-transaction migration; fails on duplicate rows and then leaves an INVALID index to drop",
 	AddCheck:       "added NOT VALID, then validated by a full scan in a no-transaction migration; the validation fails if existing rows violate it",
+	AlterCheckIn:   "dropped and added again NOT VALID under an ACCESS EXCLUSIVE lock, then validated by a full scan in a no-transaction migration; the validation fails if existing rows violate it",
 }
 
 // emitRisky emits c, marking it Risky and adding a hint when its kind is in
@@ -979,6 +1071,11 @@ func (d *differ) remapFrom(fn *schema.Table, renameTo map[string]string) *schema
 	out.Checks = slices.Clone(fn.Checks)
 	for i := range out.Checks {
 		out.Checks[i].Expr = rewriteIdents(out.Checks[i].Expr, renameTo)
+		if in := out.Checks[i].In; in != nil {
+			c := *in
+			c.Column = col(c.Column)
+			out.Checks[i].In = &c
+		}
 	}
 	out.Indexes = slices.Clone(fn.Indexes)
 	for i := range out.Indexes {

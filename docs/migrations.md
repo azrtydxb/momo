@@ -93,6 +93,59 @@ it prints `no changes` (when there is a difference it writes files and exits 0,
 so also check `git status --porcelain` on the migration directory). This recipe
 is derived from the code, not covered by a test.
 
+### Value-list checks
+
+A check declared with `Config.CheckIn` restricts a string field to a list of
+values. The snapshot keeps the list next to the expression (`schema.Check.In`,
+a `schema.CheckIn` with the column and the values, sorted and without
+duplicates), so `diff` compares two lists of the same name and column as sets
+of values:
+
+- The same set of values in another order, or with a value repeated, is no
+  change.
+- A different set is one `migrate.AlterCheckIn` change that carries the
+  `migrate.Change.Added` and `migrate.Change.Removed` values, in place of the drop and add of a whole
+  constraint that an ordinary `Config.Check` gets.
+- A removed value is destructive: `diff` refuses it without
+  `--allow-destructive`, prints `backfill rows holding 'x' first`, and writes
+  `-- momo:destructive` to the migration. The new constraint rejects every row
+  that still holds the value, so backfill them in an earlier migration. The
+  lint rule `check-value-removal` reports a migration that removes a value
+  without the directive.
+
+Each value is on its own source line, so two branches that add different
+values to one list merge as text; at most the two lines are inserted in the
+same place, and keeping both resolves it. Diff the merged declaration to get
+one migration that adds both values. Two migrations that each carry one branch's
+change cannot be applied in either order and keep both values, because a
+migration restates the whole list: generate one migration after the merge, or
+regenerate with `momo migrate rebase`.
+
+What the migration does on each dialect:
+
+- PostgreSQL: `DROP CONSTRAINT` and `ADD CONSTRAINT ... NOT VALID` in the
+  transactional file, then `VALIDATE CONSTRAINT` in the `_no_tx` file. The table
+  is never without a constraint, and the validation scan runs outside the lock
+  of the change.
+- SQLite: a table rebuild that recreates the table with the new CHECK. A removed
+  value that rows still hold fails the copy, and the transaction rolls back.
+- MySQL 8.4, MySQL 9.7 and MariaDB 11.8: one
+  `ALTER TABLE ... DROP CONSTRAINT ck, ADD CONSTRAINT ck CHECK (...)`, so the
+  table is never without the constraint. All three enforce CHECK constraints, and
+  they accept `DROP CONSTRAINT` for one (MySQL before 8.0.16 parses and ignores
+  CHECK, and before 8.0.19 spells the drop `DROP CHECK`). A removed value that
+  rows hold makes the statement fail.
+
+The expression is `"col" IN ('a','b')` (backticks on MySQL and MariaDB) with
+the values sorted. The inspectors do not need to read the list back: drift
+compares the stored expression. `momo generate --from-db` reads a constraint
+over one text column that has this shape and writes it as a `Config.CheckIn`
+declaration, one sorted value per line. On SQLite a constraint that has a name
+is a declared check, and only an unnamed CHECK over a TEXT column is read as an
+enum column. A list needs a text column: an enum column, a column of another
+type, an empty list, and a value that holds a backslash or a control character
+are refused.
+
 ### Checksums
 
 Two independent checks, both SHA-256 of the file bytes:
@@ -523,7 +576,7 @@ normalized. Extensions, native enums, functions, policies, partitions,
 row-level security and schemas do not exist on SQLite and are never reported.
 
 **Enums.** SQLite has no enum type. A TEXT column that carries
-`CHECK ("col" IN ('a', 'b'))` is inspected as an enum column whose enum is named
+an unnamed `CHECK ("col" IN ('a', 'b'))` is inspected as an enum column whose enum is named
 `<table>_<column>`, and `Engine.Diff` writes an enum column back as that CHECK.
 A model enum therefore round-trips without a diff only when it is named
 `<table>_<column>`. `create_enum` and `drop_enum` produce no statement;
@@ -930,8 +983,13 @@ only on a table of the parent snapshot (`TestMigrateLint`,
 | `sqlite-rebuild`                | warning  | a statement with the SQLite `rebuild` hint (`LintSQL` callers)            | batch the data copy or split the table                                  |
 | `fulltext-column-rewrite`       | warning  | stored generated `to_tsvector` column added to an existing table          | build it in a maintenance window; the table rewrite cannot be avoided   |
 | `fulltext-first-index`          | warning  | `CREATE FULLTEXT INDEX` on an existing table (MySQL and MariaDB)          | add the index in a low-traffic window; the table is copied once         |
+| `check-value-removal`           | error    | `Config.CheckIn` value removed, migration lacks `-- momo:destructive`     | backfill the rows first, then add `-- momo:destructive` after a review  |
 
-The rules are text heuristics on the comment-free statement. The PostgreSQL
+`check-value-removal` reads no statement: `Engine.Lint` and `Engine.LintAll`
+compare the snapshot of each migration with its parent's and report a value
+that a `Config.CheckIn` list loses when the migration lacks the directive.
+
+The other rules are text heuristics on the comment-free statement. The PostgreSQL
 rules (the first six) run for the `postgres` dialect only; the destructive rule
 runs for every dialect. `fulltext-column-rewrite` runs for `postgres` and
 `fulltext-first-index` for `mysql`, which includes MariaDB. A statement built inside a `DO` block or a function is

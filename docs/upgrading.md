@@ -11,6 +11,10 @@ No edit is needed in your code. The GORM, Bun and Ent importers now write a
 composite index of the source model as a `c.Index` declaration in a
 `MomoConfig` method of the generated model, so a converted project no longer
 drops it on its next migration; rerun the import to get the declaration.
+`Config.CheckIn` declares a check over a list of values that `migrate diff`
+compares as a set; `momo generate --from-db` now writes a constraint of that
+shape as a `Config.CheckIn` declaration, and a snapshot written without the
+value list still diffs as before.
 
 ## Upgrading to 0.15.0
 

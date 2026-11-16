@@ -202,6 +202,9 @@ func flatten(s *schema.Schema, exact bool) map[string]object {
 			add(object{ref: ObjectRef{Kind: "fk", Schema: t.Schema, Name: t.Name + "." + f.Name}, body: mustJSON(f), parent: tbl.key(), child: true})
 		}
 		for _, c := range chs {
+			// The value list is another view of the expression, which is what
+			// the database stores and what the two sides are compared on.
+			c.In = nil
 			add(object{ref: ObjectRef{Kind: "check", Schema: t.Schema, Name: t.Name + "." + c.Name}, body: mustJSON(c), parent: tbl.key(), child: true})
 		}
 	}
