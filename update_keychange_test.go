@@ -10,7 +10,6 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/fakedriver"
-	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/sqlfn"
 )
 
@@ -67,10 +66,14 @@ func TestUpdateAllowKeyChangeExprAllRowsAndHook(t *testing.T) {
 	if err != nil || c.SQL != `UPDATE "bulk_stock" SET "region" = $1` {
 		t.Errorf("AllRows with opt-in = %q %v", c.SQL, err)
 	}
-	db, _ := fieldDB(momo.FieldHook[suite.Document]{Column: 0, OnUpdate: func(*suite.Document) any { return int64(9) }})
-	_, err = momo.Update[suite.Document](db).Set(suite.DocTitle.Set("n")).Where(suite.DocID.Eq(1)).AllowKeyChange().SQL()
-	if !errors.Is(err, momo.ErrValidation) {
-		t.Errorf("OnUpdate hook on the key with opt-in err = %v, want ErrValidation", err)
+	// bulkStock's sku is a plain (non-identity) key, so only the hook rule can
+	// refuse the statement below.
+	hooked := momo.New(fakedriver.New(dialect.Postgres), momo.WithFieldHooks([]momo.FieldHook[bulkStock]{
+		{Column: 1, OnUpdate: func(*bulkStock) any { return int64(9) }},
+	}))
+	_, err = momo.Update[bulkStock](hooked).Set(bulkQty.Set(1)).Where(bulkRegion.Eq("eu")).AllowKeyChange().SQL()
+	if !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "OnUpdate") || !strings.Contains(err.Error(), "field hook") {
+		t.Errorf("OnUpdate hook on the key with opt-in err = %v, want the OnUpdate field-hook refusal", err)
 	}
 }
 
@@ -79,8 +82,8 @@ func TestUpdateAllowKeyChangeExprAllRowsAndHook(t *testing.T) {
 func TestUpdateAllowKeyChangeStillRefuses(t *testing.T) {
 	pg := momo.New(fakedriver.New(dialect.Postgres))
 	ver := momo.NewColumn[int64]("roles", "ver", 0)
-	if _, err := momo.Update[updRoles](pg).Set(ver.Set(1)).AllRows().AllowKeyChange().SQL(); !errors.Is(err, momo.ErrValidation) {
-		t.Errorf("version with opt-in err = %v, want ErrValidation", err)
+	if _, err := momo.Update[updRoles](pg).Set(ver.Set(1)).AllRows().AllowKeyChange().SQL(); !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "version column") {
+		t.Errorf("version with opt-in err = %v, want the version-column refusal", err)
 	}
 	id := momo.NewColumn[int64]("roles", "id", momo.FlagPK)
 	if _, err := momo.Update[updRoles](pg).Set(id.Set(5)).Where(id.Eq(1)).AllowKeyChange().SQL(); err != nil {
@@ -90,16 +93,16 @@ func TestUpdateAllowKeyChangeStillRefuses(t *testing.T) {
 		t.Errorf("key with opt-in and no Where err = %v, want ErrUnfilteredMutation", err)
 	}
 	m := updRoles{ID: 1, Ver: 1}
-	if _, err := momo.Update[updRoles](pg).Model(&m).Set(id.Set(5)).AllowKeyChange().SQL(); !errors.Is(err, momo.ErrValidation) {
-		t.Errorf("Model with key assignment err = %v, want ErrValidation", err)
+	if _, err := momo.Update[updRoles](pg).Model(&m).Set(id.Set(5)).AllowKeyChange().SQL(); !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "Model addresses the row") {
+		t.Errorf("Model with key assignment err = %v, want the Model refusal", err)
 	}
 	gid := momo.NewColumn[int64]("gens", "id", momo.FlagPK|momo.FlagIdentity)
-	if _, err := momo.Update[updGen](pg).Set(gid.Set(5)).Where(gid.Eq(1)).AllowKeyChange().SQL(); !errors.Is(err, momo.ErrValidation) {
-		t.Errorf("identity key with opt-in err = %v, want ErrValidation", err)
+	if _, err := momo.Update[updGen](pg).Set(gid.Set(5)).Where(gid.Eq(1)).AllowKeyChange().SQL(); !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "cannot be written by UPDATE") {
+		t.Errorf("identity key with opt-in err = %v, want the not-writable refusal", err)
 	}
 	bulk := momo.BulkUpdateKeys[bulkStock](bulkDB(dialect.For(dialect.Postgres)), []momo.ColumnRef{bulkRegion, bulkSKU},
 		[]momo.ColumnRef{bulkQty}, [][]any{{"eu", int64(1), int64(2)}}).AllowKeyChange()
-	if _, err := bulk.SQL(); !errors.Is(err, momo.ErrValidation) {
-		t.Errorf("BulkUpdate with opt-in err = %v, want ErrValidation", err)
+	if _, err := bulk.SQL(); !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), "AllowKeyChange") {
+		t.Errorf("BulkUpdate with opt-in err = %v, want the AllowKeyChange refusal", err)
 	}
 }
