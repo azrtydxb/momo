@@ -1406,10 +1406,30 @@ sequence, and the column declares it. Any other sequence is a schema object of
 its own, kept in the snapshot as `schema.Sequence` and declared by a model with
 `momo.Config.Sequence`:
 
-```text
+```go
+package main
+
+import (
+	"fmt"
+
+	"github.com/azrtydxb/momo"
+)
+
+type Job struct {
+	momo.Model `momo:"table:jobs"`
+	ID         int64 `momo:"pk"`
+	Target     string
+}
+
 func (j *Job) MomoConfig(c *momo.Config) {
 	c.Default(&j.ID, "nextval('jobs_seq'::regclass)")
 	c.Sequence("jobs_seq").Start(1000).Increment(10).Cache(20)
+}
+
+func main() {
+	var j Job
+	j.MomoConfig(&momo.Config{})
+	fmt.Println("declared", j.ID)
 }
 ```
 
