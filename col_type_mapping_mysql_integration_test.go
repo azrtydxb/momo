@@ -50,7 +50,7 @@ func parseDocMySQL(t *testing.T) map[string]string {
 
 // docUnsignedRE matches "`uint8` to `tinyint unsigned`" in the document,
 // across a line break.
-var docUnsignedRE = regexp.MustCompile("`(uint(?:8|16|32|64)?)`\\s+to\\s+`([^`]+)`")
+var docUnsignedRE = regexp.MustCompile("`(uint(?:8|16|32|64)?)`\\s+to\\s+`([a-z]+ unsigned)`")
 
 // parseDocUnsigned returns the column type the document names for each
 // unsigned Go integer.
