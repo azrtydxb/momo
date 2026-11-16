@@ -20,6 +20,9 @@ value list still diffs as before. On SQLite a named table-level
 unnamed column check is unchanged. `momotest.WithTemplateClone` makes
 `momotest.New` clone a template database per test instead of building a schema
 per test; without the option `momotest.New` behaves as before.
+
+### Change a primary key with `AllowKeyChange`
+
 `UpdateQuery.AllowKeyChange` is an opt-in that lets `UpdateQuery.Set` assign a
 primary-key column, for a row whose key a user chooses and may rename. Without
 it an assignment to a key column is refused with `ErrValidation`, as before.
