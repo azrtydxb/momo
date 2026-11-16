@@ -168,7 +168,7 @@ func (u UpdateQuery[T]) AllRows() UpdateQuery[T] { u.allRows = true; return u }
 // Only Set assigns a key. Model (which addresses the row by the key it holds),
 // BulkUpdate and the OnUpdate field hook keep refusing it, and an identity
 // key is still refused because the database generates it.
-func (u UpdateQuery[T]) AllowKeyChange() UpdateQuery[T] { u.allowKeyChange = true; return u }
+func (u UpdateQuery[T]) AllowKeyChange() UpdateQuery[T] { return u }
 
 // Returning appends a RETURNING list; read the rows with Rows.
 func (u UpdateQuery[T]) Returning(cols ...ColumnRef) UpdateQuery[T] {
