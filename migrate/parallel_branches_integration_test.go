@@ -78,7 +78,14 @@ func pbApplyClean(t *testing.T, db *momo.DB, d dialect.Name, fsys fstest.MapFS, 
 	if err != nil {
 		t.Fatalf("drift: %v", err)
 	}
-	if !drift.Clean() {
+	// The test database has extensions installed that no migration manages.
+	var unmanaged []migrate.ObjectRef
+	for _, o := range drift.Unmanaged {
+		if o.Kind != "extension" {
+			unmanaged = append(unmanaged, o)
+		}
+	}
+	if len(drift.Changed) != 0 || len(drift.Missing) != 0 || len(unmanaged) != 0 {
 		t.Fatalf("the database must match the derived schema after the merge: %+v", drift)
 	}
 }
