@@ -1099,6 +1099,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0160" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.16.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0150" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2252,6 +2263,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0160" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.16.0
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0150" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3304,6 +3326,11 @@
 <a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
+<h2 id="upgrading-to-0160">Upgrading to 0.16.0<a class="headerlink" href="#upgrading-to-0160" title="Permanent link">&para;</a></h2>
+<p>No edit is needed in your code. The GORM, Bun and Ent importers now write a
+composite index of the source model as a <code>c.Index</code> declaration in a
+<code>MomoConfig</code> method of the generated model, so a converted project no longer
+drops it on its next migration; rerun the import to get the declaration.</p>
 <h2 id="upgrading-to-0150">Upgrading to 0.15.0<a class="headerlink" href="#upgrading-to-0150" title="Permanent link">&para;</a></h2>
 <p>No edit is needed in your code. A model can now declare full-text search, and
 the declaration is recorded in the model and in the schema snapshot. On

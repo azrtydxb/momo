@@ -1455,7 +1455,7 @@ position, in the form <code>source: kind: Model.Field: message</code>.</p>
 </tr>
 <tr>
 <td><code>dropped-index</code></td>
-<td>an index Momo's tags cannot express (a composite index, a second index tag on a field) is not imported; declare it in the companion file</td>
+<td>a second index or unique constraint on one field, or a GORM index tag with the composite option and no name, is not imported; declare it in the companion file</td>
 </tr>
 <tr>
 <td><code>naming</code></td>
@@ -1473,6 +1473,16 @@ position, in the form <code>source: kind: Model.Field: message</code>.</p>
 </table>
 <p>The importer never drops one of these silently: an empty report means the
 reader found nothing to flag, not that it checked behaviour it cannot see.</p>
+<p>A composite index is not in the report: the importers write it as a
+<code>c.Index(name, &amp;m.A, &amp;m.B)</code> call, with <code>.Unique()</code> for a unique one, in a
+<code>MomoConfig</code> method of the model. GORM columns follow the <code>priority</code> of each
+<code>index</code> or <code>uniqueIndex</code> tag and the field order, a Bun column follows the
+field order of its <code>unique:name</code> group, and an Ent index keeps the order of
+<code>index.Fields</code>. What stays in the report is a second index or unique
+constraint on one field, a GORM index tag with the <code>composite</code> option and no
+index name (GORM rejects it), an index option such as <code>where</code> or <code>type</code> that
+the tags cannot carry (<code>unsupported</code>), and an index whose column has no field
+in the imported model (<code>unsupported</code>).</p>
 
 
 

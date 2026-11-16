@@ -5,6 +5,13 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.16.0
+
+No edit is needed in your code. The GORM, Bun and Ent importers now write a
+composite index of the source model as a `c.Index` declaration in a
+`MomoConfig` method of the generated model, so a converted project no longer
+drops it on its next migration; rerun the import to get the declaration.
+
 ## Upgrading to 0.15.0
 
 No edit is needed in your code. A model can now declare full-text search, and
