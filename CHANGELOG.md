@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.15.0](https://github.com/azrtydxb/momo/compare/v0.14.0...v0.15.0) (2026-11-16)
+
+_Full-text search on every dialect: a model declares it once, `momo migrate` renders the structure each database needs, and `fts.Search`, `fts.Score` and `fts.Snippet` query it portably. `momo.HybridSearch` now also runs on SQLite and MariaDB. No code change is needed to upgrade; the cgo SQLite driver needs `-tags sqlite_fts5` for FTS5. See [docs/fulltext.md](https://github.com/azrtydxb/momo/blob/v0.15.0/docs/fulltext.md) and [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.15.0/docs/upgrading.md). [Changes since 0.14.0](https://github.com/azrtydxb/momo/compare/v0.14.0...v0.15.0)._
+
+### Features
+
+- A model declares one full-text index with the `search` tag or `c.FullText(name, cols...)`, chained with `Config`, `Weights`, `Tokenizer`, `Parser`, `Expression` or `Concurrently`; names outside a strict allowlist are refused by `momo generate` ([#166](https://github.com/azrtydxb/momo/pull/166), [#193](https://github.com/azrtydxb/momo/pull/193))
+- **migrate:** PostgreSQL 12 or newer renders the declaration as a stored generated `tsvector` column with a GIN index; any change of the declaration recreates the column and index. Declared `Concurrently`, the column and the `CREATE INDEX CONCURRENTLY` go in separate migrations, so a full-text index on an existing table passes `migrate lint` ([#176](https://github.com/azrtydxb/momo/pull/176), [#183](https://github.com/azrtydxb/momo/pull/183))
+- **migrate:** SQLite renders an external-content FTS5 table `<table>_fts` with insert, update and delete sync triggers, kept through table rebuilds, renames and dropped source columns. FTS5 needs `-tags sqlite_fts5` on the cgo driver; `driver/sqlitepure` includes it ([#173](https://github.com/azrtydxb/momo/pull/173))
+- **migrate:** MySQL and MariaDB render a `FULLTEXT` index, with `WITH PARSER` on MySQL; a unique index, a non-text column, more than 16 columns and a non-InnoDB table are refused ([#171](https://github.com/azrtydxb/momo/pull/171))
+- **migrate:** inspection reads the full-text structures back on every dialect, so a second `AutoMigrate` plans nothing and `Drift` and `Baseline` stay clean; `--from-db` emits the declaration. `AutoMigrate` now creates the SQLite sync triggers ([#185](https://github.com/azrtydxb/momo/pull/185))
+- **migrate:** `migrate lint` warns on a generated `tsvector` column added to an existing PostgreSQL table (`fulltext-column-rewrite`) and on a `FULLTEXT` index added to an existing MySQL or MariaDB table (`fulltext-first-index`) ([#180](https://github.com/azrtydxb/momo/pull/180))
+- **fts:** `fts.Search`, `fts.Score` and `fts.Snippet` over `fts.Web`, `fts.Plain` or `fts.Raw` text run on PostgreSQL and SQLite; the text is always a bound parameter and the score is higher-is-better ([#175](https://github.com/azrtydxb/momo/pull/175))
+- **fts:** on MySQL and MariaDB the same calls render boolean-mode `MATCH ... AGAINST` built from parsed words only, so no typed character acts as an operator; `fts.Snippet` is `ErrUnsupported` there, and `fts.MySQLMatch` and `fts.MySQLRelevance` take a mode of your own ([#182](https://github.com/azrtydxb/momo/pull/182))
+- **hybrid:** `momo.HybridSearch` runs on SQLite (FTS5 and sqlite-vec) and MariaDB 11.8 with the PostgreSQL fusion knobs and primary-key tie-breaks; MySQL has no vector distance function and fails with `ErrUnsupported` before sending SQL ([#188](https://github.com/azrtydxb/momo/pull/188))
+
 ## [0.14.0](https://github.com/azrtydxb/momo/compare/v0.13.0...v0.14.0) (2026-11-15)
 
 _`Merge` and `BulkUpdate` now run on SQLite, MySQL and MariaDB, not only PostgreSQL. No code change is needed to upgrade, but code that relied on `ErrUnsupported` from these calls now takes the success path, and `Merge` on the emulated dialects has documented limits; see [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.14.0/docs/upgrading.md). [Changes since 0.13.0](https://github.com/azrtydxb/momo/compare/v0.13.0...v0.14.0)._
