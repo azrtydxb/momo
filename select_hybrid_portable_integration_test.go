@@ -227,6 +227,30 @@ func TestHybridSearchTieBreakPortable(t *testing.T) {
 				t.Errorf("row %d: score %v then %v", first[i].Row.ID, first[i].Score, second[i].Score)
 			}
 		}
+
+		// Rows that tie on distance exactly at the candidate cut-off: five rows
+		// share one vector and only two become candidates, so the primary key
+		// must decide which two, whatever the insertion order.
+		tied := []hdoc{
+			{ID: 1, Body: "alpha", Emb: hv(1, 1)},
+			{ID: 2, Body: "beta", Emb: hv(1, 1)},
+			{ID: 3, Body: "gamma", Emb: hv(1, 1)},
+			{ID: 4, Body: "delta", Emb: hv(1, 1)},
+			{ID: 5, Body: "epsilon", Emb: hv(1, 1)},
+			{ID: 6, Body: "zeta", Emb: hv(-1, 1)},
+		}
+		for name, order := range map[string][]int{"forward": {0, 1, 2, 3, 4, 5}, "reverse": {5, 4, 3, 2, 1, 0}, "shuffled": {2, 4, 0, 5, 1, 3}} {
+			hybridExec(t, db, "DELETE FROM hdocs")
+			shuffled := make([]hdoc, len(tied))
+			for i, j := range order {
+				shuffled[i] = tied[j]
+			}
+			insertHybrid(t, db, shuffled)
+			got := hybridRun(t, db, "zzzz", 2) // no text match: the vector leg alone
+			if want := []int64{1, 2}; !slices.Equal(hybridIDsOf(got), want) {
+				t.Errorf("%s insertion: candidates at the cut-off = %v, want %v", name, hybridIDsOf(got), want)
+			}
+		}
 	})
 }
 
