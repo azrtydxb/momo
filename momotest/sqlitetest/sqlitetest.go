@@ -108,7 +108,7 @@ func (tp *Template) load() {
 		tp.err = fmt.Errorf("snapshot: %w", err)
 		return
 	}
-	tp.image, tp.err = os.ReadFile(snapshot) //nolint:gosec // the path is inside the directory created above
+	tp.image, tp.err = os.ReadFile(snapshot) // #nosec G304 -- the path is inside the directory created above
 }
 
 // open opens the database file at path for tb and closes it when tb ends.
