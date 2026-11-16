@@ -1515,6 +1515,10 @@ of the type, a `Start` outside the bounds, or an `Increment` of 0.
 - `drift` and `baseline` compare sequences like any other object, so a sequence
   that is only in the database is `unmanaged: sequence <name>`. Hide one with
   `migrate.exclude`.
+- Narrowing the bounds of a sequence past its current value, or flipping its
+  increment so that the value falls outside the new bounds, fails at apply with
+  PostgreSQL's own error (SQLSTATE 22023); momo never adds a `RESTART`. Run an
+  explicit `ALTER SEQUENCE ... RESTART` in a custom migration first.
 - A sequence has a current value, which is data and not part of the schema. A
   new environment starts at the declared start; set the counter of a loaded
   database with `setval` in a custom migration.

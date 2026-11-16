@@ -5,6 +5,8 @@
 package postgres_test
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
@@ -12,42 +14,85 @@ import (
 	"github.com/azrtydxb/momo/schema"
 )
 
-// sequenceOnly is a schema with one sequence. The test database has the vector
-// extension installed, so the inspected schema lists it and the declared one
-// must too, as arraySchema does. Tables is an empty slice, not nil, because
+// sequencesOnly is a schema with the given sequences. The test database has the
+// vector extension installed, so the inspected schema lists it and the declared
+// one must too, as arraySchema does. Tables is an empty slice, not nil, because
 // schema.Equal compares the JSON form and an inspection of a database with no
 // table reads "tables": [] where a nil slice reads null.
-func sequenceOnly(q schema.Sequence) *schema.Schema {
+func sequencesOnly(qs ...schema.Sequence) *schema.Schema {
 	return &schema.Schema{
 		Dialect:    "postgres",
 		Extensions: []schema.Extension{{Name: "vector"}},
-		Sequences:  []schema.Sequence{q},
+		Sequences:  qs,
 		Tables:     []schema.Table{},
 	}
 }
 
-// Catches: an ALTER SEQUENCE that changes the data type, or flips the sign of
-// the increment, leaving bounds or start behind, so the database never matches
-// the declaration and every later diff alters the sequence again.
+// Catches: an ALTER SEQUENCE that changes the data type or an option leaving
+// bounds or start behind, and a CREATE of a descending sequence whose default
+// bounds and start differ from what inspect reads back, so the database never
+// matches the declaration and every later diff alters the sequence again.
 func TestPostgresAlterSequenceTypeAndNegativeIncrement(t *testing.T) {
 	db := testopen.Postgres(t)
-	got := roundTrip(t, db, sequenceOnly(schema.Sequence{Name: "jobs_seq"}))
+	got := roundTrip(t, db, sequencesOnly(schema.Sequence{Name: "jobs_seq"}))
 
-	steps := []schema.Sequence{
-		{Name: "jobs_seq", AsType: "integer"},
-		{Name: "jobs_seq", AsType: "integer", Increment: -1},
-		{Name: "jobs_seq", AsType: "smallint", Increment: -5, Cache: 3, Cycle: true},
+	// The current value of a fresh sequence is 1, so each step keeps it inside
+	// the new bounds: narrowing the type with the default bounds is legal.
+	steps := [][]schema.Sequence{
+		{{Name: "jobs_seq", AsType: "integer"}},
+		{{Name: "jobs_seq", AsType: "smallint", Increment: 5, Cache: 3, Cycle: true}},
+		// A descending sequence is created, not altered from an ascending one.
+		{
+			{Name: "jobs_seq", AsType: "smallint", Increment: 5, Cache: 3, Cycle: true},
+			{Name: "countdown_seq", AsType: "integer", Increment: -1},
+		},
+		{
+			{Name: "jobs_seq", AsType: "smallint", Increment: 5, Cache: 3, Cycle: true},
+			{Name: "countdown_seq", AsType: "integer", Increment: -10, MinValue: schema.Int64(-5000), Start: schema.Int64(-1)},
+		},
 	}
-	for _, q := range steps {
-		next := sequenceOnly(q)
+	for _, qs := range steps {
+		next := sequencesOnly(qs...)
 		applyStatements(t, db, planStatements(t, got, next, migrate.DiffOptions{}))
 		got = inspectNow(t, db)
 		if !schema.Equal(got, next) {
-			t.Fatalf("after altering to %+v there is a diff:\n%s", q, jsonDiff(got, next))
+			t.Fatalf("after moving to %+v there is a diff:\n%s", qs, jsonDiff(got, next))
 		}
 		if again, _, err := migrate.Diff(got, next, migrate.DiffOptions{}); err != nil || len(again) != 0 {
-			t.Fatalf("drift after altering to %+v: %v %+v", q, err, again)
+			t.Fatalf("drift after moving to %+v: %v %+v", qs, err, again)
 		}
+	}
+}
+
+// Catches: momo hiding a refusal by PostgreSQL, or adding a RESTART of its own,
+// when a changed declaration leaves the sequence's current value outside the new
+// bounds. The ALTER must fail at apply with SQLSTATE 22023 and leave the
+// sequence as it was.
+func TestPostgresAlterSequenceBoundsExcludeCurrentValueFails(t *testing.T) {
+	db := testopen.Postgres(t)
+	before := sequencesOnly(schema.Sequence{Name: "jobs_seq"})
+	got := roundTrip(t, db, before)
+
+	// A descending sequence has MAXVALUE -1, and the current value is 1.
+	next := sequencesOnly(schema.Sequence{Name: "jobs_seq", Increment: -1})
+	var failed error
+	for _, s := range planStatements(t, got, next, migrate.DiffOptions{}) {
+		if strings.Contains(s.SQL, "RESTART") {
+			t.Fatalf("momo must not add a RESTART: %s", s.SQL)
+		}
+		if _, err := db.Driver().Exec(context.Background(), s.SQL, nil); err != nil {
+			failed = err
+			break
+		}
+	}
+	if failed == nil {
+		t.Fatal("an ALTER that excludes the current value must fail at apply")
+	}
+	if !strings.Contains(failed.Error(), "22023") {
+		t.Fatalf("the PostgreSQL error (SQLSTATE 22023) must surface, got: %v", failed)
+	}
+	if after := inspectNow(t, db); !schema.Equal(after, before) {
+		t.Fatalf("the failed ALTER changed the sequence:\n%s", jsonDiff(after, before))
 	}
 }
 
