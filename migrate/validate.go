@@ -92,7 +92,7 @@ func ValidateOffline(fsys fs.FS, goMigrations ...GoMigration) (*ValidateReport, 
 		if !ok {
 			continue // reported as a missing parent
 		}
-		if !schemaEqual(e.snap.Schema, parent.derived()) {
+		if !parent.leavesSchemaOf(e.snap.Schema) {
 			add("%s: custom migration %s must not change the schema, but its snapshot differs from its parent's %s", e.path, f.Path, parent.path)
 		}
 	}

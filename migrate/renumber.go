@@ -54,7 +54,11 @@ func (e *Engine) AppliedVersions(ctx context.Context) ([]string, error) {
 // and the directory is left as it is.
 //
 // Renumber refuses, changing nothing, when a moved migration lies in a
-// subdirectory, or when an applied migration builds on one that would move. A
+// subdirectory, when an applied migration builds on one that would move, or
+// when a pending Go migration (registered with WithGoMigrations) sorts before
+// the newest applied version, naming it: a Go migration's version is set in
+// code, so renumber cannot move it. The command line has no Go migrations, so
+// it cannot see them; the engine that has them can. A
 // version moved past a migration of the other branch is checked by validate
 // afterwards: two migrations that change the same table are then a conflict.
 func (e *Engine) Renumber(applied []string) (removed []string, files map[string][]byte, moved []Renumbered, err error) {
@@ -63,6 +67,20 @@ func (e *Engine) Renumber(applied []string) (removed []string, files map[string]
 	for _, v := range applied {
 		done[v] = true
 		newest = max(newest, v)
+	}
+	// A Go migration's version lives in the code, not in a file, so it cannot be
+	// moved here: name the ones that are out of order and refuse.
+	goVersion := map[string]bool{}
+	var stuck []string
+	for _, g := range e.opts.goMigrations {
+		goVersion[g.Version] = true
+		if !done[g.Version] && g.Version < newest {
+			stuck = append(stuck, g.Version+"_"+g.Name)
+		}
+	}
+	if len(stuck) > 0 {
+		slices.Sort(stuck)
+		return nil, nil, nil, fmt.Errorf("migrate: pending Go migration(s) %s sort before the newest applied version %s and cannot be renumbered, because their version is set in code; change the Version of each in the code", strings.Join(stuck, ", "), newest)
 	}
 	all, err := Discover(e.dir)
 	if err != nil {
@@ -92,6 +110,9 @@ func (e *Engine) Renumber(applied []string) (removed []string, files map[string]
 			if move[p] && !move[v] {
 				if done[v] {
 					return nil, nil, nil, fmt.Errorf("migrate: version %s is applied but is built on %s, which is pending and would move; renumber cannot change applied migrations", v, p)
+				}
+				if goVersion[v] {
+					return nil, nil, nil, fmt.Errorf("migrate: Go migration %s is built on %s, which would move; renumber cannot change the version of a Go migration", v, p)
 				}
 				move[v], grew = true, true
 			}

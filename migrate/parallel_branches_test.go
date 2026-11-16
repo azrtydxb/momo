@@ -45,7 +45,7 @@ func pbFile(s string) *fstest.MapFile { return &fstest.MapFile{Data: []byte(s)} 
 // the table base.
 func pbBase() fstest.MapFS {
 	return fstest.MapFS{
-		pbV0 + "_init.up.sql":        pbFile("-- momo:generated\nCREATE TABLE base (id bigint PRIMARY KEY);\n"),
+		pbV0 + "_init.up.sql":        pbFile("-- momo:generated\nCREATE TABLE base (id bigint NOT NULL);\n"),
 		pbV0 + "_init.snapshot.json": pbFile(pbSnapshot(pbV0, "", pbTable("base"))),
 	}
 }
@@ -109,8 +109,8 @@ func pbMerge(t *testing.T, ours, theirs fstest.MapFS) fstest.MapFS {
 func pbMergedIndependent(t *testing.T) fstest.MapFS {
 	t.Helper()
 	base := pbBase()
-	a := pbBranch(base, pbVA, "add_a", "CREATE TABLE a (id bigint PRIMARY KEY);", pbTable("base"), pbTable("a"))
-	b := pbBranch(base, pbVB, "add_b", "CREATE TABLE b (id bigint PRIMARY KEY);", pbTable("base"), pbTable("b"))
+	a := pbBranch(base, pbVA, "add_a", "CREATE TABLE a (id bigint NOT NULL);", pbTable("base"), pbTable("a"))
+	b := pbBranch(base, pbVB, "add_b", "CREATE TABLE b (id bigint NOT NULL);", pbTable("base"), pbTable("b"))
 	return pbMerge(t, a, b)
 }
 

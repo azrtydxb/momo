@@ -777,6 +777,7 @@ func (l *cli) hashCmd(fs *flag.FlagSet) func([]string) int {
 		for _, p := range written {
 			l.say("%s", l.rel(p))
 		}
+		l.warnNoUnionRule(dir)
 		return exitOK
 	}
 }
@@ -829,6 +830,7 @@ func (l *cli) validateCmd(fs *flag.FlagSet) func([]string) int {
 		for _, p := range rep.Problems {
 			l.say("problem: %s", p)
 		}
+		l.warnNoUnionRule(l.migrationDir())
 		code := exitOK
 		if len(rep.Problems) > 0 {
 			code = exitFindings
@@ -1186,6 +1188,7 @@ func (l *cli) renumberCmd(applied string) int {
 	if err != nil {
 		return l.errf(exitFindings, "renumber refused: %v", err)
 	}
+	l.say("note: pending Go migrations are not visible to the command line; one that sorts before the newest applied version must get a later Version in its code")
 	if len(moved) == 0 {
 		l.say("nothing to renumber: no pending migration is older than the newest applied one")
 		return exitOK
@@ -1209,12 +1212,13 @@ func (l *cli) renumberCmd(applied string) int {
 	return exitOK
 }
 
-// applyRebase deletes the branch files a rebase replaces and writes the
-// regenerated migration. Every path is checked before anything changes, so a
-// path that cannot be deleted refuses the whole rebase with the directory
-// untouched; a failure after that (a delete or a write) leaves a half-rebased
-// directory, and the message says how to get back: restore the directory from
-// version control and run the rebase again.
+// applyRebase writes the regenerated files and then deletes the branch files
+// a rebase replaces. Every path is checked before anything changes, so a path
+// that cannot be deleted refuses the whole rebase with the directory
+// untouched, and a failed write leaves it untouched too; a failure while
+// deleting leaves old and new files side by side, and the message says how to
+// get back: restore the directory from version control and run the rebase
+// again.
 func (l *cli) applyRebase(dir string, removed []string, files map[string][]byte) int {
 	paths := make([]string, len(removed))
 	for i, f := range removed {
@@ -1225,25 +1229,27 @@ func (l *cli) applyRebase(dir string, removed []string, files map[string][]byte)
 		}
 	}
 	recovery := fmt.Sprintf("the migration directory %s is half rebased; restore it from version control (git checkout -- %s), fix the cause and run momo migrate rebase again", l.rel(dir), l.rel(dir))
+	// The new files and momo.sum are written first, all or nothing, so a
+	// failed write leaves the directory as it was; only then are the old ones
+	// removed.
+	if files != nil {
+		written, err := writeNewFiles(dir, files)
+		for _, p := range written {
+			l.say("%s", l.rel(p))
+		}
+		if err != nil {
+			code := exitUsage
+			if errors.Is(err, iofs.ErrExist) {
+				code = exitFindings
+			}
+			return l.errf(code, "%v; nothing was removed and the directory is unchanged", err)
+		}
+	}
 	for i, p := range paths {
 		if err := os.Remove(p); err != nil {
 			return l.errf(exitDatabase, "remove %s: %v; removed %d of %d files; %s", removed[i], err, i, len(paths), recovery)
 		}
 		l.say("removed: %s", removed[i])
-	}
-	if files == nil {
-		return exitOK
-	}
-	written, err := writeNewFiles(dir, files)
-	for _, p := range written {
-		l.say("%s", l.rel(p))
-	}
-	if err != nil {
-		code := exitUsage
-		if errors.Is(err, iofs.ErrExist) {
-			code = exitFindings
-		}
-		return l.errf(code, "%v; %d old files were removed; %s", err, len(paths), recovery)
 	}
 	return exitOK
 }

@@ -406,21 +406,43 @@ Two branches that each add a migration merge with `git merge` and at most one
   branches off one migration both write the same parent. The schema after a
   migration is not read from its snapshot alone: the migrations are folded in
   version order, and each one contributes what it changed relative to its
-  parent. The next `diff` and `drift` read that derived schema
-  (`migrate.LatestState`), so after the merge `diff` builds on the work of both
-  branches and does not undo either. A chain with no fork is unchanged: every
-  derived schema is its snapshot.
-- The unit of change is one table with its triggers and policies, one view, one
-  enum, one extension, one function or one schema. Branches that change
-  different objects merge. Branches that change the same table are a
-  `migrate.ErrBranchConflict` naming the table and both migrations, because
-  rendered SQL restates the whole object (a SQLite table rebuild, or dropping
-  and adding a constraint) and so does not commute. Two branches that make the
-  identical change to an object are one change. A merge that leaves a foreign
-  key pointing at a table another branch dropped is a conflict too. Two root
-  migrations with no parent are a conflict.
-- A hand-written migration has a snapshot equal to its parent's, so it changes
-  nothing and never conflicts.
+  parent. A migration's base is its parent's stored snapshot, because that is
+  what it was generated from; a migration written by `diff` or `new --custom`
+  after a merge records `"base": "derived"` in its snapshot, which makes the
+  parent's derived schema its base, so a later deliberate drop of the other
+  branch's table is a change and not swallowed. The next `diff` and `drift` read
+  the derived schema (`migrate.LatestState`), so after the merge `diff` builds on
+  the work of both branches and does not undo either. A chain with no fork is
+  unchanged: every derived schema is its snapshot. A migration built on one
+  branch's migration after the merge, such as the second migration of a
+  renumbered branch, keeps the other branch's work.
+- The rule is that independence must be shown, and what cannot be shown is a
+  `migrate.ErrBranchConflict` at `validate`, naming both migrations and the
+  object, never a failure at `apply`. The unit of change is one table with its
+  triggers and policies, one view, one enum, one extension, one function or one
+  schema. Two root migrations with no parent are a conflict. Two migrations
+  are independent when all of these hold:
+  - they change different objects. Branches that change the same table
+    conflict, because rendered SQL restates the whole object (a SQLite table
+    rebuild, or dropping and adding a constraint) and so does not commute.
+    Branches that make the identical change conflict too: both SQL files would
+    run and the second would fail;
+  - a view one branch changes does not read a table (or view) the other changes,
+    by the view's recorded sources; when the sources of a changed view are not
+    recorded, the other branch must change no table;
+  - when one branch changes a function, a trigger or a policy, whose body is
+    opaque, the other changes no table or view;
+  - every foreign key of the merged schema that was valid on either side is
+    still valid: the referenced table and columns exist, the column types match
+    and a primary key, a unique constraint or a unique index backs the
+    referenced columns. A dropped or retyped referenced column, or a dropped
+    key, is a conflict.
+- A hand-written migration has a snapshot equal to its parent's stored or
+  derived schema, so it changes nothing and never conflicts.
+- `momo migrate hash` and `momo migrate validate` print a warning on standard
+  error when the directory is inside a git work tree and no `.gitattributes`
+  rule gives `momo.sum` the `merge=union` driver. It does not change the exit
+  code.
 
 Resolve a conflict with `momo migrate rebase` (below). When no branch has
 committed a migration yet, one `momo migrate diff` after the merge is enough.
@@ -437,7 +459,12 @@ migrations and rewriting their `momo.sum` lines, and changes no schema and no
 SQL. It reads the applied versions from the database, or takes them from
 `--applied V1,V2` offline, and it refuses to touch an applied migration. A
 pending migration that builds on a moved one moves with it; an applied one that
-builds on a pending migration is refused. The result is validated, so a moved
+builds on a pending migration is refused. A pending Go migration cannot be moved,
+because its version is set in code: an engine that has it
+(`migrate.WithGoMigrations`) refuses and names it, and the command line, which
+has no Go migrations, cannot see it and says so; give such a migration a later
+`Version` in its code. The new files and `momo.sum` are written before the old
+files are removed. The result is validated, so a moved
 migration that changes the same table as one it now follows is reported as a
 conflict. For a conflict, fix it in the files of the branch that merged last,
 before it is applied anywhere. The late migration is still pending, so it needs

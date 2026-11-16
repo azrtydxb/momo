@@ -50,6 +50,36 @@ func TestMigrateHashSumFormat(t *testing.T) {
 	}
 }
 
+// hash and validate warn inside a git work tree that has no union rule for
+// momo.sum, and say nothing once the rule is there or outside a work tree.
+func TestMigrateWarnsWithoutUnionRule(t *testing.T) {
+	dir := t.TempDir()
+	mkdirAll(t, filepath.Join(dir, ".git"))
+	mdir := filepath.Join(dir, "migrations", "postgres")
+	cfg := yamlPath(t, dir, "migrate:\n  dir:\n    postgres: "+filepath.ToSlash(mdir)+"\n")
+	writeFile(t, filepath.Join(mdir, "20260101000000_a.up.sql"), "CREATE TABLE a (id int);\n")
+	warned := func(args ...string) bool {
+		var out, errOut bytes.Buffer
+		runMigrate(&out, &errOut, append([]string{"--config", cfg}, args...), noEnv)
+		return strings.Contains(errOut.String(), "merge=union")
+	}
+	if !warned("hash") || !warned("validate") {
+		t.Fatal("hash and validate must warn when no .gitattributes rule covers momo.sum")
+	}
+	writeFile(t, filepath.Join(dir, ".gitattributes"), "* text=auto\nmigrations/**/momo.sum merge=union\n")
+	if warned("hash") || warned("validate") {
+		t.Fatal("a matching rule must silence the warning")
+	}
+	writeFile(t, filepath.Join(dir, ".gitattributes"), "momo.sum merge=union\n")
+	if warned("hash") {
+		t.Fatal("a rule without a slash matches at any depth")
+	}
+	writeFile(t, filepath.Join(dir, ".gitattributes"), "other/momo.sum merge=union\n")
+	if !warned("hash") {
+		t.Fatal("a rule for another directory must not count")
+	}
+}
+
 func cliSnapshot(version, parent string, tables ...string) string {
 	var ts []string
 	for _, n := range tables {

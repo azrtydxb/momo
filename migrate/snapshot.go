@@ -22,11 +22,19 @@ const SnapshotFormat = 1
 // SnapshotFile is the content of <version>_<name>.snapshot.json: the schema
 // after a migration, plus the version of the migration it follows.
 type SnapshotFile struct {
-	Format        int            `json:"format_version"` // SnapshotFormat
-	Version       string         `json:"version"`
-	ParentVersion string         `json:"parent"` // empty for the first migration
-	Schema        *schema.Schema `json:"schema"`
+	Format        int    `json:"format_version"` // SnapshotFormat
+	Version       string `json:"version"`
+	ParentVersion string `json:"parent"` // empty for the first migration
+	// Base is BaseDerived when the schema was generated from the derived
+	// state of the parent (a diff after two branches merged), not from the
+	// parent's own snapshot file. Empty otherwise.
+	Base   string         `json:"base,omitempty"`
+	Schema *schema.Schema `json:"schema"`
 }
+
+// BaseDerived is SnapshotFile.Base of a snapshot generated from the schema
+// derived by folding the chain up to its parent.
+const BaseDerived = "derived"
 
 // rawSnapshot decodes the wrapper while deferring the schema to schema.Load,
 // which owns the schema format_version check and the version dispatch.
@@ -34,6 +42,7 @@ type rawSnapshot struct {
 	Format  int             `json:"format_version"`
 	Version string          `json:"version"`
 	Parent  string          `json:"parent"`
+	Base    string          `json:"base"`
 	Schema  json.RawMessage `json:"schema"`
 }
 
@@ -70,7 +79,7 @@ func ReadSnapshot(r io.Reader) (*SnapshotFile, error) {
 	if err != nil {
 		return nil, fmt.Errorf("migrate: snapshot schema: %w", err)
 	}
-	return &SnapshotFile{Format: raw.Format, Version: raw.Version, ParentVersion: raw.Parent, Schema: s}, nil
+	return &SnapshotFile{Format: raw.Format, Version: raw.Version, ParentVersion: raw.Parent, Base: raw.Base, Schema: s}, nil
 }
 
 // WriteSnapshot encodes s as indented JSON with a trailing newline. It stamps

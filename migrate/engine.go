@@ -851,10 +851,11 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 	}
 	to = *expanded
 	from := &schema.Schema{Dialect: to.Dialect}
-	parent := ""
+	parent, base := "", ""
 	snap, err := LatestState(e.dir)
 	switch {
 	case err == nil:
+		base = snap.Base
 		from = applyOnly(dropExternalExtensions(snap.Schema, e.opts.config.ExternalExtensions), e.opts.config.OnlyTables)
 		if from, err = expand(e.opts.dialect, from); err != nil {
 			return nil, err
@@ -903,6 +904,7 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 			m = head
 		}
 	}
+	m.Base = base
 	files := []*Migration{m}
 	if m.Next != nil {
 		files = append(files, m.Next)
@@ -923,7 +925,7 @@ func (e *Engine) migrationFiles(ms ...*Migration) (map[string][]byte, error) {
 		upName := m.Version + "_" + m.Name + ".up.sql"
 		snapName := m.Version + "_" + m.Name + ".snapshot.json"
 		var snapBuf bytes.Buffer
-		if err := WriteSnapshot(&snapBuf, SnapshotFile{Version: m.Version, ParentVersion: m.Parent, Schema: m.Snapshot}); err != nil {
+		if err := WriteSnapshot(&snapBuf, SnapshotFile{Version: m.Version, ParentVersion: m.Parent, Base: m.Base, Schema: m.Snapshot}); err != nil {
 			return nil, err
 		}
 		added[upName], added[snapName] = renderUp(m), snapBuf.Bytes()

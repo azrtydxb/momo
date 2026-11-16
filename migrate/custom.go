@@ -45,7 +45,7 @@ func (e *Engine) NewCustom(name string) (*Migration, error) {
 	upName := version + "_" + name + ".up.sql"
 	snapName := version + "_" + name + ".snapshot.json"
 	var snapBuf bytes.Buffer
-	if err := WriteSnapshot(&snapBuf, SnapshotFile{Version: version, ParentVersion: snap.Version, Schema: snap.Schema}); err != nil {
+	if err := WriteSnapshot(&snapBuf, SnapshotFile{Version: version, ParentVersion: snap.Version, Base: snap.Base, Schema: snap.Schema}); err != nil {
 		return nil, err
 	}
 	added := memFS{upName: []byte(customUpTemplate), snapName: snapBuf.Bytes()}
@@ -62,7 +62,7 @@ func (e *Engine) NewCustom(name string) (*Migration, error) {
 		return nil, err
 	}
 	return &Migration{
-		Version: version, Name: name, Kind: "sql", Parent: snap.Version, Snapshot: snap.Schema,
+		Version: version, Name: name, Kind: "sql", Parent: snap.Version, Base: snap.Base, Snapshot: snap.Schema,
 		Files: map[string][]byte{upName: added[upName], snapName: added[snapName], SumFileName: sumBuf.Bytes()},
 	}, nil
 }

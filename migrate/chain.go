@@ -35,6 +35,13 @@ func (e chainEntry) derived() *schema.Schema {
 	return e.snap.Schema
 }
 
+// leavesSchemaOf reports whether s is the schema this migration leaves: its
+// derived state or its own stored snapshot. A migration that changes nothing
+// has one of them, depending on whether it was written before or after a merge.
+func (e chainEntry) leavesSchemaOf(s *schema.Schema) bool {
+	return schemaEqual(s, e.derived()) || schemaEqual(s, e.snap.Schema)
+}
+
 // loadChain reads every snapshot in fsys and checks that they form a chain:
 // one root, every parent present and older than its child, no cycle, and every
 // fork mergeable (the branches change different tables, see foldChain). It

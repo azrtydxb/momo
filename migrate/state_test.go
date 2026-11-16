@@ -156,22 +156,6 @@ func TestDiffAfterMergeThenDeliberateDrop(t *testing.T) {
 	}
 }
 
-// A branch that drops a table the other branch's table refers to is refused by
-// the foreign-key check of the merged state.
-func TestForkDroppingReferencedTableConflicts(t *testing.T) {
-	root := fstest.MapFS{
-		pbV0 + "_init.up.sql":        pbFile("-- momo:generated\nCREATE TABLE p (id bigint);\n"),
-		pbV0 + "_init.snapshot.json": pbFile(pbSnapshot(pbV0, "", pbTable("p"))),
-	}
-	child := `{"name":"c","columns":[{"name":"id","type":"bigint"},{"name":"p_id","type":"bigint"}],"foreign_keys":[{"name":"c_p","columns":["p_id"],"ref_table":"p","ref_columns":["id"]}]}`
-	drop := pbBranch(root, pbVA, "drop_p", "DROP TABLE p;")
-	add := pbBranch(root, pbVB, "add_c", "CREATE TABLE c (id bigint, p_id bigint);", pbTable("p"), child)
-	_, err := migrate.Chain(pbMerge(t, drop, add))
-	if !errors.Is(err, migrate.ErrBranchConflict) || !strings.Contains(err.Error(), "c.c_p") {
-		t.Fatalf("want a conflict naming the foreign key, got %v", err)
-	}
-}
-
 func pbDesired(tables ...string) *schema.Schema {
 	s := &schema.Schema{Dialect: "postgres"}
 	for _, n := range tables {
