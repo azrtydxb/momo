@@ -747,6 +747,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#repairing-a-database-drift-fix-sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repairing a database: drift --fix-sql
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1854,6 +1865,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#repairing-a-database-drift-fix-sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repairing a database: drift --fix-sql
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2641,9 +2663,12 @@ that appears later (a merged branch) is still applied, after newer ones.
 <code>apply</code> does not check snapshot parents; <code>validate</code> does (section 2).</p>
 <h3 id="drift">Drift<a class="headerlink" href="#drift" title="Permanent link">&para;</a></h3>
 <p><code>momo migrate drift</code> inspects the live database and compares it with the
-snapshot of the <strong>latest applied</strong> migration (the empty schema if none, so
-every object is unmanaged). Exit 0 and <code>no drift</code>, or exit 1 and one line per
-finding:</p>
+snapshot of the <strong>latest applied</strong> migration. A database without momo history
+(nothing applied, the case of <a href="#7-adopting-an-existing-database">adopting a database</a>)
+is compared with the <strong>latest snapshot in the migration directory</strong> instead, the
+schema <code>baseline</code> expects, so each differing object is named; a directory
+without a snapshot compares with the empty schema, so every object is
+unmanaged. Exit 0 and <code>no drift</code>, or exit 1 and one line per finding:</p>
 <table>
 <thead>
 <tr>
@@ -2671,6 +2696,11 @@ finding:</p>
 </tbody>
 </table>
 <ul>
+<li>A <code>changed:</code> line ends with <code>live: ...; snapshot: ...</code>: the fields that
+  differ, with the value each side holds. For a column that lost its default and
+  its NOT NULL: <code>live: default=none, nullable=true; snapshot: default="'new'", nullable=false</code>
+  (<code>nullable=false</code> is NOT NULL). An object present only live lists its whole
+  definition under <code>live:</code>.</li>
 <li>Extension versions are ignored when either side leaves the version empty.</li>
 <li>A sequence no column owns is a <code>sequence</code> object: <code>missing</code>, <code>unmanaged</code> or
   <code>changed</code> (the differing fields, such as <code>increment</code>) like any other.</li>
@@ -2755,6 +2785,63 @@ finding:</p>
   (never hides a real one), and lists the tables it compared as declared in
   <code>CanonicalizeSkipped</code>.</li>
 </ul>
+<h3 id="repairing-a-database-drift-fix-sql">Repairing a database: <code>drift --fix-sql</code><a class="headerlink" href="#repairing-a-database-drift-fix-sql" title="Permanent link">&para;</a></h3>
+<p><code>momo migrate drift --fix-sql</code> prints the DDL that brings the live database to
+the snapshot drift compares it with (the latest applied one, or, without
+history, the latest snapshot in the directory). It is for a database another
+tool built, so that adopting it needs no hand-written SQL: the refusal of
+<code>baseline</code> names the differing objects, <code>drift --fix-sql</code> writes the fix.</p>
+<ul>
+<li>It only prints. The script goes to standard output, one statement per block,
+  ended by a semicolon, in the order <code>diff</code> would write a migration (the
+  statements that must run outside a transaction come last, behind a comment).
+  Review it and run it yourself; momo applies nothing. Standard output is SQL
+  only; everything else, including <code>no drift</code> for a clean database, goes to
+  standard error. PostgreSQL runs the script in one transaction, and so does
+  SQLite, except that a table rebuild needs <code>PRAGMA foreign_keys = OFF</code> set
+  outside the transaction (the script says so in a comment). MySQL and MariaDB
+  do not roll DDL back: a step that fails (a constraint the data violates)
+  leaves the steps before it applied, and standard error says so.</li>
+<li>It compares with the snapshot of the latest applied migration, or, without
+  history, the latest snapshot in the directory. <code>--version N</code> compares with
+  the snapshot of exactly version N instead, the one <code>baseline --version N</code>
+  checks; use it when you adopt at the init version while the directory holds
+  later migrations (<code>RepairOptions.Version</code> and <code>DriftOptions.Version</code> in Go).
+  Standard error names the version that was compared
+  (<code>DriftReport.SnapshotVersion</code>).</li>
+<li>It is rendered by the dialect's own differ and renderer, live to snapshot, so
+  PostgreSQL, SQLite (a table rebuild where SQLite needs one) and MySQL/MariaDB
+  each get their own SQL. A step the dialect cannot render is listed on standard
+  error as <code>not rendered: ...</code>, never printed as wrong SQL, and the exit code is 1.</li>
+<li>Destructive steps are not printed: every drop (a table, column, index,
+  constraint or view the snapshot does not have) and every column type change.
+  Each is listed on standard error as <code>withheld: &lt;change&gt; &lt;name&gt;: &lt;reason&gt;</code>,
+  together with the steps that depend on it and the creates that would replace
+  it (a changed view, trigger, policy, index or constraint is a drop and a
+  create of the same name, and printing the create alone would fail with
+  <code>already exists</code>), and the exit code is 1. Pass
+  <code>--allow-destructive</code> to print them too. On SQLite, a step that needs a table
+  rebuild is withheld while another step of the same table is, because the
+  rebuild would apply it.</li>
+<li>A NOT NULL column that is missing is added nullable (the table may hold rows).
+  Standard error lists it as <code>staged: ...</code> with the <code>ALTER TABLE ... SET NOT NULL</code>
+  to run once it is backfilled, and the exit code is 1, because the database
+  still differs from the snapshot.</li>
+<li>A difference no statement covers (an index PostgreSQL marks invalid, an
+  unmanaged extension or schema) is listed as <code>not covered: ...</code> and the exit
+  code is 1: fix it by hand or hide it with <code>migrate.exclude</code>. View, trigger and
+  policy text that drift could not compare is <code>unverified</code> and does not count,
+  as in <code>drift</code>.</li>
+<li>A clean database prints <code>no drift</code> on standard error and exits 0.</li>
+</ul>
+<p>In Go, <code>Engine.DriftRepair(ctx, migrate.RepairOptions{})</code> returns a
+<code>*migrate.Repair</code>: <code>Statements</code>, <code>SQL()</code> for the script, <code>Withheld</code> and
+<code>Unsupported</code> with their reasons, <code>Uncovered</code>, <code>Staged</code>, <code>Hints</code>,
+<code>Transactional</code>, and <code>Complete()</code>, which is false while any of the lists is not
+empty. The refusal of
+<code>Engine.Baseline</code> is a <code>*migrate.BaselineMismatchError</code> (it still matches
+<code>errors.Is(err, migrate.ErrBaselineMismatch)</code>) whose <code>Report</code> holds every
+differing object; its message names the first 50.</p>
 <h2 id="2-cli">2. CLI<a class="headerlink" href="#2-cli" title="Permanent link">&para;</a></h2>
 <p><code>momo</code> has four commands: <code>generate</code>, <code>migrate</code>, <code>viz</code>, <code>help</code>. Global exit codes:
 0 success, 1 findings, 2 usage/config, 3 database/lock/execution (migrate).</p>
@@ -2819,10 +2906,10 @@ finding:</p>
 <td>database differs from snapshot</td>
 </tr>
 <tr>
-<td><code>drift [--strict]</code></td>
+<td><code>drift [--version N] [--strict] [--fix-sql [--allow-destructive]]</code></td>
 <td>yes</td>
-<td>Section 1.</td>
-<td>any change, missing or unmanaged</td>
+<td>Section 1; <code>--fix-sql</code> prints the repair DDL.</td>
+<td>any change, missing, unmanaged; <code>--fix-sql</code>: a withheld, staged, uncovered or unrenderable step</td>
 </tr>
 <tr>
 <td><code>resolve --version N --applied</code> or <code>--rolled-back</code></td>
@@ -3818,7 +3905,15 @@ SQLite's are in <a href="#a-sqlite-database">a SQLite database</a>.</p>
 <li>Run <code>momo generate</code>, which writes the generated code for the new models.</li>
 <li><code>momo migrate baseline --version &lt;init version&gt;</code>. It checks the live
    database against that snapshot, including view, policy and trigger text, and
-   exits 1 with <code>differing object kinds: ...</code> on a mismatch, then records every
+   exits 1 on a mismatch with <code>differing object kinds: ...</code> and one line for each
+   differing object (the first 50, then <code>and N more</code>): its kind, table and
+   column or constraint name and, for a changed one, the live and snapshot
+   definitions. <code>momo migrate drift --version &lt;init version&gt;</code> lists the same
+   lines for a database without history (without <code>--version</code> it compares with
+   the latest snapshot in the directory, which differs from the init snapshot
+   once later migrations exist), and <code>momo migrate drift --fix-sql</code> prints the DDL that removes the
+   difference (see Drift, section 1), so you can repair the database instead of
+   guessing which object differs. A passing baseline then records every
    migration up to that version as <code>applied</code> with <code>statements_applied = 0</code> and
    <code>apply_id = baseline</code>, without running them. <code>--force</code> records anyway; use it
    only after reviewing the mismatch. Schema objects outside the models, such as

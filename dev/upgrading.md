@@ -5,6 +5,27 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.17.0
+
+`momo migrate drift` and the refusal of `momo migrate baseline` now name what
+differs, and `drift --fix-sql` prints the repair; no edit is needed in your
+code, but a script that reads the output of either on a database without momo
+history sees a different report.
+
+### Drift without history compares with the latest snapshot
+
+On a database with no applied migration, `momo migrate drift` (and
+`migrate.Engine.Drift`) used to report every table as `unmanaged`; it now compares the
+live database with the latest snapshot in the migration directory, the schema
+`baseline` expects, and reports `missing:`, `changed:` and `unmanaged:` objects
+by name. A `changed:` line now ends with the live and snapshot definitions of
+the fields that differ. The refusal of `migrate.Engine.Baseline` is a
+`*migrate.BaselineMismatchError` that names the differing objects (the first 50)
+and still matches `errors.Is(err, migrate.ErrBaselineMismatch)`.
+`momo migrate drift --fix-sql` prints the DDL that brings the database to the
+snapshot, withholding drops and column type changes unless `--allow-destructive`
+is given; see [migrations](migrations.md#repairing-a-database-drift---fix-sql).
+
 ## Upgrading to 0.16.0
 
 `momo.sum` has a new format 2 that an older momo binary refuses with

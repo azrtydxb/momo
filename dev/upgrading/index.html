@@ -1099,6 +1099,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0170" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.17.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.17.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#drift-without-history-compares-with-the-latest-snapshot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drift without history compares with the latest snapshot
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0160" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2335,6 +2363,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0170" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.17.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.17.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#drift-without-history-compares-with-the-latest-snapshot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drift without history compares with the latest snapshot
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0160" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3470,6 +3526,23 @@
 <a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
+<h2 id="upgrading-to-0170">Upgrading to 0.17.0<a class="headerlink" href="#upgrading-to-0170" title="Permanent link">&para;</a></h2>
+<p><code>momo migrate drift</code> and the refusal of <code>momo migrate baseline</code> now name what
+differs, and <code>drift --fix-sql</code> prints the repair; no edit is needed in your
+code, but a script that reads the output of either on a database without momo
+history sees a different report.</p>
+<h3 id="drift-without-history-compares-with-the-latest-snapshot">Drift without history compares with the latest snapshot<a class="headerlink" href="#drift-without-history-compares-with-the-latest-snapshot" title="Permanent link">&para;</a></h3>
+<p>On a database with no applied migration, <code>momo migrate drift</code> (and
+<code>migrate.Engine.Drift</code>) used to report every table as <code>unmanaged</code>; it now compares the
+live database with the latest snapshot in the migration directory, the schema
+<code>baseline</code> expects, and reports <code>missing:</code>, <code>changed:</code> and <code>unmanaged:</code> objects
+by name. A <code>changed:</code> line now ends with the live and snapshot definitions of
+the fields that differ. The refusal of <code>migrate.Engine.Baseline</code> is a
+<code>*migrate.BaselineMismatchError</code> that names the differing objects (the first 50)
+and still matches <code>errors.Is(err, migrate.ErrBaselineMismatch)</code>.
+<code>momo migrate drift --fix-sql</code> prints the DDL that brings the database to the
+snapshot, withholding drops and column type changes unless <code>--allow-destructive</code>
+is given; see <a href="../migrations/#repairing-a-database-drift---fix-sql">migrations</a>.</p>
 <h2 id="upgrading-to-0160">Upgrading to 0.16.0<a class="headerlink" href="#upgrading-to-0160" title="Permanent link">&para;</a></h2>
 <p><code>momo.sum</code> has a new format 2 that an older momo binary refuses with
 <code>migrate.ErrNewerFormat</code>, so upgrade every binary that reads a migration

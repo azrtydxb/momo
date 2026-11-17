@@ -6007,6 +6007,21 @@
 <td>BaselineApplyID is the apply_id of the history rows Baseline writes.</td>
 </tr>
 <tr>
+<td><code>migrate.BaselineMismatchError</code></td>
+<td>type</td>
+<td>BaselineMismatchError is the error Baseline returns when the live database does not match the snapshot.</td>
+</tr>
+<tr>
+<td><code>migrate.BaselineMismatchError.Error</code></td>
+<td>method</td>
+<td>Error names the differing object kinds, their counts and the differing objects themselves, one per line.</td>
+</tr>
+<tr>
+<td><code>migrate.BaselineMismatchError.Unwrap</code></td>
+<td>method</td>
+<td>Unwrap returns ErrBaselineMismatch.</td>
+</tr>
+<tr>
 <td><code>migrate.Canonicalizer</code></td>
 <td>type</td>
 <td>Canonicalizer is implemented by dialects whose database rewrites declared text.</td>
@@ -6132,6 +6147,11 @@
 <td>Clean reports whether there is no drift.</td>
 </tr>
 <tr>
+<td><code>migrate.DriftReport.Lines</code></td>
+<td>method</td>
+<td>Lines names every differing object, one line each: the changed objects with their live and snapshot definitions, then the missing ones, then the unmanaged ones.</td>
+</tr>
+<tr>
 <td><code>migrate.DropCheck</code></td>
 <td>const</td>
 <td>Change kinds produced by Diff.</td>
@@ -6229,7 +6249,12 @@
 <tr>
 <td><code>migrate.Engine.Drift</code></td>
 <td>method</td>
-<td>Drift compares the live database with the snapshot of the latest applied migration (the empty schema when none is applied, so every live object is unmanaged) and reports what differs.</td>
+<td>Drift compares the live database with the snapshot of the latest applied migration and reports what differs.</td>
+</tr>
+<tr>
+<td><code>migrate.Engine.DriftRepair</code></td>
+<td>method</td>
+<td>DriftRepair plans the DDL that brings the live database to the snapshot Drift compares it with: the one RepairOptions.Version names, else the latest applied migration's, else, for a database without momo history, the latest state of the migration directory (Repair.Report.SnapshotVersion says which).</td>
 </tr>
 <tr>
 <td><code>migrate.Engine.DriftWith</code></td>
@@ -6497,6 +6522,11 @@
 <td>ObjectDiff describes how one object differs.</td>
 </tr>
 <tr>
+<td><code>migrate.ObjectDiff.Line</code></td>
+<td>method</td>
+<td>Line spells the difference on one line: the kind, the qualified name (table.column, table.constraint), what differs and, when known, the definition each side holds.</td>
+</tr>
+<tr>
 <td><code>migrate.ObjectRef</code></td>
 <td>type</td>
 <td>ObjectRef names a database object.</td>
@@ -6580,6 +6610,26 @@
 <td><code>migrate.Renumbered</code></td>
 <td>type</td>
 <td>Renumbered is one migration Renumber moved to a later version.</td>
+</tr>
+<tr>
+<td><code>migrate.Repair</code></td>
+<td>type</td>
+<td>Repair is the plan that brings a live database to the latest snapshot.</td>
+</tr>
+<tr>
+<td><code>migrate.Repair.Complete</code></td>
+<td>method</td>
+<td>Complete reports whether the plan is the whole repair: nothing was withheld, nothing is unsupported, no difference is uncovered and no column was added nullable instead of NOT NULL.</td>
+</tr>
+<tr>
+<td><code>migrate.Repair.SQL</code></td>
+<td>method</td>
+<td>SQL spells Statements as a script: the statements that run in a transaction, each ended by a semicolon and separated by a blank line, then, behind a comment, the ones that must run outside a transaction.</td>
+</tr>
+<tr>
+<td><code>migrate.RepairOptions</code></td>
+<td>type</td>
+<td>RepairOptions controls DriftRepair.</td>
 </tr>
 <tr>
 <td><code>migrate.ReplaceFunction</code></td>
