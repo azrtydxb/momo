@@ -527,7 +527,14 @@ func (sq SelectQuery[T]) One(ctx context.Context) (T, error) {
 	if err != nil {
 		return zero, err
 	}
-	if err := readOne(r, tableOf(sq.meta), func() error { return sc.scan(r, &m) }); err != nil {
+	defer r.Close()
+	if err := firstRow(r, tableOf(sq.meta)); err != nil {
+		return zero, err
+	}
+	if err := sc.scan(r, &m); err != nil {
+		return zero, err
+	}
+	if err := lastRow(r, tableOf(sq.meta)); err != nil {
 		return zero, err
 	}
 	if err := afterLoad(ctx, sq.meta, &m); err != nil {
@@ -557,8 +564,14 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 	if err != nil {
 		return err
 	}
+	defer r.Close()
+	table := tableOf(sq.meta)
 	var m, zero T
-	return streamRows(ctx, r, tableOf(sq.meta), func() error {
+	for {
+		ok, err := nextRow(ctx, r, table)
+		if err != nil || !ok {
+			return err
+		}
 		m = zero
 		if err := sc.scan(r, &m); err != nil {
 			return err
@@ -566,8 +579,10 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 		if err := afterLoad(ctx, sq.meta, &m); err != nil {
 			return err
 		}
-		return fn(&m)
-	})
+		if err := fn(&m); err != nil {
+			return err
+		}
+	}
 }
 
 // Iter streams rows as a range-over-func sequence. Breaking out of the loop

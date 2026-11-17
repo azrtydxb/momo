@@ -399,35 +399,25 @@ func nextRow(ctx context.Context, r Rows, table string) (bool, error) {
 	return false, finishRows(r)
 }
 
-// streamRows calls step for every row of r, stopping at the first error, and
-// closes r.
-func streamRows(ctx context.Context, r Rows, table string, step func() error) error {
-	defer r.Close()
-	for {
-		ok, err := nextRow(ctx, r, table)
-		if err != nil || !ok {
-			return err
-		}
-		if err := step(); err != nil {
-			return err
-		}
+// firstRow advances r to its first row. It fails with ErrNotFound when there is
+// none.
+//
+//go:noinline
+func firstRow(r Rows, table string) error {
+	if r.Next() {
+		return nil
 	}
-}
-
-// readOne reads the single row of r: scan runs on it. It fails with
-// ErrNotFound when there is none and ErrTooManyRows when there is more than
-// one, and closes r.
-func readOne(r Rows, table string, scan func() error) error {
-	defer r.Close()
-	if !r.Next() {
-		if err := r.Err(); err != nil {
-			return err
-		}
-		return &Error{Kind: ErrNotFound, Op: "select", Table: table}
-	}
-	if err := scan(); err != nil {
+	if err := r.Err(); err != nil {
 		return err
 	}
+	return &Error{Kind: ErrNotFound, Op: "select", Table: table}
+}
+
+// lastRow checks that r holds no row after the first, then ends it. It fails
+// with ErrTooManyRows when there is another.
+//
+//go:noinline
+func lastRow(r Rows, table string) error {
 	if r.Next() {
 		return &Error{Kind: ErrTooManyRows, Op: "select", Table: table}
 	}
