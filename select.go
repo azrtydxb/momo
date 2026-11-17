@@ -459,6 +459,10 @@ type scanner[T any] struct {
 	join *joinScan[T] // joined relations scanned after the model's columns
 }
 
+// scan is go:noinline: the row loops of All, One, Each and Iter would each
+// carry a copy of it in every instantiation.
+//
+//go:noinline
 func (s *scanner[T]) scan(r Rows, m *T) error {
 	n := len(s.meta.Columns)
 	if s.dest == nil {

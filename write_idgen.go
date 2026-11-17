@@ -131,20 +131,6 @@ func (q InsertQuery[T]) valueRowsSafe(d *dialect.Dialect, now time.Time, fp fiel
 	return q.valueRows(d, now, fp)
 }
 
-// isNonPKIDGen reports whether column ci has an id generator and is not part of
-// the primary key, e.g. a public id: a conflict must keep the stored value.
-func (q InsertQuery[T]) isNonPKIDGen(ci int) bool {
-	if slices.Contains(q.meta.PK, ci) {
-		return false
-	}
-	for _, g := range q.meta.IDGens {
-		if g.Column == ci {
-			return true
-		}
-	}
-	return false
-}
-
 // execSingle runs the only chunk of an insert. A statement that reconciles ids
 // (or reads dbdefault columns back) runs in its own transaction (or savepoint),
 // so a RETURNING row that matches no model rolls the write back instead of
