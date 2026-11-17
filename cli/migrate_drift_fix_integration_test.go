@@ -91,6 +91,17 @@ func TestMigrateDriftFixSQL(t *testing.T) {
 	if code, out, _ = cliRun(t, dsn, "drift"); code != 0 || !strings.Contains(out, "no drift") {
 		t.Fatalf("drift after the repair: exit %d:\n%s", code, out)
 	}
+	// A clean database prints no SQL, so standard output stays pipeable.
+	if code, out, errOut = cliRun(t, dsn, "drift", "--fix-sql"); code != 0 || out != "" || !strings.Contains(errOut, "no drift") {
+		t.Fatalf("drift --fix-sql on a clean database: exit %d, stdout %q, stderr %q; want 0, empty stdout, no drift on stderr", code, out, errOut)
+	}
+	// --version names the snapshot; stderr says which one was compared.
+	if code, _, errOut = cliRun(t, dsn, "drift", "--version", version); code != 0 || !strings.Contains(errOut, "snapshot of version "+version) {
+		t.Fatalf("drift --version %s: exit %d, stderr %q", version, code, errOut)
+	}
+	if code, _, _ = cliRun(t, dsn, "drift", "--version", "29990101000000"); code != 2 {
+		t.Fatalf("drift --version of a missing snapshot: exit %d, want 2", code)
+	}
 	if code, _, errOut = cliRun(t, dsn, "baseline", "--version", version); code != 0 {
 		t.Fatalf("baseline after the repair: exit %d: %s", code, errOut)
 	}

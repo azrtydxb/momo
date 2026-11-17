@@ -51,17 +51,21 @@ Commands:
   new --custom <name>   write an empty hand-written migration: an up file, a snapshot copied
               from the latest one and the extended momo.sum (offline)
   baseline --version N [--force]   record migrations as applied without running them (needs a database)
-  drift [--strict] [--fix-sql [--allow-destructive]]   compare the live database with the
-              latest applied snapshot (needs a database); without momo history it compares
-              with the latest snapshot of the directory, the one adoption expects, and names
-              each differing object with its live and snapshot definition;
-              view, trigger and policy text is compared when the role has CREATE on the database,
-              else listed as unverified; --strict makes that an error (exit 3);
+  drift [--version N] [--strict] [--fix-sql [--allow-destructive]]   compare the live database
+              with the latest applied snapshot (needs a database); without momo history it
+              compares with the latest snapshot of the directory, and --version N with the
+              snapshot of version N, the one baseline --version N checks; stderr says which
+              version was compared; each differing object is named with its live and snapshot
+              definition; view, trigger and policy text is compared when the role has CREATE
+              on the database, else listed as unverified; --strict makes that an error (exit 3);
               --fix-sql prints the DDL that brings the database to that snapshot (print only,
-              nothing is applied; review it, then run it yourself, in one transaction on
-              PostgreSQL and SQLite; MySQL and MariaDB do not roll DDL back); drops and column
-              type changes are withheld and listed on stderr, exit 1, unless --allow-destructive;
-              a step the dialect cannot render is listed on stderr, never printed as SQL
+              nothing is applied; review it, then run it yourself; PostgreSQL and SQLite roll
+              it back as one transaction, except that a SQLite table rebuild needs
+              PRAGMA foreign_keys = OFF set outside the transaction; MySQL and MariaDB do not
+              roll DDL back); drops and column type changes, and the steps that replace them,
+              are withheld and listed on stderr, exit 1, unless --allow-destructive; a step the
+              dialect cannot render, a difference no statement covers and a NOT NULL column
+              added nullable are listed on stderr and exit 1, never printed as wrong SQL
   resolve --version N --applied|--rolled-back   settle a dirty migration (needs a database)
   rehash --version N [--accept]   show, and with --accept store, the new checksum of an
               applied migration whose file was edited (needs a database; run hash first)
@@ -628,6 +632,8 @@ func (l *cli) statusCmd(fs *flag.FlagSet) func([]string) int {
 
 func (l *cli) driftCmd(fs *flag.FlagSet) func([]string) int {
 	var strict, fixSQL, allowDestructive bool
+	var version string
+	fs.StringVar(&version, "version", "", "compare with the snapshot of this migration version (what baseline --version N checks); default: the latest applied, else the latest snapshot")
 	fs.BoolVar(&strict, "strict", false, "fail when view, trigger and policy text cannot be compared (needs CREATE on the database)")
 	fs.BoolVar(&fixSQL, "fix-sql", false, "print the DDL that brings the database to the snapshot instead of the report")
 	fs.BoolVar(&allowDestructive, "allow-destructive", false, "with --fix-sql, also print the destructive steps (drops, column type changes)")
@@ -639,11 +645,14 @@ func (l *cli) driftCmd(fs *flag.FlagSet) func([]string) int {
 	}
 	return l.withEngine(fs, check, func(ctx context.Context, e *migrate.Engine, _ []string) int {
 		if fixSQL {
-			return l.driftFix(ctx, e, migrate.RepairOptions{DriftOptions: migrate.DriftOptions{Strict: strict}, AllowDestructive: allowDestructive})
+			return l.driftFix(ctx, e, migrate.RepairOptions{DriftOptions: migrate.DriftOptions{Strict: strict, Version: version}, AllowDestructive: allowDestructive})
 		}
-		rep, err := e.DriftWith(ctx, migrate.DriftOptions{Strict: strict})
+		rep, err := e.DriftWith(ctx, migrate.DriftOptions{Strict: strict, Version: version})
 		if err != nil {
 			return l.failure(err)
+		}
+		if rep.SnapshotVersion != "" {
+			l.warnf("compared with the snapshot of version %s", rep.SnapshotVersion)
 		}
 		for _, line := range rep.Lines(0) {
 			l.say("%s", line)
@@ -668,12 +677,23 @@ func (l *cli) driftFix(ctx context.Context, e *migrate.Engine, o migrate.RepairO
 		return l.failure(err)
 	}
 	if r.Report.Clean() {
-		l.say("no drift")
+		// Standard output stays SQL only, so a pipe into a database client never sees prose.
+		l.warnf("no drift")
 		return exitOK
 	}
 	_, _ = fmt.Fprint(l.out, r.SQL())
+	l.warnf("repair for the snapshot of version %s", r.Report.SnapshotVersion)
+	if len(r.Statements) > 0 && !r.Transactional {
+		l.warnf("note: %s does not roll DDL back; a step that fails (a constraint the data violates, SET NOT NULL over NULLs) leaves the steps before it applied", l.dialectName)
+	}
 	for _, h := range r.Hints {
 		l.warnf("note: %s", h)
+	}
+	for _, s := range r.Staged {
+		l.warnf("staged: %s", s)
+	}
+	for _, u := range r.Uncovered {
+		l.warnf("not covered: %s", u)
 	}
 	for _, s := range r.Withheld {
 		l.warnf("withheld: %s %s: %s", s.Change.Kind, qualifiedChange(s.Change), s.Reason)
@@ -686,6 +706,12 @@ func (l *cli) driftFix(ctx context.Context, e *migrate.Engine, o migrate.RepairO
 	}
 	if len(r.Unsupported) > 0 {
 		l.warnf("%d step(s) cannot be rendered for this dialect; write them by hand", len(r.Unsupported))
+	}
+	if len(r.Staged) > 0 {
+		l.warnf("%d NOT NULL column(s) were added nullable; the database still differs from the snapshot until they are backfilled and set NOT NULL", len(r.Staged))
+	}
+	if len(r.Uncovered) > 0 {
+		l.warnf("%d difference(s) have no repair statement; fix them by hand or hide them with migrate.exclude", len(r.Uncovered))
 	}
 	if !r.Complete() {
 		return exitFindings

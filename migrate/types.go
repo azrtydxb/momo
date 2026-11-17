@@ -222,6 +222,11 @@ type DriftReport struct {
 	Changed   []ObjectDiff
 	Missing   []ObjectRef
 	Unmanaged []ObjectRef
+	// SnapshotVersion is the version of the snapshot the database was compared
+	// with: the one DriftOptions.Version names, else the latest applied
+	// migration's, else (no migration applied) the latest snapshot of the
+	// migration directory. Empty when the directory has no snapshot.
+	SnapshotVersion string
 	// Unverified lists the views, triggers and policies present on both sides
 	// whose text (view query, trigger condition, policy expressions) Drift did
 	// not compare. Drift compares that text when it can canonicalize the

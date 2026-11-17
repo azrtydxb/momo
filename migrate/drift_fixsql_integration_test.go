@@ -15,6 +15,7 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
+	"github.com/azrtydxb/momo/schema"
 )
 
 // driftRefs spells a list of object references as "kind name" strings.
@@ -173,6 +174,157 @@ func TestDriftRepairWithholdsDestructiveSteps(t *testing.T) {
 		rep, err := f.engine().Drift(ctx)
 		if err != nil || !rep.Clean() {
 			t.Fatalf("drift after the destructive repair: %+v, %v", rep, err)
+		}
+	})
+}
+
+// driftTypeMutations change the type of items.qty outside the migrations.
+func driftTypeMutations(d dialect.Name) []string {
+	switch d {
+	case dialect.SQLite:
+		return []string{
+			`DROP TABLE items`,
+			`CREATE TABLE items (id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'new', kind TEXT, qty TEXT, PRIMARY KEY (id), CONSTRAINT items_status_check CHECK ("status" IN ('done', 'new')), CONSTRAINT items_kind_check CHECK ("kind" IN ('a', 'b')))`,
+		}
+	case dialect.MySQL:
+		return []string{`ALTER TABLE items MODIFY qty bigint NULL`}
+	}
+	return []string{`ALTER TABLE items ALTER COLUMN qty TYPE bigint`}
+}
+
+// Catches: a column type change (which can lose or reject data) being printed
+// without --allow-destructive, or being withheld without a reason that names
+// it; the type change must come back with the flag and leave no drift.
+func TestDriftRepairWithholdsAColumnTypeChange(t *testing.T) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		ctx := context.Background()
+		f := newDriftFixtureOf(t, db, d, driftDesired(d), driftTypeMutations(d))
+		r, err := f.engine().DriftRepair(ctx, migrate.RepairOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var typed *migrate.Skipped
+		for i := range r.Withheld {
+			if c := r.Withheld[i].Change; c.Kind == migrate.AlterColumn && c.Name == "qty" {
+				typed = &r.Withheld[i]
+			}
+		}
+		if typed == nil || !strings.Contains(typed.Reason, "type") || r.Complete() {
+			t.Fatalf("withheld = %+v, want the type change of qty with its reason and an incomplete repair", r.Withheld)
+		}
+		if strings.Contains(strings.ToLower(r.SQL()), "qty") {
+			t.Fatalf("the script touches the withheld column:\n%s", r.SQL())
+		}
+		r, err = f.engine().DriftRepair(ctx, migrate.RepairOptions{AllowDestructive: true})
+		if err != nil || !r.Complete() {
+			t.Fatalf("with AllowDestructive the repair is complete: %+v, %v", r, err)
+		}
+		f.applyStatements(r.Statements)
+		if rep, err := f.engine().Drift(ctx); err != nil || !rep.Clean() {
+			t.Fatalf("drift after the repair: %+v, %v\n%s", rep, err, r.SQL())
+		}
+	})
+}
+
+// driftViewDesired is driftDesired with a view over items.
+func driftViewDesired(d dialect.Name) *schema.Schema {
+	s := driftDesired(d)
+	v := schema.View{Name: "items_v", Query: "SELECT id, qty FROM items"}
+	if d == dialect.SQLite {
+		v.Depends = []string{"items"} // the SQLite inspector reports it
+	}
+	s.Views = []schema.View{v}
+	return s
+}
+
+// Catches: a changed view (a drop and a create of one name) printing the CREATE
+// while the DROP is withheld, which fails with "already exists" and, on MySQL,
+// leaves the earlier statements applied. Only PostgreSQL compares a view's query
+// text, so only there can a view change; on the other dialects a view that is
+// gone from the database is created again.
+func TestDriftRepairWithholdsTheCreateThatReplacesAView(t *testing.T) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		ctx := context.Background()
+		mutation := `DROP VIEW items_v`
+		if d == dialect.Postgres {
+			mutation = `CREATE OR REPLACE VIEW items_v AS SELECT id, qty + 1 AS qty FROM items`
+		}
+		f := newDriftFixtureOf(t, db, d, driftViewDesired(d), []string{mutation})
+		r, err := f.engine().DriftRepair(ctx, migrate.RepairOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d != dialect.Postgres {
+			if !r.Complete() || !strings.Contains(strings.ToUpper(r.SQL()), "CREATE VIEW") {
+				t.Fatalf("a missing view is created again: %+v\n%s", r, r.SQL())
+			}
+		} else {
+			var got []migrate.ChangeKind
+			for _, w := range r.Withheld {
+				got = append(got, w.Change.Kind)
+			}
+			if !slices.Equal(got, []migrate.ChangeKind{migrate.DropView, migrate.CreateView}) {
+				t.Fatalf("withheld = %v, want the drop of the view and the create that replaces it", got)
+			}
+			if strings.Contains(strings.ToUpper(r.SQL()), "VIEW") {
+				t.Fatalf("the script must not create the view while the drop is withheld:\n%s", r.SQL())
+			}
+			r, err = f.engine().DriftRepair(ctx, migrate.RepairOptions{AllowDestructive: true})
+			if err != nil || !r.Complete() {
+				t.Fatalf("with AllowDestructive the repair is complete: %+v, %v", r, err)
+			}
+		}
+		f.applyStatements(r.Statements)
+		if rep, err := f.engine().Drift(ctx); err != nil || !rep.Clean() {
+			t.Fatalf("drift after the repair: %+v, %v\n%s", rep, err, r.SQL())
+		}
+	})
+}
+
+// Catches: drift and --fix-sql comparing with the latest snapshot while the
+// adoption checks the init snapshot (baseline --version N), so that a directory
+// with later migrations repairs the database to a state baseline then refuses.
+func TestDriftRepairVersionSelectsTheSnapshot(t *testing.T) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		ctx := context.Background()
+		f := newDriftFixture(t, db, d)
+		later := driftDesired(d)
+		later.Tables[0].Columns = append(later.Tables[0].Columns, schema.Column{Name: "note", Type: later.Tables[0].Columns[2].Type, Nullable: true})
+		m, err := f.engine().Diff(ctx, later, "note", migrate.DiffOptions{})
+		if err != nil || m == nil {
+			t.Fatalf("diff: %v, %v", m, err)
+		}
+		for k, v := range m.Files {
+			f.files[k] = v
+		}
+
+		latest, err := f.engine().Drift(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if latest.SnapshotVersion != m.Version || !slices.Contains(driftRefs(latest.Missing), "column items.note") {
+			t.Fatalf("without --version the latest snapshot %s is compared: %+v", m.Version, latest)
+		}
+
+		opts := migrate.DriftOptions{Version: f.version}
+		rep, err := f.engine().DriftWith(ctx, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rep.SnapshotVersion != f.version || len(rep.Changed) != 1 || len(rep.Missing) != 2 {
+			t.Fatalf("with Version %s: %+v, want the status column and two checks only", f.version, rep)
+		}
+		if _, err := f.engine().DriftWith(ctx, migrate.DriftOptions{Version: "29990101000000"}); !errors.Is(err, migrate.ErrNoSnapshot) {
+			t.Fatalf("an unknown version: %v, want ErrNoSnapshot", err)
+		}
+
+		r, err := f.engine().DriftRepair(ctx, migrate.RepairOptions{DriftOptions: opts})
+		if err != nil || !r.Complete() {
+			t.Fatalf("repair: %+v, %v", r, err)
+		}
+		f.applyStatements(r.Statements)
+		if err := f.engine().Baseline(ctx, f.version, false); err != nil {
+			t.Fatalf("baseline --version %s after the repair: %v", f.version, err)
 		}
 	})
 }

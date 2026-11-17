@@ -374,8 +374,20 @@ tool built, so that adopting it needs no hand-written SQL: the refusal of
 - It only prints. The script goes to standard output, one statement per block,
   ended by a semicolon, in the order `diff` would write a migration (the
   statements that must run outside a transaction come last, behind a comment).
-  Review it and run it yourself; momo applies nothing. PostgreSQL and SQLite run
-  it in one transaction; MySQL and MariaDB do not roll DDL back.
+  Review it and run it yourself; momo applies nothing. Standard output is SQL
+  only; everything else, including `no drift` for a clean database, goes to
+  standard error. PostgreSQL runs the script in one transaction, and so does
+  SQLite, except that a table rebuild needs `PRAGMA foreign_keys = OFF` set
+  outside the transaction (the script says so in a comment). MySQL and MariaDB
+  do not roll DDL back: a step that fails (a constraint the data violates)
+  leaves the steps before it applied, and standard error says so.
+- It compares with the snapshot of the latest applied migration, or, without
+  history, the latest snapshot in the directory. `--version N` compares with
+  the snapshot of exactly version N instead, the one `baseline --version N`
+  checks; use it when you adopt at the init version while the directory holds
+  later migrations (`RepairOptions.Version` and `DriftOptions.Version` in Go).
+  Standard error names the version that was compared
+  (`DriftReport.SnapshotVersion`).
 - It is rendered by the dialect's own differ and renderer, live to snapshot, so
   PostgreSQL, SQLite (a table rebuild where SQLite needs one) and MySQL/MariaDB
   each get their own SQL. A step the dialect cannot render is listed on standard
@@ -383,17 +395,29 @@ tool built, so that adopting it needs no hand-written SQL: the refusal of
 - Destructive steps are not printed: every drop (a table, column, index,
   constraint or view the snapshot does not have) and every column type change.
   Each is listed on standard error as `withheld: <change> <name>: <reason>`,
-  together with the steps that depend on it, and the exit code is 1. Pass
+  together with the steps that depend on it and the creates that would replace
+  it (a changed view, trigger, policy, index or constraint is a drop and a
+  create of the same name, and printing the create alone would fail with
+  `already exists`), and the exit code is 1. Pass
   `--allow-destructive` to print them too. On SQLite, a step that needs a table
   rebuild is withheld while another step of the same table is, because the
   rebuild would apply it.
-- A NOT NULL column that is missing is added nullable (the table may hold rows);
-  standard error says to backfill it and set NOT NULL, as `diff --stage` does.
-- A clean database prints `no drift` and exits 0.
+- A NOT NULL column that is missing is added nullable (the table may hold rows).
+  Standard error lists it as `staged: ...` with the `ALTER TABLE ... SET NOT NULL`
+  to run once it is backfilled, and the exit code is 1, because the database
+  still differs from the snapshot.
+- A difference no statement covers (an index PostgreSQL marks invalid, an
+  unmanaged extension or schema) is listed as `not covered: ...` and the exit
+  code is 1: fix it by hand or hide it with `migrate.exclude`. View, trigger and
+  policy text that drift could not compare is `unverified` and does not count,
+  as in `drift`.
+- A clean database prints `no drift` on standard error and exits 0.
 
 In Go, `Engine.DriftRepair(ctx, migrate.RepairOptions{})` returns a
 `*migrate.Repair`: `Statements`, `SQL()` for the script, `Withheld` and
-`Unsupported` with their reasons, `Hints`, and `Complete()`. The refusal of
+`Unsupported` with their reasons, `Uncovered`, `Staged`, `Hints`,
+`Transactional`, and `Complete()`, which is false while any of the lists is not
+empty. The refusal of
 `Engine.Baseline` is a `*migrate.BaselineMismatchError` (it still matches
 `errors.Is(err, migrate.ErrBaselineMismatch)`) whose `Report` holds every
 differing object; its message names the first 50.
@@ -416,7 +440,7 @@ Shared flags on every `migrate` subcommand: `--config`/`-c momo.yaml`, `--dir`,
 | `hash [--sum-format N]`                                                                                               | no              | Write `momo.sum` (format 2; `--sum-format 1` for 1), list `changed:`/`added:`/`removed:`.     | never                                                                                           |
 | `new --custom <name>`                                                                                                 | no              | Write an empty hand-written migration (section 6).                                            | a file would be overwritten                                                                     |
 | `baseline --version N [--force]`                                                                                      | yes             | Record migrations through N as applied without running them (section 7).                      | database differs from snapshot                                                                  |
-| `drift [--strict] [--fix-sql [--allow-destructive]]`                                                                  | yes             | Section 1; `--fix-sql` prints the repair DDL.                                                 | any change, missing or unmanaged; `--fix-sql`: a withheld or unrenderable step                  |
+| `drift [--version N] [--strict] [--fix-sql [--allow-destructive]]`                                                    | yes             | Section 1; `--fix-sql` prints the repair DDL.                                                 | any change, missing or unmanaged; `--fix-sql`: a withheld or unrenderable step                  |
 | `resolve --version N --applied` or `--rolled-back`                                                                    | yes             | Settle a dirty migration (section 4).                                                         | never                                                                                           |
 | `rehash --version N [--accept]`                                                                                       | yes             | Show, and with `--accept` store, the new checksum of an edited applied migration (section 4). | without `--accept`, when the file differs                                                       |
 | `lint [--db]`                                                                                                         | no (`--db` yes) | Report risky operations with a safer alternative (section 5).                                 | a finding has severity `error` (warnings alone exit 0)                                          |
@@ -1360,8 +1384,10 @@ SQLite's are in [a SQLite database](#a-sqlite-database).
    exits 1 on a mismatch with `differing object kinds: ...` and one line for each
    differing object (the first 50, then `and N more`): its kind, table and
    column or constraint name and, for a changed one, the live and snapshot
-   definitions. `momo migrate drift` lists the same lines for a database without
-   history, and `momo migrate drift --fix-sql` prints the DDL that removes the
+   definitions. `momo migrate drift --version <init version>` lists the same
+   lines for a database without history (without `--version` it compares with
+   the latest snapshot in the directory, which differs from the init snapshot
+   once later migrations exist), and `momo migrate drift --fix-sql` prints the DDL that removes the
    difference (see Drift, section 1), so you can repair the database instead of
    guessing which object differs. A passing baseline then records every
    migration up to that version as `applied` with `statements_applied = 0` and

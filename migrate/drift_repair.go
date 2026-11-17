@@ -112,16 +112,31 @@ type Repair struct {
 	// Unsupported lists the steps the dialect cannot render, and the steps that
 	// depend on one, each with its reason. No statement is written for them.
 	Unsupported []Skipped
-	// Hints carries the notes of the differ: a NOT NULL column that was added
-	// nullable because the table may hold rows (backfill it, then SET NOT NULL),
-	// the risks of a step.
+	// Uncovered lists, as DriftReport.Lines spells them, the differences of
+	// Report that no change covers, so no statement can repair them: an index
+	// PostgreSQL marks invalid, an unmanaged extension or schema, anything the
+	// differ does not express. Fix them by hand or hide them with
+	// Config.Exclude. Differences of text Drift could not compare
+	// (DriftReport.Unverified) are not listed here, because Drift does not
+	// count them as drift either.
+	Uncovered []string
+	// Staged lists the NOT NULL columns the plan adds nullable because the table
+	// may hold rows. Each entry names the column and the statement to run once
+	// it is backfilled. Until then the database still differs from the snapshot.
+	Staged []string
+	// Hints carries the other notes of the differ, such as the risks of a step.
 	Hints []string
+	// Transactional reports whether the dialect rolls DDL back: false on MySQL
+	// and MariaDB, where a failing statement leaves the ones before it applied.
+	Transactional bool
 }
 
-// Complete reports whether every step of the plan is in Statements: nothing
-// was withheld and nothing is unsupported. Running Statements then leaves no
-// drift, except for text-only differences that cannot be rendered.
-func (r *Repair) Complete() bool { return len(r.Withheld) == 0 && len(r.Unsupported) == 0 }
+// Complete reports whether the plan is the whole repair: nothing was withheld,
+// nothing is unsupported, no difference is uncovered and no column was added
+// nullable instead of NOT NULL. Running Statements then leaves no drift.
+func (r *Repair) Complete() bool {
+	return len(r.Withheld) == 0 && len(r.Unsupported) == 0 && len(r.Uncovered) == 0 && len(r.Staged) == 0
+}
 
 // SQL spells Statements as a script: the statements that run in a transaction,
 // each ended by a semicolon and separated by a blank line, then, behind a
@@ -158,23 +173,32 @@ func (r *Repair) SQL() string {
 }
 
 // DriftRepair plans the DDL that brings the live database to the snapshot Drift
-// compares it with: the latest applied migration's, or, for a database without
-// momo history, the latest state of the migration directory. It compares the
-// two exactly as Drift does and renders the difference (live to snapshot) with
-// the dialect's renderer, ordered as Engine.Diff orders a migration.
+// compares it with: the one RepairOptions.Version names, else the latest applied
+// migration's, else, for a database without momo history, the latest state of
+// the migration directory (Repair.Report.SnapshotVersion says which). It
+// compares the two exactly as Drift does and renders the difference (live to
+// snapshot) with the dialect's renderer, ordered as Engine.Diff orders a
+// migration.
 //
 // It is read-only and never executes the statements. The caller reviews them
-// and runs them (Repair.SQL spells them as a script); a MySQL or MariaDB
-// database does not roll DDL back, so run the script knowing that.
+// and runs them (Repair.SQL spells them as a script). PostgreSQL and SQLite
+// roll DDL back, except that a SQLite table rebuild needs foreign-key
+// enforcement off, which cannot be set inside a transaction; MySQL and MariaDB
+// do not roll DDL back (Repair.Transactional), so a failing step leaves the
+// earlier ones applied.
 //
 // Destructive steps are not rendered unless RepairOptions.AllowDestructive is
 // set: every drop (including an index or constraint present in the database
 // but not in the snapshot, and a whole table the snapshot does not know) and
 // every column type change. They are returned in Repair.Withheld together
-// with the steps that depend on them, so a caller can refuse to go on. A step
-// the dialect cannot render is returned in Repair.Unsupported, never as wrong
-// SQL. A NOT NULL column that is missing from a table is added nullable (the
-// table may hold rows); Repair.Hints says to backfill it and set NOT NULL.
+// with the steps that depend on them, and with the creates that would replace
+// a withheld drop (a changed view, trigger, policy, index or constraint is a
+// drop and a create). A step the dialect cannot render is returned in
+// Repair.Unsupported, never as wrong SQL. A difference no change covers (an
+// invalid index, an unmanaged extension) is returned in Repair.Uncovered. A
+// NOT NULL column that is missing from a table is added nullable (the table
+// may hold rows) and listed in Repair.Staged. Repair.Complete is false while
+// any of these lists is not empty.
 // On SQLite a change that needs a table rebuild is withheld while another step
 // of the same table is, because the rebuild would also apply that one.
 func (e *Engine) DriftRepair(ctx context.Context, o RepairOptions) (*Repair, error) {
@@ -187,7 +211,7 @@ func (e *Engine) DriftRepair(ctx context.Context, o RepairOptions) (*Repair, err
 	if err != nil {
 		return nil, err
 	}
-	r := &Repair{Report: s.report()}
+	r := &Repair{Report: s.report(), Transactional: e.opts.dialect.Dialect().TransactionalDDL}
 	if r.Report.Clean() {
 		return r, nil
 	}
@@ -195,7 +219,8 @@ func (e *Engine) DriftRepair(ctx context.Context, o RepairOptions) (*Repair, err
 	if err != nil {
 		return nil, fmt.Errorf("migrate: plan the repair: %w", err)
 	}
-	r.Hints = hints
+	r.Staged, r.Hints = splitStagedHints(hints)
+	r.Uncovered = uncovered(r.Report, changes)
 	kept, withheld := e.splitDestructive(s.live, changes, o.AllowDestructive)
 	kept, withheld = skipDependents(kept, withheld)
 	r.Withheld = withheld
@@ -203,28 +228,108 @@ func (e *Engine) DriftRepair(ctx context.Context, o RepairOptions) (*Repair, err
 	if err != nil {
 		return nil, fmt.Errorf("migrate: order the repair: %w", err)
 	}
-	stmts, err := renderPlan(e.opts.dialect, s.live, s.want, ordered)
-	if errors.Is(err, momo.ErrUnsupported) {
-		// Find the steps the dialect has no rendering for, and render the rest.
-		var supported []Change
-		var unsupported []Skipped
-		for _, ch := range ordered {
-			if _, one := renderPlan(e.opts.dialect, s.live, s.want, []Change{ch}); errors.Is(one, momo.ErrUnsupported) {
-				unsupported = append(unsupported, Skipped{Change: ch, Reason: "the " + string(e.opts.dialect.Dialect().Name) + " dialect cannot render it: " + one.Error()})
-			} else {
-				supported = append(supported, ch)
-			}
-		}
-		supported, unsupported = skipDependents(supported, unsupported)
-		r.Unsupported = unsupported
-		ordered = supported
-		stmts, err = renderPlan(e.opts.dialect, s.live, s.want, ordered)
-	}
+	r.Changes, r.Statements, r.Unsupported, err = renderRepair(e.opts.dialect, s.live, s.want, ordered)
 	if err != nil {
 		return nil, fmt.Errorf("migrate: render the repair: %w", err)
 	}
-	r.Changes, r.Statements = ordered, stmts
 	return r, nil
+}
+
+// renderRepair renders the ordered changes through d. A step d has no
+// rendering for (an error wrapping momo.ErrUnsupported), and the steps that
+// depend on it, are returned in unsupported instead; the rest is rendered and
+// returned with its changes.
+func renderRepair(d Dialect, live, want *schema.Schema, ordered []Change) (changes []Change, stmts []Statement, unsupported []Skipped, err error) {
+	stmts, err = renderPlan(d, live, want, ordered)
+	if !errors.Is(err, momo.ErrUnsupported) {
+		return ordered, stmts, nil, err
+	}
+	var supported []Change
+	for _, ch := range ordered {
+		if _, one := renderPlan(d, live, want, []Change{ch}); errors.Is(one, momo.ErrUnsupported) {
+			unsupported = append(unsupported, Skipped{Change: ch, Reason: "the " + string(d.Dialect().Name) + " dialect cannot render it: " + one.Error()})
+		} else {
+			supported = append(supported, ch)
+		}
+	}
+	supported, unsupported = skipDependents(supported, unsupported)
+	stmts, err = renderPlan(d, live, want, supported)
+	return supported, stmts, unsupported, err
+}
+
+// stagedHintLead and stagedHintTail frame the differ's hint for a NOT NULL
+// column it added nullable, which names a migrate diff flag a repair has no use for.
+const (
+	stagedHintLead = "staged: "
+	stagedHintTail = "; backfill it, then run migrate diff with --enforce-not-null to emit "
+)
+
+// splitStagedHints separates the differ's staged hints, reworded for a repair
+// ("backfill it, then run ALTER TABLE ... SET NOT NULL"), from the other hints.
+func splitStagedHints(hints []string) (staged, other []string) {
+	for _, h := range hints {
+		rest, ok := strings.CutPrefix(h, stagedHintLead)
+		if !ok {
+			other = append(other, h)
+			continue
+		}
+		if what, stmt, ok := strings.Cut(rest, stagedHintTail); ok {
+			rest = what + "; backfill it, then run " + stmt
+		}
+		staged = append(staged, rest)
+	}
+	return staged, other
+}
+
+// uncovered returns the lines of the differences in rep that no change covers.
+func uncovered(rep *DriftReport, changes []Change) []string {
+	var out []string
+	for _, d := range rep.Changed {
+		if !covers(changes, d.Object) {
+			out = append(out, d.Line())
+		}
+	}
+	for _, o := range rep.Missing {
+		if !covers(changes, o) {
+			out = append(out, "missing: "+o.Kind+" "+objectName(o))
+		}
+	}
+	for _, o := range rep.Unmanaged {
+		if !covers(changes, o) {
+			out = append(out, "unmanaged: "+o.Kind+" "+objectName(o))
+		}
+	}
+	return out
+}
+
+// covers reports whether some change acts on the object ref names: for a table
+// column, index or constraint, a change with that table and name (or of the
+// table's own); for anything else, a change with that name.
+func covers(changes []Change, ref ObjectRef) bool {
+	sameSchema := func(c Change) bool {
+		switch ref.Kind {
+		case "schema", "extension", "enum":
+			return true
+		}
+		return c.Schema == ref.Schema
+	}
+	switch ref.Kind {
+	case "column", "unique", "index", "fk", "check", "trigger", "policy":
+		i := strings.LastIndexByte(ref.Name, '.')
+		if i < 0 {
+			return false
+		}
+		tbl, name := ref.Name[:i], ref.Name[i+1:]
+		return slices.ContainsFunc(changes, func(c Change) bool {
+			return sameSchema(c) && (c.Table == tbl && c.Name == name || c.Table == "" && c.Name == tbl || c.Table == tbl && c.Name == tbl)
+		})
+	case "table":
+		return slices.ContainsFunc(changes, func(c Change) bool {
+			return sameSchema(c) && (c.Table == ref.Name || c.Table == "" && c.Name == ref.Name)
+		})
+	}
+	name, _, _ := strings.Cut(ref.Name, "(")
+	return slices.ContainsFunc(changes, func(c Change) bool { return sameSchema(c) && c.Name == name })
 }
 
 // withholdReason returns why a repair must not render ch without
@@ -251,7 +356,7 @@ func (e *Engine) splitDestructive(live *schema.Schema, changes []Change, allow b
 	for _, ch := range changes {
 		if reason := withholdReason(ch); reason != "" {
 			withheld = append(withheld, Skipped{Change: ch, Reason: reason})
-			dropped[ch.Schema+"\x00"+ch.Table+"\x00"+ch.Name] = ch
+			dropped[dropKey(ch.Kind, ch)] = ch
 			continue
 		}
 		kept = append(kept, ch)
@@ -267,8 +372,8 @@ func (e *Engine) splitDestructive(live *schema.Schema, changes []Change, allow b
 	var next []Change
 	for _, ch := range kept {
 		switch {
-		case replaces(ch, dropped):
-			withheld = append(withheld, Skipped{Change: ch, Reason: "it replaces " + describeChange(dropped[ch.Schema+"\x00"+ch.Table+"\x00"+ch.Name]) + ", which is withheld"})
+		case replacedDrop(ch, dropped) != nil:
+			withheld = append(withheld, Skipped{Change: ch, Reason: "it replaces " + describeChange(*replacedDrop(ch, dropped)) + ", which is withheld"})
 		case rd != nil && tables[ch.Schema+"\x00"+ch.Table] && rd.NeedsRebuild(live, ch):
 			withheld = append(withheld, Skipped{Change: ch, Reason: "it needs a rebuild of table " + ch.Table + ", which would also apply a withheld destructive step"})
 		default:
@@ -278,12 +383,40 @@ func (e *Engine) splitDestructive(live *schema.Schema, changes []Change, allow b
 	return next, withheld
 }
 
-// replaces reports whether ch adds an object under the name of a dropped one,
-// so that adding it while the drop is withheld would collide.
-func replaces(ch Change, dropped map[string]Change) bool {
-	if !slices.Contains([]ChangeKind{AddCheck, AddUnique, AddFK, AddPrimaryKey, CreateIndex, AlterCheckIn}, ch.Kind) {
-		return false
+// dropsFor lists, for each kind of change that creates an object, the kinds of
+// drop that remove an object of that kind. A changed object the differ cannot
+// alter in place (a view, a trigger, a policy, an index, a constraint) is a drop
+// followed by a create of the same name.
+var dropsFor = map[ChangeKind][]ChangeKind{
+	CreateTable:    {DropTable},
+	CreateEnum:     {DropEnum},
+	CreateSequence: {DropSequence},
+	CreateView:     {DropView},
+	CreateFunction: {DropFunction},
+	CreateTrigger:  {DropTrigger},
+	CreatePolicy:   {DropPolicy},
+	CreateIndex:    {DropIndex},
+	AddPrimaryKey:  {DropPrimaryKey},
+	AddUnique:      {DropUnique},
+	AddCheck:       {DropCheck},
+	AlterCheckIn:   {DropCheck},
+	AddFK:          {DropFK},
+}
+
+// dropKey identifies the object a change of kind drops or creates.
+func dropKey(kind ChangeKind, ch Change) string {
+	return string(kind) + "\x00" + ch.Schema + "\x00" + ch.Table + "\x00" + ch.Name
+}
+
+// replacedDrop returns the withheld drop whose object ch creates again under
+// the same name, or nil. Creating it while the drop is withheld would fail with
+// "already exists" (and on MySQL leave the earlier statements applied), so the
+// create is withheld with it.
+func replacedDrop(ch Change, dropped map[string]Change) *Change {
+	for _, k := range dropsFor[ch.Kind] {
+		if d, ok := dropped[dropKey(k, ch)]; ok {
+			return &d
+		}
 	}
-	d, ok := dropped[ch.Schema+"\x00"+ch.Table+"\x00"+ch.Name]
-	return ok && d.Kind != ch.Kind && strings.HasPrefix(string(d.Kind), "drop_")
+	return nil
 }

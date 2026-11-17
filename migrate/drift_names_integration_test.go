@@ -110,9 +110,16 @@ func (f *driftFixture) exec(sql string) {
 // drops the history table.
 func newDriftFixture(t *testing.T, db *momo.DB, d dialect.Name) *driftFixture {
 	t.Helper()
+	return newDriftFixtureOf(t, db, d, driftDesired(d), driftMutations(d))
+}
+
+// newDriftFixtureOf is newDriftFixture for another desired schema and other
+// mutations.
+func newDriftFixtureOf(t *testing.T, db *momo.DB, d dialect.Name, desired *schema.Schema, mutations []string) *driftFixture {
+	t.Helper()
 	ctx := context.Background()
 	f := &driftFixture{t: t, db: db, d: d}
-	m, err := f.engine().Diff(ctx, driftDesired(d), "init", migrate.DiffOptions{})
+	m, err := f.engine().Diff(ctx, desired, "init", migrate.DiffOptions{})
 	if err != nil || m == nil {
 		t.Fatalf("diff: %v, %v", m, err)
 	}
@@ -123,7 +130,7 @@ func newDriftFixture(t *testing.T, db *momo.DB, d dialect.Name) *driftFixture {
 	if rep, err := f.engine().Drift(ctx); err != nil || !rep.Clean() {
 		t.Fatalf("the migrated database must be clean: %+v, %v", rep, err)
 	}
-	for _, sql := range driftMutations(d) {
+	for _, sql := range mutations {
 		f.exec(sql)
 	}
 	f.exec(`DROP TABLE momo_migrations`)

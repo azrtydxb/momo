@@ -601,6 +601,12 @@ type DriftOptions struct {
 	// that those bodies match, for example to catch a row-level security policy
 	// loosened out of band.
 	Strict bool
+	// Version compares the live database with the snapshot of exactly this
+	// migration version (ErrNoSnapshot when there is none), whatever the
+	// history says: the check `baseline --version N` makes. Empty compares with
+	// the snapshot of the latest applied migration, or, when none is applied,
+	// with the latest state of the migration directory.
+	Version string
 }
 
 // DriftWith is Drift with options. See Drift for what it compares.
@@ -624,11 +630,13 @@ type driftSides struct {
 	invalid    []string
 	exact      bool
 	skipped    []ObjectRef
+	version    string
 }
 
 // report compares the sides.
 func (s *driftSides) report() *DriftReport {
 	rep := compare(s.want, s.live, s.exact, s.invalid)
+	rep.SnapshotVersion = s.version
 	if !s.exact {
 		rep.Unverified = unverifiedBodies(s.want, s.live)
 	}
@@ -659,20 +667,28 @@ func (e *Engine) driftSides(ctx context.Context, c momo.PinnedConn, o DriftOptio
 		return nil, err
 	}
 	var snap *SnapshotFile
-	if latest != "" {
+	switch {
+	case o.Version != "":
+		if snap, err = snapshotAt(e.dir, o.Version); err != nil {
+			return nil, err
+		}
+	case latest != "":
 		if snap, err = stateUpTo(e.dir, latest, applied); err != nil {
 			return nil, err
 		}
 		if snap == nil {
 			return nil, fmt.Errorf("%w: applied version %s has no snapshot at or before it; run momo migrate diff", ErrNoSnapshot, latest)
 		}
-	} else if snap, err = LatestState(e.dir); err != nil && !errors.Is(err, ErrNoSnapshot) {
-		return nil, err
+	default:
+		if snap, err = LatestState(e.dir); err != nil && !errors.Is(err, ErrNoSnapshot) {
+			return nil, err
+		}
 	}
 	s := &driftSides{want: &schema.Schema{Dialect: live.Dialect}, live: live, invalid: invalid}
 	if snap == nil {
 		return s, nil
 	}
+	s.version = snap.Version
 	from := e.hide(snap.Schema)
 	if from, err = expand(e.opts.dialect, from); err != nil {
 		return nil, err
