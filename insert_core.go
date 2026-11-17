@@ -39,14 +39,17 @@ func insMetaOf[T any](m *Meta[T]) insMeta {
 }
 
 // insertRef is an insert statement stripped of T: its clauses and the table
-// description. i points at the clauses of the query it was made from.
+// description. i is a copy of the clauses of the query it was made from (the
+// slices inside are shared and never written through). It is a copy, not a
+// pointer: a pointer to the query's own clauses moved the whole InsertQuery to
+// the heap in every wrapper, three allocations per insert.
 type insertRef struct {
 	m insMeta
-	i *insertCore
+	i insertCore
 }
 
-// ref returns the non-generic view of q; it points at q's own clauses.
-func (q *InsertQuery[T]) ref() insertRef { return insertRef{m: insMetaOf(q.meta), i: &q.i} }
+// ref returns the non-generic view of q.
+func (q InsertQuery[T]) ref() insertRef { return insertRef{m: insMetaOf(q.meta), i: q.i} }
 
 //go:noinline
 func insertVerr(table, col, format string, args ...any) error {
