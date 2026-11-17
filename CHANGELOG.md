@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.0](https://github.com/azrtydxb/momo/compare/v0.16.1...v0.17.0) (2026-11-17)
+
+
+### Features
+
+* **migrate:** name drifted objects and print the repair SQL ([#226](https://github.com/azrtydxb/momo/issues/226)) ([03d6f34](https://github.com/azrtydxb/momo/commit/03d6f3496bbb7ff813fee977ee4616c780e54117)), closes [#225](https://github.com/azrtydxb/momo/issues/225)
+
+
+### Performance Improvements
+
+* shrink the SelectQuery method set ([#224](https://github.com/azrtydxb/momo/issues/224)) ([346d658](https://github.com/azrtydxb/momo/commit/346d658005a687b6fe6646482e43675ddabe6492)), closes [#217](https://github.com/azrtydxb/momo/issues/217)
+
 ## [0.16.1](https://github.com/azrtydxb/momo/compare/v0.16.0...v0.16.1) (2026-11-17)
 
 _Packages that use momo's typed queries compile with about a third less memory: on a fixture of 100 models and 500 queries the Go compiler's peak falls from 9255 MiB to 6189 MiB. No API or behaviour changes; upgrading needs no other step. [Changes since 0.16.0](https://github.com/azrtydxb/momo/compare/v0.16.0...v0.16.1)._
