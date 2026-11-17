@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.1](https://github.com/azrtydxb/momo/compare/v0.16.0...v0.16.1) (2026-11-17)
+
+_Packages that use momo's typed queries compile with about a third less memory: on a fixture of 100 models and 500 queries the Go compiler's peak falls from 9255 MiB to 6189 MiB. No API or behaviour changes; upgrading needs no other step. [Changes since 0.16.0](https://github.com/azrtydxb/momo/compare/v0.16.0...v0.16.1)._
+
+### Performance Improvements
+
+- **query:** the select builders, SQL rendering, compile, count, explain and join expansion, and the insert conflict, identity and upsert-default helpers, move off the generic `SelectQuery[T]` and `InsertQuery[T]` types, so the compiler no longer emits them once per model or row type. The generated SQL is unchanged on every dialect ([#222](https://github.com/azrtydxb/momo/pull/222), refs [#217](https://github.com/azrtydxb/momo/issues/217))
+
 ## [0.16.0](https://github.com/azrtydxb/momo/compare/v0.15.0...v0.16.0) (2026-11-16)
 
 _Parallel migration branches merge without conflicts: `momo.sum` has a new format 2 that git merges line by line, and the derived schema folds each migration against its own base, so independent branches validate and dependent ones fail at validate, never at apply. Standalone PostgreSQL sequences, additive CHECK value lists and primary-key updates are now modelled. Upgrade every binary that reads a migration directory together, since an older one refuses a format 2 `momo.sum`; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.16.0/docs/upgrading.md) and [docs/migrations.md](https://github.com/azrtydxb/momo/blob/v0.16.0/docs/migrations.md). [Changes since 0.15.0](https://github.com/azrtydxb/momo/compare/v0.15.0...v0.16.0)._
