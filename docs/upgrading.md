@@ -15,11 +15,11 @@ history sees a different report.
 ### Drift without history compares with the latest snapshot
 
 On a database with no applied migration, `momo migrate drift` (and
-`Engine.Drift`) used to report every table as `unmanaged`; it now compares the
+`migrate.Engine.Drift`) used to report every table as `unmanaged`; it now compares the
 live database with the latest snapshot in the migration directory, the schema
 `baseline` expects, and reports `missing:`, `changed:` and `unmanaged:` objects
 by name. A `changed:` line now ends with the live and snapshot definitions of
-the fields that differ. The refusal of `Engine.Baseline` is a
+the fields that differ. The refusal of `migrate.Engine.Baseline` is a
 `*migrate.BaselineMismatchError` that names the differing objects (the first 50)
 and still matches `errors.Is(err, migrate.ErrBaselineMismatch)`.
 `momo migrate drift --fix-sql` prints the DDL that brings the database to the
