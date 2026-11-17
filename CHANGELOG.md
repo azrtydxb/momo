@@ -2,15 +2,16 @@
 
 ## [0.17.0](https://github.com/azrtydxb/momo/compare/v0.16.1...v0.17.0) (2026-11-17)
 
+_Adopting a database built by another tool no longer needs a hand diff: the baseline refusal and `momo migrate drift` name every differing object, and `drift --fix-sql` prints the SQL that repairs it. `drift` on a database without momo history now compares it with a snapshot instead of listing every table as unmanaged, so a script that reads that output sees a different report; see [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.17.0/docs/upgrading.md). [Changes since 0.16.1](https://github.com/azrtydxb/momo/compare/v0.16.1...v0.17.0)._
 
 ### Features
 
-* **migrate:** name drifted objects and print the repair SQL ([#226](https://github.com/azrtydxb/momo/issues/226)) ([03d6f34](https://github.com/azrtydxb/momo/commit/03d6f3496bbb7ff813fee977ee4616c780e54117)), closes [#225](https://github.com/azrtydxb/momo/issues/225)
-
+- **migrate:** the refusal of `Engine.Baseline` is a `*migrate.BaselineMismatchError`, still matching `ErrBaselineMismatch`, that names each differing object with its live and snapshot definitions. `momo migrate drift` on a database without applied migrations compares it with a snapshot of the migration directory (`--version N`, the latest by default) and names what is missing, changed or unmanaged ([#226](https://github.com/azrtydxb/momo/pull/226), closes [#225](https://github.com/azrtydxb/momo/issues/225))
+- **migrate:** `momo migrate drift --fix-sql` and `Engine.DriftRepair` print the statements that bring a live database to that snapshot and apply nothing. Drops, type changes and the steps that depend on them are withheld unless `--allow-destructive` is given; every withheld, unrenderable or staged step is listed on stderr and the command exits 1 ([#226](https://github.com/azrtydxb/momo/pull/226))
 
 ### Performance Improvements
 
-* shrink the SelectQuery method set ([#224](https://github.com/azrtydxb/momo/issues/224)) ([346d658](https://github.com/azrtydxb/momo/commit/346d658005a687b6fe6646482e43675ddabe6492)), closes [#217](https://github.com/azrtydxb/momo/issues/217)
+- **query:** eight more unexported `SelectQuery[T]` methods move onto non-generic code, and an insert no longer moves the whole query to the heap, three allocations fewer per insert than 0.16.1 ([#224](https://github.com/azrtydxb/momo/pull/224), refs [#217](https://github.com/azrtydxb/momo/issues/217))
 
 ## [0.16.1](https://github.com/azrtydxb/momo/compare/v0.16.0...v0.16.1) (2026-11-17)
 
