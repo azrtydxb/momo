@@ -50,7 +50,7 @@ func TestScopeAcceptsSubqueryAndCTEShapes(t *testing.T) {
 	}
 	for _, name := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
 		for _, tc := range cases {
-			_, err := compile(dialect.For(name), tc.q.render)
+			_, err := compile(dialect.For(name), tc.q.selectView().render)
 			if tc.ok && err != nil {
 				t.Errorf("%s/%s: rejected: %v", name, tc.name, err)
 			}

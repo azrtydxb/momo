@@ -258,8 +258,10 @@ func (q InsertQuery[T]) renderFromSelect(b *Builder) {
 		b.Ident(n)
 	}
 	b.WriteString(") ")
-	if e, ok := q.i.sel.(interface{ renderBare(*Builder, bool) }); ok {
+	if v, ok := q.i.sel.(selectViewer); ok {
 		// SQLite parses ON after a FROM select without WHERE as a join.
+		v.selectView().renderBare(b, b.d.Name == dialect.SQLite && q.i.conflict != conflictNone)
+	} else if e, ok := q.i.sel.(interface{ renderBare(*Builder, bool) }); ok {
 		e.renderBare(b, b.d.Name == dialect.SQLite && q.i.conflict != conflictNone)
 	} else if r, ok := q.i.sel.(interface{ render(*Builder) }); ok {
 		r.render(b) // bare: SQLite rejects a parenthesized SELECT here

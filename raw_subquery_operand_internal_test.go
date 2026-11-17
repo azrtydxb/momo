@@ -22,7 +22,7 @@ func TestRawSubqueryAsTypedComparisonOperand(t *testing.T) {
 		dialect.Postgres: `SELECT "documents"."version" FROM "documents" WHERE ("documents"."version" > (SELECT MAX(version) FROM documents WHERE tenant_id = $1)) AND ("documents"."version" < $2)`,
 		dialect.SQLite:   `SELECT "documents"."version" FROM "documents" WHERE ("documents"."version" > (SELECT MAX(version) FROM documents WHERE tenant_id = ?)) AND ("documents"."version" < ?)`,
 	} {
-		c, err := compile(dialect.For(name), q.render)
+		c, err := compile(dialect.For(name), q.selectView().render)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}

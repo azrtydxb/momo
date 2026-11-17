@@ -34,7 +34,7 @@ func (sq SelectQuery[T]) Preload(loaders ...Loader[T]) SelectQuery[T] {
 
 // runPreloads loads all preloaded relations for rows in one LoadAll call, so
 // that the batched path applies.
-func (sq SelectQuery[T]) runPreloads(ctx context.Context, rows []T) error {
+func runPreloads[T any](ctx context.Context, sq SelectQuery[T], rows []T) error {
 	if len(sq.s.preloads) == 0 || len(rows) == 0 {
 		return nil
 	}

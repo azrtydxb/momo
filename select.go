@@ -100,7 +100,7 @@ func Select[T any, PT Modeler[T]](q Querier) SelectQuery[T] {
 func (sq SelectQuery[T]) isSubquery() {}
 
 // AppendSQL renders the query in parentheses, for use as a subquery.
-func (sq SelectQuery[T]) AppendSQL(b *Builder) { sq.ref().AppendSQL(b) }
+func (sq SelectQuery[T]) AppendSQL(b *Builder) { sq.selectView().AppendSQL(b) }
 
 // Where adds predicates combined with AND.
 func (sq SelectQuery[T]) Where(ps ...Predicate) SelectQuery[T] {
@@ -408,8 +408,6 @@ func joinSources(js []join) []TableSource {
 // qualifier is the name the model's own columns are qualified with.
 // A schema-qualified, unaliased TableRef source renders bare column names;
 // every other source qualifies with its alias or table name.
-func (sq SelectQuery[T]) qualifier() string { return sq.s.qualifier(tableOf(sq.meta)) }
-
 func (sq selectRef) qualifier() string { return sq.s.qualifier(sq.meta.Table) }
 
 type qcol struct{ table, name string }
@@ -442,8 +440,10 @@ func appendList(b *Builder, es []Expr) {
 
 // ------------------------------------------------------------ execution
 
-// rows runs the query and returns its rows with the scanner for them.
-func (sq SelectQuery[T]) rows(ctx context.Context) (Rows, scanner[T], error) {
+// queryRows runs the query and returns its rows with the scanner for them. It is
+// a function, not a method: an unexported method of SelectQuery[T] costs a
+// wrapper per instantiated type.
+func queryRows[T any](ctx context.Context, sq SelectQuery[T]) (Rows, scanner[T], error) {
 	sc := scanner[T]{meta: sq.meta}
 	r, ls, err := selectRows(ctx, sq.q, infoOf(sq.meta), sq.s)
 	if len(ls) > 0 {
@@ -488,7 +488,7 @@ func (s *scanner[T]) scan(r Rows, m *T) error {
 // All runs the query and collects every row. An empty result is an empty
 // (nil) slice and a nil error, never ErrNotFound.
 func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
-	r, sc, err := sq.rows(ctx)
+	r, sc, err := queryRows(ctx, sq)
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +513,7 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 	if err := finishRows(r); err != nil {
 		return nil, err
 	}
-	if err := sq.runPreloads(ctx, out); err != nil {
+	if err := runPreloads(ctx, sq, out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -523,7 +523,7 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 // ErrTooManyRows when more than one does. It adds no LIMIT.
 func (sq SelectQuery[T]) One(ctx context.Context) (T, error) {
 	var zero, m T
-	r, sc, err := sq.rows(ctx)
+	r, sc, err := queryRows(ctx, sq)
 	if err != nil {
 		return zero, err
 	}
@@ -542,7 +542,7 @@ func (sq SelectQuery[T]) One(ctx context.Context) (T, error) {
 	}
 	if len(sq.s.preloads) > 0 {
 		rows := []T{m}
-		if err := sq.runPreloads(ctx, rows); err != nil {
+		if err := runPreloads(ctx, sq, rows); err != nil {
 			return zero, err
 		}
 		m = rows[0]
@@ -560,7 +560,7 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 	if err := sq.s.errStreamPreload(tableOf(sq.meta)); err != nil {
 		return err
 	}
-	r, sc, err := sq.rows(ctx)
+	r, sc, err := queryRows(ctx, sq)
 	if err != nil {
 		return err
 	}
@@ -595,7 +595,7 @@ func (sq SelectQuery[T]) Iter(ctx context.Context) iter.Seq2[T, error] {
 			yield(zero, err)
 			return
 		}
-		r, sc, err := sq.rows(ctx)
+		r, sc, err := queryRows(ctx, sq)
 		if err != nil {
 			yield(zero, err)
 			return
@@ -747,6 +747,16 @@ func (s setOp) renderMembers(b *Builder) {
 // parentheses, or on SQLite, which rejects them around a compound member, as a
 // derived table. Any other member is written bare.
 func writeSetMember(b *Builder, q Subquery) {
+	if v, ok := q.(selectViewer); ok {
+		// A SelectQuery of any T: render it through its non-generic view.
+		ref := v.selectView()
+		if ref.s.hasLock() && b.d.Name == dialect.Postgres {
+			b.unsupported("a row lock inside a UNION member")
+			return
+		}
+		writeGroupedMember(b, ref.render, ref.s.needsParens())
+		return
+	}
 	if l, ok := q.(interface{ hasLock() bool }); ok && l.hasLock() && b.d.Name == dialect.Postgres {
 		b.unsupported("a row lock inside a UNION member")
 		return
@@ -765,6 +775,12 @@ func writeSetMember(b *Builder, q Subquery) {
 		q.AppendSQL(b)
 		return
 	}
+	writeGroupedMember(b, body, grouped)
+}
+
+// writeGroupedMember writes a member body, grouped when asked: in parentheses,
+// or as a derived table on SQLite.
+func writeGroupedMember(b *Builder, body func(*Builder), grouped bool) {
 	if !grouped {
 		body(b)
 		return
