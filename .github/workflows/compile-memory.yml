@@ -1,0 +1,73 @@
+# Compiler memory guard for packages that call momo's typed builders (issue
+# #217): the Go compiler needed 9-11 GB for one such package in a downstream
+# application. This workflow generates a fixture (internal/compilebench/gen: N
+# models through the real momo generate, plus a caller package of Q typed
+# queries), compiles the caller package under /usr/bin/time -v and records the
+# compiler's peak RSS, then profiles the compiler with a symbolised build.
+#
+# It is its own workflow, so it is its own check: a separate status that is not
+# required yet. The numbers and the profile land in the job summary and the
+# compile-memory artifact.
+name: compile-memory
+
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "compile-memory-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  compile-memory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Fixture size. Change both only together with the budget below: the
+      # budget is a number for exactly this fixture on this runner image.
+      MODELS: "100"
+      QUERIES: "500"
+      # THE GUARD. The job fails when the compiler's peak RSS for the default
+      # build of the caller package exceeds this many KiB. First measurement
+      # (run 44039243561, go1.27.4, 100 models and 500 queries): 9477388 KiB,
+      # 9255 MiB; budget is that plus about 15%. Lower it when an optimisation
+      # lands, never raise it to make a regression pass. It is the only knob.
+      PEAK_RSS_BUDGET_KB: "10900000"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+      - name: Generate the fixture
+        run: |
+          go run ./internal/compilebench/gen -out internal/compilebench/work -models "$MODELS" -queries "$QUERIES"
+          go run ./cmd/momo generate ./internal/compilebench/work/models/...
+      # Builds the models package and every dependency, so the measured builds
+      # recompile only the caller package.
+      - name: Build the models package
+        run: go build ./internal/compilebench/work/models/...
+      - name: Measure peak RSS
+        run: OUT="$RUNNER_TEMP/compilebench" bash scripts/compile-memory.sh measure
+      - name: Count instantiated generic functions
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: OUT="$RUNNER_TEMP/compilebench" bash scripts/compile-memory.sh nm
+      - name: Profile the compiler
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: OUT="$RUNNER_TEMP/compilebench" bash scripts/compile-memory.sh profile
+      - name: Upload profiles and reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: compile-memory
+          path: |
+            ${{ runner.temp }}/compilebench
+            !${{ runner.temp }}/compilebench/bin
