@@ -56,13 +56,13 @@ func (m tableInfo) softDeletePred(qualifier string, deleted bool) Predicate {
 // selectRef is a select statement stripped of T: its clauses and the table
 // description, which is all the SQL rendering needs.
 type selectRef struct {
-	s    *selectCore
+	s    selectCore
 	meta tableInfo
 }
 
 // ref returns the non-generic view of sq; it points at sq's own clauses.
 func (sq *SelectQuery[T]) ref() selectRef {
-	return selectRef{s: &sq.s, meta: infoOf(sq.meta)}
+	return selectRef{s: sq.s, meta: infoOf(sq.meta)}
 }
 
 // ---------------------------------------------------------------- builders
@@ -271,7 +271,7 @@ func compileSelect(ctx context.Context, q Querier, m tableInfo, s selectCore) (C
 	if err != nil {
 		return Compiled{}, nil, err
 	}
-	run := selectRef{s: &s, meta: m}
+	run := selectRef{s: s, meta: m}
 	c, err := compile(q.Dialect(), run.render)
 	return c, ls, err
 }
@@ -302,7 +302,7 @@ func countSelect(ctx context.Context, q Querier, m tableInfo, s selectCore) (int
 	}
 	s.distinctCount = len(s.distinctOn) > 0
 	s.keyset = nil
-	inner := selectRef{s: &s, meta: m}
+	inner := selectRef{s: s, meta: m}
 	c, err := compile(q.Dialect(), func(b *Builder) {
 		b.WriteString("SELECT COUNT(*) FROM ")
 		inner.AppendSQL(b)
