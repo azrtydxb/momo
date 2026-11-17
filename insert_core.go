@@ -30,6 +30,9 @@ type insMeta struct {
 	UpdatedAt   int
 }
 
+// insMetaOf is go:noinline for the reason infoOf is.
+//
+//go:noinline
 func insMetaOf[T any](m *Meta[T]) insMeta {
 	if m == nil {
 		return insMeta{}

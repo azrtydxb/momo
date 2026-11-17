@@ -31,7 +31,10 @@ type tableInfo struct {
 }
 
 // infoOf returns the T-independent description of m; the zero tableInfo for a
-// nil Meta.
+// nil Meta. It is go:noinline: every wrapper of SelectQuery[T] calls it, and
+// inlined it would copy its field loads into each of them.
+//
+//go:noinline
 func infoOf[T any](m *Meta[T]) tableInfo {
 	if m == nil {
 		return tableInfo{}
