@@ -73,6 +73,11 @@ func (g *gen) callerFile(first, last int) []byte {
 	}
 	sort.Strings(paths)
 	for _, p := range paths {
+		// A shape may ask for an import it then does not write; keep only
+		// the imports the body uses.
+		if !strings.Contains(body.String(), f.imps[p]+".") {
+			continue
+		}
 		fmt.Fprintf(&b, "\t%s %q\n", f.imps[p], p)
 	}
 	b.WriteString(")\n\n")
