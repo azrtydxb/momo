@@ -2,10 +2,11 @@
 
 ## [0.16.1](https://github.com/azrtydxb/momo/compare/v0.16.0...v0.16.1) (2026-11-17)
 
+_Packages that use momo's typed queries compile with about a third less memory: on a fixture of 100 models and 500 queries the Go compiler's peak falls from 9255 MiB to 6189 MiB. No API or behaviour changes; upgrading needs no other step. [Changes since 0.16.0](https://github.com/azrtydxb/momo/compare/v0.16.0...v0.16.1)._
 
 ### Performance Improvements
 
-* move typed-query bodies off the generic types ([#222](https://github.com/azrtydxb/momo/issues/222)) ([82e8a90](https://github.com/azrtydxb/momo/commit/82e8a90e0f3a81910a6fbbe79e98178bd25106c8)), closes [#217](https://github.com/azrtydxb/momo/issues/217)
+- **query:** the select builders, SQL rendering, compile, count, explain and join expansion, and the insert conflict, identity and upsert-default helpers, move off the generic `SelectQuery[T]` and `InsertQuery[T]` types, so the compiler no longer emits them once per model or row type. The generated SQL is unchanged on every dialect ([#222](https://github.com/azrtydxb/momo/pull/222), refs [#217](https://github.com/azrtydxb/momo/issues/217))
 
 ## [0.16.0](https://github.com/azrtydxb/momo/compare/v0.15.0...v0.16.0) (2026-11-16)
 
