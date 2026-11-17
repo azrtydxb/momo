@@ -2,11 +2,7 @@
 
 package momo
 
-import (
-	"context"
-	"errors"
-	"slices"
-)
+import "context"
 
 // Preload returns a copy of the query that loads the given relations for every
 // row that All, One and First return. The receiver is unchanged, and queries
@@ -26,14 +22,13 @@ import (
 func (sq SelectQuery[T]) Preload(loaders ...Loader[T]) SelectQuery[T] {
 	var plain, joined []any
 	for _, l := range loaders {
-		if _, ok := l.(joinLoader[T]); ok {
+		if _, ok := l.(joinLoaderCore); ok {
 			joined = append(joined, l)
 			continue
 		}
 		plain = append(plain, l)
 	}
-	sq.s.preloads = append(slices.Clip(sq.s.preloads), plain...)
-	sq.s.joinLoads = append(slices.Clip(sq.s.joinLoads), joined...)
+	sq.s.addPreloads(plain, joined)
 	return sq
 }
 
@@ -48,13 +43,4 @@ func (sq SelectQuery[T]) runPreloads(ctx context.Context, rows []T) error {
 		loaders[i] = p.(Loader[T])
 	}
 	return LoadAll(ctx, sq.q, rows, loaders...)
-}
-
-// errStreamPreload is the error Each and Iter return when preloads are set.
-func (sq SelectQuery[T]) errStreamPreload() error {
-	if len(sq.s.preloads) == 0 && len(sq.s.joinLoads) == 0 {
-		return nil
-	}
-	return &Error{Kind: ErrUnsupported, Op: "select", Table: sq.meta.Table,
-		Err: errors.New("Preload is not supported with Each or Iter; use All, One or First")}
 }
