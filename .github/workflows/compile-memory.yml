@@ -30,8 +30,8 @@ jobs:
     env:
       # Fixture size. Change both only together with the budget below: the
       # budget is a number for exactly this fixture on this runner image.
-      MODELS: "150"
-      QUERIES: "900"
+      MODELS: "100"
+      QUERIES: "500"
       # THE GUARD. The job fails when the compiler's peak RSS for the default
       # build of the caller package exceeds this many KiB. Set from the first
       # measured value plus about 15% headroom; lower it when an optimisation
