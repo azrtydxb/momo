@@ -208,6 +208,13 @@ type ObjectRef struct{ Kind, Schema, Name string }
 type ObjectDiff struct {
 	Object ObjectRef
 	Detail string
+	// Snapshot and Live spell the definition each side holds, for the fields in
+	// which they differ, as comma separated name=value pairs (for example
+	// "default='new', nullable=false"). A field a side does not set reads
+	// "none"; an omitted nullable reads "nullable=false" (NOT NULL). For an
+	// object only the live database has ("not in snapshot"), Snapshot is empty
+	// and Live holds the whole definition. Both are empty for an invalid index.
+	Snapshot, Live string
 }
 
 // DriftReport lists the differences between the live database and the expected schema.

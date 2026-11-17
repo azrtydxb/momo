@@ -5,6 +5,7 @@ package migrate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"path"
@@ -248,12 +249,9 @@ func flatten(s *schema.Schema, exact bool) map[string]object {
 	return out
 }
 
-// differingFields names the top-level JSON fields in which a and b differ.
-func differingFields(a, b string) string {
-	var x, y map[string]json.RawMessage
-	if json.Unmarshal([]byte(a), &x) != nil || json.Unmarshal([]byte(b), &y) != nil {
-		return "definition differs"
-	}
+// differingKeys returns the sorted top-level JSON fields in which x and y
+// differ.
+func differingKeys(x, y map[string]json.RawMessage) []string {
 	var names []string
 	for k, v := range x {
 		if w, ok := y[k]; !ok || string(v) != string(w) {
@@ -266,7 +264,66 @@ func differingFields(a, b string) string {
 		}
 	}
 	slices.Sort(names)
-	return strings.Join(names, ", ") + " differ"
+	return names
+}
+
+// differingFields names the top-level JSON fields in which a and b differ.
+func differingFields(a, b string) string {
+	var x, y map[string]json.RawMessage
+	if json.Unmarshal([]byte(a), &x) != nil || json.Unmarshal([]byte(b), &y) != nil {
+		return "definition differs"
+	}
+	return strings.Join(differingKeys(x, y), ", ") + " differ"
+}
+
+// fieldText spells the value of one JSON field of an object for a person. A
+// field the JSON omits is "none", except nullable, whose omission means NOT
+// NULL.
+func fieldText(m map[string]json.RawMessage, k string) string {
+	v, ok := m[k]
+	switch {
+	case ok:
+		return k + "=" + string(v)
+	case k == "nullable":
+		return k + "=false"
+	}
+	return k + "=none"
+}
+
+// fieldList spells the fields keys of m, comma separated.
+func fieldList(m map[string]json.RawMessage, keys []string) string {
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		parts[i] = fieldText(m, k)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// definitions spells, for the fields in which the snapshot body and the live
+// body differ, the value each side holds (for example "default=none,
+// nullable=true"). It returns empty strings when a body is not an object.
+func definitions(snapshot, live string) (snap, liv string) {
+	var x, y map[string]json.RawMessage
+	if json.Unmarshal([]byte(snapshot), &x) != nil || json.Unmarshal([]byte(live), &y) != nil {
+		return "", ""
+	}
+	keys := differingKeys(x, y)
+	return fieldList(x, keys), fieldList(y, keys)
+}
+
+// wholeDefinition spells every field of a body, for an object that exists on
+// one side only.
+func wholeDefinition(body string) string {
+	var m map[string]json.RawMessage
+	if json.Unmarshal([]byte(body), &m) != nil {
+		return ""
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return fieldList(m, keys)
 }
 
 // reconcileExtensions blanks the version of an extension on both sides when
@@ -342,13 +399,13 @@ func compare(snapshot, live *schema.Schema, exact bool, invalid []string) *Drift
 	from, to := flatten(&a, exact), flatten(&b, exact)
 	rep := &DriftReport{}
 	changed := map[string]*ObjectDiff{}
-	setChanged := func(ref ObjectRef, detail string) {
+	setChanged := func(ref ObjectRef, detail, snap, liv string) {
 		k := key(ref.Kind, ref.Schema, ref.Name)
 		if d, ok := changed[k]; ok {
 			d.Detail += "; " + detail
 			return
 		}
-		changed[k] = &ObjectDiff{Object: ref, Detail: detail}
+		changed[k] = &ObjectDiff{Object: ref, Detail: detail, Snapshot: snap, Live: liv}
 	}
 	both := func(parent string) bool {
 		if parent == "" {
@@ -366,7 +423,8 @@ func compare(snapshot, live *schema.Schema, exact bool, invalid []string) *Drift
 				rep.Missing = append(rep.Missing, o.ref)
 			}
 		case o.body != l.body:
-			setChanged(o.ref, differingFields(o.body, l.body))
+			snap, liv := definitions(o.body, l.body)
+			setChanged(o.ref, differingFields(o.body, l.body), snap, liv)
 		}
 	}
 	for k, o := range to {
@@ -374,7 +432,7 @@ func compare(snapshot, live *schema.Schema, exact bool, invalid []string) *Drift
 			continue
 		}
 		if o.child {
-			setChanged(o.ref, "not in snapshot")
+			setChanged(o.ref, "not in snapshot", "", wholeDefinition(o.body))
 		} else {
 			rep.Unmanaged = append(rep.Unmanaged, o.ref)
 		}
@@ -384,7 +442,7 @@ func compare(snapshot, live *schema.Schema, exact bool, invalid []string) *Drift
 		if o, ok := to[key(ref.Kind, ref.Schema, ref.Name)]; ok && !both(o.parent) {
 			continue
 		}
-		setChanged(ref, invalidIndexDetail)
+		setChanged(ref, invalidIndexDetail, "", "")
 	}
 	for _, d := range changed {
 		rep.Changed = append(rep.Changed, *d)
@@ -488,8 +546,13 @@ func snapshotUpTo(dir fs.FS, version string) (*SnapshotFile, error) {
 }
 
 // Drift compares the live database with the snapshot of the latest applied
-// migration (the empty schema when none is applied, so every live object is
-// unmanaged) and reports what differs. See DriftReport for the three lists.
+// migration and reports what differs. See DriftReport for the three lists. When
+// no migration is applied (a database without momo history) it compares with
+// the latest state of the migration directory instead, the schema adoption
+// expects, so the report names each object that differs; a directory without a
+// snapshot compares with the empty schema, so every live object is unmanaged.
+// Each Changed entry carries the live and snapshot definitions of the fields
+// that differ (ObjectDiff.Live, ObjectDiff.Snapshot).
 //
 // It is read-only: it takes no lock, leaves nothing behind (a database without
 // a history table has an empty history) and changes no application object. PostgreSQL
@@ -547,6 +610,38 @@ func (e *Engine) DriftWith(ctx context.Context, o DriftOptions) (*DriftReport, e
 		return nil, err
 	}
 	defer func() { _ = c.Release() }()
+	s, err := e.driftSides(ctx, c, o)
+	if err != nil {
+		return nil, err
+	}
+	return s.report(), nil
+}
+
+// driftSides is the two schemas a drift compares: want, what the migrations
+// say the database holds, and live, what it holds.
+type driftSides struct {
+	want, live *schema.Schema
+	invalid    []string
+	exact      bool
+	skipped    []ObjectRef
+}
+
+// report compares the sides.
+func (s *driftSides) report() *DriftReport {
+	rep := compare(s.want, s.live, s.exact, s.invalid)
+	if !s.exact {
+		rep.Unverified = unverifiedBodies(s.want, s.live)
+	}
+	rep.CanonicalizeSkipped = s.skipped
+	return rep
+}
+
+// driftSides inspects the database on c and picks the snapshot to compare it
+// with: the state after the latest applied migration, or, when none is applied
+// (a database without momo history), the latest state of the migration
+// directory, the schema every migration would build. A directory without a
+// snapshot compares with the empty schema.
+func (e *Engine) driftSides(ctx context.Context, c momo.PinnedConn, o DriftOptions) (*driftSides, error) {
 	hist, err := e.readHistory(ctx, c)
 	if err != nil {
 		return nil, err
@@ -563,48 +658,47 @@ func (e *Engine) DriftWith(ctx context.Context, o DriftOptions) (*DriftReport, e
 	if err != nil {
 		return nil, err
 	}
-	from := &schema.Schema{Dialect: live.Dialect}
-	var skipped []ObjectRef
-	exact := false
+	var snap *SnapshotFile
 	if latest != "" {
-		snap, err := stateUpTo(e.dir, latest, applied)
-		if err != nil {
+		if snap, err = stateUpTo(e.dir, latest, applied); err != nil {
 			return nil, err
 		}
 		if snap == nil {
 			return nil, fmt.Errorf("%w: applied version %s has no snapshot at or before it; run momo migrate diff", ErrNoSnapshot, latest)
 		}
-		from = e.hide(snap.Schema)
-		if from, err = expand(e.opts.dialect, from); err != nil {
+	} else if snap, err = LatestState(e.dir); err != nil && !errors.Is(err, ErrNoSnapshot) {
+		return nil, err
+	}
+	s := &driftSides{want: &schema.Schema{Dialect: live.Dialect}, live: live, invalid: invalid}
+	if snap == nil {
+		return s, nil
+	}
+	from := e.hide(snap.Schema)
+	if from, err = expand(e.opts.dialect, from); err != nil {
+		return nil, err
+	}
+	if cz, ok := e.opts.dialect.(Canonicalizer); ok && hasBodyText(from) {
+		want, err := cloneSchema(from)
+		if err != nil {
 			return nil, err
 		}
-		if cz, ok := e.opts.dialect.(Canonicalizer); ok && hasBodyText(from) {
-			want, err := cloneSchema(from)
-			if err != nil {
+		cerr := cz.Canonicalize(ctx, c, want)
+		switch {
+		case cerr == nil:
+			from, s.exact = want, true
+		case o.Strict || ctx.Err() != nil:
+			return nil, fmt.Errorf("migrate: canonicalize snapshot %s: %w", snap.Version, cerr)
+		default:
+			// Tolerant fallback: table text only, bodies stay Unverified.
+			if from, s.skipped, err = e.canonicalSnapshot(ctx, c, from); err != nil {
 				return nil, err
 			}
-			cerr := cz.Canonicalize(ctx, c, want)
-			switch {
-			case cerr == nil:
-				from, exact = want, true
-			case o.Strict || ctx.Err() != nil:
-				return nil, fmt.Errorf("migrate: canonicalize snapshot %s: %w", latest, cerr)
-			default:
-				// Tolerant fallback: table text only, bodies stay Unverified.
-				if from, skipped, err = e.canonicalSnapshot(ctx, c, from); err != nil {
-					return nil, err
-				}
-			}
-		} else if from, skipped, err = e.canonicalSnapshot(ctx, c, from); err != nil {
-			return nil, err
 		}
+	} else if from, s.skipped, err = e.canonicalSnapshot(ctx, c, from); err != nil {
+		return nil, err
 	}
-	rep := compare(from, live, exact, invalid)
-	if !exact {
-		rep.Unverified = unverifiedBodies(from, live)
-	}
-	rep.CanonicalizeSkipped = skipped
-	return rep, nil
+	s.want = from
+	return s, nil
 }
 
 // canonicalSnapshot returns a copy of the snapshot schema s with the declared

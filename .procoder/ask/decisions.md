@@ -1335,3 +1335,14 @@ On the template database path the test's tables live in the clone's `public` sch
 - Default on, which breaks suites that read the schema name.
 
 Decision (2026-11-16, the user, via AskUserQuestion): opt-in for 0.16.0; the default stays schema-per-test.
+
+## #225 drift repair (2026-11-17, integrator)
+
+Issue #225: the adopt refusal gave only counts, `drift` on a database without history listed every table as unmanaged, and no momo command produced the DDL that brings a live database to the snapshot. Decided, not asked:
+
+- The adopt refusal names every differing object: kind, table, column or constraint, and for a changed object the live and snapshot definitions of the fields that differ. It is now a `*migrate.BaselineMismatchError` that wraps `ErrBaselineMismatch` (errors.Is unchanged), keeps the old first line, lists the first 50 objects and then "and N more", and carries the whole `DriftReport`.
+- `drift` on a database with no applied migration compares with the latest state of the migration directory (what `baseline` expects) instead of the empty schema; a directory without a snapshot still compares with the empty schema. `ObjectDiff` gains `Snapshot` and `Live` strings; `Detail` is unchanged.
+- `drift --fix-sql` prints the DDL live to snapshot, rendered by the dialect's differ and renderer, ordered as `diff` orders a migration, print only (no apply command). Go: `Engine.DriftRepair` returns a `*Repair`.
+- Destructive means every `drop_*` change and every column type change. Without `--allow-destructive` those steps, and the steps that depend on them, are not printed; each is listed on stderr and the exit code is 1. A step the dialect cannot render (an error wrapping `momo.ErrUnsupported`) is listed on stderr as not rendered and the exit code is 1; no wrong SQL is printed. On SQLite a change that needs a table rebuild is withheld while another change to the same table is, because the rebuild would apply it.
+- A missing NOT NULL column is added nullable with a hint (the differ's staging), since the table may hold rows; an existing column's SET NOT NULL is emitted (EnforceNotNull), because the repair is what makes the database match.
+- Not done: no `repair` command that applies the statements. A caller reviews and runs the script.

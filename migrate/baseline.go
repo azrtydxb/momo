@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/azrtydxb/momo"
@@ -23,8 +22,9 @@ const BaselineApplyID = "baseline"
 //
 // It first checks that the live database matches the snapshot of version
 // (ErrNoSnapshot when there is none). A mismatch is an error wrapping
-// ErrBaselineMismatch that lists the differing object kinds, unless force is
-// set. An index PostgreSQL marks invalid counts as a mismatch. Before it compares,
+// ErrBaselineMismatch (a *BaselineMismatchError) that lists the differing object
+// kinds and names each differing object, unless force is set. Engine.DriftRepair
+// plans the DDL that removes the difference. An index PostgreSQL marks invalid counts as a mismatch. Before it compares,
 // a dialect that implements Canonicalizer rewrites the snapshot's declared view,
 // function, policy and trigger text to what the database reports, so declared
 // text that PostgreSQL spells differently does not count as a difference.
@@ -96,8 +96,7 @@ func (e *Engine) Baseline(ctx context.Context, version string, force bool) (err 
 		}
 	}
 	if rep := compare(want, live, true, invalid); !rep.Clean() && !force {
-		return fmt.Errorf("%w: differing object kinds: %s (%d changed, %d missing, %d unmanaged); fix the database, adjust Config.Exclude, or force the baseline",
-			ErrBaselineMismatch, strings.Join(rep.kinds(), ", "), len(rep.Changed), len(rep.Missing), len(rep.Unmanaged))
+		return &BaselineMismatchError{Report: rep}
 	}
 	return e.insertBaselineRows(ctx, c, tbl, version, hist)
 }
