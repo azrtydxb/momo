@@ -31,6 +31,9 @@ type insMeta struct {
 }
 
 func insMetaOf[T any](m *Meta[T]) insMeta {
+	if m == nil {
+		return insMeta{}
+	}
 	return insMeta{Table: m.Table, Schema: m.Schema, Columns: m.Columns, PK: m.PK, IDGens: m.IDGens, TableSchema: m.TableSchema,
 		Identity: m.Identity, Version: m.Version, SoftDelete: m.SoftDelete, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt}
 }
