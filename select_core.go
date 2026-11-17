@@ -67,14 +67,22 @@ func (sq *SelectQuery[T]) ref() selectRef {
 
 // ---------------------------------------------------------------- builders
 
+// The clause builders below are marked go:noinline. They are small enough for
+// the inliner, and inlining them copies their bodies into the wrapper of every
+// instantiation of SelectQuery[T], which is what this file exists to avoid.
+
+//go:noinline
 func (s *selectCore) addWhere(ps []Predicate) { s.where = append(slices.Clip(s.where), ps...) }
 
+//go:noinline
 func (s *selectCore) setColumns(es []Expr) { s.cols = slices.Clone(es) }
 
+//go:noinline
 func (s *selectCore) addJoin(kind string, src TableSource, on []Predicate) {
 	s.joins = append(slices.Clip(s.joins), join{kind, src, slices.Clone(on)})
 }
 
+//go:noinline
 func (s *selectCore) addGroupBy(es []Expr) {
 	for _, e := range es {
 		rejectAliased(&s.err, "GROUP BY", e)
@@ -82,8 +90,10 @@ func (s *selectCore) addGroupBy(es []Expr) {
 	s.groupBy = append(slices.Clip(s.groupBy), es...)
 }
 
+//go:noinline
 func (s *selectCore) addHaving(ps []Predicate) { s.having = append(slices.Clip(s.having), ps...) }
 
+//go:noinline
 func (s *selectCore) addOrder(items []Orderable) {
 	o := slices.Clip(s.order)
 	for _, it := range items {
@@ -92,6 +102,7 @@ func (s *selectCore) addOrder(items []Orderable) {
 	s.order = o
 }
 
+//go:noinline
 func (s *selectCore) after(table string, values []any) {
 	if len(values) == 0 {
 		s.err = newError(ErrValidation, "build", table, errors.New("After needs at least one value"))
@@ -100,6 +111,7 @@ func (s *selectCore) after(table string, values []any) {
 	s.keyset = append(slices.Clip(s.keyset), values...)
 }
 
+//go:noinline
 func (s *selectCore) setLimit(table string, n int64) {
 	if n < 0 {
 		s.err = newError(ErrValidation, "build", table, fmt.Errorf("Limit must not be negative, got %d", n))
@@ -108,6 +120,7 @@ func (s *selectCore) setLimit(table string, n int64) {
 	s.limit = n
 }
 
+//go:noinline
 func (s *selectCore) setOffset(table string, n int64) {
 	if n < 0 {
 		s.err = newError(ErrValidation, "build", table, fmt.Errorf("Offset must not be negative, got %d", n))
@@ -116,6 +129,7 @@ func (s *selectCore) setOffset(table string, n int64) {
 	s.offset = n
 }
 
+//go:noinline
 func (s *selectCore) setLock(table, l string, opt []string) {
 	s.lockWait = ""
 	for _, o := range opt {
@@ -132,6 +146,7 @@ func (s *selectCore) setLock(table, l string, opt []string) {
 	s.lock = l
 }
 
+//go:noinline
 func (s *selectCore) setLockOf(table string, tables []string) {
 	if len(tables) == 0 {
 		s.err = newError(ErrValidation, "build", table, errors.New("LockOf needs at least one table"))
@@ -144,6 +159,7 @@ func (s *selectCore) setLockOf(table string, tables []string) {
 	s.lockOf = slices.Clone(tables)
 }
 
+//go:noinline
 func (s *selectCore) setIndexedBy(table, index string) {
 	if index == "" {
 		s.err = newError(ErrValidation, "build", table, errors.New("IndexedBy needs an index name"))
@@ -152,6 +168,7 @@ func (s *selectCore) setIndexedBy(table, index string) {
 	s.indexedBy = index
 }
 
+//go:noinline
 func (s *selectCore) setTableName(table, name string) {
 	t, ok := s.from.(TableRef)
 	switch {
@@ -168,10 +185,12 @@ func (s *selectCore) setTableName(table, name string) {
 	}
 }
 
+//go:noinline
 func (s *selectCore) addWith(name string, q Subquery, cols []string, recursive bool) {
 	s.with = append(slices.Clip(s.with), cte{name: name, cols: slices.Clone(cols), q: q, recursive: recursive})
 }
 
+//go:noinline
 func (s *selectCore) setMaxRows(table string, n int) {
 	if n <= 0 {
 		s.err = &Error{Kind: ErrValidation, Op: "build", Table: table, Err: fmt.Errorf("MaxRows must be positive, got %d", n)}
@@ -180,6 +199,7 @@ func (s *selectCore) setMaxRows(table string, n int) {
 	s.maxRows = n
 }
 
+//go:noinline
 func (s *selectCore) setDistinctOn(table string, es []Expr) {
 	if len(es) == 0 {
 		s.err = &Error{Kind: ErrValidation, Op: "build", Table: table, Err: errors.New("DistinctOn needs at least one expression")}
@@ -191,6 +211,7 @@ func (s *selectCore) setDistinctOn(table string, es []Expr) {
 	s.distinctOn = slices.Clone(es)
 }
 
+//go:noinline
 func (s *selectCore) addPreloads(plain, joined []any) {
 	s.preloads = append(slices.Clip(s.preloads), plain...)
 	s.joinLoads = append(slices.Clip(s.joinLoads), joined...)
@@ -219,6 +240,8 @@ func (s *selectCore) intercept(ctx context.Context, q Querier, table string) err
 }
 
 // errStreamPreload is the error Each and Iter return when preloads are set.
+//
+//go:noinline
 func (s *selectCore) errStreamPreload(table string) error {
 	if len(s.preloads) == 0 && len(s.joinLoads) == 0 {
 		return nil
@@ -227,6 +250,7 @@ func (s *selectCore) errStreamPreload(table string) error {
 		Err: errors.New("Preload is not supported with Each or Iter; use All, One or First")}
 }
 
+//go:noinline
 func maxRowsErr(table string, n int) error {
 	return &Error{Kind: ErrLimitExceeded, Op: "select", Table: table, Err: fmt.Errorf("result has more than %d rows (MaxRows)", n)}
 }
@@ -351,6 +375,8 @@ func explainSelect(ctx context.Context, q Querier, m tableInfo, s selectCore) (s
 }
 
 // finishRows reports the error that ended the iteration, then closes r.
+//
+//go:noinline
 func finishRows(r Rows) error {
 	if err := r.Err(); err != nil {
 		return err
@@ -361,6 +387,8 @@ func finishRows(r Rows) error {
 // nextRow advances r. It reports false with the error that ended the
 // iteration, if any, once the rows are exhausted, and fails with ErrCanceled
 // when ctx is done.
+//
+//go:noinline
 func nextRow(ctx context.Context, r Rows, table string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, newError(ErrCanceled, "select", table, err)
