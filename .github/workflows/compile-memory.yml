@@ -33,10 +33,11 @@ jobs:
       MODELS: "100"
       QUERIES: "500"
       # THE GUARD. The job fails when the compiler's peak RSS for the default
-      # build of the caller package exceeds this many KiB. Set from the first
-      # measured value plus about 15% headroom; lower it when an optimisation
+      # build of the caller package exceeds this many KiB. First measurement
+      # (run 44039243561, go1.27.4, 100 models and 500 queries): 9477388 KiB,
+      # 9255 MiB; budget is that plus about 15%. Lower it when an optimisation
       # lands, never raise it to make a regression pass. It is the only knob.
-      PEAK_RSS_BUDGET_KB: "14680064"
+      PEAK_RSS_BUDGET_KB: "10900000"
     steps:
       - uses: actions/checkout@v7
         with:
