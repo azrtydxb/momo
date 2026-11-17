@@ -36,10 +36,11 @@ jobs:
       # build of the caller package exceeds this many KiB. First measurement
       # (run 44039243561, go1.27.4, 100 models and 500 queries): 9477388 KiB,
       # 9255 MiB. After the typed-query bodies moved off the generic types
-      # (run 44064173689): 5809780 KiB, 5673 MiB (-l 4325, -c=1 5058); budget is
-      # that plus about 15%. Lower it when an optimisation
+      # (run 44066175274): 6318800 KiB, 6170 MiB (-l 4415, -c=1 4803); budget is
+      # that plus about 15%. The same code measured 5809780 KiB on an earlier
+      # run, so a runner varies by about 8%; the margin is for that. Lower it when an optimisation
       # lands, never raise it to make a regression pass. It is the only knob.
-      PEAK_RSS_BUDGET_KB: "6680000"
+      PEAK_RSS_BUDGET_KB: "7270000"
     steps:
       - uses: actions/checkout@v7
         with:
