@@ -57,7 +57,7 @@ func pkColumn[T any](sq SelectQuery[T]) (Expr, error) {
 	if len(sq.meta.PK) != 1 {
 		return nil, &Error{Kind: ErrValidation, Op: "select", Table: sq.meta.Table, Err: fmt.Errorf("IDs and FirstID need a single-column primary key, the model has %d", len(sq.meta.PK))}
 	}
-	return qcol{sq.s.qualifier(sq.meta.Table), sq.meta.Columns[sq.meta.PK[0]].Name}, nil
+	return qcol{sq.s.qualifier(tableOf(sq.meta)), sq.meta.Columns[sq.meta.PK[0]].Name}, nil
 }
 
 // IDs returns the primary-key value of every row sq matches, in the query's
@@ -194,7 +194,7 @@ func Batches[T any](ctx context.Context, sq SelectQuery[T], n int, fn func([]T) 
 	if len(sq.meta.PK) == 0 || sq.meta.Value == nil {
 		return &Error{Kind: ErrValidation, Op: "select", Table: sq.meta.Table, Err: errors.New("Batches needs a model with a primary key")}
 	}
-	q := sq.s.qualifier(sq.meta.Table)
+	q := sq.s.qualifier(tableOf(sq.meta))
 	items := make([]Orderable, len(sq.meta.PK))
 	for i, ci := range sq.meta.PK {
 		items[i] = Order{Expr: pkRef{qcol{q, sq.meta.Columns[ci].Name}}}

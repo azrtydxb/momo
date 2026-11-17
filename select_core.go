@@ -63,7 +63,9 @@ type selectRef struct {
 	meta tableInfo
 }
 
-// selectView returns the non-generic view of sq. It is the one unexported
+// selectView returns the non-generic view of sq: a copy of its clauses (the
+// slices inside are shared, as everywhere in selectCore, and never written
+// through) and the table description. It is the one unexported
 // method of SelectQuery[T] that the renderer's dynamic checks go through
 // (selectViewer): every unexported method of a generic type costs a wrapper per
 // instantiated type, so the checks for needsParens, hasLock, render,

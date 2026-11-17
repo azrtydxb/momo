@@ -197,7 +197,7 @@ func (r Relation[P, C]) From(parents SelectQuery[P]) SelectQuery[C] {
 	}
 	keyCols := make([]Expr, len(r.ParentCols))
 	for i, c := range r.ParentCols {
-		keyCols[i] = qcol{parents.s.qualifier(parents.meta.Table), c}
+		keyCols[i] = qcol{parents.s.qualifier(tableOf(parents.meta)), c}
 	}
 	keys := parents.Columns(keyCols...)
 	keys.s.keysOnly = true
