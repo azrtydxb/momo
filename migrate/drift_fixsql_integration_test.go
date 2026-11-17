@@ -229,21 +229,21 @@ func TestDriftRepairWithholdsAColumnTypeChange(t *testing.T) {
 // driftViewDesired is driftDesired with a view over items.
 func driftViewDesired(d dialect.Name) *schema.Schema {
 	s := driftDesired(d)
-	v := schema.View{Name: "items_v", Query: "SELECT id, qty FROM items"}
-	if d == dialect.SQLite {
-		v.Depends = []string{"items"} // the SQLite inspector reports it
-	}
-	s.Views = []schema.View{v}
+	// The PostgreSQL and SQLite inspectors report the tables a view reads.
+	s.Views = []schema.View{{Name: "items_v", Query: "SELECT id, qty FROM items", Depends: []string{"items"}}}
 	return s
 }
 
 // Catches: a changed view (a drop and a create of one name) printing the CREATE
 // while the DROP is withheld, which fails with "already exists" and, on MySQL,
 // leaves the earlier statements applied. Only PostgreSQL compares a view's query
-// text, so only there can a view change; on the other dialects a view that is
-// gone from the database is created again.
+// text, so only there can a view change; on SQLite a view that is gone from the
+// database is created again; MySQL renders no views and is skipped.
 func TestDriftRepairWithholdsTheCreateThatReplacesAView(t *testing.T) {
 	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		if d == dialect.MySQL {
+			t.Skip("momo's MySQL dialect renders no views (create_view has no MySQL rendering), so no migration can build one")
+		}
 		ctx := context.Background()
 		mutation := `DROP VIEW items_v`
 		if d == dialect.Postgres {
