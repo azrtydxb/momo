@@ -46,6 +46,11 @@ func TestSplitDestructiveWithholdsTheCreateThatReplacesADrop(t *testing.T) {
 		{Kind: DropUnique, Table: "t", Name: "uq"}, {Kind: AddUnique, Table: "t", Name: "uq"},
 		{Kind: DropFK, Table: "t", Name: "fk"}, {Kind: AddFK, Table: "t", Name: "fk"},
 		{Kind: DropPrimaryKey, Table: "t", Name: "t_pkey"}, {Kind: AddPrimaryKey, Table: "t", Name: "t_pkey"},
+		// A unique constraint that becomes an index of the same name, and the reverse.
+		{Kind: DropUnique, Table: "t", Name: "ux"}, {Kind: CreateIndex, Table: "t", Name: "ux"},
+		{Kind: DropIndex, Table: "t", Name: "iu"}, {Kind: AddUnique, Table: "t", Name: "iu"},
+		// An index name is schema-wide: the drop on one table collides with the create on another.
+		{Kind: DropIndex, Table: "a", Name: "shared"}, {Kind: CreateIndex, Table: "b", Name: "shared"},
 		add,
 	}
 	kept, withheld := e.splitDestructive(nil, changes, false)
@@ -66,6 +71,40 @@ func TestSplitDestructiveWithholdsTheCreateThatReplacesADrop(t *testing.T) {
 	kept, withheld = e.splitDestructive(nil, changes, true)
 	if len(kept) != len(changes) || len(withheld) != 0 {
 		t.Fatalf("with allow nothing is withheld: kept %d withheld %d", len(kept), len(withheld))
+	}
+}
+
+// Catches: a withheld DropFunction f(int) also withholding an unrelated
+// CreateFunction f(text), and the reverse: the same name with the same
+// arguments must still be paired.
+func TestSplitDestructiveTellsFunctionsApartByArguments(t *testing.T) {
+	e := &Engine{}
+	fn := func(args string) *schema.Function { return &schema.Function{Name: "f", Args: args} }
+	changes := []Change{
+		{Kind: DropFunction, Name: "f", Before: fn("a integer")},
+		{Kind: CreateFunction, Name: "f", After: fn("a text")},
+		{Kind: DropFunction, Name: "g", Before: &schema.Function{Name: "g", Args: "a integer"}},
+		{Kind: CreateFunction, Name: "g", After: &schema.Function{Name: "g", Args: "a integer"}},
+	}
+	kept, withheld := e.splitDestructive(nil, changes, false)
+	if len(kept) != 1 || kept[0].Kind != CreateFunction || kept[0].Name != "f" {
+		t.Fatalf("kept = %+v, want only create_function f(text)", kept)
+	}
+	if len(withheld) != 3 {
+		t.Fatalf("withheld %v, want both drops and the create of g", withheldKinds(withheld))
+	}
+}
+
+// Catches: an index name without its table ("ix", as drift names an invalid
+// index whose table it could not find) never matching a change, which made a
+// complete repair report Complete() == false.
+func TestCoversMatchesABareIndexName(t *testing.T) {
+	ref := ObjectRef{Kind: "index", Name: "orphan_ix"}
+	if !covers([]Change{{Kind: DropIndex, Table: "t", Name: "orphan_ix"}}, ref) {
+		t.Fatal("a drop_index of that name covers the bare index reference")
+	}
+	if covers([]Change{{Kind: DropIndex, Table: "t", Name: "other"}}, ref) {
+		t.Fatal("a change of another name must not cover it")
 	}
 }
 

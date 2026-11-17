@@ -317,7 +317,9 @@ func covers(changes []Change, ref ObjectRef) bool {
 	case "column", "unique", "index", "fk", "check", "trigger", "policy":
 		i := strings.LastIndexByte(ref.Name, '.')
 		if i < 0 {
-			return false
+			// A name without its owner (an invalid index whose table drift could
+			// not find): any change of that name covers it.
+			return slices.ContainsFunc(changes, func(c Change) bool { return sameSchema(c) && c.Name == ref.Name })
 		}
 		tbl, name := ref.Name[:i], ref.Name[i+1:]
 		return slices.ContainsFunc(changes, func(c Change) bool {
@@ -395,17 +397,39 @@ var dropsFor = map[ChangeKind][]ChangeKind{
 	CreateFunction: {DropFunction},
 	CreateTrigger:  {DropTrigger},
 	CreatePolicy:   {DropPolicy},
-	CreateIndex:    {DropIndex},
-	AddPrimaryKey:  {DropPrimaryKey},
-	AddUnique:      {DropUnique},
-	AddCheck:       {DropCheck},
-	AlterCheckIn:   {DropCheck},
-	AddFK:          {DropFK},
+	// An index, a unique constraint and a primary key are all backed by an index
+	// of their own name, so any of them can collide with any other.
+	CreateIndex:   {DropIndex, DropUnique, DropPrimaryKey},
+	AddUnique:     {DropUnique, DropIndex, DropPrimaryKey},
+	AddPrimaryKey: {DropPrimaryKey, DropUnique, DropIndex},
+	AddCheck:      {DropCheck},
+	AlterCheckIn:  {DropCheck},
+	AddFK:         {DropFK},
 }
 
-// dropKey identifies the object a change of kind drops or creates.
+// dropKey identifies the object a change of kind drops or creates. An index, a
+// unique constraint and a primary key share one name space per schema (an index
+// name is schema-wide, whatever table it is on); a function is told apart by its
+// argument list, since f(int) and f(text) are different objects; anything else
+// is named by schema, table and name.
 func dropKey(kind ChangeKind, ch Change) string {
+	switch kind {
+	case DropIndex, CreateIndex, DropUnique, AddUnique, DropPrimaryKey, AddPrimaryKey:
+		return "relation\x00" + ch.Schema + "\x00" + ch.Name
+	case DropFunction, CreateFunction:
+		return "function\x00" + ch.Schema + "\x00" + ch.Name + "(" + functionArgs(ch) + ")"
+	}
 	return string(kind) + "\x00" + ch.Schema + "\x00" + ch.Table + "\x00" + ch.Name
+}
+
+// functionArgs returns the argument list of the function a change drops or creates.
+func functionArgs(ch Change) string {
+	for _, p := range []any{ch.Before, ch.After} {
+		if f, ok := p.(*schema.Function); ok {
+			return f.Args
+		}
+	}
+	return ""
 }
 
 // replacedDrop returns the withheld drop whose object ch creates again under

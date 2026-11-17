@@ -106,3 +106,73 @@ func TestMigrateDriftFixSQL(t *testing.T) {
 		t.Fatalf("baseline after the repair: exit %d: %s", code, errOut)
 	}
 }
+
+// fixProject builds the tenants table by migration in a scratch database (so a
+// test may create an extension), applies it and returns the URL and a handle.
+func fixProject(t *testing.T) (dsn string, db *sql.DB) {
+	t.Helper()
+	dsn = testdb.PostgresURLFor(t, testdb.ScratchDatabase(t, "momo_cli_fix_"))
+	root := simpleModule(t)
+	writeFile(t, filepath.Join(root, "momo.yaml"),
+		"version: 1\nmigrate:\n  dir:\n    postgres: migrations/postgres\n  url_env:\n    postgres: MOMO_TEST_URL\n  exclude: [vector]\n")
+	chdir(t, root)
+	if code, _, errOut := cliRun(t, dsn, "diff", "init"); code != 0 {
+		t.Fatalf("diff: exit %d: %s", code, errOut)
+	}
+	if code, _, errOut := cliRun(t, dsn, "apply"); code != 0 {
+		t.Fatalf("apply: exit %d: %s", code, errOut)
+	}
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return dsn, db
+}
+
+// TestMigrateDriftFixSQLExitCodes pins when --fix-sql exits 1 although it
+// printed statements, and when 0. Catches: exit 0 while a NOT NULL column is
+// only staged nullable, exit 0 while a difference no statement covers remains,
+// and exit 1 for a repair that is complete.
+func TestMigrateDriftFixSQLExitCodes(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("staged", func(t *testing.T) {
+		dsn, db := fixProject(t)
+		if _, err := db.ExecContext(ctx, `ALTER TABLE tenants DROP COLUMN name`); err != nil {
+			t.Fatal(err)
+		}
+		code, out, errOut := cliRun(t, dsn, "drift", "--fix-sql", "--allow-destructive")
+		if code != 1 || !strings.Contains(strings.ToUpper(out), "ADD COLUMN") {
+			t.Fatalf("exit %d, want 1 with the column added:\n%s\n%s", code, out, errOut)
+		}
+		if !strings.Contains(errOut, "staged: tenants.name") || !strings.Contains(errOut, "SET NOT NULL") {
+			t.Fatalf("stderr does not list the staged column and the statement to run after the backfill:\n%s", errOut)
+		}
+	})
+
+	t.Run("uncovered", func(t *testing.T) {
+		dsn, db := fixProject(t)
+		if _, err := db.ExecContext(ctx, `CREATE EXTENSION pgcrypto`); err != nil {
+			t.Fatal(err)
+		}
+		code, _, errOut := cliRun(t, dsn, "drift", "--fix-sql", "--allow-destructive")
+		if code != 1 || !strings.Contains(errOut, "not covered: unmanaged: extension pgcrypto") {
+			t.Fatalf("exit %d, want 1 naming the extension no statement covers:\n%s", code, errOut)
+		}
+	})
+
+	t.Run("complete", func(t *testing.T) {
+		dsn, db := fixProject(t)
+		if _, err := db.ExecContext(ctx, `CREATE TABLE stray (id integer)`); err != nil {
+			t.Fatal(err)
+		}
+		if code, _, errOut := cliRun(t, dsn, "drift", "--fix-sql"); code != 1 || !strings.Contains(errOut, "withheld: drop_table stray") {
+			t.Fatalf("without --allow-destructive: exit %d, want 1 listing the withheld drop:\n%s", code, errOut)
+		}
+		code, out, errOut := cliRun(t, dsn, "drift", "--fix-sql", "--allow-destructive")
+		if code != 0 || !strings.Contains(strings.ToLower(out), "drop table") {
+			t.Fatalf("with --allow-destructive: exit %d, want 0 with the drop:\n%s\n%s", code, out, errOut)
+		}
+	})
+}
