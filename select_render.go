@@ -13,22 +13,12 @@ import (
 
 // needsParens reports whether the query has a clause that must bind to it
 // alone when it is a member of a set operation.
-func (sq SelectQuery[T]) needsParens() bool { return sq.s.needsParens() }
-
 func (s *selectCore) needsParens() bool {
 	return len(s.order) > 0 || s.limit >= 0 || s.offset > 0 || s.lock != "" || len(s.with) > 0
 }
 
 // hasLock reports whether the query carries a row-lock clause.
-func (sq SelectQuery[T]) hasLock() bool { return sq.s.lock != "" }
-
-func (sq SelectQuery[T]) render(b *Builder) { sq.ref().render(b) }
-
-// renderBare is render; onConflictFollows ends a select that has a FROM and
-// no WHERE in WHERE true so SQLite does not read ON CONFLICT as a join.
-func (sq SelectQuery[T]) renderBare(b *Builder, onConflictFollows bool) {
-	sq.ref().renderBare(b, onConflictFollows)
-}
+func (s *selectCore) hasLock() bool { return s.lock != "" }
 
 // AppendSQL renders the query in parentheses, for use as a subquery.
 func (sq selectRef) AppendSQL(b *Builder) {
@@ -39,6 +29,8 @@ func (sq selectRef) AppendSQL(b *Builder) {
 
 func (sq selectRef) render(b *Builder) { sq.renderBare(b, false) }
 
+// renderBare is render; onConflictFollows ends a select that has a FROM and
+// no WHERE in WHERE true so SQLite does not read ON CONFLICT as a join.
 func (sq selectRef) renderBare(b *Builder, onConflictFollows bool) {
 	s := sq.s
 	if s.err != nil {
@@ -356,8 +348,6 @@ func (sq selectRef) checkLockOf(b *Builder) bool {
 }
 
 // selectArity reports the number of columns the select yields, when known.
-func (sq SelectQuery[T]) selectArity() (int, bool) { return sq.ref().selectArity() }
-
 func (sq selectRef) selectArity() (int, bool) {
 	if sq.s.cols != nil {
 		return len(sq.s.cols), true
@@ -370,6 +360,9 @@ func (sq selectRef) selectArity() (int, bool) {
 
 // arityOf reports how many columns a subquery yields, when momo can tell.
 func arityOf(q Subquery) (int, bool) {
+	if v, ok := q.(selectViewer); ok {
+		return v.selectView().selectArity()
+	}
 	a, ok := q.(interface{ selectArity() (int, bool) })
 	if !ok {
 		return 0, false

@@ -31,7 +31,10 @@ type tableInfo struct {
 }
 
 // infoOf returns the T-independent description of m; the zero tableInfo for a
-// nil Meta.
+// nil Meta. It is go:noinline: every wrapper of SelectQuery[T] calls it, and
+// inlined it would copy its field loads into each of them.
+//
+//go:noinline
 func infoOf[T any](m *Meta[T]) tableInfo {
 	if m == nil {
 		return tableInfo{}
@@ -60,10 +63,19 @@ type selectRef struct {
 	meta tableInfo
 }
 
-// ref returns the non-generic view of sq; it points at sq's own clauses.
-func (sq *SelectQuery[T]) ref() selectRef {
+// selectView returns the non-generic view of sq: a copy of its clauses (the
+// slices inside are shared, as everywhere in selectCore, and never written
+// through) and the table description. It is the one unexported
+// method of SelectQuery[T] that the renderer's dynamic checks go through
+// (selectViewer): every unexported method of a generic type costs a wrapper per
+// instantiated type, so the checks for needsParens, hasLock, render,
+// renderBare and selectArity share it.
+func (sq SelectQuery[T]) selectView() selectRef {
 	return selectRef{s: sq.s, meta: infoOf(sq.meta)}
 }
+
+// selectViewer is implemented by SelectQuery[T] of every T.
+type selectViewer interface{ selectView() selectRef }
 
 // ---------------------------------------------------------------- builders
 
