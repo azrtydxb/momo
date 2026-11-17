@@ -458,20 +458,7 @@ func (q InsertQuery[T]) modelValue(r, ci int, now time.Time, fp fieldPlan[T]) an
 }
 
 // appendValue renders one assigned value inside VALUES or SET.
-func (q InsertQuery[T]) appendValue(b *Builder, a Assignment) {
-	switch a.kind {
-	case setValue:
-		b.argFor(a.flags, a.val)
-	case setExpr:
-		b.exprFor(a.flags, a.expr)
-	case setNull:
-		b.WriteString("NULL")
-	case setDefault:
-		b.WriteString("DEFAULT")
-	case setExcluded:
-		b.writeExcluded(a.col)
-	}
-}
+func (q InsertQuery[T]) appendValue(b *Builder, a Assignment) { appendAssignedValue(b, a) }
 
 // renderWhere writes ` WHERE ` and the predicates ANDed.
 func renderWhere(b *Builder, preds []Predicate) {
@@ -482,81 +469,7 @@ func renderWhere(b *Builder, preds []Predicate) {
 // renderConflict writes the conflict clause. written names the columns the
 // statement writes, which MySQL's conflict-target rule needs.
 func (q InsertQuery[T]) renderConflict(b *Builder, written []string) {
-	if len(q.i.actionWhere) > 0 && q.i.conflict != conflictUpdate {
-		b.SetErr(q.verr("", "Where is only valid after DoUpdate (or on Upsert): there is no DO UPDATE to condition"))
-		return
-	}
-	if q.i.conflict == conflictNone {
-		return
-	}
-	if b.Dialect().OnDuplicateKey {
-		q.renderMySQLConflict(b, written)
-		return
-	}
-	if !b.Dialect().OnConflict {
-		b.unsupported("ON CONFLICT")
-		return
-	}
-	for _, n := range q.i.target {
-		if q.column(n) < 0 {
-			b.SetErr(q.verr(n, "OnConflict: column %q is not mapped by %s", n, q.meta.Table))
-			return
-		}
-	}
-	b.WriteString(" ON CONFLICT")
-	if len(q.i.target) > 0 {
-		b.WriteString(" (")
-		for i, n := range q.i.target {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-			b.Ident(n)
-		}
-		b.writeByte(')')
-	}
-	if len(q.i.targetWhere) > 0 {
-		if len(q.i.target) == 0 {
-			b.SetErr(q.verr("", "OnConflict(...).Where needs a conflict target: pass columns to OnConflict"))
-			return
-		}
-		prev := b.unqualified
-		b.unqualified, b.conflictTarget = true, true
-		renderWhere(b, q.i.targetWhere)
-		b.unqualified, b.conflictTarget = prev, false
-	}
-	if q.i.conflict == conflictNothing {
-		b.WriteString(" DO NOTHING")
-		return
-	}
-	if len(q.i.target) == 0 {
-		b.SetErr(q.verr("", "DoUpdate needs a conflict target: pass columns to OnConflict"))
-		return
-	}
-	if len(q.i.set) == 0 {
-		b.SetErr(q.verr("", "DoUpdate needs at least one assignment"))
-		return
-	}
-	b.WriteString(" DO UPDATE SET ")
-	for i, a := range q.i.set {
-		ci := q.column(a.col)
-		if ci < 0 || !q.writable(ci) {
-			b.SetErr(q.verr(a.col, "DoUpdate: column %q is not mapped or not writable", a.col))
-			return
-		}
-		if a.kind == setDefault {
-			b.SetErr(q.verr(a.col, "DoUpdate: SetDefault is not supported"))
-			return
-		}
-		if i > 0 {
-			b.WriteString(", ")
-		}
-		b.Ident(a.col)
-		b.WriteString(" = ")
-		q.appendValue(b, a)
-	}
-	if len(q.i.actionWhere) > 0 {
-		renderWhere(b, q.i.actionWhere)
-	}
+	q.ref().renderConflict(b, written)
 }
 
 // modelValues computes the bound value of every column in cols for every
@@ -611,11 +524,4 @@ func (q InsertQuery[T]) validateConflictSet(fp fieldPlan[T]) error {
 }
 
 // writeInsertHead writes INSERT INTO [schema.]table.
-func (q InsertQuery[T]) writeInsertHead(b *Builder) {
-	b.WriteString("INSERT INTO ")
-	if q.meta.Schema != "" {
-		b.Ident(q.meta.Schema)
-		b.writeByte('.')
-	}
-	b.Ident(q.meta.Table)
-}
+func (q InsertQuery[T]) writeInsertHead(b *Builder) { q.ref().writeInsertHead(b) }

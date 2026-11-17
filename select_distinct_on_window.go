@@ -65,8 +65,8 @@ type derivedItem struct {
 
 // derivedItems lists the select-list items, or false after recording an
 // error. It validates the list as writeSelectList does.
-func (sq SelectQuery[T]) derivedItems(b *Builder) ([]derivedItem, bool) {
-	s := &sq.s
+func (sq selectRef) derivedItems(b *Builder) ([]derivedItem, bool) {
+	s := sq.s
 	if s.cols == nil {
 		if sq.meta.Table == "" {
 			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: errors.New("projection query needs Columns")})
@@ -106,8 +106,8 @@ func (sq SelectQuery[T]) derivedItems(b *Builder) ([]derivedItem, bool) {
 
 // effectiveOrder is the ORDER BY the statement sorts by: the OrderBy items,
 // and for a keyset query the primary-key tie-breakers After appends.
-func (sq SelectQuery[T]) effectiveOrder() []Order {
-	s := &sq.s
+func (sq selectRef) effectiveOrder() []Order {
+	s := sq.s
 	if s.keyset == nil {
 		return s.order
 	}
@@ -125,8 +125,8 @@ func (sq SelectQuery[T]) effectiveOrder() []Order {
 
 // renderDistinctOnWindow writes the whole statement (WITH clause included) for
 // a DISTINCT ON query on a dialect without the clause.
-func (sq SelectQuery[T]) renderDistinctOnWindow(b *Builder) {
-	s := &sq.s
+func (sq selectRef) renderDistinctOnWindow(b *Builder) {
+	s := sq.s
 	if !b.d.WindowFunctions {
 		b.unsupported("DISTINCT ON (it is emulated with ROW_NUMBER, which needs window functions)")
 		return

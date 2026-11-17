@@ -12,16 +12,8 @@ import (
 // never silently truncated. Streaming reads (Each, Iter) and Count are not
 // capped, and n must be positive.
 func (sq SelectQuery[T]) MaxRows(n int) SelectQuery[T] {
-	if n <= 0 {
-		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: fmt.Errorf("MaxRows must be positive, got %d", n)}
-		return sq
-	}
-	sq.s.maxRows = n
+	sq.s.setMaxRows(tableOf(sq.meta), n)
 	return sq
-}
-
-func (sq SelectQuery[T]) maxRowsError() error {
-	return &Error{Kind: ErrLimitExceeded, Op: "select", Table: sq.meta.Table, Err: fmt.Errorf("result has more than %d rows (MaxRows)", sq.s.maxRows)}
 }
 
 // WithMaxInList caps the number of values in one typed IN or NOT IN list, and

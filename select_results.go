@@ -26,7 +26,7 @@ func collectScalars[T, V any](ctx context.Context, q SelectQuery[T]) ([]V, error
 	var out []V
 	for r.Next() {
 		if q.s.maxRows > 0 && len(out) >= q.s.maxRows {
-			return nil, q.maxRowsError()
+			return nil, maxRowsErr(tableOf(q.meta), q.s.maxRows)
 		}
 		var v V
 		if err := r.Scan(&v); err != nil {

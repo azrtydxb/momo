@@ -59,7 +59,7 @@ func TestPostgresOnlyLockModesRefused(t *testing.T) {
 				sq := SelectQuery[struct{}]{}
 				sq.s.lock, sq.s.lockOf = mode, of
 				b := NewBuilder(d)
-				sq.writeLock(b)
+				sq.ref().writeLock(b)
 				if err := b.Err(); !errors.Is(err, ErrUnsupported) {
 					t.Errorf("%s %s of=%v: err = %v, want ErrUnsupported", name, mode, of, err)
 				}

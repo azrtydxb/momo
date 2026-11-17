@@ -100,15 +100,11 @@ func Select[T any, PT Modeler[T]](q Querier) SelectQuery[T] {
 func (sq SelectQuery[T]) isSubquery() {}
 
 // AppendSQL renders the query in parentheses, for use as a subquery.
-func (sq SelectQuery[T]) AppendSQL(b *Builder) {
-	b.writeByte('(')
-	sq.render(b)
-	b.writeByte(')')
-}
+func (sq SelectQuery[T]) AppendSQL(b *Builder) { sq.ref().AppendSQL(b) }
 
 // Where adds predicates combined with AND.
 func (sq SelectQuery[T]) Where(ps ...Predicate) SelectQuery[T] {
-	sq.s.where = append(slices.Clip(sq.s.where), ps...)
+	sq.s.addWhere(ps)
 	return sq
 }
 
@@ -116,7 +112,7 @@ func (sq SelectQuery[T]) Where(ps ...Predicate) SelectQuery[T] {
 // match the model's mapped columns one-to-one; for projections they map to
 // the projection's fields in order.
 func (sq SelectQuery[T]) Columns(es ...Expr) SelectQuery[T] {
-	sq.s.cols = slices.Clone(es)
+	sq.s.setColumns(es)
 	return sq
 }
 
@@ -126,14 +122,10 @@ func (sq SelectQuery[T]) Distinct() SelectQuery[T] { sq.s.distinct = true; retur
 // From replaces the FROM source (a table, aliased table, CTE or subquery).
 func (sq SelectQuery[T]) From(src TableSource) SelectQuery[T] { sq.s.from = src; return sq }
 
-func (sq SelectQuery[T]) addJoin(kind string, src TableSource, on []Predicate) SelectQuery[T] {
-	sq.s.joins = append(slices.Clip(sq.s.joins), join{kind, src, slices.Clone(on)})
-	return sq
-}
-
 // Join adds an INNER JOIN.
 func (sq SelectQuery[T]) Join(src TableSource, on ...Predicate) SelectQuery[T] {
-	return sq.addJoin("INNER JOIN", src, on)
+	sq.s.addJoin("INNER JOIN", src, on)
+	return sq
 }
 
 // LeftJoin adds a LEFT JOIN. Columns of src may be NULL in the result:
@@ -141,26 +133,25 @@ func (sq SelectQuery[T]) Join(src TableSource, on ...Predicate) SelectQuery[T] {
 // NULL into a non-nullable field fails with a driver error; it never
 // silently yields a zero value.
 func (sq SelectQuery[T]) LeftJoin(src TableSource, on ...Predicate) SelectQuery[T] {
-	return sq.addJoin("LEFT JOIN", src, on)
+	sq.s.addJoin("LEFT JOIN", src, on)
+	return sq
 }
 
 // CrossJoin adds a CROSS JOIN.
 func (sq SelectQuery[T]) CrossJoin(src TableSource) SelectQuery[T] {
-	return sq.addJoin("CROSS JOIN", src, nil)
+	sq.s.addJoin("CROSS JOIN", src, nil)
+	return sq
 }
 
 // GroupBy sets GROUP BY expressions.
 func (sq SelectQuery[T]) GroupBy(es ...Expr) SelectQuery[T] {
-	for _, e := range es {
-		rejectAliased(&sq.s.err, "GROUP BY", e)
-	}
-	sq.s.groupBy = append(slices.Clip(sq.s.groupBy), es...)
+	sq.s.addGroupBy(es)
 	return sq
 }
 
 // Having adds HAVING predicates combined with AND.
 func (sq SelectQuery[T]) Having(ps ...Predicate) SelectQuery[T] {
-	sq.s.having = append(slices.Clip(sq.s.having), ps...)
+	sq.s.addHaving(ps)
 	return sq
 }
 
@@ -168,11 +159,7 @@ func (sq SelectQuery[T]) Having(ps ...Predicate) SelectQuery[T] {
 // expression (e.g. a vector distance), which orders ascending. A boolean
 // condition orders through OrderByPredicate, a PredicateOrder.
 func (sq SelectQuery[T]) OrderBy(items ...Orderable) SelectQuery[T] {
-	o := slices.Clip(sq.s.order)
-	for _, it := range items {
-		o = append(o, it.order())
-	}
-	sq.s.order = o
+	sq.s.addOrder(items)
 	return sq
 }
 
@@ -195,11 +182,7 @@ func (sq SelectQuery[T]) order() Order { return Order{Expr: sq} }
 // (ErrUnsupported otherwise). A predicate key from OrderByPredicate is an
 // ErrValidation: its value can be NULL and a cursor over it skips or repeats rows.
 func (sq SelectQuery[T]) After(values ...any) SelectQuery[T] {
-	if len(values) == 0 {
-		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("After needs at least one value"))
-		return sq
-	}
-	sq.s.keyset = append(slices.Clip(sq.s.keyset), values...)
+	sq.s.after(tableOf(sq.meta), values)
 	return sq
 }
 
@@ -211,8 +194,8 @@ type keysetKey struct {
 	flags    uint16 // column flags; a sensitive key masks its keyset value
 }
 
-func (sq SelectQuery[T]) keysetKeys() []keysetKey {
-	s := &sq.s
+func (sq selectRef) keysetKeys() []keysetKey {
+	s := sq.s
 	keys := make([]keysetKey, 0, len(s.order)+len(sq.meta.PK))
 	for _, o := range s.order {
 		k := keysetKey{expr: o.Expr, desc: o.Desc, flags: flagsOf(o.Expr)}
@@ -248,8 +231,8 @@ func (sq SelectQuery[T]) keysetKeys() []keysetKey {
 
 // keysetPredicate builds the lexicographic expansion of the cursor, or nil
 // after recording an error.
-func (sq SelectQuery[T]) keysetPredicate(b *Builder) Predicate {
-	s := &sq.s
+func (sq selectRef) keysetPredicate(b *Builder) Predicate {
+	s := sq.s
 	if len(s.order) == 0 {
 		b.SetErr(newError(ErrValidation, "build", sq.meta.Table, errors.New("After requires OrderBy")))
 		return nil
@@ -299,21 +282,13 @@ func (sq SelectQuery[T]) keysetPredicate(b *Builder) Predicate {
 
 // Limit sets LIMIT.
 func (sq SelectQuery[T]) Limit(n int64) SelectQuery[T] {
-	if n < 0 {
-		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("Limit must not be negative, got %d", n))
-		return sq
-	}
-	sq.s.limit = n
+	sq.s.setLimit(tableOf(sq.meta), n)
 	return sq
 }
 
 // Offset sets OFFSET. Prefer keyset pagination (After) for deep pages.
 func (sq SelectQuery[T]) Offset(n int64) SelectQuery[T] {
-	if n < 0 {
-		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("Offset must not be negative, got %d", n))
-		return sq
-	}
-	sq.s.offset = n
+	sq.s.setOffset(tableOf(sq.meta), n)
 	return sq
 }
 
@@ -323,13 +298,17 @@ func (sq SelectQuery[T]) Offset(n int64) SelectQuery[T] {
 // ErrValidation. Count and Exists wrap the whole statement, so they keep the
 // lock clause and lock the rows they count.
 func (sq SelectQuery[T]) ForUpdate(opt ...string) SelectQuery[T] {
-	return sq.withLock("FOR UPDATE", opt)
+	sq.s.setLock(tableOf(sq.meta), "FOR UPDATE", opt)
+	return sq
 }
 
 // ForShare adds FOR SHARE (PostgreSQL and MySQL; MariaDB renders LOCK IN SHARE
 // MODE). Options and restrictions are those of
 // ForUpdate.
-func (sq SelectQuery[T]) ForShare(opt ...string) SelectQuery[T] { return sq.withLock("FOR SHARE", opt) }
+func (sq SelectQuery[T]) ForShare(opt ...string) SelectQuery[T] {
+	sq.s.setLock(tableOf(sq.meta), "FOR SHARE", opt)
+	return sq
+}
 
 // ForNoKeyUpdate adds FOR NO KEY UPDATE (PostgreSQL only): a write lock that
 // does not block foreign-key inserts and FOR KEY SHARE locks on the same row,
@@ -338,7 +317,8 @@ func (sq SelectQuery[T]) ForShare(opt ...string) SelectQuery[T] { return sq.with
 // MariaDB and SQLite have no such mode and return ErrUnsupported when the
 // query is built.
 func (sq SelectQuery[T]) ForNoKeyUpdate(opt ...string) SelectQuery[T] {
-	return sq.withLock("FOR NO KEY UPDATE", opt)
+	sq.s.setLock(tableOf(sq.meta), "FOR NO KEY UPDATE", opt)
+	return sq
 }
 
 // ForKeyShare adds FOR KEY SHARE (PostgreSQL only): the weakest row lock, which
@@ -346,23 +326,7 @@ func (sq SelectQuery[T]) ForNoKeyUpdate(opt ...string) SelectQuery[T] {
 // restrictions are those of ForUpdate, and LockOf works with it. MySQL,
 // MariaDB and SQLite return ErrUnsupported when the query is built.
 func (sq SelectQuery[T]) ForKeyShare(opt ...string) SelectQuery[T] {
-	return sq.withLock("FOR KEY SHARE", opt)
-}
-
-func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
-	sq.s.lockWait = ""
-	for _, o := range opt {
-		switch o {
-		case "NOWAIT", "SKIP LOCKED":
-			if sq.s.lockWait != "" && sq.s.lockWait != " "+o {
-				sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("lock options NOWAIT and SKIP LOCKED are mutually exclusive"))
-			}
-			sq.s.lockWait = " " + o
-		default:
-			sq.s.err = newError(ErrValidation, "build", sq.meta.Table, fmt.Errorf("unknown lock option %q (want NOWAIT or SKIP LOCKED)", o))
-		}
-	}
-	sq.s.lock = l
+	sq.s.setLock(tableOf(sq.meta), "FOR KEY SHARE", opt)
 	return sq
 }
 
@@ -381,15 +345,7 @@ func (sq SelectQuery[T]) withLock(l string, opt []string) SelectQuery[T] {
 // DISTINCT ON, GROUP BY or HAVING (ErrValidation); other invalid
 // combinations, such as aggregates or UNION, are left to the server.
 func (sq SelectQuery[T]) LockOf(tables ...string) SelectQuery[T] {
-	if len(tables) == 0 {
-		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("LockOf needs at least one table"))
-		return sq
-	}
-	if slices.Contains(tables, "") {
-		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("LockOf table name must not be empty"))
-		return sq
-	}
-	sq.s.lockOf = slices.Clone(tables)
+	sq.s.setLockOf(tableOf(sq.meta), tables)
 	return sq
 }
 
@@ -398,11 +354,7 @@ func (sq SelectQuery[T]) LockOf(tables ...string) SelectQuery[T] {
 // and return ErrUnsupported when the query is built. The FROM source must be
 // a plain table (TableRef).
 func (sq SelectQuery[T]) IndexedBy(index string) SelectQuery[T] {
-	if index == "" {
-		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("IndexedBy needs an index name"))
-		return sq
-	}
-	sq.s.indexedBy = index
+	sq.s.setIndexedBy(tableOf(sq.meta), index)
 	return sq
 }
 
@@ -412,19 +364,7 @@ func (sq SelectQuery[T]) IndexedBy(index string) SelectQuery[T] {
 // table name, so the model's column expressions and the soft-delete filter
 // keep resolving. It needs a plain table as the FROM source.
 func (sq SelectQuery[T]) WithTableName(name string) SelectQuery[T] {
-	t, ok := sq.s.from.(TableRef)
-	switch {
-	case name == "":
-		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("WithTableName needs a table name"))
-	case !ok:
-		sq.s.err = newError(ErrValidation, "build", sq.meta.Table, errors.New("WithTableName needs a plain table as the FROM source"))
-	default:
-		if t.Alias == "" {
-			t.Alias = t.Name
-		}
-		t.Name = name
-		sq.s.from = t
-	}
+	sq.s.setTableName(tableOf(sq.meta), name)
 	return sq
 }
 
@@ -437,14 +377,14 @@ func (sq SelectQuery[T]) WithDeleted() SelectQuery[T] {
 
 // With adds a common table expression. cols optionally names its columns.
 func (sq SelectQuery[T]) With(name string, q Subquery, cols ...string) SelectQuery[T] {
-	sq.s.with = append(slices.Clip(sq.s.with), cte{name: name, cols: slices.Clone(cols), q: q})
+	sq.s.addWith(name, q, cols, false)
 	return sq
 }
 
 // WithRecursive adds a recursive CTE; q is typically a UNION ALL built with
 // SQL or Union.
 func (sq SelectQuery[T]) WithRecursive(name string, q Subquery, cols ...string) SelectQuery[T] {
-	sq.s.with = append(slices.Clip(sq.s.with), cte{name: name, cols: slices.Clone(cols), q: q, recursive: true})
+	sq.s.addWith(name, q, cols, true)
 	return sq
 }
 
@@ -453,31 +393,8 @@ func (sq SelectQuery[T]) WithRecursive(name string, q Subquery, cols ...string) 
 // Interceptors run with a background context here; the execution methods pass
 // the statement's own context.
 func (sq SelectQuery[T]) SQL() (Compiled, error) {
-	c, _, err := sq.compileJoined(context.Background())
+	c, _, err := compileSelect(context.Background(), sq.q, infoOf(sq.meta), sq.s)
 	return c, err
-}
-
-// compileJoined compiles sq with its joined relations expanded and returns
-// the scanner for the resulting rows, expanding the joins once. The
-// interceptors of the handle run first, with ctx.
-func (sq SelectQuery[T]) compileJoined(ctx context.Context) (Compiled, scanner[T], error) {
-	sc := scanner[T]{meta: sq.meta}
-	if sq.q == nil {
-		return Compiled{}, sc, noQuerier("select", sq.meta.Table)
-	}
-	sq, err := sq.intercept(ctx)
-	if err != nil {
-		return Compiled{}, sc, err
-	}
-	run, ls, err := sq.expandJoins()
-	if err != nil {
-		return Compiled{}, sc, err
-	}
-	if len(ls) > 0 {
-		sc.join = newJoinScan(ls)
-	}
-	c, err := compile(sq.q.Dialect(), run.render)
-	return c, sc, err
 }
 
 func joinSources(js []join) []TableSource {
@@ -491,12 +408,9 @@ func joinSources(js []join) []TableSource {
 // qualifier is the name the model's own columns are qualified with.
 // A schema-qualified, unaliased TableRef source renders bare column names;
 // every other source qualifies with its alias or table name.
-func (sq SelectQuery[T]) qualifier() string {
-	if t, ok := sq.s.from.(interface{ Qualifier() string }); ok {
-		return t.Qualifier()
-	}
-	return sq.meta.Table
-}
+func (sq SelectQuery[T]) qualifier() string { return sq.s.qualifier(tableOf(sq.meta)) }
+
+func (sq selectRef) qualifier() string { return sq.s.qualifier(sq.meta.Table) }
 
 type qcol struct{ table, name string }
 
@@ -530,11 +444,11 @@ func appendList(b *Builder, es []Expr) {
 
 // rows runs the query and returns its rows with the scanner for them.
 func (sq SelectQuery[T]) rows(ctx context.Context) (Rows, scanner[T], error) {
-	c, sc, err := sq.compileJoined(ctx)
-	if err != nil {
-		return nil, sc, err
+	sc := scanner[T]{meta: sq.meta}
+	r, ls, err := selectRows(ctx, sq.q, infoOf(sq.meta), sq.s)
+	if len(ls) > 0 {
+		sc.join = newJoinScan[T](ls)
 	}
-	r, err := sq.q.conn().query(ctx, "select", sq.meta.Table, "", c)
 	return r, sc, err
 }
 
@@ -545,6 +459,10 @@ type scanner[T any] struct {
 	join *joinScan[T] // joined relations scanned after the model's columns
 }
 
+// scan is go:noinline: the row loops of All, One, Each and Iter would each
+// carry a copy of it in every instantiation.
+//
+//go:noinline
 func (s *scanner[T]) scan(r Rows, m *T) error {
 	n := len(s.meta.Columns)
 	if s.dest == nil {
@@ -582,7 +500,7 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 	var zero T
 	for r.Next() {
 		if sq.s.maxRows > 0 && len(out) >= sq.s.maxRows {
-			return nil, sq.maxRowsError()
+			return nil, maxRowsErr(tableOf(sq.meta), sq.s.maxRows)
 		}
 		out = append(out, zero)
 		if err := sc.scan(r, &out[len(out)-1]); err != nil {
@@ -592,10 +510,7 @@ func (sq SelectQuery[T]) All(ctx context.Context) ([]T, error) {
 			return nil, err
 		}
 	}
-	if err := r.Err(); err != nil {
-		return nil, err
-	}
-	if err := r.Close(); err != nil {
+	if err := finishRows(r); err != nil {
 		return nil, err
 	}
 	if err := sq.runPreloads(ctx, out); err != nil {
@@ -613,22 +528,13 @@ func (sq SelectQuery[T]) One(ctx context.Context) (T, error) {
 		return zero, err
 	}
 	defer r.Close()
-	if !r.Next() {
-		if err := r.Err(); err != nil {
-			return zero, err
-		}
-		return zero, &Error{Kind: ErrNotFound, Op: "select", Table: sq.meta.Table}
+	if err := firstRow(r, tableOf(sq.meta)); err != nil {
+		return zero, err
 	}
 	if err := sc.scan(r, &m); err != nil {
 		return zero, err
 	}
-	if r.Next() {
-		return zero, &Error{Kind: ErrTooManyRows, Op: "select", Table: sq.meta.Table}
-	}
-	if err := r.Err(); err != nil {
-		return zero, err
-	}
-	if err := r.Close(); err != nil {
+	if err := lastRow(r, tableOf(sq.meta)); err != nil {
 		return zero, err
 	}
 	if err := afterLoad(ctx, sq.meta, &m); err != nil {
@@ -651,7 +557,7 @@ func (sq SelectQuery[T]) First(ctx context.Context) (T, error) { return sq.Limit
 // reused for the next row; copy it to retain it. Returning an error from fn
 // stops iteration, closes the cursor and returns that error.
 func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
-	if err := sq.errStreamPreload(); err != nil {
+	if err := sq.s.errStreamPreload(tableOf(sq.meta)); err != nil {
 		return err
 	}
 	r, sc, err := sq.rows(ctx)
@@ -659,13 +565,12 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 		return err
 	}
 	defer r.Close()
+	table := tableOf(sq.meta)
 	var m, zero T
 	for {
-		if err := ctx.Err(); err != nil {
-			return newError(ErrCanceled, "select", sq.meta.Table, err)
-		}
-		if !r.Next() {
-			break
+		ok, err := nextRow(ctx, r, table)
+		if err != nil || !ok {
+			return err
 		}
 		m = zero
 		if err := sc.scan(r, &m); err != nil {
@@ -678,10 +583,6 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 			return err
 		}
 	}
-	if err := r.Err(); err != nil {
-		return err
-	}
-	return r.Close()
 }
 
 // Iter streams rows as a range-over-func sequence. Breaking out of the loop
@@ -689,7 +590,8 @@ func (sq SelectQuery[T]) Each(ctx context.Context, fn func(*T) error) error {
 func (sq SelectQuery[T]) Iter(ctx context.Context) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
 		var zero T
-		if err := sq.errStreamPreload(); err != nil {
+		table := tableOf(sq.meta)
+		if err := sq.s.errStreamPreload(table); err != nil {
 			yield(zero, err)
 			return
 		}
@@ -700,12 +602,13 @@ func (sq SelectQuery[T]) Iter(ctx context.Context) iter.Seq2[T, error] {
 		}
 		defer r.Close()
 		for {
-			if err := ctx.Err(); err != nil {
-				yield(zero, newError(ErrCanceled, "select", sq.meta.Table, err))
+			ok, err := nextRow(ctx, r, table)
+			if err != nil {
+				yield(zero, err)
 				return
 			}
-			if !r.Next() {
-				break
+			if !ok {
+				return
 			}
 			var m T
 			if err := sc.scan(r, &m); err != nil {
@@ -720,56 +623,13 @@ func (sq SelectQuery[T]) Iter(ctx context.Context) iter.Seq2[T, error] {
 				return
 			}
 		}
-		if err := r.Err(); err != nil {
-			yield(zero, err)
-			return
-		}
-		if err := r.Close(); err != nil {
-			yield(zero, err)
-		}
 	}
 }
 
 // Count runs SELECT COUNT(*) over this query (as a subquery, so DISTINCT,
 // GROUP BY, LIMIT and OFFSET keep their meaning).
 func (sq SelectQuery[T]) Count(ctx context.Context) (int64, error) {
-	if sq.q == nil {
-		return 0, noQuerier("select", sq.meta.Table)
-	}
-	inner, err := sq.intercept(ctx)
-	if err != nil {
-		return 0, err
-	}
-	// The count covers the whole filtered set: neither the ordering nor the
-	// page cursor applies.
-	if len(inner.s.distinctOn) == 0 { // DISTINCT ON keeps its ORDER BY: it picks the rows
-		inner.s.order = nil
-	}
-	inner.s.distinctCount = len(inner.s.distinctOn) > 0
-	inner.s.keyset = nil
-	c, err := compile(sq.q.Dialect(), func(b *Builder) {
-		b.WriteString("SELECT COUNT(*) FROM ")
-		inner.AppendSQL(b)
-		b.WriteString(" AS momo_count")
-	})
-	if err != nil {
-		return 0, err
-	}
-	r, err := sq.q.conn().query(ctx, "select", sq.meta.Table, "", c)
-	if err != nil {
-		return 0, err
-	}
-	defer r.Close()
-	var n int64
-	if r.Next() {
-		if err := r.Scan(&n); err != nil {
-			return 0, err
-		}
-	}
-	if err := r.Err(); err != nil {
-		return 0, err
-	}
-	return n, r.Close()
+	return countSelect(ctx, sq.q, infoOf(sq.meta), sq.s)
 }
 
 // Exists reports whether the query yields any row.

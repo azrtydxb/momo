@@ -3,7 +3,6 @@
 package momo
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -28,21 +27,14 @@ import (
 // cannot be combined with DistinctOn and fails with ErrUnsupported on those
 // dialects (ErrValidation on PostgreSQL).
 func (sq SelectQuery[T]) DistinctOn(es ...Expr) SelectQuery[T] {
-	if len(es) == 0 {
-		sq.s.err = &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table, Err: errors.New("DistinctOn needs at least one expression")}
-		return sq
-	}
-	for _, e := range es {
-		rejectAliased(&sq.s.err, "DISTINCT ON", e)
-	}
-	sq.s.distinctOn = slices.Clone(es)
+	sq.s.setDistinctOn(tableOf(sq.meta), es)
 	return sq
 }
 
 // renderDistinctOn writes DISTINCT ON (...) after SELECT, validating the
 // ORDER BY prefix rule. It is the PostgreSQL rendering; the other dialects
 // take renderDistinctOnWindow.
-func (sq SelectQuery[T]) renderDistinctOn(b *Builder) {
+func (sq selectRef) renderDistinctOn(b *Builder) {
 	exprs, ok := sq.validateDistinctOn(b)
 	if !ok {
 		return
@@ -55,8 +47,8 @@ func (sq SelectQuery[T]) renderDistinctOn(b *Builder) {
 // validateDistinctOn checks the ORDER BY prefix rule on every dialect, so the
 // emulation refuses what PostgreSQL refuses. It returns the DISTINCT ON
 // expressions without repeats, or false after recording the error.
-func (sq SelectQuery[T]) validateDistinctOn(b *Builder) ([]Expr, bool) {
-	s := &sq.s
+func (sq selectRef) validateDistinctOn(b *Builder) ([]Expr, bool) {
+	s := sq.s
 	// A repeated expression adds nothing: keep the first of each.
 	var exprs []Expr
 	var seen []renderedExpr

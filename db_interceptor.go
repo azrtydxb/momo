@@ -2,10 +2,7 @@
 
 package momo
 
-import (
-	"context"
-	"slices"
-)
+import "context"
 
 // Operation is what an interceptor sees and may change before a typed
 // statement compiles.
@@ -88,16 +85,4 @@ func runInterceptors(ctx context.Context, q Querier, kind, table string) ([]Pred
 		}
 	}
 	return op.Where, nil
-}
-
-// intercept returns sq with the interceptors' predicates added to its WHERE.
-func (sq SelectQuery[T]) intercept(ctx context.Context) (SelectQuery[T], error) {
-	extra, err := runInterceptors(ctx, sq.q, "select", sq.meta.Table)
-	if err != nil {
-		return sq, err
-	}
-	if len(extra) > 0 {
-		sq.s.where = append(slices.Clone(sq.s.where), extra...)
-	}
-	return sq, nil
 }

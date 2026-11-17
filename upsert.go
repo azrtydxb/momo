@@ -121,18 +121,7 @@ func (q InsertQuery[T]) resolveUpsert() (InsertQuery[T], error) {
 
 // refuseUpdatedAtSet refuses an explicit DO UPDATE assignment to the
 // updated-at column, with the error Update gives for the same Set.
-func (q InsertQuery[T]) refuseUpdatedAtSet() error {
-	ci := q.meta.UpdatedAt
-	if ci < 0 || ci >= len(q.meta.Columns) {
-		return nil
-	}
-	for _, a := range q.i.set {
-		if a.col == q.meta.Columns[ci].Name {
-			return q.verr(a.col, "DoUpdate: column %q is the updated-at column and cannot be set directly", a.col)
-		}
-	}
-	return nil
-}
+func (q InsertQuery[T]) refuseUpdatedAtSet() error { return q.ref().refuseUpdatedAtSet() }
 
 // bumpUpdatedAt appends updated_at = <clock> to the DO UPDATE list, the value
 // Update binds, so the conflict branch always refreshes the timestamp whatever
@@ -165,73 +154,20 @@ func (q InsertQuery[T]) bumpUpdatedAt() (InsertQuery[T], error) {
 }
 
 // pkNames returns the primary-key column names.
-func (q InsertQuery[T]) pkNames() []string {
-	names := make([]string, len(q.meta.PK))
-	for i, ci := range q.meta.PK {
-		names[i] = q.meta.Columns[ci].Name
-	}
-	return names
-}
+func (q InsertQuery[T]) pkNames() []string { return q.ref().pkNames() }
 
 // reservedRoleOf names the role of column ci when it is the primary key,
 // version, soft-delete, created-at or updated-at column.
-func (q InsertQuery[T]) reservedRoleOf(ci int) string {
-	switch {
-	case slices.Contains(q.meta.PK, ci):
-		return "primary key"
-	case ci == q.meta.Version:
-		return "version"
-	case ci == q.meta.SoftDelete:
-		return "soft-delete"
-	case ci == q.meta.CreatedAt:
-		return "created-at"
-	case ci == q.meta.UpdatedAt:
-		return "updated-at"
-	}
-	return ""
-}
+func (q InsertQuery[T]) reservedRoleOf(ci int) string { return q.ref().reservedRoleOf(ci) }
 
 // defaultUpsertSet assigns EXCLUDED to every column of the INSERT list that
 // an upsert may update.
 func (q InsertQuery[T]) defaultUpsertSet() []Assignment {
-	var out []Assignment
-	if q.i.sel != nil {
-		for _, n := range q.i.selCols {
-			if ci := q.column(n); ci >= 0 && upsertUpdatable(q.meta.Columns[ci].Flags) {
-				out = append(out, Assignment{col: n, kind: setExcluded})
-			}
-		}
-		return out
+	var counts []int
+	if q.i.sel == nil && len(q.models) > 0 {
+		counts = q.withDBD().dbd.count
 	}
-	if len(q.models) > 0 {
-		omit := map[string]struct{}{}
-		for _, n := range q.i.omit {
-			omit[n] = struct{}{}
-		}
-		for i, c := range q.meta.Columns {
-			if _, skip := omit[c.Name]; skip || !q.writable(i) || !upsertUpdatable(c.Flags) || q.isNonPKIDGen(i) || q.dbDefaultCount(i) > 0 {
-				continue // a generated id or database default is never overwritten by a fresh one
-			}
-			out = append(out, Assignment{col: c.Name, kind: setExcluded})
-		}
-		return out
-	}
-	src := q.i.rows
-	if !q.i.hasRows {
-		src = [][]Assignment{q.i.assigns}
-	}
-	seen := map[string]struct{}{}
-	for _, row := range src {
-		for _, a := range row {
-			ci := q.column(a.col)
-			if _, dup := seen[a.col]; dup || ci < 0 || a.kind == setDefault || !upsertUpdatable(q.meta.Columns[ci].Flags) {
-				continue
-			}
-			seen[a.col] = struct{}{}
-			out = append(out, Assignment{col: a.col, kind: setExcluded})
-		}
-	}
-	return out
+	return q.ref().defaultUpsertSet(len(q.models), counts)
 }
 
 // resolveIdentity decides whether the identity column joins the INSERT list.
@@ -274,6 +210,4 @@ func sameStrings(a, b []string) bool {
 
 // insertsIdentity reports whether column i is the identity column and an
 // upsert writes its explicit values.
-func (q InsertQuery[T]) insertsIdentity(i int) bool {
-	return q.i.withIdentity && i == q.meta.Identity
-}
+func (q InsertQuery[T]) insertsIdentity(i int) bool { return q.ref().insertsIdentity(i) }

@@ -143,86 +143,10 @@ func onlyColumns(cols, set []string) bool {
 	return true
 }
 
-// unsuppliedIdentity returns the names of the auto-increment columns the
-// INSERT leaves to the database: the identity column when it is absent from
-// written, the column list this statement really writes (the resolved model
-// columns, the Values columns or the FromSelect target columns). A Go-side
-// generated id counts as supplied.
-func (q InsertQuery[T]) unsuppliedIdentity(written []string) []string {
-	id := q.meta.Identity
-	if id < 0 || id >= len(q.meta.Columns) || q.meta.Columns[id].Flags&FlagIdentity == 0 || q.isIDGenColumn(id) {
-		return nil
-	}
-	name := q.meta.Columns[id].Name
-	if slices.Contains(written, name) {
-		return nil
-	}
-	return []string{name}
-}
-
 func mysqlTargetError(target []string, why string) error {
 	return &Error{Kind: ErrUnsupported, Op: "insert", Err: fmt.Errorf(
 		"MySQL ON DUPLICATE KEY UPDATE cannot target %v: it fires for any unique key; %s", target, why)}
 }
-
-// renderMySQLConflict renders the conflict clause of an INSERT for the MySQL
-// dialect as ON DUPLICATE KEY UPDATE.
-func (q InsertQuery[T]) renderMySQLConflict(b *Builder, written []string) {
-	if len(q.i.targetWhere) > 0 || len(q.i.actionWhere) > 0 {
-		b.unsupported("a WHERE on a conflict clause (MySQL ON DUPLICATE KEY UPDATE has no conflict condition)")
-		return
-	}
-	for _, n := range q.i.target {
-		if q.column(n) < 0 {
-			b.SetErr(q.verr(n, "OnConflict: column %q is not mapped by %s", n, q.meta.Table))
-			return
-		}
-	}
-	pk := q.pkNames()
-	if err := checkMySQLConflictTarget(q.meta.TableSchema, q.i.target, pk, q.unsuppliedIdentity(written)); err != nil {
-		b.SetErr(err)
-		return
-	}
-	fromValues := q.i.sel == nil
-	if q.i.conflict == conflictNothing {
-		key := ""
-		switch {
-		case len(pk) > 0:
-			key = pk[0]
-		case len(q.meta.Columns) > 0:
-			key = q.meta.Columns[0].Name
-		}
-		if key == "" {
-			b.SetErr(q.verr("", "DoNothing needs a column to leave unchanged, and %s maps none", q.meta.Table))
-			return
-		}
-		renderMySQLUpsert(b, b.d.Flavor, q.meta.Table, key, nil, true, fromValues, q.appendValueTo)
-		return
-	}
-	if len(q.i.target) == 0 {
-		b.SetErr(q.verr("", "DoUpdate needs a conflict target: pass columns to OnConflict"))
-		return
-	}
-	if len(q.i.set) == 0 {
-		b.SetErr(q.verr("", "DoUpdate needs at least one assignment"))
-		return
-	}
-	for _, a := range q.i.set {
-		ci := q.column(a.col)
-		if ci < 0 || !q.writable(ci) {
-			b.SetErr(q.verr(a.col, "DoUpdate: column %q is not mapped or not writable", a.col))
-			return
-		}
-		if a.kind == setDefault {
-			b.SetErr(q.verr(a.col, "DoUpdate: SetDefault is not supported"))
-			return
-		}
-	}
-	renderMySQLUpsert(b, b.d.Flavor, q.meta.Table, "", q.i.set, false, fromValues, q.appendValueTo)
-}
-
-// appendValueTo adapts appendValue to the callback form.
-func (q InsertQuery[T]) appendValueTo(b *Builder, a Assignment) { q.appendValue(b, a) }
 
 // wantsGeneratedKey reports whether execOne should read LAST_INSERT_ID and
 // write it back: a single Model insert on MySQL or MariaDB without a conflict
@@ -244,14 +168,7 @@ func (q InsertQuery[T]) leavesKeyToServer() bool {
 // isIDGenColumn reports whether column ci takes a Go-side generated id. Those
 // ids are written back by generateIDs and always win: LAST_INSERT_ID is read
 // only for a key the database generates.
-func (q InsertQuery[T]) isIDGenColumn(ci int) bool {
-	for _, g := range q.meta.IDGens {
-		if g.Column == ci {
-			return true
-		}
-	}
-	return false
-}
+func (q InsertQuery[T]) isIDGenColumn(ci int) bool { return q.ref().isIDGenColumn(ci) }
 
 // assignGeneratedKey stores id in the identity field of the model passed to
 // Model (see identityIsInteger for the field kinds). A multi-row insert through

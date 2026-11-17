@@ -18,14 +18,21 @@ type joinedLoader[P, C any] struct{ rel Relation[P, C] }
 // parent statement instead of a separate relation load.
 type joinLoader[P any] interface {
 	Loader[P]
+	joinLoaderCore
+	// joinBinder returns the per-scan state that scans one row's child columns.
+	joinBinder() joinBinder[P]
+}
+
+// joinLoaderCore is the part of a joined loader that does not mention the
+// parent type, so the statement builder expands joins without being compiled
+// per model.
+type joinLoaderCore interface {
 	// joinCheck reports why the relation cannot be loaded by join.
 	joinCheck() error
 	// joinExpand adds the LEFT JOIN under alias and the aliased child columns.
 	joinExpand(parent, alias string, cols []Expr, joins []join) ([]Expr, []join)
 	// joinWidth is the number of child columns joinExpand adds.
 	joinWidth() int
-	// joinBinder returns the per-scan state that scans one row's child columns.
-	joinBinder() joinBinder[P]
 }
 
 // joinBinder scans the child block of one joined relation. bind is called
@@ -265,51 +272,6 @@ func scanNull(dst any) error {
 	return &Error{Kind: ErrValidation, Op: "scan", Err: errors.New("NULL into a non-nullable field")}
 }
 
-// expandJoins returns the query to run when joined loaders are present: the
-// parent columns, then one aliased block per joined loader, plus the LEFT
-// JOINs. It also returns the loaders, in block order. Without joined loaders
-// it returns sq unchanged. It is applied at execution and in SQL, not at
-// Preload, so clauses added after Preload (Columns, joins, Where) compose.
-func (sq SelectQuery[T]) expandJoins() (SelectQuery[T], []joinLoader[T], error) {
-	if len(sq.s.joinLoads) == 0 {
-		return sq, nil, nil
-	}
-	ls := make([]joinLoader[T], len(sq.s.joinLoads))
-	for i, l := range sq.s.joinLoads {
-		ls[i] = l.(joinLoader[T])
-		if err := ls[i].joinCheck(); err != nil {
-			return sq, nil, err
-		}
-	}
-	unsupported := func(what string) error {
-		return newError(ErrUnsupported, "select", sq.meta.Table, errors.New("Joined relations cannot be combined with "+what))
-	}
-	switch {
-	case len(sq.s.groupBy) > 0 || len(sq.s.having) > 0:
-		return sq, nil, unsupported("GroupBy or Having")
-	case sq.s.lock != "":
-		return sq, nil, unsupported("row locking")
-	}
-	parent := sq.qualifier()
-	cols := slices.Clone(sq.s.cols)
-	switch {
-	case cols == nil:
-		for _, c := range sq.meta.Columns {
-			cols = append(cols, qcol{parent, c.Name})
-		}
-	case len(cols) != len(sq.meta.Columns):
-		return sq, nil, &Error{Kind: ErrValidation, Op: "build", Table: sq.meta.Table,
-			Err: errors.New("select list must have one expression per mapped field to preload a joined relation")}
-	}
-	joins := slices.Clip(sq.s.joins)
-	for i, l := range ls {
-		cols, joins = l.joinExpand(parent, "momo_j"+strconv.Itoa(i), cols, joins)
-	}
-	sq.s.cols, sq.s.joins, sq.s.joinLoads = cols, joins, nil
-	sq.s.keysOnly = true // the select list is wider than the model's column list
-	return sq, ls, nil
-}
-
 // joinScan scans the child blocks of a joined query and assigns them to the
 // parent after each row.
 type joinScan[T any] struct {
@@ -318,10 +280,10 @@ type joinScan[T any] struct {
 	width   int
 }
 
-func newJoinScan[T any](ls []joinLoader[T]) *joinScan[T] {
+func newJoinScan[T any](ls []joinLoaderCore) *joinScan[T] {
 	js := &joinScan[T]{}
 	for _, l := range ls {
-		js.binders = append(js.binders, l.joinBinder())
+		js.binders = append(js.binders, l.(joinLoader[T]).joinBinder())
 		js.widths = append(js.widths, l.joinWidth())
 		js.width += l.joinWidth()
 	}

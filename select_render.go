@@ -13,20 +13,34 @@ import (
 
 // needsParens reports whether the query has a clause that must bind to it
 // alone when it is a member of a set operation.
-func (sq SelectQuery[T]) needsParens() bool {
-	s := &sq.s
+func (sq SelectQuery[T]) needsParens() bool { return sq.s.needsParens() }
+
+func (s *selectCore) needsParens() bool {
 	return len(s.order) > 0 || s.limit >= 0 || s.offset > 0 || s.lock != "" || len(s.with) > 0
 }
 
 // hasLock reports whether the query carries a row-lock clause.
 func (sq SelectQuery[T]) hasLock() bool { return sq.s.lock != "" }
 
-func (sq SelectQuery[T]) render(b *Builder) { sq.renderBare(b, false) }
+func (sq SelectQuery[T]) render(b *Builder) { sq.ref().render(b) }
 
 // renderBare is render; onConflictFollows ends a select that has a FROM and
 // no WHERE in WHERE true so SQLite does not read ON CONFLICT as a join.
 func (sq SelectQuery[T]) renderBare(b *Builder, onConflictFollows bool) {
-	s := &sq.s
+	sq.ref().renderBare(b, onConflictFollows)
+}
+
+// AppendSQL renders the query in parentheses, for use as a subquery.
+func (sq selectRef) AppendSQL(b *Builder) {
+	b.writeByte('(')
+	sq.render(b)
+	b.writeByte(')')
+}
+
+func (sq selectRef) render(b *Builder) { sq.renderBare(b, false) }
+
+func (sq selectRef) renderBare(b *Builder, onConflictFollows bool) {
+	s := sq.s
 	if s.err != nil {
 		b.SetErr(s.err)
 		return
@@ -48,8 +62,8 @@ func (sq SelectQuery[T]) renderBare(b *Builder, onConflictFollows bool) {
 
 // renderBody writes the clauses in SQL order. A clause that fails records its
 // error on the builder and stops the statement.
-func (sq SelectQuery[T]) renderBody(b *Builder, onConflictFollows bool) {
-	s := &sq.s
+func (sq selectRef) renderBody(b *Builder, onConflictFollows bool) {
+	s := sq.s
 	if len(s.distinctOn) > 0 && b.d.Name != dialect.Postgres {
 		sq.renderDistinctOnWindow(b) // writes the WITH clause itself
 		return
@@ -77,8 +91,8 @@ func (sq SelectQuery[T]) renderBody(b *Builder, onConflictFollows bool) {
 
 // writeSelectList writes the select list: the model's columns, or the explicit
 // expressions. It reports false when the list is invalid.
-func (sq SelectQuery[T]) writeSelectList(b *Builder) bool {
-	s := &sq.s
+func (sq selectRef) writeSelectList(b *Builder) bool {
+	s := sq.s
 	if s.cols == nil {
 		if sq.meta.Table == "" {
 			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: errors.New("projection query needs Columns")})
@@ -166,8 +180,8 @@ func (s *selectCore) sourceSoftDelete() (Predicate, bool) {
 
 // effectiveWhere returns the predicates of the WHERE clause: the keyset
 // predicate, the user's predicates and the soft-delete filter.
-func (sq SelectQuery[T]) effectiveWhere(b *Builder) []Predicate {
-	s := &sq.s
+func (sq selectRef) effectiveWhere(b *Builder) []Predicate {
+	s := sq.s
 	where := s.where
 	if s.keyset != nil {
 		if p := sq.keysetPredicate(b); p != nil {
@@ -175,7 +189,7 @@ func (sq SelectQuery[T]) effectiveWhere(b *Builder) []Predicate {
 		}
 	}
 	if sq.meta.SoftDelete >= 0 && sq.meta.Table != "" && !s.withDeleted {
-		where = append(slices.Clip(where), softDeletePred(sq.meta, sq.qualifier(), s.onlyDeleted))
+		where = append(slices.Clip(where), sq.meta.softDeletePred(sq.qualifier(), s.onlyDeleted))
 	}
 	if sq.meta.Table == "" {
 		if p, ok := s.sourceSoftDelete(); ok {
@@ -210,8 +224,8 @@ func (s *selectCore) writeGroupHaving(b *Builder) {
 
 // writeOrderBy writes ORDER BY. A keyset query orders by the effective keys,
 // directions explicit.
-func (sq SelectQuery[T]) writeOrderBy(b *Builder) {
-	s := &sq.s
+func (sq selectRef) writeOrderBy(b *Builder) {
+	s := sq.s
 	if len(s.order) == 0 {
 		return
 	}
@@ -261,8 +275,8 @@ func (s *selectCore) writeLimitOffset(b *Builder) {
 // writeLock writes the row-lock clause, if any: the lock mode, OF tables, then
 // NOWAIT or SKIP LOCKED. A lock cannot be combined with DISTINCT, DISTINCT ON, GROUP BY or
 // HAVING, and LockOf without a lock is an error.
-func (sq SelectQuery[T]) writeLock(b *Builder) {
-	s := &sq.s
+func (sq selectRef) writeLock(b *Builder) {
+	s := sq.s
 	if s.lock == "" {
 		if len(s.lockOf) > 0 {
 			b.SetErr(newError(ErrValidation, "build", sq.meta.Table, errors.New("LockOf needs ForUpdate, ForShare, ForNoKeyUpdate or ForKeyShare")))
@@ -306,7 +320,7 @@ func (sq SelectQuery[T]) writeLock(b *Builder) {
 // lockable name, and naming one is a validation error here rather than a
 // server error. Aggregates in the select list and set operations around this
 // select are not detected; the server rejects those.
-func (sq SelectQuery[T]) checkLockOf(b *Builder) bool {
+func (sq selectRef) checkLockOf(b *Builder) bool {
 	s := sq.s
 	if len(s.lockOf) == 0 {
 		return true
@@ -342,7 +356,9 @@ func (sq SelectQuery[T]) checkLockOf(b *Builder) bool {
 }
 
 // selectArity reports the number of columns the select yields, when known.
-func (sq SelectQuery[T]) selectArity() (int, bool) {
+func (sq SelectQuery[T]) selectArity() (int, bool) { return sq.ref().selectArity() }
+
+func (sq selectRef) selectArity() (int, bool) {
 	if sq.s.cols != nil {
 		return len(sq.s.cols), true
 	}

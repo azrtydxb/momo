@@ -140,9 +140,7 @@ func (q InsertQuery[T]) fail(err error) InsertQuery[T] {
 }
 
 func (q InsertQuery[T]) verr(col, format string, args ...any) error {
-	e := validation("insert", q.meta.Table, format, args...)
-	e.Column = col
-	return e
+	return insertVerr(q.meta.Table, col, format, args...)
 }
 
 // Model adds one model, writing every column except identity, read-only and
@@ -387,45 +385,17 @@ func (q InsertQuery[T]) Where(preds ...Predicate) InsertQuery[T] {
 }
 
 // column returns the index of the mapped column name, or -1.
-func (q InsertQuery[T]) column(name string) int {
-	for i, c := range q.meta.Columns {
-		if c.Name == name {
-			return i
-		}
-	}
-	return -1
-}
+func (q InsertQuery[T]) column(name string) int { return q.ref().column(name) }
 
 // writable reports whether the column at i may appear in an INSERT.
-func (q InsertQuery[T]) writable(i int) bool {
-	return columnAssignable(writeInsert, q.meta.Columns[i].Flags) || q.explicitCol(i)
-}
+func (q InsertQuery[T]) writable(i int) bool { return q.ref().writable(i) }
 
 // explicitCol reports whether column i is an identity column the caller named
 // in Explicit, so the statement writes its value.
-func (q InsertQuery[T]) explicitCol(i int) bool {
-	if len(q.i.explicit) == 0 || i < 0 || i >= len(q.meta.Columns) {
-		return false
-	}
-	c := q.meta.Columns[i]
-	return c.Flags&FlagIdentity != 0 && c.Flags&FlagReadOnly == 0 && slices.Contains(q.i.explicit, c.Name)
-}
+func (q InsertQuery[T]) explicitCol(i int) bool { return q.ref().explicitCol(i) }
 
 // checkExplicit validates the Explicit list.
-func (q InsertQuery[T]) checkExplicit() error {
-	for _, n := range q.i.explicit {
-		ci := q.column(n)
-		switch {
-		case ci < 0:
-			return q.verr(n, "Explicit: column %q is not mapped by %s", n, q.meta.Table)
-		case slices.Contains(q.i.omit, n):
-			return q.verr(n, "Explicit: column %q is also in Omit; use one or the other", n)
-		case q.meta.Columns[ci].Flags&FlagIdentity == 0 || q.meta.Columns[ci].Flags&FlagReadOnly != 0:
-			return q.verr(n, "Explicit: column %q is not an identity, serial or auto-increment column", n)
-		}
-	}
-	return nil
-}
+func (q InsertQuery[T]) checkExplicit() error { return q.ref().checkExplicit() }
 
 // checkExplicitZero refuses a zero value in an explicit AUTO_INCREMENT column
 // on MySQL and MariaDB, where the server would generate a value instead of
@@ -467,35 +437,10 @@ func (q InsertQuery[T]) checkExplicitZero(d *dialect.Dialect) error {
 	return nil
 }
 
-// identityAlways reports whether column ci is GENERATED ALWAYS AS IDENTITY, so
-// PostgreSQL needs OVERRIDING SYSTEM VALUE to accept a value for it. Without a
-// table schema it answers true: the clause is harmless on the other kinds.
-func (q InsertQuery[T]) identityAlways(ci int) bool {
-	if q.meta.TableSchema != nil {
-		for _, c := range q.meta.TableSchema.Columns {
-			if c.Name == q.meta.Columns[ci].Name {
-				return c.Identity == "always"
-			}
-		}
-	}
-	return true
-}
-
 // overriding reports whether the INSERT needs OVERRIDING SYSTEM VALUE: an
 // upsert writes the identity key, or an explicit column is GENERATED ALWAYS.
 func (q InsertQuery[T]) overriding(d *dialect.Dialect, cols []int) bool {
-	if d.Name != dialect.Postgres {
-		return false
-	}
-	if q.i.withIdentity {
-		return true
-	}
-	for _, ci := range cols {
-		if q.explicitCol(ci) && q.identityAlways(ci) {
-			return true
-		}
-	}
-	return false
+	return q.ref().overriding(d, cols)
 }
 
 // SQL compiles the statement without executing it.
