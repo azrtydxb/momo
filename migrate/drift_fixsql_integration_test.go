@@ -281,6 +281,76 @@ func TestDriftRepairWithholdsTheCreateThatReplacesAView(t *testing.T) {
 	})
 }
 
+// driftTriggerDesired is a table with row-level security, a trigger function, a
+// trigger with a WHEN condition and a policy, on PostgreSQL.
+func driftTriggerDesired() *schema.Schema {
+	return &schema.Schema{
+		Dialect:    dialect.Postgres,
+		Extensions: []schema.Extension{{Name: "vector"}},
+		Tables: []schema.Table{{
+			Name:       "docs",
+			Columns:    []schema.Column{{Name: "id", Type: "bigint"}, {Name: "title", Type: "text", Nullable: true}},
+			PrimaryKey: []string{"id"},
+			RLS:        &schema.RLS{Enabled: true},
+		}},
+		Functions: []schema.Function{
+			{Name: "touch", Args: "", Returns: "trigger", Language: "plpgsql", Volatility: "VOLATILE", Body: "BEGIN RETURN NEW; END;"},
+		},
+		Triggers: []schema.Trigger{{
+			Table: "docs", Name: "docs_touch", Timing: "BEFORE", Events: []string{"INSERT"}, ForEachRow: true,
+			When: "new.id > 0", Function: "touch()",
+		}},
+		Policies: []schema.Policy{{Table: "docs", Name: "docs_pos", Command: "SELECT", Permissive: true, Using: "docs.id > 0"}},
+	}
+}
+
+// Catches: a changed trigger condition and a changed policy expression (each a
+// drop and a create of one name) printing the CREATE while the DROP is
+// withheld, which fails with "already exists". Against a real PostgreSQL: both
+// pairs are withheld without --allow-destructive, and with it the script makes
+// drift clean.
+func TestDriftRepairWithholdsTheCreateThatReplacesATriggerAndAPolicy(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	f := newDriftFixtureOf(t, db, dialect.Postgres, driftTriggerDesired(), []string{
+		`DROP TRIGGER docs_touch ON docs`,
+		`CREATE TRIGGER docs_touch BEFORE INSERT ON docs FOR EACH ROW WHEN (NEW.id > 5) EXECUTE FUNCTION touch()`,
+		`DROP POLICY docs_pos ON docs`,
+		`CREATE POLICY docs_pos ON docs FOR SELECT USING (id > 5)`,
+	})
+	r, err := f.engine().DriftRepair(ctx, migrate.RepairOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, w := range r.Withheld {
+		got = append(got, string(w.Change.Kind)+" "+w.Change.Name)
+	}
+	slices.Sort(got)
+	want := []string{"create_policy docs_pos", "create_trigger docs_touch", "drop_policy docs_pos", "drop_trigger docs_touch"}
+	if r.Complete() || !slices.Equal(got, want) {
+		t.Fatalf("withheld = %v (complete %v), want %v", got, r.Complete(), want)
+	}
+	if up := strings.ToUpper(r.SQL()); strings.Contains(up, "TRIGGER") || strings.Contains(up, "POLICY") {
+		t.Fatalf("the script must not create either object while its drop is withheld:\n%s", r.SQL())
+	}
+
+	r, err = f.engine().DriftRepair(ctx, migrate.RepairOptions{AllowDestructive: true})
+	if err != nil || !r.Complete() {
+		t.Fatalf("with AllowDestructive the repair is complete: %+v, %v", r, err)
+	}
+	up := strings.ToUpper(r.SQL())
+	for _, w := range []string{"DROP TRIGGER", "CREATE TRIGGER", "DROP POLICY", "CREATE POLICY"} {
+		if !strings.Contains(up, w) {
+			t.Errorf("the script lacks %s:\n%s", w, r.SQL())
+		}
+	}
+	f.applyStatements(r.Statements)
+	if rep, err := f.engine().Drift(ctx); err != nil || !rep.Clean() {
+		t.Fatalf("drift after the repair: %+v, %v\n%s", rep, err, r.SQL())
+	}
+}
+
 // Catches: drift and --fix-sql comparing with the latest snapshot while the
 // adoption checks the init snapshot (baseline --version N), so that a directory
 // with later migrations repairs the database to a state baseline then refuses.
