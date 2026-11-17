@@ -40,10 +40,17 @@ func (q InsertQuery[T]) Copy(ctx context.Context, ms []T) (Result, error) {
 	if q.q == nil {
 		return Result{}, noQuerier("copy", q.meta.Table)
 	}
-	if err := q.copyShape(ms); err != nil {
+	if err := viewWriteErr("copy", q.meta); err != nil {
 		return Result{}, err
 	}
-	if err := q.precheck(); err != nil {
+	if q.i.err == nil && q.meta.Table == "" {
+		return Result{}, insertVerr("", "", "%T has no table", *new(T))
+	}
+	r := q.ref()
+	if err := r.copyShape(len(ms)); err != nil {
+		return Result{}, err
+	}
+	if err := copyPrecheck(q.q, q.meta.Table); err != nil {
 		return Result{}, err
 	}
 	if _, err := runInterceptors(ctx, q.q, "insert", q.meta.Table); err != nil {
@@ -61,34 +68,98 @@ func (q InsertQuery[T]) Copy(ctx context.Context, ms []T) (Result, error) {
 	}
 	// Fill the Go-side ids (cuid, uuid, ...) like Models and Unnest do. It
 	// works on a clone, so the caller's slice is untouched.
-	q.models = ms
-	q, err := q.generateIDs(false)
+	meta := q.meta
+	fp, ferr := newFieldPlan(q.q, meta)
+	a := insAccess{
+		value:   func(row, ci int) any { return meta.Value(&ms[row], ci) },
+		zero:    func(ci int) (any, bool) { return zeroValue(meta, ci) },
+		def:     func(ci, row int) any { return fieldDefault(&fp, ms, ci, row) },
+		ptr:     func(row, ci int) any { return meta.Ptr(&ms[row], ci) },
+		hasBack: func(int) bool { return false },
+		clone:   func() { ms = slices.Clone(ms) },
+		fields:  fp.ref,
+		ferr:    ferr,
+	}
+	r.n, r.nBack = len(ms), 0
+	r, err := r.generateIDs(false, a)
 	if err != nil {
 		return Result{}, err
 	}
-	names, rows, err := q.copyRows(q.models)
+	names, rows, err := r.copyRows(a)
 	if err != nil {
 		return Result{}, err
 	}
+	return r.copyExec(ctx, names, rows)
+}
+
+// noCopyErr is the error of a handle without a COPY path.
+func noCopyErr(table string) error {
+	return &Error{Kind: ErrUnsupported, Op: "copy", Table: table,
+		Err: errors.New("the driver has no COPY path (momo.Copier)")}
+}
+
+// copyShape rejects a query Copy cannot honour, before anything else runs.
+func (r insertRef) copyShape(rows int) error {
+	i := r.i
+	switch {
+	case i.err != nil:
+		return i.err
+	case rows == 0:
+		return r.verr("", "Copy: no rows")
+	case r.n > 0 || i.hasValues || i.hasRows || i.sel != nil:
+		return r.verr("", "Copy takes its rows as an argument and cannot be combined with Model, Models, Values, ValuesRows or FromSelect")
+	case len(i.explicit) > 0:
+		return r.verr("", "Copy cannot be combined with Explicit")
+	case i.conflict != conflictNone || i.upsert || i.returning.active():
+		return r.verr("", "Copy cannot be combined with OnConflict, Upsert or Returning")
+	}
+	return nil
+}
+
+// copyPrecheck fails with ErrUnsupported when the handle cannot COPY at all,
+// before interceptors, hooks, the write mark or a transaction.
+func copyPrecheck(q Querier, table string) error {
+	switch h := q.(type) {
+	case *DB:
+		if h.pinned {
+			if len(h.txSetup) > 0 {
+				return errPinnedSetup("copy", table)
+			}
+			if _, ok := h.ex.q.(Copier); !ok {
+				return noCopyErr(table)
+			}
+		} else if !hasCopier(h.ex.q) {
+			return noCopyErr(table)
+		}
+	case *Tx:
+		if _, ok := h.dtx.(Copier); !ok {
+			return noCopyErr(table)
+		}
+	}
+	return nil
+}
+
+// copyExec runs the COPY of the resolved column names and value rows.
+func (r insertRef) copyExec(ctx context.Context, names []string, rows [][]any) (Result, error) {
 	run := func(sq Querier) (Result, error) {
 		c, ok := CopierOf(sq)
 		if !ok {
-			return Result{}, q.noCopy()
+			return Result{}, noCopyErr(r.m.Table)
 		}
-		n, err := sq.conn().copyFrom(ctx, c, q.meta.Schema, q.meta.Table, names, rows)
+		n, err := sq.conn().copyFrom(ctx, c, r.m.Schema, r.m.Table, names, rows)
 		if err != nil {
 			return Result{}, err
 		}
 		return Result{RowsAffected: n}, nil
 	}
-	if !bypassesTx(q.q) {
-		return run(q.q)
+	if !bypassesTx(r.q) {
+		return run(r.q)
 	}
 	// An implicit-transaction DB must not take the driver COPY path directly: it
 	// would skip WithTxSetup. Run it in a transaction that has been set up. A
 	// pinned handle with a setup already failed closed in precheck.
 	var res Result
-	err = runAtomic(ctx, q.q, "copy", q.meta.Table, func(sq Querier) error {
+	err := runAtomic(ctx, r.q, "copy", r.m.Table, func(sq Querier) error {
 		var err error
 		res, err = run(sq)
 		return err
@@ -99,89 +170,35 @@ func (q InsertQuery[T]) Copy(ctx context.Context, ms []T) (Result, error) {
 	return res, nil
 }
 
-func (q InsertQuery[T]) noCopy() error {
-	return &Error{Kind: ErrUnsupported, Op: "copy", Table: q.meta.Table,
-		Err: errors.New("the driver has no COPY path (momo.Copier)")}
-}
-
-// copyShape rejects a query Copy cannot honour, before anything else runs.
-func (q InsertQuery[T]) copyShape(ms []T) error {
-	i := q.i
-	if err := viewWriteErr("copy", q.meta); err != nil {
-		return err
-	}
-	switch {
-	case i.err != nil:
-		return i.err
-	case q.meta.Table == "":
-		return q.verr("", "%T has no table", *new(T))
-	case len(ms) == 0:
-		return q.verr("", "Copy: no rows")
-	case len(q.models) > 0 || i.hasValues || i.hasRows || i.sel != nil:
-		return q.verr("", "Copy takes its rows as an argument and cannot be combined with Model, Models, Values, ValuesRows or FromSelect")
-	case len(i.explicit) > 0:
-		return q.verr("", "Copy cannot be combined with Explicit")
-	case i.conflict != conflictNone || i.upsert || i.returning.active():
-		return q.verr("", "Copy cannot be combined with OnConflict, Upsert or Returning")
-	}
-	return nil
-}
-
-// precheck fails with ErrUnsupported when the handle cannot COPY at all, before
-// interceptors, hooks, the write mark or a transaction.
-func (q InsertQuery[T]) precheck() error {
-	switch h := q.q.(type) {
-	case *DB:
-		if h.pinned {
-			if len(h.txSetup) > 0 {
-				return errPinnedSetup("copy", q.meta.Table)
-			}
-			if _, ok := h.ex.q.(Copier); !ok {
-				return q.noCopy()
-			}
-		} else if !hasCopier(h.ex.q) {
-			return q.noCopy()
-		}
-	case *Tx:
-		if _, ok := h.dtx.(Copier); !ok {
-			return q.noCopy()
-		}
-	}
-	return nil
-}
-
 // copyRows resolves and validates the COPY column list and the value rows.
-func (q InsertQuery[T]) copyRows(ms []T) ([]string, [][]any, error) {
-	fp, err := newFieldPlan(q.q, q.meta)
-	if err != nil {
-		return nil, nil, err
+func (r insertRef) copyRows(a insAccess) ([]string, [][]any, error) {
+	if a.ferr != nil {
+		return nil, nil, a.ferr
 	}
-	r := q
-	r.models = ms
 	r.i.noRowDefault = true
 	r.dbd = nil
-	r = r.withDBD() // the plan of the rows being copied
-	cols, err := r.modelCols(fp)
+	r = r.withDBD(a) // the plan of the rows being copied
+	cols, err := r.modelCols(a)
 	if err != nil {
 		return nil, nil, err
 	}
 	if len(cols) == 0 {
-		return nil, nil, q.verr("", "no writable columns to copy")
+		return nil, nil, r.verr("", "no writable columns to copy")
 	}
 	for _, ci := range cols {
-		if ci != q.meta.CreatedAt && ci != q.meta.UpdatedAt {
+		if ci != r.m.CreatedAt && ci != r.m.UpdatedAt {
 			continue
 		}
-		if err := checkTimestampField(q.meta, ci); err != nil {
-			return nil, nil, q.verr(q.meta.Columns[ci].Name, "%v", err)
+		if err := r.checkTimestamp(ci, a); err != nil {
+			return nil, nil, r.verr(r.m.Columns[ci].Name, "%v", err)
 		}
 	}
-	now := q.q.conn().now()
-	vals := r.modelValues(fp, cols, now)
-	if err := r.validateModelRows(fp, cols, vals); err != nil {
+	now := r.q.conn().now()
+	vals := r.modelValues(cols, now, a)
+	if err := r.validateModelRows(cols, vals, a); err != nil {
 		return nil, nil, err
 	}
-	d := q.q.Dialect()
+	d := r.q.Dialect()
 	for _, row := range vals {
 		for j, v := range row {
 			if isNilVectorPointer(v) {
@@ -195,7 +212,7 @@ func (q InsertQuery[T]) copyRows(ms []T) ([]string, [][]any, error) {
 			enc, err := dv.DialectValue(d.Name)
 			if err != nil {
 				if errors.Is(err, vector.ErrDialect) {
-					err = &Error{Kind: ErrUnsupported, Op: "copy", Table: q.meta.Table, Err: err}
+					err = &Error{Kind: ErrUnsupported, Op: "copy", Table: r.m.Table, Err: err}
 				}
 				return nil, nil, err
 			}
@@ -204,7 +221,7 @@ func (q InsertQuery[T]) copyRows(ms []T) ([]string, [][]any, error) {
 	}
 	names := make([]string, len(cols))
 	for j, ci := range cols {
-		names[j] = q.meta.Columns[ci].Name
+		names[j] = r.m.Columns[ci].Name
 	}
 	return names, vals, nil
 }

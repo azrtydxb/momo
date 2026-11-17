@@ -4,12 +4,17 @@ package momo
 
 import (
 	"fmt"
-	"maps"
 	"slices"
 	"time"
 
 	"github.com/azrtydxb/momo/dialect"
 )
+
+// The renderer of InsertQuery[T] lives on insertRef (non-generic) and reaches
+// the models and the field hooks through an insAccess, for the reason given in
+// select_core.go: a method body on InsertQuery[T] is compiled again for every
+// model type. The methods here are the one-line wrappers that build the
+// insAccess.
 
 func (q InsertQuery[T]) render(b *Builder) {
 	if err := viewWriteErr("insert", q.meta); err != nil {
@@ -21,27 +26,23 @@ func (q InsertQuery[T]) render(b *Builder) {
 		return
 	}
 	if q.meta.Table == "" {
-		b.SetErr(q.verr("", "%T has no table", *new(T)))
+		b.SetErr(insertVerr("", "", "%T has no table", *new(T)))
 		return
 	}
-	q, err := q.generateIDs(false) // a preview; plan has done this for Exec and Rows
-	if err == nil {
-		q, err = q.resolveUpsert()
+	ms, back, meta := q.models, q.back, q.meta
+	fp, ferr := newFieldPlan(q.q, meta)
+	a := insAccess{
+		value:   func(row, ci int) any { return meta.Value(&ms[row], ci) },
+		zero:    func(ci int) (any, bool) { return zeroValue(meta, ci) },
+		def:     func(ci, row int) any { return fieldDefault(&fp, ms, ci, row) },
+		ptr:     func(row, ci int) any { return meta.Ptr(&ms[row], ci) },
+		hasBack: func(row int) bool { return row < len(back) && back[row] != nil },
+		backPtr: func(row, ci int) any { return meta.Ptr(back[row], ci) },
+		clone:   func() { ms = slices.Clone(ms) },
+		fields:  fp.ref,
+		ferr:    ferr,
 	}
-	if err != nil {
-		b.SetErr(err)
-		return
-	}
-	q = q.withDBD()
-	if len(q.i.with) > 0 && b.d.Name == dialect.MySQL {
-		// MySQL and MariaDB accept WITH only before SELECT, UPDATE and DELETE.
-		b.unsupported("WITH before INSERT (put the WITH inside FromSelect's select)")
-		return
-	}
-	b.withScope(append(cteNames(q.i.with), q.meta.Table), func() {
-		writeWithClause(b, q.i.with)
-		q.renderStatement(b)
-	})
+	q.ref().render(b, a)
 }
 
 func (InsertQuery[T]) isDML() {}
@@ -62,6 +63,50 @@ func (q InsertQuery[T]) AppendSQL(b *Builder) {
 	b.writeByte(')')
 }
 
+// zeroValue is the value of column ci of a zero T; ok is false when the Meta has
+// no Value function.
+func zeroValue[T any](meta *Meta[T], ci int) (any, bool) {
+	if meta.Value == nil {
+		return nil, false
+	}
+	var z T
+	return meta.Value(&z, ci), true
+}
+
+// fieldDefault runs the Go-side default of column ci of fp for ms[row], or for
+// a zero T when row is negative.
+func fieldDefault[T any](fp *fieldPlan[T], ms []T, ci, row int) any {
+	if row < 0 {
+		var z T
+		return fp.def[ci](&z)
+	}
+	return fp.def[ci](&ms[row])
+}
+
+// render writes the statement: the ids and the upsert defaults are resolved
+// first, so the text is the one Exec runs. The checks of a missing table and
+// of a view model stay in the generic wrapper, which can name T.
+func (r insertRef) render(b *Builder, a insAccess) {
+	r, err := r.generateIDs(false, a) // a preview; plan has done this for Exec and Rows
+	if err == nil {
+		r, err = r.resolveUpsert(a)
+	}
+	if err != nil {
+		b.SetErr(err)
+		return
+	}
+	r = r.withDBD(a)
+	if len(r.i.with) > 0 && b.d.Name == dialect.MySQL {
+		// MySQL and MariaDB accept WITH only before SELECT, UPDATE and DELETE.
+		b.unsupported("WITH before INSERT (put the WITH inside FromSelect's select)")
+		return
+	}
+	b.withScope(append(cteNames(r.i.with), r.m.Table), func() {
+		writeWithClause(b, r.i.with)
+		r.renderStatement(b, a)
+	})
+}
+
 // insertMode is the row source of an INSERT, resolved once from the builder
 // state so the rest of the renderer never re-derives it from flags.
 type insertMode uint8
@@ -74,21 +119,21 @@ const (
 
 // mode resolves the row source and rejects mixes of sources: the one place the
 // mutually exclusive builder calls are cross-checked.
-func (q InsertQuery[T]) mode() (insertMode, error) {
-	if q.i.sel != nil {
+func (r insertRef) mode() (insertMode, error) {
+	if r.i.sel != nil {
 		return modeFromSelect, nil
 	}
-	modelMode := len(q.models) > 0
-	valuesMode := q.i.hasValues || q.i.hasRows
+	modelMode := r.n > 0
+	valuesMode := r.i.hasValues || r.i.hasRows
 	switch {
-	case q.i.hasValues && q.i.hasRows:
-		return 0, q.verr("", "Values and ValuesRows cannot be combined")
+	case r.i.hasValues && r.i.hasRows:
+		return 0, r.verr("", "Values and ValuesRows cannot be combined")
 	case modelMode && valuesMode:
-		return 0, q.verr("", "Model/Models and Values/ValuesRows cannot be combined")
+		return 0, r.verr("", "Model/Models and Values/ValuesRows cannot be combined")
 	case !modelMode && !valuesMode:
-		return 0, q.verr("", "nothing to insert: call Model, Models, Values or ValuesRows")
-	case valuesMode && len(q.i.omit) > 0:
-		return 0, q.verr("", "Omit cannot be combined with Values or ValuesRows: list only the columns to write")
+		return 0, r.verr("", "nothing to insert: call Model, Models, Values or ValuesRows")
+	case valuesMode && len(r.i.omit) > 0:
+		return 0, r.verr("", "Omit cannot be combined with Values or ValuesRows: list only the columns to write")
 	}
 	if modelMode {
 		return modeModels, nil
@@ -98,55 +143,54 @@ func (q InsertQuery[T]) mode() (insertMode, error) {
 
 // insertPlan is a validated INSERT ready to be written: the resolved column
 // list and the row values of the mode.
-type insertPlan[T any] struct {
+type insertPlan struct {
 	mode       insertMode
 	cols       []int
 	rows       int
 	rowAssigns []map[int]Assignment // values mode: the assignment of each column per row
 	vals       [][]any              // models mode with field hooks: the validated values
 	now        time.Time
-	fp         fieldPlan[T]
 }
 
-func (q InsertQuery[T]) renderStatement(b *Builder) {
+func (r insertRef) renderStatement(b *Builder, a insAccess) {
 	b.insertStmt = true
-	mode, err := q.mode()
+	mode, err := r.mode()
 	if err == nil {
-		err = q.checkExplicit()
+		err = r.checkExplicit()
 	}
 	if err != nil {
 		b.SetErr(err)
 		return
 	}
-	if mode == modeFromSelect && len(q.i.explicit) > 0 {
-		b.SetErr(q.verr("", "Explicit cannot be combined with FromSelect: a select cannot supply identity values"))
+	if mode == modeFromSelect && len(r.i.explicit) > 0 {
+		b.SetErr(r.verr("", "Explicit cannot be combined with FromSelect: a select cannot supply identity values"))
 		return
 	}
 	if mode == modeFromSelect {
-		q.renderFromSelect(b)
+		r.renderFromSelect(b, a)
 		return
 	}
 	d := b.Dialect()
-	if err := q.checkExplicitZero(d); err != nil {
+	if err := r.checkExplicitZero(d, a); err != nil {
 		b.SetErr(err)
 		return
 	}
-	if q.i.unnest {
-		if err := q.unnestCheck(d, mode); err != nil {
+	if r.i.unnest {
+		if err := r.unnestCheck(d, mode); err != nil {
 			b.SetErr(err)
 			return
 		}
 	}
-	p, err := q.resolve(d, mode)
+	p, err := r.resolve(d, mode, a)
 	if err != nil {
 		b.SetErr(err)
 		return
 	}
-	q.writeInsertHead(b)
-	if len(p.cols) > 0 && q.i.unnest {
-		q.writeUnnest(b, d, p)
+	r.writeInsertHead(b)
+	if len(p.cols) > 0 && r.i.unnest {
+		r.writeUnnest(b, d, p, a)
 	} else if len(p.cols) > 0 {
-		q.writeColumnsAndRows(b, d, p)
+		r.writeColumnsAndRows(b, d, p, a)
 	} else {
 		// No column is written: every column takes its default.
 		if d.Name == dialect.MySQL {
@@ -157,53 +201,53 @@ func (q InsertQuery[T]) renderStatement(b *Builder) {
 	}
 	written := make([]string, len(p.cols))
 	for i, ci := range p.cols {
-		written[i] = q.meta.Columns[ci].Name
+		written[i] = r.m.Columns[ci].Name
 	}
-	q.renderConflict(b, written)
-	renderReturning(b, q.meta, q.i.returning, func(col string) error {
-		return q.verr(col, "Returning: column %q is not mapped by %s", col, q.meta.Table)
+	r.renderConflict(b, written)
+	renderReturningCols(b, r.m.Columns, r.i.returning, func(col string) error {
+		return r.verr(col, "Returning: column %q is not mapped by %s", col, r.m.Table)
 	})
 	if len(p.cols) > 0 && mode == modeValues && d.MaxParams > 0 && len(b.args) > d.MaxParams {
-		b.SetErr(&Error{Kind: ErrLimitExceeded, Op: "insert", Table: q.meta.Table,
+		b.SetErr(&Error{Kind: ErrLimitExceeded, Op: "insert", Table: r.m.Table,
 			Err: fmt.Errorf("%d bind parameters exceed the %s limit of %d", len(b.args), d.Name, d.MaxParams)})
 	}
 }
 
 // resolve does all the validation of a Values or Models insert and returns the
 // plan to write: columns, timestamps, parameter limit, field validators.
-func (q InsertQuery[T]) resolve(d *dialect.Dialect, mode insertMode) (insertPlan[T], error) {
-	p := insertPlan[T]{mode: mode, rows: len(q.models)}
-	p.now = q.clock // shared by the chunks of a bulk insert
+func (r insertRef) resolve(d *dialect.Dialect, mode insertMode, a insAccess) (insertPlan, error) {
+	p := insertPlan{mode: mode, rows: r.n}
+	p.now = r.clock // shared by the chunks of a bulk insert
 	if p.now.IsZero() {
-		p.now = q.q.conn().now() // read once per statement
+		p.now = r.q.conn().now() // read once per statement
+	}
+	if a.ferr != nil {
+		return p, a.ferr
 	}
 	var err error
-	if p.fp, err = newFieldPlan(q.q, q.meta); err != nil {
-		return p, err
-	}
 	if mode == modeModels {
-		if p.cols, err = q.modelCols(p.fp); err != nil {
+		if p.cols, err = r.modelCols(a); err != nil {
 			return p, err
 		}
 	} else {
-		if p.cols, p.rowAssigns, err = q.valueRowsSafe(d, p.now, p.fp); err != nil {
+		if p.cols, p.rowAssigns, err = r.valueRowsSafe(d, p.now, a); err != nil {
 			return p, err
 		}
 		p.rows = len(p.rowAssigns)
 	}
 	for _, ci := range p.cols {
-		if ci != q.meta.CreatedAt && ci != q.meta.UpdatedAt {
+		if ci != r.m.CreatedAt && ci != r.m.UpdatedAt {
 			continue
 		}
-		if err := checkTimestampField(q.meta, ci); err != nil {
-			return p, q.verr(q.meta.Columns[ci].Name, "%v", err)
+		if err := r.checkTimestamp(ci, a); err != nil {
+			return p, r.verr(r.m.Columns[ci].Name, "%v", err)
 		}
 	}
 	if len(p.cols) == 0 && p.rows != 1 {
-		return p, q.verr("", "no writable columns to insert")
+		return p, r.verr("", "no writable columns to insert")
 	}
-	if n := p.rows * len(p.cols); d.MaxParams > 0 && n > d.MaxParams && mode == modeModels && !q.i.unnest {
-		return p, &Error{Kind: ErrLimitExceeded, Op: "insert", Table: q.meta.Table,
+	if n := p.rows * len(p.cols); d.MaxParams > 0 && n > d.MaxParams && mode == modeModels && !r.i.unnest {
+		return p, &Error{Kind: ErrLimitExceeded, Op: "insert", Table: r.m.Table,
 			Err: fmt.Errorf("%d bind parameters exceed the %s limit of %d", n, d.Name, d.MaxParams)}
 	}
 
@@ -211,42 +255,42 @@ func (q InsertQuery[T]) resolve(d *dialect.Dialect, mode insertMode) (insertPlan
 	// as computed, so a validator sees exactly what is written even for a
 	// random default. plan may already have done that (pre). Without hooks the
 	// values stream straight into the statement.
-	if mode == modeModels && len(p.fp.hooks) > 0 {
-		if p.vals = q.pre; p.vals == nil {
-			p.vals = q.modelValues(p.fp, p.cols, p.now)
-			if err := q.validateModelRows(p.fp, p.cols, p.vals); err != nil {
+	if mode == modeModels && a.fields.n > 0 {
+		if p.vals = r.pre; p.vals == nil {
+			p.vals = r.modelValues(p.cols, p.now, a)
+			if err := r.validateModelRows(p.cols, p.vals, a); err != nil {
 				return p, err
 			}
 		}
 	}
-	return p, q.validateConflictSet(p.fp)
+	return p, r.validateConflictSet(a)
 }
 
 // writeColumnsAndRows writes the column list and the VALUES rows of a plan.
-func (q InsertQuery[T]) writeColumnsAndRows(b *Builder, d *dialect.Dialect, p insertPlan[T]) {
+func (r insertRef) writeColumnsAndRows(b *Builder, d *dialect.Dialect, p insertPlan, a insAccess) {
 	b.WriteString(" (")
 	for i, ci := range p.cols {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.Ident(q.meta.Columns[ci].Name)
+		b.Ident(r.m.Columns[ci].Name)
 	}
 	b.writeByte(')')
-	if q.overriding(d, p.cols) {
+	if r.overriding(d, p.cols) {
 		b.WriteString(" OVERRIDING SYSTEM VALUE")
 	}
 	b.WriteString(" VALUES ")
 	if p.mode == modeModels {
-		q.writeModelRows(b, p)
+		r.writeModelRows(b, p, a)
 	} else {
-		q.writeAssignRows(b, p)
+		writeAssignRows(b, p)
 	}
 }
 
 // writeModelRows writes one tuple per model.
-func (q InsertQuery[T]) writeModelRows(b *Builder, p insertPlan[T]) {
-	for r := range q.models {
-		if r > 0 {
+func (r insertRef) writeModelRows(b *Builder, p insertPlan, a insAccess) {
+	for row := range r.n {
+		if row > 0 {
 			b.WriteString(", ")
 		}
 		b.writeByte('(')
@@ -254,12 +298,12 @@ func (q InsertQuery[T]) writeModelRows(b *Builder, p insertPlan[T]) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			if q.dbDefaultRow(r, ci) {
+			if r.dbDefaultRow(row, ci) {
 				b.WriteString("DEFAULT") // a dbdefault column of a row that sets others
 			} else if p.vals != nil {
-				b.argFor(q.meta.Columns[ci].Flags, p.vals[r][i])
+				b.argFor(r.m.Columns[ci].Flags, p.vals[row][i])
 			} else {
-				b.argFor(q.meta.Columns[ci].Flags, q.modelValue(r, ci, p.now, p.fp))
+				b.argFor(r.m.Columns[ci].Flags, r.modelValue(row, ci, p.now, a))
 			}
 		}
 		b.writeByte(')')
@@ -268,9 +312,9 @@ func (q InsertQuery[T]) writeModelRows(b *Builder, p insertPlan[T]) {
 
 // writeAssignRows writes one tuple per Values or ValuesRows row; a column a row
 // leaves out is DEFAULT.
-func (q InsertQuery[T]) writeAssignRows(b *Builder, p insertPlan[T]) {
-	for r, m := range p.rowAssigns {
-		if r > 0 {
+func writeAssignRows(b *Builder, p insertPlan) {
+	for row, m := range p.rowAssigns {
+		if row > 0 {
 			b.WriteString(", ")
 		}
 		b.writeByte('(')
@@ -278,8 +322,8 @@ func (q InsertQuery[T]) writeAssignRows(b *Builder, p insertPlan[T]) {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			if a, ok := m[ci]; ok {
-				q.appendValue(b, a)
+			if as, ok := m[ci]; ok {
+				appendAssignedValue(b, as)
 			} else {
 				b.WriteString("DEFAULT") // omitted in this row only
 			}
@@ -295,10 +339,10 @@ func (q InsertQuery[T]) writeAssignRows(b *Builder, p insertPlan[T]) {
 // default in every row leaves the list, and a column that is default in some
 // rows only fails with ErrUnsupported; Exec and Rows never reach that case,
 // because plan has split such rows into runs (defaultRuns).
-func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time, fp fieldPlan[T]) ([]int, []map[int]Assignment, error) {
-	src := q.i.rows
-	if !q.i.hasRows {
-		src = [][]Assignment{q.i.assigns}
+func (r insertRef) valueRows(d *dialect.Dialect, now time.Time, a insAccess) ([]int, []map[int]Assignment, error) {
+	src := r.i.rows
+	if !r.i.hasRows {
+		src = [][]Assignment{r.i.assigns}
 	}
 	var order []int
 	inOrder := map[int]struct{}{}
@@ -309,40 +353,39 @@ func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time, fp fieldPla
 		}
 	}
 	rows := make([]map[int]Assignment, len(src))
-	for r, row := range src {
+	for ri, row := range src {
 		m := map[int]Assignment{}
-		for _, a := range row {
-			ci := q.column(a.col)
+		for _, as := range row {
+			ci := r.column(as.col)
 			if ci < 0 {
-				return nil, nil, q.verr(a.col, "Values: column %q is not mapped by %s", a.col, q.meta.Table)
+				return nil, nil, r.verr(as.col, "Values: column %q is not mapped by %s", as.col, r.m.Table)
 			}
-			if !q.writable(ci) {
-				return nil, nil, q.verr(a.col, "Values: column %q is identity or read-only and is never written", a.col)
+			if !r.writable(ci) {
+				return nil, nil, r.verr(as.col, "Values: column %q is identity or read-only and is never written", as.col)
 			}
 			if _, dup := m[ci]; dup {
-				return nil, nil, q.verr(a.col, "Values: column %q assigned twice", a.col)
+				return nil, nil, r.verr(as.col, "Values: column %q assigned twice", as.col)
 			}
-			if a.kind == setExcluded {
-				return nil, nil, q.verr(a.col, "Values: SetExcluded is only valid in DoUpdate")
+			if as.kind == setExcluded {
+				return nil, nil, r.verr(as.col, "Values: SetExcluded is only valid in DoUpdate")
 			}
-			m[ci] = a
+			m[ci] = as
 			add(ci)
 		}
 		// Go-side defaults fill the columns this row leaves out; an explicit
 		// assignment, including SetDefault and SetNull, wins.
-		for _, ci := range slices.Sorted(maps.Keys(fp.def)) {
-			if _, assigned := m[ci]; assigned || !q.writable(ci) {
+		for _, ci := range a.fields.defCols {
+			if _, assigned := m[ci]; assigned || !r.writable(ci) {
 				continue
 			}
-			var zero T
-			m[ci] = Assignment{col: q.meta.Columns[ci].Name, kind: setValue, val: fp.def[ci](&zero), flags: q.meta.Columns[ci].Flags}
+			m[ci] = Assignment{col: r.m.Columns[ci].Name, kind: setValue, val: a.defOf(ci, -1), flags: r.m.Columns[ci].Flags}
 			add(ci)
 		}
 		seen := make(map[int]struct{}, len(m))
 		for ci := range m {
 			seen[ci] = struct{}{}
 		}
-		tc, ta, err := q.timestampAssigns(seen, now)
+		tc, ta, err := r.timestampAssigns(seen, now, a)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -350,12 +393,12 @@ func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time, fp fieldPla
 			m[ci] = ta[k]
 			add(ci)
 		}
-		rows[r] = m
-		err = fp.validate("insert", q.meta, func(ci int) (any, bool) {
-			if a, ok := m[ci]; ok {
-				return assignedValue(a)
+		rows[ri] = m
+		err = a.fields.validate("insert", r.m.Table, r.m.Columns, func(ci int) (any, bool) {
+			if as, ok := m[ci]; ok {
+				return assignedValue(as)
 			}
-			return nil, q.writable(ci)
+			return nil, r.writable(ci)
 		})
 		if err != nil {
 			return nil, nil, err
@@ -368,7 +411,7 @@ func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time, fp fieldPla
 	for _, ci := range order {
 		defaults := 0
 		for _, m := range rows {
-			if a, ok := m[ci]; !ok || a.kind == setDefault {
+			if as, ok := m[ci]; !ok || as.kind == setDefault {
 				defaults++
 			}
 		}
@@ -376,7 +419,7 @@ func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time, fp fieldPla
 		case defaults == len(rows):
 			continue // omitting the column applies the default
 		case defaults > 0:
-			return nil, nil, &Error{Kind: ErrUnsupported, Op: "insert", Table: q.meta.Table, Column: q.meta.Columns[ci].Name,
+			return nil, nil, &Error{Kind: ErrUnsupported, Op: "insert", Table: r.m.Table, Column: r.m.Columns[ci].Name,
 				Err: fmt.Errorf("a per-row DEFAULT in a multi-row VALUES list is not supported by %s in one statement (SQL renders one); Exec and Rows split such rows into several statements", d.Name)}
 		}
 		cols = append(cols, ci)
@@ -385,27 +428,27 @@ func (q InsertQuery[T]) valueRows(d *dialect.Dialect, now time.Time, fp fieldPla
 }
 
 // modelCols returns the columns a model insert writes, in metadata order.
-func (q InsertQuery[T]) modelCols(fp fieldPlan[T]) ([]int, error) {
-	if q.i.fixedCols != nil {
-		return q.i.fixedCols, nil
+func (r insertRef) modelCols(a insAccess) ([]int, error) {
+	if r.i.fixedCols != nil {
+		return r.i.fixedCols, nil
 	}
 	omit := map[int]struct{}{}
-	for _, n := range q.i.omit {
-		ci := q.column(n)
+	for _, n := range r.i.omit {
+		ci := r.column(n)
 		if ci < 0 {
-			return nil, q.verr(n, "Omit: column %q is not mapped by %s", n, q.meta.Table)
+			return nil, r.verr(n, "Omit: column %q is not mapped by %s", n, r.m.Table)
 		}
 		omit[ci] = struct{}{}
 	}
 	var cols []int
-	for i := range q.meta.Columns {
+	for i := range r.m.Columns {
 		_, skip := omit[i]
-		_, hasDefault := fp.def[i]
+		hasDefault := a.fields.hasDef(i)
 		switch {
-		case skip && hasDefault && q.writable(i):
+		case skip && hasDefault && r.writable(i):
 			cols = append(cols, i) // omitted, so the Go-side default is written
-		case !skip && (q.writable(i) || q.insertsIdentity(i)):
-			drop, err := q.dbDefaultDecision(i)
+		case !skip && (r.writable(i) || r.insertsIdentity(i)):
+			drop, err := r.dbDefaultDecision(i)
 			if err != nil {
 				return nil, err
 			}
@@ -417,21 +460,48 @@ func (q InsertQuery[T]) modelCols(fp fieldPlan[T]) ([]int, error) {
 	return cols, nil
 }
 
+// checkTimestamp reports an error when the created-at or updated-at field of
+// column ci has a Go type automatic timestamps do not support. It is nil for a
+// missing column.
+func (r insertRef) checkTimestamp(ci int, a insAccess) error {
+	if ci < 0 || ci >= len(r.m.Columns) {
+		return nil
+	}
+	sample, ok := a.zero(ci)
+	if !ok {
+		return nil
+	}
+	return checkTimestampSample(r.m.Columns[ci].Name, sample)
+}
+
+// autoTimestamp returns the value for the timestamp column ci read at now; ok
+// is false when the model has no such column or its field type is unsupported.
+func (r insertRef) autoTimestamp(ci int, now time.Time, a insAccess) (any, bool) {
+	if ci < 0 || ci >= len(r.m.Columns) {
+		return nil, false
+	}
+	sample, ok := a.zero(ci)
+	if !ok {
+		return nil, false
+	}
+	return timestampValue(now, sample)
+}
+
 // timestampAssigns returns the automatic created-at and updated-at writes of
 // a Values insert for the columns the caller did not assign.
-func (q InsertQuery[T]) timestampAssigns(seen map[int]struct{}, now time.Time) ([]int, []Assignment, error) {
+func (r insertRef) timestampAssigns(seen map[int]struct{}, now time.Time, a insAccess) ([]int, []Assignment, error) {
 	var cols []int
 	var assigns []Assignment
-	for _, ci := range []int{q.meta.CreatedAt, q.meta.UpdatedAt} {
-		if _, assigned := seen[ci]; assigned || ci < 0 || !q.writable(ci) {
+	for _, ci := range []int{r.m.CreatedAt, r.m.UpdatedAt} {
+		if _, assigned := seen[ci]; assigned || ci < 0 || !r.writable(ci) {
 			continue
 		}
-		if err := checkTimestampField(q.meta, ci); err != nil {
-			return nil, nil, q.verr(q.meta.Columns[ci].Name, "%v", err)
+		if err := r.checkTimestamp(ci, a); err != nil {
+			return nil, nil, r.verr(r.m.Columns[ci].Name, "%v", err)
 		}
-		if v, ok := autoTimestamp(q.meta, ci, now); ok {
+		if v, ok := r.autoTimestamp(ci, now, a); ok {
 			cols = append(cols, ci)
-			assigns = append(assigns, Assignment{col: q.meta.Columns[ci].Name, kind: setValue, val: v, flags: q.meta.Columns[ci].Flags})
+			assigns = append(assigns, Assignment{col: r.m.Columns[ci].Name, kind: setValue, val: v, flags: r.m.Columns[ci].Flags})
 		}
 	}
 	return cols, assigns, nil
@@ -440,25 +510,21 @@ func (q InsertQuery[T]) timestampAssigns(seen map[int]struct{}, now time.Time) (
 // modelValue is the value a model insert binds for column ci: the field value,
 // except that an unset created-at or updated-at field takes the statement time
 // and an omitted column takes its Go-side default.
-func (q InsertQuery[T]) modelValue(r, ci int, now time.Time, fp fieldPlan[T]) any {
-	m := &q.models[r]
-	if f, ok := fp.def[ci]; ok && slices.Contains(q.i.omit, q.meta.Columns[ci].Name) {
-		return f(m)
+func (r insertRef) modelValue(row, ci int, now time.Time, a insAccess) any {
+	if a.fields.hasDef(ci) && slices.Contains(r.i.omit, r.m.Columns[ci].Name) {
+		return a.defOf(ci, row)
 	}
-	if q.dbDefaultRow(r, ci) {
+	if r.dbDefaultRow(row, ci) {
 		return nil // DEFAULT: validators see the same nil as for an omitted column
 	}
-	v := q.meta.Value(m, ci)
-	if (ci == q.meta.CreatedAt || ci == q.meta.UpdatedAt) && timestampUnset(v) {
-		if t, ok := autoTimestamp(q.meta, ci, now); ok {
+	v := a.val(row, ci)
+	if (ci == r.m.CreatedAt || ci == r.m.UpdatedAt) && timestampUnset(v) {
+		if t, ok := r.autoTimestamp(ci, now, a); ok {
 			return t
 		}
 	}
 	return v
 }
-
-// appendValue renders one assigned value inside VALUES or SET.
-func (q InsertQuery[T]) appendValue(b *Builder, a Assignment) { appendAssignedValue(b, a) }
 
 // renderWhere writes ` WHERE ` and the predicates ANDed.
 func renderWhere(b *Builder, preds []Predicate) {
@@ -466,22 +532,16 @@ func renderWhere(b *Builder, preds []Predicate) {
 	And(preds...).AppendSQL(b)
 }
 
-// renderConflict writes the conflict clause. written names the columns the
-// statement writes, which MySQL's conflict-target rule needs.
-func (q InsertQuery[T]) renderConflict(b *Builder, written []string) {
-	q.ref().renderConflict(b, written)
-}
-
 // modelValues computes the bound value of every column in cols for every
 // model: row r, column cols[i] is at [r][i].
-func (q InsertQuery[T]) modelValues(fp fieldPlan[T], cols []int, now time.Time) [][]any {
-	vals := make([][]any, len(q.models))
-	for r := range q.models {
-		row := make([]any, len(cols))
+func (r insertRef) modelValues(cols []int, now time.Time, a insAccess) [][]any {
+	vals := make([][]any, r.n)
+	for row := range r.n {
+		vs := make([]any, len(cols))
 		for i, ci := range cols {
-			row[i] = q.modelValue(r, ci, now, fp)
+			vs[i] = r.modelValue(row, ci, now, a)
 		}
-		vals[r] = row
+		vals[row] = vs
 	}
 	return vals
 }
@@ -489,16 +549,16 @@ func (q InsertQuery[T]) modelValues(fp fieldPlan[T], cols []int, now time.Time) 
 // validateModelRows runs the field validators over the computed values of a
 // model insert: vals[r][i] is the value of column cols[i] in row r. A column
 // the statement leaves out validates as nil when it is writable.
-func (q InsertQuery[T]) validateModelRows(fp fieldPlan[T], cols []int, vals [][]any) error {
-	if len(fp.hooks) == 0 {
+func (r insertRef) validateModelRows(cols []int, vals [][]any, a insAccess) error {
+	if a.fields.n == 0 {
 		return nil
 	}
 	for _, row := range vals {
-		err := fp.validate("insert", q.meta, func(ci int) (any, bool) {
+		err := a.fields.validate("insert", r.m.Table, r.m.Columns, func(ci int) (any, bool) {
 			if i := slices.Index(cols, ci); i >= 0 {
 				return row[i], true
 			}
-			return nil, q.writable(ci)
+			return nil, r.writable(ci)
 		})
 		if err != nil {
 			return err
@@ -509,19 +569,16 @@ func (q InsertQuery[T]) validateModelRows(fp fieldPlan[T], cols []int, vals [][]
 
 // validateConflictSet runs the field validators over the values a DO UPDATE
 // list assigns, since an upsert writes them to the existing row.
-func (q InsertQuery[T]) validateConflictSet(fp fieldPlan[T]) error {
-	if q.i.conflict != conflictUpdate || len(fp.hooks) == 0 {
+func (r insertRef) validateConflictSet(a insAccess) error {
+	if r.i.conflict != conflictUpdate || a.fields.n == 0 {
 		return nil
 	}
-	return fp.validate("insert", q.meta, func(ci int) (any, bool) {
-		for _, a := range q.i.set {
-			if a.col == q.meta.Columns[ci].Name {
-				return assignedValue(a)
+	return a.fields.validate("insert", r.m.Table, r.m.Columns, func(ci int) (any, bool) {
+		for _, as := range r.i.set {
+			if as.col == r.m.Columns[ci].Name {
+				return assignedValue(as)
 			}
 		}
 		return nil, false
 	})
 }
-
-// writeInsertHead writes INSERT INTO [schema.]table.
-func (q InsertQuery[T]) writeInsertHead(b *Builder) { q.ref().writeInsertHead(b) }

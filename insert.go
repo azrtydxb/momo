@@ -5,8 +5,6 @@ package momo
 import (
 	"slices"
 	"time"
-
-	"github.com/azrtydxb/momo/dialect"
 )
 
 // InsertValue is an explicit column write accepted by Insert.Values: an
@@ -139,10 +137,6 @@ func (q InsertQuery[T]) fail(err error) InsertQuery[T] {
 	return q
 }
 
-func (q InsertQuery[T]) verr(col, format string, args ...any) error {
-	return insertVerr(q.meta.Table, col, format, args...)
-}
-
 // Model adds one model, writing every column except identity, read-only and
 // omitted columns. Zero values are written, never skipped, except in a column
 // tagged dbdefault: when that field holds its zero value (or a nil pointer)
@@ -151,7 +145,7 @@ func (q InsertQuery[T]) verr(col, format string, args ...any) error {
 // for several rows and the dialects that cannot do this.
 func (q InsertQuery[T]) Model(m *T) InsertQuery[T] {
 	if m == nil {
-		return q.fail(q.verr("", "Model(nil)"))
+		return q.fail(insertVerr(q.meta.Table, "", "Model(nil)"))
 	}
 	q.models = append(slices.Clip(q.models), *m)
 	q.back = append(slices.Clip(q.back), m)
@@ -183,7 +177,7 @@ func (q InsertQuery[T]) Model(m *T) InsertQuery[T] {
 // turns the automatic read-back off: Rows returns the columns it names.
 func (q InsertQuery[T]) Models(ms []T) InsertQuery[T] {
 	if len(ms) == 0 {
-		return q.fail(q.verr("", "Models: no rows"))
+		return q.fail(insertVerr(q.meta.Table, "", "Models: no rows"))
 	}
 	q.models = append(slices.Clip(q.models), ms...)
 	for i := range ms {
@@ -218,7 +212,7 @@ func (q InsertQuery[T]) Values(assigns ...InsertValue) InsertQuery[T] {
 // ErrLimitExceeded (DEFAULT and NULL bind no parameter).
 func (q InsertQuery[T]) ValuesRows(rows ...[]Assignment) InsertQuery[T] {
 	if len(rows) == 0 {
-		return q.fail(q.verr("", "ValuesRows: no rows"))
+		return q.fail(insertVerr(q.meta.Table, "", "ValuesRows: no rows"))
 	}
 	out := slices.Clip(q.i.rows)
 	for _, r := range rows {
@@ -282,7 +276,7 @@ func (q InsertQuery[T]) Explicit(cols ...ColumnRef) InsertQuery[T] {
 	names := slices.Clip(q.i.explicit)
 	for _, c := range cols {
 		if t, ok := c.(interface{ Table() string }); ok && t.Table() != "" && t.Table() != q.meta.Table {
-			return q.fail(q.verr(c.ColumnName(), "Explicit: column %q belongs to table %q, not %s", c.ColumnName(), t.Table(), q.meta.Table))
+			return q.fail(insertVerr(q.meta.Table, c.ColumnName(), "Explicit: column %q belongs to table %q, not %s", c.ColumnName(), t.Table(), q.meta.Table))
 		}
 		names = append(names, c.ColumnName())
 	}
@@ -382,65 +376,6 @@ func (c ConflictQuery[T]) DoUpdate(assigns ...Assignment) InsertQuery[T] {
 func (q InsertQuery[T]) Where(preds ...Predicate) InsertQuery[T] {
 	q.i.actionWhere = append(slices.Clip(q.i.actionWhere), preds...)
 	return q
-}
-
-// column returns the index of the mapped column name, or -1.
-func (q InsertQuery[T]) column(name string) int { return q.ref().column(name) }
-
-// writable reports whether the column at i may appear in an INSERT.
-func (q InsertQuery[T]) writable(i int) bool { return q.ref().writable(i) }
-
-// explicitCol reports whether column i is an identity column the caller named
-// in Explicit, so the statement writes its value.
-func (q InsertQuery[T]) explicitCol(i int) bool { return q.ref().explicitCol(i) }
-
-// checkExplicit validates the Explicit list.
-func (q InsertQuery[T]) checkExplicit() error { return q.ref().checkExplicit() }
-
-// checkExplicitZero refuses a zero value in an explicit AUTO_INCREMENT column
-// on MySQL and MariaDB, where the server would generate a value instead of
-// storing 0. It looks at every row so that nothing runs before the refusal.
-func (q InsertQuery[T]) checkExplicitZero(d *dialect.Dialect) error {
-	if len(q.i.explicit) == 0 || !d.OnDuplicateKey {
-		return nil
-	}
-	refuse := func(name string) error {
-		return q.verr(name, "Explicit: column %q holds a zero value and MySQL would generate a value instead of storing 0; leave the column out of Explicit to get a generated one", name)
-	}
-	for _, n := range q.i.explicit {
-		ci := q.column(n)
-		if !q.explicitCol(ci) {
-			continue
-		}
-		for r := range q.models {
-			if dbDefaultZero(q.meta.Value(&q.models[r], ci)) {
-				return refuse(n)
-			}
-		}
-	}
-	zeroAssign := func(as []Assignment) error {
-		for _, a := range as {
-			if a.kind == setValue && slices.Contains(q.i.explicit, a.col) && dbDefaultZero(a.val) && q.explicitCol(q.column(a.col)) {
-				return refuse(a.col)
-			}
-		}
-		return nil
-	}
-	if err := zeroAssign(q.i.assigns); err != nil {
-		return err
-	}
-	for _, row := range q.i.rows {
-		if err := zeroAssign(row); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// overriding reports whether the INSERT needs OVERRIDING SYSTEM VALUE: an
-// upsert writes the identity key, or an explicit column is GENERATED ALWAYS.
-func (q InsertQuery[T]) overriding(d *dialect.Dialect, cols []int) bool {
-	return q.ref().overriding(d, cols)
 }
 
 // SQL compiles the statement without executing it.

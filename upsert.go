@@ -58,144 +58,135 @@ func Upsert[T any, PT Modeler[T]](q Querier) InsertQuery[T] {
 // upsertUpdatable reports whether DO UPDATE SET may assign the column.
 func upsertUpdatable(f uint16) bool { return updModelWritable(f) }
 
-// resolveUpsert fills the upsert defaults into a copy of q: the primary-key
+// resolveUpsert fills the upsert defaults into a copy of r: the primary-key
 // target, the default DO UPDATE list, the identity-in-INSERT decision. It
 // validates an explicit DO UPDATE list against the update guard rules.
-func (q InsertQuery[T]) resolveUpsert() (InsertQuery[T], error) {
-	if !q.i.upsert {
-		if q.i.conflict != conflictUpdate || q.i.bumped {
-			return q.resolveMySQLIdentity(), nil
+func (r insertRef) resolveUpsert(a insAccess) (insertRef, error) {
+	if !r.i.upsert {
+		if r.i.conflict != conflictUpdate || r.i.bumped {
+			return r.resolveMySQLIdentity(a), nil
 		}
 		// A plain Insert ... OnConflict ... DoUpdate gets the same
 		// updated_at rules as Upsert: refuse an explicit set, bump on conflict.
-		if err := q.refuseUpdatedAtSet(); err != nil {
-			return q, err
+		if err := r.refuseUpdatedAtSet(); err != nil {
+			return r, err
 		}
-		if len(q.i.set) > 0 { // DoUpdate() alone stays "needs at least one assignment"
+		if len(r.i.set) > 0 { // DoUpdate() alone stays "needs at least one assignment"
 			var err error
-			if q, err = q.bumpUpdatedAt(); err != nil {
-				return q, err
+			if r, err = r.bumpUpdatedAt(a); err != nil {
+				return r, err
 			}
 		}
-		q.i.bumped = true
-		return q.resolveMySQLIdentity(), nil
+		r.i.bumped = true
+		return r.resolveMySQLIdentity(a), nil
 	}
-	if q.i.conflict == conflictNone {
-		q.i.conflict = conflictUpdate
+	if r.i.conflict == conflictNone {
+		r.i.conflict = conflictUpdate
 	}
-	if len(q.i.target) == 0 && q.i.conflict == conflictUpdate {
-		if len(q.meta.PK) == 0 {
-			return q, q.verr("", "Upsert: %s has no primary key; pass OnConflict columns", q.meta.Table)
+	if len(r.i.target) == 0 && r.i.conflict == conflictUpdate {
+		if len(r.m.PK) == 0 {
+			return r, r.verr("", "Upsert: %s has no primary key; pass OnConflict columns", r.m.Table)
 		}
-		q.i.target = q.pkNames()
+		r.i.target = r.pkNames()
 	}
-	if err := q.resolveIdentity(); err != nil {
-		return q, err
+	withIdentity, err := r.resolveIdentity(a)
+	if err != nil {
+		return r, err
 	}
-	if q.i.conflict != conflictUpdate {
-		return q, nil
+	if withIdentity {
+		r.i.withIdentity = true
 	}
-	for _, a := range q.i.set {
-		ci := q.column(a.col)
+	if r.i.conflict != conflictUpdate {
+		return r, nil
+	}
+	for _, as := range r.i.set {
+		ci := r.column(as.col)
 		if ci < 0 {
 			continue // renderConflict reports the unmapped column
 		}
-		f := q.meta.Columns[ci].Flags
-		if role := q.reservedRoleOf(ci); role != "" {
-			return q, q.verr(a.col, "DoUpdate: column %q is the %s column and cannot be set directly", a.col, role)
+		f := r.m.Columns[ci].Flags
+		if role := r.reservedRoleOf(ci); role != "" {
+			return r, r.verr(as.col, "DoUpdate: column %q is the %s column and cannot be set directly", as.col, role)
 		}
 		if !columnAssignable(writeUpdate, f) {
-			return q, q.verr(a.col, "DoUpdate: column %q cannot be written by UPDATE", a.col)
+			return r, r.verr(as.col, "DoUpdate: column %q cannot be written by UPDATE", as.col)
 		}
 	}
-	if len(q.i.set) == 0 {
-		q.i.set = q.defaultUpsertSet()
+	if len(r.i.set) == 0 {
+		r.i.set = r.upsertSet(a)
 	}
-	var err error
-	if q, err = q.bumpUpdatedAt(); err != nil {
-		return q, err
+	if r, err = r.bumpUpdatedAt(a); err != nil {
+		return r, err
 	}
-	q.i.bumped = true
-	return q, nil
+	r.i.bumped = true
+	return r, nil
 }
-
-// refuseUpdatedAtSet refuses an explicit DO UPDATE assignment to the
-// updated-at column, with the error Update gives for the same Set.
-func (q InsertQuery[T]) refuseUpdatedAtSet() error { return q.ref().refuseUpdatedAtSet() }
 
 // bumpUpdatedAt appends updated_at = <clock> to the DO UPDATE list, the value
 // Update binds, so the conflict branch always refreshes the timestamp whatever
 // the INSERT carries: the struct's own (possibly old) UpdatedAt, an Omit, or a
-// FromSelect without the column. It reads the clock once into q.clock, which
+// FromSelect without the column. It reads the clock once into r.clock, which
 // the INSERT and every chunk then share. It does nothing when the model has
 // no updated-at column or the column is not assignable on UPDATE.
-func (q InsertQuery[T]) bumpUpdatedAt() (InsertQuery[T], error) {
-	ci := q.meta.UpdatedAt
-	if ci < 0 || ci >= len(q.meta.Columns) || !columnAssignable(writeUpdate, q.meta.Columns[ci].Flags) {
-		return q, nil
+func (r insertRef) bumpUpdatedAt(a insAccess) (insertRef, error) {
+	ci := r.m.UpdatedAt
+	if ci < 0 || ci >= len(r.m.Columns) || !columnAssignable(writeUpdate, r.m.Columns[ci].Flags) {
+		return r, nil
 	}
-	c := q.meta.Columns[ci]
-	if err := checkTimestampField(q.meta, ci); err != nil {
-		return q, q.verr(c.Name, "%v", err)
+	c := r.m.Columns[ci]
+	if err := r.checkTimestamp(ci, a); err != nil {
+		return r, r.verr(c.Name, "%v", err)
 	}
-	if q.clock.IsZero() {
-		if q.q != nil {
-			q.clock = q.q.conn().now()
+	if r.clock.IsZero() {
+		if r.q != nil {
+			r.clock = r.q.conn().now()
 		} else {
-			q.clock = time.Now()
+			r.clock = time.Now()
 		}
 	}
-	v, ok := autoTimestamp(q.meta, ci, q.clock)
+	v, ok := r.autoTimestamp(ci, r.clock, a)
 	if !ok {
-		return q, nil
+		return r, nil
 	}
-	q.i.set = append(slices.Clone(q.i.set), Assignment{col: c.Name, kind: setValue, val: v, flags: c.Flags})
-	return q, nil
+	r.i.set = append(slices.Clone(r.i.set), Assignment{col: c.Name, kind: setValue, val: v, flags: c.Flags})
+	return r, nil
 }
 
-// pkNames returns the primary-key column names.
-func (q InsertQuery[T]) pkNames() []string { return q.ref().pkNames() }
-
-// reservedRoleOf names the role of column ci when it is the primary key,
-// version, soft-delete, created-at or updated-at column.
-func (q InsertQuery[T]) reservedRoleOf(ci int) string { return q.ref().reservedRoleOf(ci) }
-
-// defaultUpsertSet assigns EXCLUDED to every column of the INSERT list that
-// an upsert may update.
-func (q InsertQuery[T]) defaultUpsertSet() []Assignment {
+// upsertSet assigns EXCLUDED to every column of the INSERT list that an upsert
+// may update. It needs the dbdefault plan, so it computes it.
+func (r insertRef) upsertSet(a insAccess) []Assignment {
 	var counts []int
-	if q.i.sel == nil && len(q.models) > 0 {
-		counts = q.withDBD().dbd.count
+	if r.i.sel == nil && r.n > 0 {
+		counts = r.withDBD(a).dbd.count
 	}
-	return q.ref().defaultUpsertSet(len(q.models), counts)
+	return r.defaultUpsertSet(r.n, counts)
 }
 
 // resolveIdentity decides whether the identity column joins the INSERT list.
-func (q *InsertQuery[T]) resolveIdentity() error {
-	id := q.meta.Identity
-	if len(q.models) == 0 || id < 0 || id >= len(q.meta.Columns) || q.explicitCol(id) {
-		return nil // Explicit already decides: the value is written as-is
+func (r insertRef) resolveIdentity(a insAccess) (withIdentity bool, err error) {
+	id := r.m.Identity
+	if r.n == 0 || id < 0 || id >= len(r.m.Columns) || r.explicitCol(id) {
+		return false, nil // Explicit already decides: the value is written as-is
 	}
-	if q.meta.Columns[id].Flags&FlagReadOnly != 0 || !slices.Contains(q.meta.PK, id) {
-		return nil
+	if r.m.Columns[id].Flags&FlagReadOnly != 0 || !slices.Contains(r.m.PK, id) {
+		return false, nil
 	}
-	if !sameStrings(q.i.target, q.pkNames()) || slices.Contains(q.i.omit, q.meta.Columns[id].Name) {
-		return nil
+	if !sameStrings(r.i.target, r.pkNames()) || slices.Contains(r.i.omit, r.m.Columns[id].Name) {
+		return false, nil
 	}
 	set := 0
-	for r := range q.models {
-		if !reflect.ValueOf(q.meta.Value(&q.models[r], id)).IsZero() {
+	for row := range r.n {
+		if !reflect.ValueOf(a.val(row, id)).IsZero() {
 			set++
 		}
 	}
 	switch set {
 	case 0:
-		return nil
-	case len(q.models):
-		q.i.withIdentity = true
-		return nil
+		return false, nil
+	case r.n:
+		return true, nil
 	}
-	return q.verr(q.meta.Columns[id].Name, "Upsert: models mix explicit and zero identity values; split them into separate calls")
+	return false, r.verr(r.m.Columns[id].Name, "Upsert: models mix explicit and zero identity values; split them into separate calls")
 }
 
 func sameStrings(a, b []string) bool {
@@ -207,7 +198,3 @@ func sameStrings(a, b []string) bool {
 	slices.Sort(bs)
 	return slices.Equal(as, bs)
 }
-
-// insertsIdentity reports whether column i is the identity column and an
-// upsert writes its explicit values.
-func (q InsertQuery[T]) insertsIdentity(i int) bool { return q.ref().insertsIdentity(i) }

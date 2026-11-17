@@ -118,7 +118,7 @@ func idGenDefaults[T any](q Querier, m *Meta[T]) (map[int]func(*T) any, error) {
 }
 
 // valueRowsSafe is valueRows with a failing id generator reported as an error.
-func (q InsertQuery[T]) valueRowsSafe(d *dialect.Dialect, now time.Time, fp fieldPlan[T]) (cols []int, rows []map[int]Assignment, err error) {
+func (r insertRef) valueRowsSafe(d *dialect.Dialect, now time.Time, a insAccess) (cols []int, rows []map[int]Assignment, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			f, ok := p.(idGenFail)
@@ -128,7 +128,7 @@ func (q InsertQuery[T]) valueRowsSafe(d *dialect.Dialect, now time.Time, fp fiel
 			cols, rows, err = nil, nil, f.err
 		}
 	}()
-	return q.valueRows(d, now, fp)
+	return r.valueRows(d, now, a)
 }
 
 // execSingle runs the only chunk of an insert. A statement that reconciles ids
@@ -136,7 +136,8 @@ func (q InsertQuery[T]) valueRowsSafe(d *dialect.Dialect, now time.Time, fp fiel
 // so a RETURNING row that matches no model rolls the write back instead of
 // leaving it committed.
 func (q InsertQuery[T]) execSingle(ctx context.Context, c InsertQuery[T]) (Result, error) {
-	if db, ok := q.q.(*DB); !(c.reconcile || len(c.dbDefaultReadBack()) > 0) || (ok && db.pinned) {
+	cr := c.ref()
+	if db, ok := q.q.(*DB); !(cr.reconcile || len(cr.dbDefaultReadBack()) > 0) || (ok && db.pinned) {
 		return c.execOne(ctx)
 	}
 	var res Result
@@ -155,78 +156,81 @@ func (q InsertQuery[T]) execSingle(ctx context.Context, c InsertQuery[T]) (Resul
 // keepsExistingRow reports whether the statement can leave a conflicting row
 // in place under another id than the one generated: it has an ON CONFLICT
 // action on something other than the primary key.
-func (q InsertQuery[T]) keepsExistingRow() bool {
-	rq, err := q.resolveUpsert()
+func (r insertRef) keepsExistingRow(a insAccess) bool {
+	rq, err := r.resolveUpsert(a)
 	if err != nil || rq.i.conflict == conflictNone {
 		return false
 	}
-	for _, g := range rq.meta.IDGens {
-		if !slices.Contains(rq.meta.PK, g.Column) {
+	for _, g := range rq.m.IDGens {
+		if !slices.Contains(rq.m.PK, g.Column) {
 			return true // e.g. a public_id: the row that is kept has its own
 		}
 	}
-	if len(rq.i.target) != len(rq.meta.PK) {
+	if len(rq.i.target) != len(rq.m.PK) {
 		return true
 	}
-	for _, pk := range rq.meta.PK {
-		if !slices.Contains(rq.i.target, rq.meta.Columns[pk].Name) {
+	for _, pk := range rq.m.PK {
+		if !slices.Contains(rq.i.target, rq.m.Columns[pk].Name) {
 			return true
 		}
 	}
 	return false
 }
 
-// generateIDs fills the id fields of the models of q that hold their zero
+// generateIDs fills the id fields of the models of r that hold their zero
 // value, and every id column listed in Omit. With writeBack it also stores
 // each generated id in the caller's model, so the caller reads it after Exec
-// or Rows. It is a no-op for a model without id generators.
+// or Rows. It is a no-op for a model without id generators. It changes the
+// models through a.clone and a.ptr, so the caller's slice stays as it was.
 //
 // When the statement can keep an existing row under its own id (ON CONFLICT on
 // a column other than the primary key) the generated id is not stored in the
 // caller's model up front: Exec sets reconcile and reads the stored ids back
 // with RETURNING instead (see execReconcile).
-func (q InsertQuery[T]) generateIDs(writeBack bool) (InsertQuery[T], error) {
-	if q.idsDone || q.q == nil || len(q.meta.IDGens) == 0 || len(q.models) == 0 || q.meta.Ptr == nil || q.meta.Value == nil {
-		return q, nil
+//
+//go:noinline
+func (r insertRef) generateIDs(writeBack bool, a insAccess) (insertRef, error) {
+	if r.idsDone || r.q == nil || len(r.m.IDGens) == 0 || r.n == 0 || !r.m.HasPtr || !r.m.HasValue {
+		return r, nil
 	}
 	eager := writeBack
-	if writeBack && q.keepsExistingRow() {
+	if writeBack && r.keepsExistingRow(a) {
 		eager = false
 	}
 	cloned, generated := false, false
 	var undoOmit []string
-	for _, g := range q.meta.IDGens {
+	for _, g := range r.m.IDGens {
 		ci := g.Column
-		if ci < 0 || ci >= len(q.meta.Columns) || !q.writable(ci) {
+		if ci < 0 || ci >= len(r.m.Columns) || !r.writable(ci) {
 			continue
 		}
-		name := q.meta.Columns[ci].Name
-		omitted := slices.Contains(q.i.omit, name)
-		fn, ok := idGenerator(q.q, g.Name)
+		name := r.m.Columns[ci].Name
+		omitted := slices.Contains(r.i.omit, name)
+		fn, ok := idGenerator(r.q, g.Name)
 		if !ok {
-			return q, q.verr(name, "unknown id generator %q: use cuid, uuid, ulid or register it with WithIDGenerator", g.Name)
+			return r, r.verr(name, "unknown id generator %q: use cuid, uuid, ulid or register it with WithIDGenerator", g.Name)
 		}
-		for r := range q.models {
-			v := q.meta.Value(&q.models[r], ci)
+		for row := range r.n {
+			v := a.val(row, ci)
 			unset, ok := idUnset(v)
 			if !ok {
-				return q, q.verr(name, "idgen needs a string column, got %T", v)
+				return r, r.verr(name, "idgen needs a string column, got %T", v)
 			}
 			if !unset && !omitted {
 				continue // an Omit column always takes a fresh id
 			}
 			id, err := callIDGen(g.Name, fn)
 			if err != nil {
-				return q, q.verr(name, "%v", err)
+				return r, r.verr(name, "%v", err)
 			}
 			if !cloned {
-				q.models = slices.Clone(q.models)
+				a.clone()
 				cloned = true
 			}
-			setID(q.meta.Ptr(&q.models[r], ci), id)
+			setID(a.ptr(row, ci), id)
 			generated = true
-			if eager && r < len(q.back) && q.back[r] != nil {
-				setID(q.meta.Ptr(q.back[r], ci), id)
+			if eager && a.hasBack(row) {
+				setID(a.backPtr(row, ci), id)
 			}
 		}
 		if omitted {
@@ -234,12 +238,62 @@ func (q InsertQuery[T]) generateIDs(writeBack bool) (InsertQuery[T], error) {
 		}
 	}
 	if len(undoOmit) > 0 {
-		q.i.omit = slices.DeleteFunc(slices.Clone(q.i.omit), func(n string) bool { return slices.Contains(undoOmit, n) })
+		r.i.omit = slices.DeleteFunc(slices.Clone(r.i.omit), func(n string) bool { return slices.Contains(undoOmit, n) })
 	}
-	if generated && writeBack && !eager && q.q.Dialect().Returning {
-		q.reconcile = true
+	if generated && writeBack && !eager && r.q.Dialect().Returning {
+		r.reconcile = true
 	}
-	return q, nil
+	return r, nil
+}
+
+// reconPlan is the RETURNING list of an insert that reconciles ids: idCols are
+// the generated id columns, keyCols the columns that match a returned row to its
+// model, dbCols the dbdefault columns read back with them.
+type reconPlan struct {
+	returning               returningSet
+	idCols, keyCols, dbCols []int
+}
+
+// reconPlan resolves what execReconcile asks RETURNING for.
+func (r insertRef) reconPlan(a insAccess) (reconPlan, error) {
+	rq, err := r.resolveUpsert(a)
+	if err != nil {
+		return reconPlan{}, err
+	}
+	idCols := make([]int, 0, len(r.m.IDGens))
+	var refs []ColumnRef
+	for _, g := range r.m.IDGens {
+		idCols = append(idCols, g.Column)
+		refs = append(refs, NewColumn[string](r.m.Table, r.m.Columns[g.Column].Name, 0))
+	}
+	// Rows are matched on the conflict target when there is one, otherwise on
+	// the generated id (a skipped row never comes back, an inserted one does).
+	keyCols := idCols
+	if len(rq.i.target) > 0 {
+		keyCols = keyCols[:0:0]
+		for _, n := range rq.i.target {
+			ci := r.column(n)
+			if ci < 0 {
+				return reconPlan{}, r.verr(n, "OnConflict: column %q is not mapped by %s", n, r.m.Table)
+			}
+			keyCols = append(keyCols, ci)
+			if !slices.Contains(idCols, ci) {
+				refs = append(refs, NewColumn[string](r.m.Table, n, 0))
+			}
+		}
+	}
+	dbCols := r.dbDefaultReadBack() // dbdefault columns come back with the ids
+	for _, ci := range keyCols {
+		if slices.Contains(dbCols, ci) {
+			return reconPlan{}, r.verr(r.m.Columns[ci].Name, "the conflict-target column %q takes its database default in some rows, so the stored rows cannot be matched to the models: give it a value or use another conflict target", r.m.Columns[ci].Name)
+		}
+	}
+	for _, ci := range dbCols {
+		if !slices.Contains(idCols, ci) {
+			refs = append(refs, NewColumn[string](r.m.Table, r.m.Columns[ci].Name, 0))
+		}
+	}
+	return reconPlan{returning: returningSet{cols: refs}, idCols: idCols, keyCols: keyCols, dbCols: dbCols}, nil
 }
 
 // execReconcile runs an insert that may keep conflicting rows under their own
@@ -248,45 +302,29 @@ func (q InsertQuery[T]) generateIDs(writeBack bool) (InsertQuery[T], error) {
 // skipped (DO NOTHING) comes back empty and its model keeps what the caller
 // had.
 func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
-	rq, err := q.resolveUpsert()
+	ms, back, meta, pend := q.models, q.back, q.meta, q.pend
+	var got []T
+	a := insAccess{
+		value:   func(row, ci int) any { return meta.Value(&ms[row], ci) },
+		zero:    func(ci int) (any, bool) { return zeroValue(meta, ci) },
+		hasBack: func(row int) bool { return row < len(back) && back[row] != nil },
+		got:     func(g, ci int) any { return meta.Value(&got[g], ci) },
+		queueCopy: func(row, g, ci int) {
+			dst, src := back[row], &got[g]
+			later(pend, func() { copyField(meta, dst, src, ci) })
+		},
+		queueSetID: func(row, ci int, id string) {
+			dst := back[row]
+			later(pend, func() { setID(meta.Ptr(dst, ci), id) }) // after the statement commits
+		},
+	}
+	r := q.ref()
+	rp, err := r.reconPlan(a)
 	if err != nil {
 		return Result{}, err
 	}
-	idCols := make([]int, 0, len(q.meta.IDGens))
-	var refs []ColumnRef
-	for _, g := range q.meta.IDGens {
-		idCols = append(idCols, g.Column)
-		refs = append(refs, NewColumn[string](q.meta.Table, q.meta.Columns[g.Column].Name, 0))
-	}
-	// Rows are matched on the conflict target when there is one, otherwise on
-	// the generated id (a skipped row never comes back, an inserted one does).
-	keyCols := idCols
-	if len(rq.i.target) > 0 {
-		keyCols = keyCols[:0:0]
-		for _, n := range rq.i.target {
-			ci := q.column(n)
-			if ci < 0 {
-				return Result{}, q.verr(n, "OnConflict: column %q is not mapped by %s", n, q.meta.Table)
-			}
-			keyCols = append(keyCols, ci)
-			if !slices.Contains(idCols, ci) {
-				refs = append(refs, NewColumn[string](q.meta.Table, n, 0))
-			}
-		}
-	}
-	dbCols := q.dbDefaultReadBack() // dbdefault columns come back with the ids
-	for _, ci := range keyCols {
-		if slices.Contains(dbCols, ci) {
-			return Result{}, q.verr(q.meta.Columns[ci].Name, "the conflict-target column %q takes its database default in some rows, so the stored rows cannot be matched to the models: give it a value or use another conflict target", q.meta.Columns[ci].Name)
-		}
-	}
-	for _, ci := range dbCols {
-		if !slices.Contains(idCols, ci) {
-			refs = append(refs, NewColumn[string](q.meta.Table, q.meta.Columns[ci].Name, 0))
-		}
-	}
 	q2 := q
-	q2.i.returning = returningSet{cols: refs}
+	q2.i.returning = rp.returning
 	c, err := q2.SQL()
 	if err != nil {
 		return Result{}, err
@@ -296,43 +334,13 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 	rows.noHooks = true // internal read: the models are half-filled
-	byKey := make(map[string]int, len(q.models))
-	for i := range q.models {
-		k := idKey(q.meta, &q.models[i], keyCols)
-		if _, dup := byKey[k]; !dup {
-			byKey[k] = i // the first model of a duplicate key is the one DO NOTHING inserts
-		}
-	}
-	var n int64
-	matched := make([]bool, len(q.models))
 	for rows.Next() {
-		var got T
-		if err := rows.ScanModel(&got); err != nil {
+		var g T
+		if err := rows.ScanModel(&g); err != nil {
 			_ = rows.Close()
 			return Result{}, err
 		}
-		n++
-		i, ok := byKey[idKey(q.meta, &got, keyCols)]
-		if !ok {
-			_ = rows.Close()
-			return Result{}, q.verr("", "idgen: a RETURNING row of %s matched no model on %s: the conflict-target columns must read back exactly as written (citext, char(n) and numeric columns may not); the write is rolled back unless the handle is a pinned OnConn one", q.meta.Table, strings.Join(keyNames(q.meta, keyCols), ", "))
-		}
-		matched[i] = true
-		if i >= len(q.back) || q.back[i] == nil {
-			continue
-		}
-		for _, ci := range dbCols {
-			if q.dbDefaultRow(i, ci) {
-				dst, src, col := q.back[i], got, ci
-				q.later(func() { copyField(q.meta, dst, &src, col) })
-			}
-		}
-		for _, ci := range idCols {
-			if id, ok := idString(q.meta.Value(&got, ci)); ok {
-				back, col := q.back[i], ci
-				q.later(func() { setID(q.meta.Ptr(back, col), id) }) // after the statement commits
-			}
-		}
+		got = append(got, g)
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
@@ -341,26 +349,61 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 	if err := rows.Close(); err != nil {
 		return Result{}, err
 	}
-	if err := q.unread(matched, dbCols); err != nil {
-		return Result{}, err
-	}
-	return Result{RowsAffected: n}, nil
+	return r.finishReconcile(rp, len(got), a)
 }
 
-// keyNames lists the column names of the given indexes.
-func keyNames[T any](m *Meta[T], cols []int) []string {
-	out := make([]string, len(cols))
-	for i, ci := range cols {
-		out[i] = m.Columns[ci].Name
+// finishReconcile matches the nGot rows an id-reconciling insert returned to its
+// models and queues the stored ids and dbdefault values for the caller's models.
+func (r insertRef) finishReconcile(rp reconPlan, nGot int, a insAccess) (Result, error) {
+	byKey := make(map[string]int, r.n)
+	for i := range r.n {
+		k := idKeyOf(func(ci int) any { return a.val(i, ci) }, rp.keyCols)
+		if _, dup := byKey[k]; !dup {
+			byKey[k] = i // the first model of a duplicate key is the one DO NOTHING inserts
+		}
+	}
+	matched := make([]bool, r.n)
+	for g := range nGot {
+		i, ok := byKey[idKeyOf(func(ci int) any { return a.got(g, ci) }, rp.keyCols)]
+		if !ok {
+			return Result{}, r.verr("", "idgen: a RETURNING row of %s matched no model on %s: the conflict-target columns must read back exactly as written (citext, char(n) and numeric columns may not); the write is rolled back unless the handle is a pinned OnConn one", r.m.Table, strings.Join(keyNamesOf(r.m.Columns, rp.keyCols), ", "))
+		}
+		matched[i] = true
+		if !a.hasBack(i) {
+			continue
+		}
+		for _, ci := range rp.dbCols {
+			if r.dbDefaultRow(i, ci) {
+				a.queueCopy(i, g, ci)
+			}
+		}
+		for _, ci := range rp.idCols {
+			if id, ok := idString(a.got(g, ci)); ok {
+				a.queueSetID(i, ci, id)
+			}
+		}
+	}
+	if err := r.unread(matched, rp.dbCols); err != nil {
+		return Result{}, err
+	}
+	return Result{RowsAffected: int64(nGot)}, nil
+}
+
+// keyNamesOf lists the column names of the given indexes.
+func keyNamesOf(cols []ColumnMeta, idx []int) []string {
+	out := make([]string, len(idx))
+	for i, ci := range idx {
+		out[i] = cols[ci].Name
 	}
 	return out
 }
 
-// idKey joins the values of the given columns of m into a comparable key.
-func idKey[T any](meta *Meta[T], m *T, cols []int) string {
+// idKeyOf joins the values of the given columns, read through value, into a
+// comparable key.
+func idKeyOf(value func(ci int) any, cols []int) string {
 	var sb strings.Builder
 	for _, ci := range cols {
-		v := reflect.ValueOf(meta.Value(m, ci))
+		v := reflect.ValueOf(value(ci))
 		for v.Kind() == reflect.Pointer && !v.IsNil() {
 			v = v.Elem()
 		}

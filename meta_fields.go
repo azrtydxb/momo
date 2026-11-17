@@ -81,6 +81,41 @@ type fieldPlan[T any] struct {
 	// def and upd map a column index to its Default or OnUpdate function; the
 	// last hook declared for a column wins.
 	def, upd map[int]func(*T) any
+	// ref is the part of the plan that does not mention T, for the insert
+	// renderer that lives on a non-generic receiver.
+	ref fieldRef
+}
+
+// fieldRef is a fieldPlan stripped of T: how many hooks there are, which
+// columns have a Go-side default and the validators in hook order. Calling a
+// default needs T and goes through insAccess.
+type fieldRef struct {
+	n       int
+	defCols []int // sorted
+	checks  []fieldCheck
+}
+
+// fieldCheck is the Validate hook of one column.
+type fieldCheck struct {
+	col int
+	fn  func(v any) error
+}
+
+// hasDef reports whether column ci has a Go-side default.
+func (f fieldRef) hasDef(ci int) bool { return slices.Contains(f.defCols, ci) }
+
+// validate runs every Validate hook, as fieldPlan.validate does.
+func (f fieldRef) validate(op, table string, cols []ColumnMeta, value func(ci int) (v any, ok bool)) error {
+	for _, c := range f.checks {
+		v, ok := value(c.col)
+		if !ok {
+			continue
+		}
+		if err := c.fn(v); err != nil {
+			return fieldError(op, table, cols[c.col].Name, err)
+		}
+	}
+	return nil
 }
 
 // newFieldPlan collects Meta.Fields and the DB's hooks for m and checks the
@@ -117,6 +152,17 @@ func newFieldPlan[T any](q Querier, m *Meta[T]) (fieldPlan[T], error) {
 			}
 			fp.upd[h.Column] = h.OnUpdate
 		}
+		if h.Validate != nil {
+			fp.ref.checks = append(fp.ref.checks, fieldCheck{col: h.Column, fn: h.Validate})
+		}
+	}
+	fp.ref.n = len(hooks)
+	if len(fp.def) > 0 {
+		fp.ref.defCols = make([]int, 0, len(fp.def))
+		for ci := range fp.def {
+			fp.ref.defCols = append(fp.ref.defCols, ci)
+		}
+		slices.Sort(fp.ref.defCols)
 	}
 	return fp, nil
 }

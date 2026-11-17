@@ -4,6 +4,7 @@ package momo
 
 import (
 	"slices"
+	"time"
 
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/schema"
@@ -28,6 +29,8 @@ type insMeta struct {
 	SoftDelete  int
 	CreatedAt   int
 	UpdatedAt   int
+	// HasPtr and HasValue report whether the field accessors are set.
+	HasPtr, HasValue bool
 }
 
 func insMetaOf[T any](m *Meta[T]) insMeta {
@@ -35,21 +38,91 @@ func insMetaOf[T any](m *Meta[T]) insMeta {
 		return insMeta{}
 	}
 	return insMeta{Table: m.Table, Schema: m.Schema, Columns: m.Columns, PK: m.PK, IDGens: m.IDGens, TableSchema: m.TableSchema,
-		Identity: m.Identity, Version: m.Version, SoftDelete: m.SoftDelete, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt}
+		Identity: m.Identity, Version: m.Version, SoftDelete: m.SoftDelete, CreatedAt: m.CreatedAt, UpdatedAt: m.UpdatedAt,
+		HasPtr: m.Ptr != nil, HasValue: m.Value != nil}
 }
 
-// insertRef is an insert statement stripped of T: its clauses and the table
-// description. i is a copy of the clauses of the query it was made from (the
-// slices inside are shared and never written through). It is a copy, not a
-// pointer: a pointer to the query's own clauses moved the whole InsertQuery to
-// the heap in every wrapper, three allocations per insert.
+// insertRef is an insert statement stripped of T: its clauses, the table
+// description and the state a query carries besides its models. It is a copy
+// of the query's fields, not a pointer: a pointer to the query's own fields
+// moved the whole InsertQuery to the heap in every wrapper, three allocations
+// per insert. What needs T (the models, the field hooks) is reached through an
+// insAccess. A method that changes the statement returns the new insertRef and
+// the generic wrapper stores it back with withRef.
 type insertRef struct {
-	m insMeta
-	i insertCore
+	m     insMeta
+	i     insertCore
+	q     Querier
+	clock time.Time
+	pre   [][]any
+	dbd   *dbdPlan
+	// n and nBack are len(models) and len(back).
+	n, nBack           int
+	idsDone, reconcile bool
+	pend               *[]func()
 }
 
 // ref returns the non-generic view of q.
-func (q InsertQuery[T]) ref() insertRef { return insertRef{m: insMetaOf(q.meta), i: q.i} }
+func (q InsertQuery[T]) ref() insertRef {
+	return insertRef{m: insMetaOf(q.meta), i: q.i, q: q.q, clock: q.clock, pre: q.pre, dbd: q.dbd,
+		n: len(q.models), nBack: len(q.back), idsDone: q.idsDone, reconcile: q.reconcile, pend: q.pend}
+}
+
+// withRef stores the statement state of r back into q. The models and the
+// caller's back pointers are not part of it.
+func (q InsertQuery[T]) withRef(r insertRef) InsertQuery[T] {
+	q.i, q.clock, q.pre, q.dbd, q.idsDone, q.reconcile = r.i, r.clock, r.pre, r.dbd, r.idsDone, r.reconcile
+	return q
+}
+
+// insAccess is how the non-generic insert code reaches whatever depends on T: the
+// models, the field hooks and the caller's values. The generic wrapper builds
+// it from closures over its own locals and passes it down by value; the
+// closures never outlive the call, so they stay on the stack. Fields that a
+// caller does not need stay nil.
+type insAccess struct {
+	// off is the index of the first model of the range the statement covers:
+	// a chunk of a bulk insert reads models off..off+n.
+	off int
+	// value is the bound value of column ci of model row.
+	value func(row, ci int) any
+	// zero is the value of column ci of a zero T; ok is false without Meta.Value.
+	zero func(ci int) (v any, ok bool)
+	// def runs the Go-side default of column ci for model row, or for a zero T
+	// when row is negative.
+	def func(ci, row int) any
+	// ptr is the address of column ci of model row; hasBack and backPtr are the
+	// same for the caller's model that row was copied from.
+	ptr     func(row, ci int) any
+	hasBack func(row int) bool
+	backPtr func(row, ci int) any
+	// clone replaces the models by a copy, so a write to them leaves the caller's
+	// slice alone.
+	clone func()
+	// got, queueCopy and queueSetID read and write back the rows a RETURNING
+	// statement gave: the value of column ci of returned row g, the (deferred)
+	// copy of that column into the caller's model row, the (deferred) store of a
+	// generated id.
+	got        func(g, ci int) any
+	queueCopy  func(row, g, ci int)
+	queueSetID func(row, ci int, id string)
+	// fields is the field plan of the statement; ferr is the error that
+	// resolving it gave, reported where the statement first needs the plan.
+	fields fieldRef
+	ferr   error
+}
+
+// val is the bound value of column ci of model row of the statement's range.
+func (a insAccess) val(row, ci int) any { return a.value(a.off+row, ci) }
+
+// defOf runs the Go-side default of column ci for model row (a zero T when row
+// is negative).
+func (a insAccess) defOf(ci, row int) any {
+	if row >= 0 {
+		row += a.off
+	}
+	return a.def(ci, row)
+}
 
 //go:noinline
 func insertVerr(table, col, format string, args ...any) error {
@@ -106,6 +179,48 @@ func (r insertRef) checkExplicit() error {
 			return r.verr(n, "Explicit: column %q is also in Omit; use one or the other", n)
 		case r.m.Columns[ci].Flags&FlagIdentity == 0 || r.m.Columns[ci].Flags&FlagReadOnly != 0:
 			return r.verr(n, "Explicit: column %q is not an identity, serial or auto-increment column", n)
+		}
+	}
+	return nil
+}
+
+// checkExplicitZero refuses a zero value in an explicit AUTO_INCREMENT column
+// on MySQL and MariaDB, where the server would generate a value instead of
+// storing 0. It looks at every row so that nothing runs before the refusal.
+//
+//go:noinline
+func (r insertRef) checkExplicitZero(d *dialect.Dialect, a insAccess) error {
+	if len(r.i.explicit) == 0 || !d.OnDuplicateKey {
+		return nil
+	}
+	refuse := func(name string) error {
+		return r.verr(name, "Explicit: column %q holds a zero value and MySQL would generate a value instead of storing 0; leave the column out of Explicit to get a generated one", name)
+	}
+	for _, n := range r.i.explicit {
+		ci := r.column(n)
+		if !r.explicitCol(ci) {
+			continue
+		}
+		for row := range r.n {
+			if dbDefaultZero(a.val(row, ci)) {
+				return refuse(n)
+			}
+		}
+	}
+	zeroAssign := func(as []Assignment) error {
+		for _, x := range as {
+			if x.kind == setValue && slices.Contains(r.i.explicit, x.col) && dbDefaultZero(x.val) && r.explicitCol(r.column(x.col)) {
+				return refuse(x.col)
+			}
+		}
+		return nil
+	}
+	if err := zeroAssign(r.i.assigns); err != nil {
+		return err
+	}
+	for _, row := range r.i.rows {
+		if err := zeroAssign(row); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -57,8 +57,13 @@ func (r returningSet) withAll() returningSet { r.all = true; return r }
 // columns are rendered and scanned. For an unmapped column it returns the
 // offending name. Under ReturningAll the explicit list is ignored.
 func returningIndexes[T any](m *Meta[T], r returningSet) (idx []int, bad string) {
+	return returningIndexesOf(m.Columns, r)
+}
+
+// returningIndexesOf is returningIndexes over the columns alone.
+func returningIndexesOf(columns []ColumnMeta, r returningSet) (idx []int, bad string) {
 	if r.all {
-		idx = make([]int, len(m.Columns))
+		idx = make([]int, len(columns))
 		for i := range idx {
 			idx[i] = i
 		}
@@ -66,7 +71,7 @@ func returningIndexes[T any](m *Meta[T], r returningSet) (idx []int, bad string)
 	}
 	idx = make([]int, len(r.cols))
 	for i, c := range r.cols {
-		idx[i] = slices.IndexFunc(m.Columns, func(mc ColumnMeta) bool { return mc.Name == c.ColumnName() })
+		idx[i] = slices.IndexFunc(columns, func(mc ColumnMeta) bool { return mc.Name == c.ColumnName() })
 		if idx[i] < 0 {
 			return nil, c.ColumnName()
 		}
@@ -79,6 +84,11 @@ func returningIndexes[T any](m *Meta[T], r returningSet) (idx []int, bad string)
 // column. It is the single entry point the Insert, Update and Delete
 // builders share.
 func renderReturning[T any](b *Builder, m *Meta[T], r returningSet, invalid func(col string) error) {
+	renderReturningCols(b, m.Columns, r, invalid)
+}
+
+// renderReturningCols is renderReturning over the columns alone.
+func renderReturningCols(b *Builder, columns []ColumnMeta, r returningSet, invalid func(col string) error) {
 	if !r.active() {
 		return
 	}
@@ -86,14 +96,14 @@ func renderReturning[T any](b *Builder, m *Meta[T], r returningSet, invalid func
 		b.unsupported("RETURNING")
 		return
 	}
-	idx, bad := returningIndexes(m, r)
+	idx, bad := returningIndexesOf(columns, r)
 	if bad != "" {
 		b.SetErr(invalid(bad))
 		return
 	}
 	names := make([]string, len(idx))
 	for i, ci := range idx {
-		names[i] = m.Columns[ci].Name
+		names[i] = columns[ci].Name
 	}
 	appendReturningNames(b, names)
 }
@@ -216,7 +226,7 @@ func oneRow[T any](r *ModelRows[T], op, table string) (T, error) {
 func (q InsertQuery[T]) One(ctx context.Context) (T, error) {
 	var zero T
 	if len(q.models) > 1 {
-		return zero, q.verr("", "One reads one row; use Rows for a bulk insert")
+		return zero, insertVerr(q.meta.Table, "", "One reads one row; use Rows for a bulk insert")
 	}
 	if !q.i.returning.active() {
 		q = q.ReturningAll()

@@ -204,7 +204,7 @@ func (m MergeQuery[T]) planInsert(ins InsertQuery[T]) (mergeInsert, error) {
 	seen := map[int]struct{}{}
 	for i, c := range m.insCols {
 		name := c.ColumnName()
-		ci := ins.column(name)
+		ci := ins.ref().column(name)
 		if ci < 0 {
 			return p, m.verr(name, "WhenNotMatchedInsert: column %q is not mapped by %s", name, m.meta.Table)
 		}
@@ -223,7 +223,8 @@ func (m MergeQuery[T]) planInsert(ins InsertQuery[T]) (mergeInsert, error) {
 		p.vals = append(p.vals, m.insVals[i])
 		p.override = p.override || f&FlagIdentity != 0
 	}
-	tc, ta, err := ins.timestampAssigns(seen, m.q.conn().now())
+	meta := m.meta
+	tc, ta, err := ins.ref().timestampAssigns(seen, m.q.conn().now(), insAccess{zero: func(ci int) (any, bool) { return zeroValue(meta, ci) }})
 	if err != nil {
 		return p, err
 	}
@@ -411,7 +412,7 @@ func (m MergeQuery[T]) renderInsert(b *Builder, ins InsertQuery[T], p mergeInser
 	}
 	for _, a := range p.tsAssign {
 		b.WriteString(", ")
-		ins.appendValue(b, a)
+		appendAssignedValue(b, a)
 	}
 	b.writeByte(')')
 }
