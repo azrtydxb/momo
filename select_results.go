@@ -18,7 +18,7 @@ func scalarQuery[T any](sq SelectQuery[T], e Expr) SelectQuery[T] {
 
 // collectScalars runs q and scans its single column into []V. It honors MaxRows.
 func collectScalars[T, V any](ctx context.Context, q SelectQuery[T]) ([]V, error) {
-	r, _, err := q.rows(ctx)
+	r, _, err := queryRows(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func pkColumn[T any](sq SelectQuery[T]) (Expr, error) {
 	if len(sq.meta.PK) != 1 {
 		return nil, &Error{Kind: ErrValidation, Op: "select", Table: sq.meta.Table, Err: fmt.Errorf("IDs and FirstID need a single-column primary key, the model has %d", len(sq.meta.PK))}
 	}
-	return qcol{sq.qualifier(), sq.meta.Columns[sq.meta.PK[0]].Name}, nil
+	return qcol{sq.s.qualifier(sq.meta.Table), sq.meta.Columns[sq.meta.PK[0]].Name}, nil
 }
 
 // IDs returns the primary-key value of every row sq matches, in the query's
@@ -194,7 +194,7 @@ func Batches[T any](ctx context.Context, sq SelectQuery[T], n int, fn func([]T) 
 	if len(sq.meta.PK) == 0 || sq.meta.Value == nil {
 		return &Error{Kind: ErrValidation, Op: "select", Table: sq.meta.Table, Err: errors.New("Batches needs a model with a primary key")}
 	}
-	q := sq.qualifier()
+	q := sq.s.qualifier(sq.meta.Table)
 	items := make([]Orderable, len(sq.meta.PK))
 	for i, ci := range sq.meta.PK {
 		items[i] = Order{Expr: pkRef{qcol{q, sq.meta.Columns[ci].Name}}}

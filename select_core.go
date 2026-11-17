@@ -63,10 +63,17 @@ type selectRef struct {
 	meta tableInfo
 }
 
-// ref returns the non-generic view of sq; it points at sq's own clauses.
-func (sq *SelectQuery[T]) ref() selectRef {
+// selectView returns the non-generic view of sq. It is the one unexported
+// method of SelectQuery[T] that the renderer's dynamic checks go through
+// (selectViewer): every unexported method of a generic type costs a wrapper per
+// instantiated type, so the checks for needsParens, hasLock, render,
+// renderBare and selectArity share it.
+func (sq SelectQuery[T]) selectView() selectRef {
 	return selectRef{s: sq.s, meta: infoOf(sq.meta)}
 }
+
+// selectViewer is implemented by SelectQuery[T] of every T.
+type selectViewer interface{ selectView() selectRef }
 
 // ---------------------------------------------------------------- builders
 
