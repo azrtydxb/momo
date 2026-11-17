@@ -1,0 +1,60 @@
+goos: linux
+goarch: amd64
+pkg: github.com/azrtydxb/momo/bench
+cpu: AMD EPYC 7763 64-Core Processor
+                                        │ bench/baseline/allocs.txt │
+                                        │         allocs/op         │
+Allocs_CustomerByID/pgx-4                                12.00 ± 0%
+Allocs_CustomerByID/database/sql-4                       31.00 ± 0%
+Allocs_CustomerByID/momo-4                               38.00 ± 0%
+Allocs_CustomerByID/gorm-4                               75.00 ± 0%
+Allocs_CustomerByID/ent-4                                107.0 ± 0%
+Allocs_CustomerByID/bun-4                                37.00 ± 0%
+Allocs_InsertOrder/pgx-4                                 10.00 ± 0%
+Allocs_InsertOrder/database/sql-4                        19.00 ± 0%
+Allocs_InsertOrder/momo-4                                38.00 ± 0%
+Allocs_InsertOrder/gorm-4                                63.00 ± 0%
+Allocs_InsertOrder/ent-4                                 78.00 ± 0%
+Allocs_InsertOrder/bun-4                                 36.00 ± 3%
+Allocs_SetCustomerStatus/pgx-4                           4.000 ± 0%
+Allocs_SetCustomerStatus/database/sql-4                  6.000 ± 0%
+Allocs_SetCustomerStatus/momo-4                          29.00 ± 0%
+Allocs_SetCustomerStatus/gorm-4                          51.00 ± 0%
+Allocs_SetCustomerStatus/ent-4                           53.00 ± 0%
+Allocs_SetCustomerStatus/bun-4                           11.00 ± 0%
+Allocs_RecentOrders/pgx-4                                74.00 ± 0%
+Allocs_RecentOrders/database/sql-4                       144.0 ± 0%
+Allocs_RecentOrders/momo-4                               69.00 ± 0%
+Allocs_RecentOrders/gorm-4                               324.0 ± 0%
+Allocs_RecentOrders/ent-4                                420.0 ± 0%
+Allocs_RecentOrders/bun-4                                175.0 ± 0%
+geomean                                                  43.35
+
+cpu: Intel(R) Xeon(R) 6975P-C
+                                        │ /tmp/tmp.LAKIN2faWh/new.txt │
+                                        │          allocs/op          │
+Allocs_CustomerByID/pgx-4                                  12.00 ± 0%
+Allocs_CustomerByID/database/sql-4                         31.00 ± 0%
+Allocs_CustomerByID/momo-4                                 38.00 ± 0%
+Allocs_CustomerByID/gorm-4                                 75.00 ± 0%
+Allocs_CustomerByID/ent-4                                  107.0 ± 0%
+Allocs_CustomerByID/bun-4                                  37.00 ± 0%
+Allocs_InsertOrder/pgx-4                                   10.00 ± 0%
+Allocs_InsertOrder/database/sql-4                          19.00 ± 0%
+Allocs_InsertOrder/momo-4                                  42.00 ± 0%
+Allocs_InsertOrder/gorm-4                                  63.00 ± 0%
+Allocs_InsertOrder/ent-4                                   78.00 ± 0%
+Allocs_InsertOrder/bun-4                                   36.00 ± 0%
+Allocs_SetCustomerStatus/pgx-4                             4.000 ± 0%
+Allocs_SetCustomerStatus/database/sql-4                    6.000 ± 0%
+Allocs_SetCustomerStatus/momo-4                            29.00 ± 0%
+Allocs_SetCustomerStatus/gorm-4                            51.00 ± 0%
+Allocs_SetCustomerStatus/ent-4                             53.00 ± 0%
+Allocs_SetCustomerStatus/bun-4                             11.00 ± 0%
+Allocs_RecentOrders/pgx-4                                  74.00 ± 0%
+Allocs_RecentOrders/database/sql-4                         144.0 ± 0%
+Allocs_RecentOrders/momo-4                                 69.00 ± 0%
+Allocs_RecentOrders/gorm-4                                 324.0 ± 0%
+Allocs_RecentOrders/ent-4                                  420.0 ± 0%
+Allocs_RecentOrders/bun-4                                  175.0 ± 0%
+geomean                                                    43.53

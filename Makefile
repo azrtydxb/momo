@@ -137,10 +137,15 @@ bench-baseline:
 # The allocation gate CI runs in the bench-module job of ci.yml and ci-agent.yml,
 # runnable against any PostgreSQL: allocs/op versus bench/baseline/allocs.txt.
 BENCHSTAT = $(GO) run golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e
+# Drops the cpu: line, which benchstat would otherwise split its tables on;
+# allocs/op does not depend on the CPU model. Run from bench/.
+STRIPCPU = $(GO) run ./cmd/benchgate -strip-cpu
 bench-gate:
 	out=$$(mktemp -d); \
 	(cd bench && BENCH_PG_URL='$(PG_URL)' $(GO) test -run='^$$' -tags integration -bench='BenchmarkAllocs_' -benchmem -count=6 ./... | tee $$out/new.txt); \
-	$(BENCHSTAT) -filter '.unit:allocs/op' bench/baseline/allocs.txt $$out/new.txt | tee $$out/delta.txt; \
+	(cd bench && $(STRIPCPU) baseline/allocs.txt) > $$out/base-nocpu.txt; \
+	(cd bench && $(STRIPCPU) $$out/new.txt) > $$out/new-nocpu.txt; \
+	$(BENCHSTAT) -filter '.unit:allocs/op' $$out/base-nocpu.txt $$out/new-nocpu.txt | tee $$out/delta.txt; \
 	(cd bench && $(GO) run ./cmd/benchgate -max-percent 5 -baseline baseline/allocs.txt -new $$out/new.txt $$out/delta.txt)
 
 bench-env:
