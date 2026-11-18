@@ -88,10 +88,12 @@ type fieldPlan[T any] struct {
 // default needs T and goes through insAccess.
 type fieldRef struct {
 	n int
-	// def[ci] reports a Go-side default for column ci; nil when there is none.
-	// Ranging over it visits the columns in index order.
-	def    []bool
-	checks []fieldCheck
+	// def has bit ci set when column ci (below 64) has a Go-side default, and
+	// defMore[ci-64] for a later column; a bitset, so the common model costs no
+	// allocation.
+	def     uint64
+	defMore []bool
+	checks  []fieldCheck
 }
 
 // fieldCheck is the Validate hook of one column.
@@ -101,7 +103,15 @@ type fieldCheck struct {
 }
 
 // hasDef reports whether column ci has a Go-side default.
-func (f fieldRef) hasDef(ci int) bool { return ci >= 0 && ci < len(f.def) && f.def[ci] }
+func (f fieldRef) hasDef(ci int) bool {
+	switch {
+	case ci < 0:
+		return false
+	case ci < 64:
+		return f.def&(1<<uint(ci)) != 0
+	}
+	return ci-64 < len(f.defMore) && f.defMore[ci-64]
+}
 
 // validate runs every Validate hook, as fieldPlan.validate does.
 func (f fieldRef) validate(op, table string, cols []ColumnMeta, value func(ci int) (v any, ok bool)) error {
@@ -165,12 +175,16 @@ func (fp fieldPlan[T]) refOf(ncols int) fieldRef {
 			r.checks = append(r.checks, fieldCheck{col: h.Column, fn: h.Validate})
 		}
 	}
-	if len(fp.def) > 0 {
-		r.def = make([]bool, ncols)
-		for ci := range fp.def {
-			if ci >= 0 && ci < ncols {
-				r.def[ci] = true
+	for ci := range fp.def {
+		switch {
+		case ci < 0 || ci >= ncols:
+		case ci < 64:
+			r.def |= 1 << uint(ci)
+		default:
+			if r.defMore == nil {
+				r.defMore = make([]bool, ncols-64)
 			}
+			r.defMore[ci-64] = true
 		}
 	}
 	return r

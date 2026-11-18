@@ -375,8 +375,8 @@ func (r insertRef) valueRows(d *dialect.Dialect, now time.Time, a insAccess) ([]
 		}
 		// Go-side defaults fill the columns this row leaves out; an explicit
 		// assignment, including SetDefault and SetNull, wins.
-		for ci, has := range a.fields.def {
-			if !has {
+		for ci := range r.m.Columns {
+			if !a.fields.hasDef(ci) {
 				continue
 			}
 			if _, assigned := m[ci]; assigned || !r.writable(ci) {
