@@ -196,9 +196,12 @@ func TestPostgresInspectManyTablesAcrossSchemas(t *testing.T) {
 	}
 }
 
-// The number of statements an inspection sends must not grow with the number
-// of tables.
-func TestPostgresInspectQueryCountIndependentOfTableCount(t *testing.T) {
+// The per-table metadata queries (columns, constraints, partitions and the
+// index list) must not grow with the number of tables. The tables here have no
+// secondary index and no serial column: an index's key columns are still read
+// with one query per index, and the owned-sequence check runs once per column
+// with a nextval default, so both are left out of this bound.
+func TestPostgresInspectPerTableMetadataQueriesIndependentOfTableCount(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
 	cur := testdb.Schema(t)
@@ -218,6 +221,6 @@ func TestPostgresInspectQueryCountIndependentOfTableCount(t *testing.T) {
 	mustExec(t, db.Driver(), `CREATE TABLE ev_2026 PARTITION OF ev FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')`)
 	many := countInspectQueries(ctx, t, db, schemas)
 	if few != many {
-		t.Fatalf("inspection sent %d statements for 2 tables and %d for 12: the count must not depend on the table count", few, many)
+		t.Fatalf("inspection sent %d statements for 2 tables and %d for 12: the per-table metadata queries must not depend on the table count", few, many)
 	}
 }

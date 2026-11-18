@@ -285,6 +285,32 @@ type tableBatch struct {
 	ids    []int64
 }
 
+// attributedError is an error that already names its table.
+type attributedError struct{ err error }
+
+func (e *attributedError) Error() string { return e.err.Error() }
+func (e *attributedError) Unwrap() error { return e.err }
+
+// rowErr names the table of the row that failed when its oid is one of the
+// batch's; a row that cannot be attributed is returned as it is.
+func (b tableBatch) rowErr(kind string, rel uint32, err error) error {
+	i, ok := b.pos[rel]
+	if !ok {
+		return err
+	}
+	return &attributedError{fmt.Errorf("postgres inspect: %s of %s.%s: %w", kind, b.sel[i].ns, b.sel[i].name, err)}
+}
+
+// queryErr wraps the failure of a whole metadata query; an error that already
+// names its table is kept as it is.
+func queryErr(kind string, err error) error {
+	var a *attributedError
+	if errors.As(err, &a) {
+		return a.err
+	}
+	return fmt.Errorf("postgres inspect: %s: %w", kind, err)
+}
+
 // slot returns the table a catalog row belongs to; a row for a relation that
 // was not requested is a query bug, not data to skip.
 func (b tableBatch) slot(rel uint32) (int, error) {
@@ -311,7 +337,7 @@ func (in *inspector) columns(ctx context.Context, b tableBatch) error {
 		var x rawColumn
 		if err := r.Scan(&rel, &x.name, &x.formatted, &x.nullable, &x.def, &x.identity, &x.gen,
 			&x.typtype, &x.typname, &x.typns, &x.attnum, &x.coll, &x.cmt); err != nil {
-			return err
+			return b.rowErr("columns", rel, err)
 		}
 		i, err := b.slot(rel)
 		if err != nil {
@@ -321,7 +347,7 @@ func (in *inspector) columns(ctx context.Context, b tableBatch) error {
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("postgres inspect: columns: %w", err)
+		return queryErr("columns", err)
 	}
 	for i, tr := range b.sel {
 		for _, x := range cols[i] {
@@ -406,7 +432,7 @@ func (in *inspector) constraints(ctx context.Context, b tableBatch) error {
 			cols, refCols            []string
 		)
 		if err := r.Scan(&rel, &name, &typ, &cols, &refNS, &refName, &refCols, &upd, &del, &def); err != nil {
-			return err
+			return b.rowErr("constraints", rel, err)
 		}
 		i, err := b.slot(rel)
 		if err != nil {
@@ -437,7 +463,7 @@ func (in *inspector) constraints(ctx context.Context, b tableBatch) error {
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("postgres inspect: constraints: %w", err)
+		return queryErr("constraints", err)
 	}
 	return nil
 }
@@ -447,7 +473,7 @@ func (in *inspector) partitions(ctx context.Context, b tableBatch) error {
 		var rel uint32
 		var strat, key string
 		if err := r.Scan(&rel, &strat, &key); err != nil {
-			return err
+			return b.rowErr("partitions", rel, err)
 		}
 		i, err := b.slot(rel)
 		if err != nil {
@@ -459,13 +485,13 @@ func (in *inspector) partitions(ctx context.Context, b tableBatch) error {
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("postgres inspect: partitions: %w", err)
+		return queryErr("partitions", err)
 	}
 	err = forEach(ctx, in.c, qPartChild, []any{b.ids}, func(r momo.Rows) error {
 		var rel uint32
 		var bound, parent, ns string
 		if err := r.Scan(&rel, &bound, &parent, &ns); err != nil {
-			return err
+			return b.rowErr("partitions", rel, err)
 		}
 		i, err := b.slot(rel)
 		if err != nil {
@@ -475,7 +501,7 @@ func (in *inspector) partitions(ctx context.Context, b tableBatch) error {
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("postgres inspect: partitions: %w", err)
+		return queryErr("partitions", err)
 	}
 	return nil
 }
