@@ -17,7 +17,8 @@ surfaces:
 | Generated code shape     | code that `momo generate` wrote with any `1.x` release compiles and behaves with every later `1.y` runtime; this is why the descriptor constructors that look internal, such as `momo.NewColumn`, are covered                            |
 | CLI flags and exit codes | the commands, flags and flag values in `momo help`, the exit codes 0, 1, 2 and 3 and what each means, and the text `momo generate --check` uses for a stale file; the wording of diagnostics and of human-readable output is not covered |
 | `momo.yaml` keys         | a key that `gen/config` reads keeps its name, type and meaning; a new key is optional and has a default that keeps the old behavior; `version: 1` keeps loading                                                                          |
-| Snapshot, history, sum   | `schema.FormatVersion`, `migrate.SnapshotFormat`, `migrate.SumFormat` and the history table (`migrate.MetaVersion` row) keep reading what an earlier `1.x` wrote; a release may add optional fields but never changes the meaning of one |
+| Snapshot, history, sum   | `schema.FormatVersion`, `migrate.SnapshotFormat`, `migrate.SumFormat` and `migrate.FormatVersion` (the history table) keep reading what an earlier `1.x` wrote; a release may add optional fields but never changes the meaning of one   |
+| Model declarations       | the `momo` struct tag grammar and option names, the `momo.Model`, `momo.View` and `momo.Projection` markers and the `MomoConfig` method: an option keeps its meaning and a new one is an addition                                        |
 | Generator plugin API     | `gen.PluginAPIVersion` stays at 1 for the whole `1.x` line; a plugin built for it keeps running                                                                                                                                          |
 
 Compatible means source compatible for the exported Go API, as `apidiff`
