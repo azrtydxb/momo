@@ -4213,8 +4213,28 @@ of the type, a <code>Start</code> outside the bounds, or an <code>Increment</cod
 <li>A sequence that is later attached to a column with <code>ALTER SEQUENCE</code> and
   <code>OWNED BY</code> becomes column-owned and is no longer a standalone sequence, so
   remove its <code>c.Sequence</code> declaration.</li>
-<li><code>introspect.only</code> (<code>migrate.Config.OnlyTables</code>) does not filter sequences,
-  the same as views and functions; use <code>migrate.exclude</code> to hide one.</li>
+<li><code>introspect.only</code> (<code>migrate.Config.OnlyTables</code>) does not filter sequences in
+  the engine, the same as views and functions; use <code>migrate.exclude</code> to hide
+  one. <code>generate --from-db</code> does filter them when <code>introspect.only</code> is set: it
+  declares a standalone sequence only on the model of a listed table that uses
+  it (a column default, generated expression, check, index expression or
+  predicate, trigger or policy that calls <code>nextval</code> on it, or a function or view
+  that is written and does), or on the first model when <code>introspect.only</code> names
+  the sequence itself. A <code>'name'::regclass</code> literal or a <code>FROM</code> or <code>JOIN</code> on the
+  sequence counts as a use too, and when a call's argument is not a plain
+  literal, the sequence is kept. A sequence that only an unlisted table uses is
+  left out of the models and the snapshot, but it still exists in the database,
+  so <code>drift</code> reports it as <code>unmanaged: sequence &lt;name&gt;</code> and <code>baseline</code> refuses
+  on it. The run prints a hint naming each omitted sequence: add those names to
+  <code>migrate.exclude</code> in <code>momo.yaml</code>. A project that already sets
+  <code>introspect.only</code> and has such sequences declared on its first model loses
+  them from the models and the snapshot when it regenerates: add the printed
+  <code>migrate.exclude</code> entries before running <code>migrate diff</code>, or the diff emits
+  <code>DROP SEQUENCE</code>. An <code>introspect.only</code> entry that names a sequence does not
+  warn when at least one table matched, but the run still fails when no table
+  matched, because a sequence alone cannot be modeled. When <code>introspect.only</code> is
+  not set, skipping a table does not skip its sequences: a sequence is hidden
+  only when <code>introspect.skip</code> itself names it.</li>
 <li>SQLite, MySQL and MariaDB have no sequence in the schema model: generating
   for them refuses a <code>c.Sequence</code> call, and rendering a sequence change for them
   fails with <code>momo.ErrUnsupported</code>.</li>
