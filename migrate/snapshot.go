@@ -144,6 +144,12 @@ func LatestSnapshot(fsys fs.FS) (*SnapshotFile, error) {
 	if err != nil {
 		return nil, err
 	}
+	return latestSnapshotFrom(files)
+}
+
+// latestSnapshotFrom is LatestSnapshot over files a caller has already
+// discovered.
+func latestSnapshotFrom(files []File) (*SnapshotFile, error) {
 	var best *SnapshotFile
 	seen := map[string]string{}
 	for _, f := range files {

@@ -37,15 +37,19 @@ func ValidateOffline(fsys fs.FS, goMigrations ...GoMigration) (*ValidateReport, 
 	if _, err := fs.ReadDir(fsys, "."); err != nil {
 		return nil, fmt.Errorf("migrate: read migration directory: %w", err)
 	}
+	files, err := Discover(fsys)
+	if err != nil {
+		return &ValidateReport{Problems: []string{err.Error()}}, nil
+	}
+	return validateFiles(fsys, files, goMigrations), nil
+}
+
+// validateFiles runs the offline checks over files already discovered from
+// fsys, so a caller that has them does not walk the directory again.
+func validateFiles(fsys fs.FS, files []File, goMigrations []GoMigration) *ValidateReport {
 	rep := &ValidateReport{}
 	add := func(format string, args ...any) {
 		rep.Problems = append(rep.Problems, fmt.Sprintf(format, args...))
-	}
-
-	files, err := Discover(fsys)
-	if err != nil {
-		add("%v", err)
-		return rep, nil
 	}
 	directives := map[string]Directives{}
 	for _, f := range files {
@@ -97,7 +101,7 @@ func ValidateOffline(fsys fs.FS, goMigrations ...GoMigration) (*ValidateReport, 
 		}
 	}
 	validateGo(goMigrations, files, snapshots, add)
-	return rep, nil
+	return rep
 }
 
 func schemaEqual(a, b *schema.Schema) bool {

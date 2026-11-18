@@ -661,6 +661,12 @@ func snapshotEntries(fsys fs.FS, upTo string) ([]chainEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	return snapshotEntriesFrom(files, upTo)
+}
+
+// snapshotEntriesFrom is snapshotEntries over files a caller has already
+// discovered.
+func snapshotEntriesFrom(files []File, upTo string) ([]chainEntry, error) {
 	var out []chainEntry
 	for _, f := range files {
 		if f.Kind != "snapshot" || (upTo != "" && f.Version > upTo) {
@@ -709,11 +715,20 @@ func deriveState(entries []chainEntry) (*schema.Schema, bool, error) {
 // returns ErrNoSnapshot when there is none and an error wrapping
 // ErrBranchConflict when two branches cannot be shown independent.
 func LatestState(fsys fs.FS) (*SnapshotFile, error) {
-	latest, err := LatestSnapshot(fsys)
+	files, err := Discover(fsys)
 	if err != nil {
 		return nil, err
 	}
-	entries, err := snapshotEntries(fsys, "")
+	return latestStateFrom(files)
+}
+
+// latestStateFrom is LatestState over files a caller has already discovered.
+func latestStateFrom(files []File) (*SnapshotFile, error) {
+	latest, err := latestSnapshotFrom(files)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := snapshotEntriesFrom(files, "")
 	if err != nil {
 		return nil, err
 	}
