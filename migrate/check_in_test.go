@@ -63,6 +63,39 @@ func TestCheckInDiffIsASetComparison(t *testing.T) {
 	}
 }
 
+// Catches: a value list read back from PostgreSQL, which carries no In, diffed
+// as a drop and add of the constraint, or Equal and Diff disagreeing on it.
+func TestCheckInDiffAndEqualAgreeOnTheStoredForm(t *testing.T) {
+	read := func(expr string) *schema.Schema {
+		s := checkInSchema("a", "b")
+		s.Tables[0].Checks[0] = schema.Check{Name: "notes_kind_check", Expr: expr}
+		return s
+	}
+	cases := map[string]struct {
+		stored *schema.Schema
+		want   *schema.Schema
+		same   bool
+	}{
+		"same set":     {read("(kind = ANY (ARRAY['b'::text, 'a'::text]))"), checkInSchema("a", "b"), true},
+		"wider":        {read("(kind = ANY (ARRAY['a'::text, 'b'::text]))"), checkInSchema("a", "b", "c"), false},
+		"other column": {read("(other = ANY (ARRAY['a'::text, 'b'::text]))"), checkInSchema("a", "b"), false},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			changes, _, err := migrate.Diff(c.stored, c.want, migrate.DiffOptions{AllowDestructive: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := len(changes) == 0; got != c.same {
+				t.Errorf("Diff reports no change = %v, want %v: %+v", got, c.same, changes)
+			}
+			if got := schema.Equal(c.stored, c.want); got != c.same {
+				t.Errorf("Equal = %v, want %v", got, c.same)
+			}
+		})
+	}
+}
+
 // Catches: an added value rendered as a drop and add of the whole object, or
 // flagged destructive.
 func TestCheckInDiffAddsValues(t *testing.T) {

@@ -149,3 +149,48 @@ func TestCheckInSortAndJSON(t *testing.T) {
 		t.Errorf("the value list is not in the snapshot: %s", buf.String())
 	}
 }
+
+// Catches: Equal comparing the text of a value-list check, so a declared
+// CheckIn and the same constraint as each database reports it differ.
+func TestEqualComparesCheckInAsASet(t *testing.T) {
+	table := func(d dialect.Name, c schema.Check) *schema.Schema {
+		return &schema.Schema{Dialect: d, Tables: []schema.Table{{
+			Name:    "notes",
+			Columns: []schema.Column{{Name: "status", Type: "text"}},
+			Checks:  []schema.Check{c},
+		}}}
+	}
+	declared := func(d dialect.Name, values ...string) schema.Check {
+		return schema.Check{Name: "notes_status_check", Expr: schema.CheckInExpr(d, "status", values), In: &schema.CheckIn{Column: "status", Values: values}}
+	}
+	read := func(expr string) schema.Check { return schema.Check{Name: "notes_status_check", Expr: expr} }
+	cases := []struct {
+		name     string
+		d        dialect.Name
+		declared schema.Check
+		inspect  schema.Check
+		want     bool
+	}{
+		{"postgres any array", dialect.Postgres, declared(dialect.Postgres, "a", "b"), read("(status = ANY (ARRAY['a'::text, 'b'::text]))"), true},
+		{"postgres other order", dialect.Postgres, declared(dialect.Postgres, "b", "a"), read("(status = ANY (ARRAY['a'::text, 'b'::text]))"), true},
+		{"postgres one value", dialect.Postgres, declared(dialect.Postgres, "a"), read("(status = 'a'::text)"), true},
+		{"postgres extra value", dialect.Postgres, declared(dialect.Postgres, "a", "b", "c"), read("(status = ANY (ARRAY['a'::text, 'b'::text]))"), false},
+		{"postgres other column", dialect.Postgres, declared(dialect.Postgres, "a", "b"), read("(kind = ANY (ARRAY['a'::text, 'b'::text]))"), false},
+		{"mysql introducers", dialect.MySQL, declared(dialect.MySQL, "a", "b"), read("(`status` in (_utf8mb4\\'a\\',_utf8mb4\\'b\\'))"), true},
+		{"mariadb in list", dialect.MySQL, declared(dialect.MySQL, "a", "b"), read("`status` in ('a','b')"), true},
+		{"mysql extra value", dialect.MySQL, declared(dialect.MySQL, "a", "b", "c"), read("(`status` in (_utf8mb4\\'a\\',_utf8mb4\\'b\\'))"), false},
+		{"sqlite list", dialect.SQLite, declared(dialect.SQLite, "a", "b"), schema.Check{Name: "notes_status_check", Expr: `"status" IN ('a','b')`, In: &schema.CheckIn{Column: "status", Values: []string{"b", "a"}}}, true},
+		{"sqlite other value", dialect.SQLite, declared(dialect.SQLite, "a", "b"), schema.Check{Name: "notes_status_check", Expr: `"status" IN ('a','c')`, In: &schema.CheckIn{Column: "status", Values: []string{"a", "c"}}}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a, b := table(c.d, c.declared), table(c.d, c.inspect)
+			if got := schema.Equal(a, b); got != c.want {
+				t.Errorf("Equal(declared, inspected) = %v, want %v", got, c.want)
+			}
+			if got := schema.Equal(b, a); got != c.want {
+				t.Errorf("Equal(inspected, declared) = %v, want %v", got, c.want)
+			}
+		})
+	}
+}

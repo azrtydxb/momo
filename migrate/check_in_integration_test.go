@@ -224,3 +224,52 @@ func TestCheckInRoundTrip(t *testing.T) {
 		}
 	})
 }
+
+// Catches, on every dialect: schema.Equal comparing the text of a value-list
+// check while Diff compares its value set, so that the constraint the database
+// reports back (PostgreSQL = ANY (ARRAY[...]), MySQL and MariaDB with character
+// set introducers, SQLite as written) is equal for one and different for the
+// other.
+func TestCheckInEqualAgreesWithDiffOnInspected(t *testing.T) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		ctx := context.Background()
+		r := &checkInRun{t: t, db: db, d: d, files: map[string][]byte{}, at: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+		r.migrate(checkInTable(d, "a", "b", "c"), "init", migrate.DiffOptions{})
+		live, err := r.engine().Inspect(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lt, ok := live.Table("notes")
+		if !ok {
+			t.Fatal("the inspected schema lacks the notes table")
+		}
+		// Only the checks are compared: the rest of the inspected table is not
+		// what this test is about.
+		inspected := func(want *schema.Schema) *schema.Schema {
+			out := *want
+			out.Tables = slices.Clone(want.Tables)
+			out.Tables[0].Checks = slices.Clone(lt.Checks)
+			return &out
+		}
+		for name, values := range map[string][]string{
+			"same":      {"a", "b", "c"},
+			"reordered": {"c", "a", "b"},
+			"repeated":  {"b", "a", "c", "a"},
+			"widened":   {"a", "b", "c", "d"},
+			"narrowed":  {"a", "b"},
+		} {
+			declared := checkInTable(d, values...)
+			same := name != "widened" && name != "narrowed"
+			changes, _, err := migrate.Diff(inspected(declared), declared, migrate.DiffOptions{AllowDestructive: true})
+			if err != nil {
+				t.Fatalf("%s: diff: %v", name, err)
+			}
+			if got := len(changes) == 0; got != same {
+				t.Errorf("%s: diff reports no change = %v, want %v (%+v)", name, got, same, changes)
+			}
+			if got := schema.Equal(declared, inspected(declared)); got != same {
+				t.Errorf("%s: Equal = %v, want %v; live checks %+v", name, got, same, lt.Checks)
+			}
+		}
+	})
+}
