@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.19.0](https://github.com/azrtydxb/momo/compare/v0.18.0...v0.19.0) (2026-11-18)
+
+_PostgreSQL `DEFERRABLE` and `INITIALLY DEFERRED` constraints survive `--from-db`, migrations, `Baseline` and drift. Upgrading needs no code change, but a database that already has a deferrable constraint its snapshot lacks now shows up in `drift` and `Baseline`; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.19.0/docs/upgrading.md). [Changes since 0.18.0](https://github.com/azrtydxb/momo/compare/v0.18.0...v0.19.0)._
+
+### Features
+
+- **schema:** unique, primary key and foreign key constraints carry `DEFERRABLE` and `INITIALLY DEFERRED`, declared with `c.Unique(...).Deferrable()`, `c.ForeignKey(...).InitiallyDeferred()` and `Config.PrimaryKeyDeferrable()`. The PostgreSQL inspector reads them, `generate --from-db` writes them, and `Diff`, `schema.Equal`, `Baseline` and `drift --fix-sql` compare them. A change of deferrability drops and re-adds the constraint. The generator and `Diff` refuse a foreign key that references a deferrable key, and SQLite, MySQL and MariaDB refuse deferrable constraints with `momo.ErrUnsupported`, as [docs/migrations.md](https://github.com/azrtydxb/momo/blob/v0.19.0/docs/migrations.md) describes ([#246](https://github.com/azrtydxb/momo/pull/246), closes [#237](https://github.com/azrtydxb/momo/issues/237))
+
 ## [0.18.0](https://github.com/azrtydxb/momo/compare/v0.17.0...v0.18.0) (2026-11-18)
 
 _A package with 100 models and 500 typed queries now compiles in about 4.5 GB of compiler memory instead of 6 GB, `schema.Equal` agrees with `Diff` on value-list checks, and `--from-db` with `introspect.only` declares only the sequences the listed tables use. Upgrading needs a code change only where a helper takes `momo.ReadOnlyVectorColumn` for a nullable read-only vector field; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.18.0/docs/upgrading.md). A project that sets `introspect.only` should add the `migrate.exclude` entries that `generate --from-db` prints before its next `migrate diff`, as [docs/migrations.md](https://github.com/azrtydxb/momo/blob/v0.18.0/docs/migrations.md) describes. [Changes since 0.17.0](https://github.com/azrtydxb/momo/compare/v0.17.0...v0.18.0)._
