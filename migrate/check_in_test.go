@@ -96,6 +96,36 @@ func TestCheckInDiffAndEqualAgreeOnTheStoredForm(t *testing.T) {
 	}
 }
 
+// Catches: Equal reconciling value lists after the expressions were normalized,
+// which lowercases a MySQL column, so a mixed-case column is Equal=false while
+// Diff, which reads the expression as written, reports no change.
+func TestCheckInMixedCaseColumnAgreesInEqualAndDiff(t *testing.T) {
+	table := func(c schema.Check) *schema.Schema {
+		return &schema.Schema{Dialect: dialect.MySQL, Tables: []schema.Table{{
+			Name:       "notes",
+			Columns:    []schema.Column{{Name: "id", Type: "bigint"}, {Name: "Status", Type: "varchar(40)"}},
+			PrimaryKey: []string{"id"},
+			Checks:     []schema.Check{c},
+		}}}
+	}
+	declared := table(schema.Check{
+		Name: "notes_status_check",
+		Expr: schema.CheckInExpr(dialect.MySQL, "Status", []string{"a", "b"}),
+		In:   &schema.CheckIn{Column: "Status", Values: []string{"a", "b"}},
+	})
+	stored := table(schema.Check{Name: "notes_status_check", Expr: "(`Status` in (_utf8mb4\\'b\\',_utf8mb4\\'a\\'))"})
+	changes, _, err := migrate.Diff(stored, declared, migrate.DiffOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 0 {
+		t.Fatalf("Diff reports %+v, want none", changes)
+	}
+	if !schema.Equal(declared, stored) || !schema.Equal(stored, declared) {
+		t.Error("Equal must agree with Diff on a mixed-case column")
+	}
+}
+
 // Catches: an added value rendered as a drop and add of the whole object, or
 // flagged destructive.
 func TestCheckInDiffAddsValues(t *testing.T) {

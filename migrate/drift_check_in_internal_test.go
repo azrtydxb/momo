@@ -40,3 +40,18 @@ func TestCompareChecksValueListsAsSets(t *testing.T) {
 		t.Error("compare changed the caller's snapshot")
 	}
 }
+
+// Catches: drift comparing value lists by hand and only when the snapshot side
+// carries In, so a plain-text snapshot check against a live check that carries
+// In (SQLite) is reported as drift although Diff and Equal call it the same.
+func TestCompareChecksValueListOnTheLiveSideOnly(t *testing.T) {
+	snapshot := driftCheckIn(`"kind" IN ('b', 'a')`, nil)
+	same := driftCheckIn(`"kind" IN ('a','b')`, &schema.CheckIn{Column: "kind", Values: []string{"a", "b"}})
+	if rep := compare(snapshot, same, false, nil); !rep.Clean() {
+		t.Errorf("drift = %+v, want none", rep)
+	}
+	other := driftCheckIn(`"kind" IN ('a','c')`, &schema.CheckIn{Column: "kind", Values: []string{"a", "c"}})
+	if rep := compare(snapshot, other, false, nil); rep.Clean() {
+		t.Error("another set of values must be drift")
+	}
+}
