@@ -464,6 +464,9 @@ func createIndex(schemaName, table string, ix schema.Index) (migrate.Statement, 
 	if len(ix.With) > 0 {
 		return migrate.Statement{}, fmt.Errorf("index %q: storage parameters do not exist on MySQL", ix.Name)
 	}
+	if len(ix.Parts) == 0 {
+		return migrate.Statement{}, fmt.Errorf("index %q has no parts", ix.Name)
+	}
 	var b strings.Builder
 	b.WriteString("CREATE ")
 	switch strings.ToLower(ix.Method) {
