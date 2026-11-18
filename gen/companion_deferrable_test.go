@@ -126,11 +126,11 @@ func TestCompanionDeferrableRefusals(t *testing.T) {
 // PostgreSQL refuses both as a foreign key target, so the migration would fail
 // at apply time instead of the generator naming the key.
 func TestBuildSchemaRefusesForeignKeyToDeferrableKey(t *testing.T) {
-	g, diags, err := Load([]string{"./companiondeferrablefk"}, Config{Dir: fixturesDir(t)})
-	if err != nil || len(diags) != 0 {
-		t.Fatalf("load: %v %v", err, diags)
+	// Load builds the schema, so its diagnostics carry the refusal.
+	_, diags, err := Load([]string{"./companiondeferrablefk"}, Config{Dir: fixturesDir(t)})
+	if err != nil {
+		t.Fatal(err)
 	}
-	_, diags = BuildSchema(g.Models, pg())
 	joined := diagStrings(diags)
 	for _, want := range []string{
 		"foreign key children_parent_id_fkey references (id) of parents, which is the primary key and deferrable",
