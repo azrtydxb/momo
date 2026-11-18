@@ -26,6 +26,9 @@ func TestViewModelPrimaryKeyIsNotRequired(t *testing.T) {
 	if err != nil || len(diags) != 0 {
 		t.Fatalf("load: %v %v", err, diags)
 	}
+	if len(g.Models) == 0 {
+		t.Fatal("gen.Load found no models in the viewpk fixture")
+	}
 	for _, m := range g.Models {
 		props, ds := propertiesOf(g, m)
 		if len(ds) != 0 {

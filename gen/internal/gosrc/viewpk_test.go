@@ -20,6 +20,9 @@ func TestSinglePKOfViewModel(t *testing.T) {
 	if err != nil || len(diags) != 0 {
 		t.Fatalf("load: %v %v", err, diags)
 	}
+	if len(g.Models) == 0 {
+		t.Fatal("gen.Load found no models in the viewpk fixture")
+	}
 	for _, m := range g.Models {
 		f := SinglePK(g, m)
 		if f == nil || f.GoName != "ID" {

@@ -104,6 +104,10 @@ func TestCustomMigrationsRunBesideGeneratedOnes(t *testing.T) {
 	if err := conn.QueryRow(ctx, `SELECT email_norm FROM accounts WHERE email = 'Ada@Example.com'`).Scan(&norm); err != nil || norm != "ada@example.com" {
 		t.Fatalf("email_norm = %q, %v; want ada@example.com", norm, err)
 	}
+	var bobNorm string
+	if err := conn.QueryRow(ctx, `SELECT email_norm FROM accounts WHERE email = 'bob@example.com'`).Scan(&bobNorm); err != nil || bobNorm != "bob@example.com" {
+		t.Fatalf("bob email_norm = %q, %v; want bob@example.com", bobNorm, err)
+	}
 	var valid bool
 	if err := conn.QueryRow(ctx, `SELECT indisvalid FROM pg_index WHERE indexrelid = 'accounts_email_norm_key'::regclass`).Scan(&valid); err != nil || !valid {
 		t.Fatalf("index accounts_email_norm_key valid=%v err=%v", valid, err)

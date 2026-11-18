@@ -20,6 +20,9 @@ func TestKeyOfViewModel(t *testing.T) {
 	if err != nil || len(diags) != 0 {
 		t.Fatalf("load: %v %v", err, diags)
 	}
+	if len(g.Models) == 0 {
+		t.Fatal("gen.Load found no models in the viewpk fixture")
+	}
 	for _, m := range g.Models {
 		if got := keyOf(g, m); len(got) != 1 || got[0] != "id" {
 			t.Errorf("keyOf(%s) = %v, want [id]", m.GoName, got)
