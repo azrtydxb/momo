@@ -196,8 +196,12 @@ func Read(r io.Reader, name string) (Resolved, error) {
 		}
 		return Resolved{}, fmt.Errorf("%s: %w", name, err)
 	}
-	if err := dec.Decode(new(yaml.Node)); !errors.Is(err, io.EOF) {
+	switch err := dec.Decode(new(yaml.Node)); {
+	case err == nil:
 		return Resolved{}, fmt.Errorf("%s: multiple YAML documents are not supported", name)
+	case !errors.Is(err, io.EOF):
+		// A malformed second document: report its syntax error, not a guess.
+		return Resolved{}, fmt.Errorf("%s: %w", name, err)
 	}
 	if f.Version == 0 {
 		return Resolved{}, fmt.Errorf("%s: version is required (want 1)", name)
