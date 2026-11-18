@@ -4,6 +4,7 @@ package migrate
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/azrtydxb/momo/schema"
@@ -105,5 +106,88 @@ func TestDiffIgnoresTheSpellingOfDeferrability(t *testing.T) {
 		if err != nil || len(changes) != 0 {
 			t.Errorf("changes = %v, %v, want none", kinds(changes), err)
 		}
+	}
+}
+
+// referencedSchema is stopsSchema with a table routes that has a unique code
+// and is referenced by stops twice: by its primary key and by its code.
+func referencedSchema(mutate func(routes *schema.Table)) *schema.Schema {
+	s := stopsSchema(nil)
+	routes := &s.Tables[0]
+	routes.Columns = append(routes.Columns, schema.Column{Name: "code", Type: "text"})
+	routes.Uniques = []schema.Unique{{Name: "routes_code_key", Columns: []string{"code"}}}
+	stops := &s.Tables[1]
+	stops.Columns = append(stops.Columns, schema.Column{Name: "route_code", Type: "text"})
+	stops.ForeignKeys = append(stops.ForeignKeys, schema.ForeignKey{Name: "stops_route_code_fkey", Columns: []string{"route_code"}, RefTable: "routes", RefColumns: []string{"code"}})
+	if mutate != nil {
+		mutate(routes)
+	}
+	return s
+}
+
+// Catches: a foreign key to a deferrable primary key or unique constraint
+// reaching a plan. PostgreSQL refuses it when the key is created or the foreign
+// key is added, so the migration would fail half way through. It also covers
+// the change of deferrability of a referenced key: the refusal comes before
+// any plan, so no DROP CONSTRAINT of a key that a foreign key depends on, and
+// no ADD of a deferrable one, is ever produced.
+func TestDiffRefusesForeignKeyToDeferrableKey(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*schema.Table)
+		want   string
+	}{
+		{"primary key", func(r *schema.Table) { r.PrimaryKeyDeferrable = true }, "the primary key and deferrable"},
+		{"primary key initially deferred", func(r *schema.Table) { r.PrimaryKeyInitiallyDeferred = true }, "the primary key and deferrable"},
+		{"unique", func(r *schema.Table) { r.Uniques[0].Deferrable = true }, "unique routes_code_key and deferrable"},
+		{"unique initially deferred", func(r *schema.Table) { r.Uniques[0].InitiallyDeferred = true }, "unique routes_code_key and deferrable"},
+	}
+	for _, c := range cases {
+		for _, from := range []*schema.Schema{{Dialect: "postgres"}, referencedSchema(nil)} {
+			changes, _, err := Diff(from, referencedSchema(c.mutate), DiffOptions{AllowDestructive: true})
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("%s: err = %v, want one containing %q", c.name, err, c.want)
+			}
+			if len(changes) != 0 {
+				t.Errorf("%s: a refused schema produced a plan: %v", c.name, kinds(changes))
+			}
+		}
+	}
+
+	// A foreign key to a key that is not deferrable, and a deferrable key that
+	// no foreign key references, are fine.
+	for name, p := range map[string][2]*schema.Schema{
+		"plain":            {referencedSchema(nil), referencedSchema(nil)},
+		"unreferenced key": {referencedSchema(nil), stopsSchema(func(tb *schema.Table) { tb.PrimaryKeyDeferrable = true })},
+	} {
+		if _, _, err := Diff(p[0], p[1], DiffOptions{AllowDestructive: true}); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+
+	// PostgreSQL uses a non-deferrable key over the same columns.
+	covered := referencedSchema(func(r *schema.Table) {
+		r.Uniques[0].Deferrable = true
+		r.Uniques = append(r.Uniques, schema.Unique{Name: "routes_code_key2", Columns: []string{"code"}})
+	})
+	if _, _, err := Diff(&schema.Schema{Dialect: "postgres"}, covered, DiffOptions{}); err != nil {
+		t.Errorf("a column set that a non-deferrable unique also covers was refused: %v", err)
+	}
+}
+
+// Catches: the primary key flags of a table with no primary key being compared,
+// so a flag with no key behind it produces a DROP and an ADD of a key that does
+// not exist.
+func TestDiffIgnoresPrimaryKeyFlagsWithoutKey(t *testing.T) {
+	mk := func(deferrable bool) *schema.Schema {
+		return &schema.Schema{Dialect: "postgres", Tables: []schema.Table{{
+			Name:                 "logs",
+			Columns:              []schema.Column{{Name: "msg", Type: "text"}},
+			PrimaryKeyDeferrable: deferrable,
+		}}}
+	}
+	changes, _, err := Diff(mk(false), mk(true), DiffOptions{AllowDestructive: true})
+	if err != nil || len(changes) != 0 {
+		t.Errorf("changes = %v, %v, want none", kinds(changes), err)
 	}
 }

@@ -193,6 +193,18 @@ model. The generator reports a diagnostic for a deferrable constraint when the
 target dialect is not PostgreSQL, and the SQLite and MySQL renderers return an
 error that wraps `momo.ErrUnsupported`.
 
+A foreign key cannot reference a deferrable primary key or a deferrable unique
+constraint. PostgreSQL refuses to create it (`cannot use a deferrable unique
+constraint for referenced table`), so a table that other tables reference, with
+`belongs_to` or `Config.ForeignKey`, keeps an immediate key. The generator
+reports a diagnostic that names the foreign key and the deferrable key it
+references, and `migrate.Diff` returns an error with the same names before it plans a
+change, so the migration never fails half way through. A column set that a
+non-deferrable key also covers is accepted: PostgreSQL uses that key. Make the
+referenced key immediate, or have the foreign key reference a column set that
+an immediate unique constraint or unique index covers. The deferrable foreign
+key itself, and a deferrable key that nothing references, are fine.
+
 What the tools do on PostgreSQL:
 
 - `momo generate --from-db` reads `pg_constraint.condeferrable` and
@@ -207,9 +219,10 @@ What the tools do on PostgreSQL:
   adds it again, like any other change of a constraint, in one transaction.
   PostgreSQL has `ALTER TABLE ... ALTER CONSTRAINT` for a foreign key, but
   not for a unique constraint or a primary key, so one rule covers all three.
-  Re-adding a foreign key validates the table again. Dropping a primary key
-  that a foreign key references fails until that key is dropped, as for a change
-  of the key columns.
+  Re-adding a foreign key validates the table again. A primary key or unique
+  constraint that a foreign key references is never deferrable (see the limit
+  below), so `diff` never has to drop one to change its deferrability: the
+  desired schema is refused before any statement is planned.
 - `Baseline`, `drift` and `drift --fix-sql` compare the flags with the other
   attributes. A difference reads `deferrable=false` on one side and
   `deferrable=true` on the other, and the repair is the drop and add above. As

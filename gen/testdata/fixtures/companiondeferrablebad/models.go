@@ -18,4 +18,15 @@ func (a *A) MomoConfig(c *momo.Config) {
 	c.Unique("a_dup_key", &a.Name).Deferrable().Deferrable()
 	c.PrimaryKeyDeferrable()
 	c.PrimaryKeyDeferrable()
+	c.PrimaryKeyInitiallyDeferred()
+}
+
+type C struct {
+	momo.Model `momo:"table:c"`
+	ID         int64 `momo:"pk"`
+}
+
+func (c2 *C) MomoConfig(c *momo.Config) {
+	c.PrimaryKeyInitiallyDeferred()
+	c.PrimaryKeyDeferrable()
 }

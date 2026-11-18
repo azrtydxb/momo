@@ -957,6 +957,14 @@ func (b *schemaBuilder) checkSequences(m *Model, seqs []schema.Sequence) {
 // it cannot report back, so momo could not tell a declared constraint from an
 // inspected one.
 func (b *schemaBuilder) checkDeferrable() {
+	// The dialects to check: the listed ones, and the primary one when the
+	// list is empty. The primary dialect is the first listed, so it is not
+	// added twice.
+	targets := slices.Clone(b.dialects)
+	if !slices.Contains(targets, b.primary) {
+		targets = append(targets, b.primary)
+	}
+	b.checkReferencedDeferrable()
 	for _, t := range b.s.Tables {
 		var what []string
 		if t.PrimaryKeyDeferrable {
@@ -979,12 +987,96 @@ func (b *schemaBuilder) checkDeferrable() {
 		if m := b.tableBy[t.Schema+"\x00"+t.Name]; m != nil {
 			pos = m.Pos
 		}
-		for _, d := range append(slices.Clone(b.dialects), b.primary) {
+		for _, d := range targets {
 			if d != dialect.Postgres {
 				b.diag(pos, fmt.Sprintf("table %s: %s is deferrable, which is not supported on %s (momo models DEFERRABLE for PostgreSQL only)", t.Name, strings.Join(what, ", "), d))
 			}
 		}
 	}
+}
+
+// checkReferencedDeferrable reports each foreign key that references a
+// deferrable primary key or unique constraint. PostgreSQL refuses such a key as
+// a foreign key target ("cannot use a deferrable unique constraint for
+// referenced table"), so the migration would fail at apply time; a key that a
+// foreign key references stays immediate. A referenced column set that a
+// non-deferrable key also covers is accepted: PostgreSQL uses that one.
+func (b *schemaBuilder) checkReferencedDeferrable() {
+	byKey := make(map[string]*schema.Table, len(b.s.Tables))
+	for i := range b.s.Tables {
+		t := &b.s.Tables[i]
+		byKey[t.Schema+"\x00"+t.Name] = t
+	}
+	for _, t := range b.s.Tables {
+		var pos token.Position
+		if m := b.tableBy[t.Schema+"\x00"+t.Name]; m != nil {
+			pos = m.Pos
+		}
+		for _, fk := range t.ForeignKeys {
+			ns, name := t.Schema, fk.RefTable
+			if i := strings.IndexByte(name, '.'); i >= 0 {
+				ns, name = name[:i], name[i+1:]
+			}
+			target := byKey[ns+"\x00"+name]
+			if target == nil {
+				continue
+			}
+			if key := deferrableKeyOf(target, fk.RefColumns); key != "" {
+				b.diag(pos, fmt.Sprintf("table %s: foreign key %s references (%s) of %s, which is %s and deferrable; PostgreSQL cannot use a deferrable key as a foreign key target, so make it not deferrable", t.Name, fk.Name, strings.Join(fk.RefColumns, ", "), target.Name, key))
+			}
+		}
+	}
+}
+
+// deferrableKeyOf describes the deferrable primary key or unique constraint of
+// t that covers exactly cols, compared as sets, and returns "" when no
+// deferrable key covers them or when a non-deferrable primary key, unique
+// constraint or non-partial unique index over plain columns also does.
+func deferrableKeyOf(t *schema.Table, cols []string) string {
+	same := func(key []string) bool {
+		if len(key) != len(cols) {
+			return false
+		}
+		a, c := slices.Clone(key), slices.Clone(cols)
+		slices.Sort(a)
+		slices.Sort(c)
+		return slices.Equal(a, c)
+	}
+	what := ""
+	if same(t.PrimaryKey) {
+		if !t.PrimaryKeyDeferrable && !t.PrimaryKeyInitiallyDeferred {
+			return ""
+		}
+		what = "the primary key"
+	}
+	for _, u := range t.Uniques {
+		if !same(u.Columns) {
+			continue
+		}
+		if !u.Deferrable && !u.InitiallyDeferred {
+			return ""
+		}
+		if what == "" {
+			what = "unique " + u.Name
+		}
+	}
+	for _, ix := range t.Indexes {
+		if !ix.Unique || ix.Where != "" {
+			continue
+		}
+		key := make([]string, 0, len(ix.Parts))
+		for _, p := range ix.Parts {
+			if p.Column == "" {
+				key = nil
+				break
+			}
+			key = append(key, p.Column)
+		}
+		if key != nil && same(key) {
+			return ""
+		}
+	}
+	return what
 }
 
 // checkVirtual finishes the virtual generated columns of t: the ones the

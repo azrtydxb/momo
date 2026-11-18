@@ -69,6 +69,7 @@ func Diff(from, to *schema.Schema, opts DiffOptions) (changes []Change, hints []
 		d.d = from.Dialect
 	}
 	d.errs = append(d.errs, serialOutsidePostgres(to, d.d)...)
+	d.errs = append(d.errs, foreignKeysToDeferrableKeys(d.toNorm, d.d)...)
 	d.run(from, to)
 	for _, k := range sortedMapKeys(opts.RenameTables) {
 		if !d.usedRT[k] {
@@ -605,8 +606,10 @@ func (d *differ) alterColumn(t *schema.Table, a, b *schema.Column, ao, bo *schem
 // ------------------------------------------------------------ constraints
 
 func (d *differ) primaryKey(fn, tn, to *schema.Table) {
+	// fn and tn are normalized, which clears the deferral flags of a table with
+	// no primary key, so the flags can be compared whatever the key.
 	if slices.Equal(fn.PrimaryKey, tn.PrimaryKey) &&
-		(len(tn.PrimaryKey) == 0 || (fn.PrimaryKeyDeferrable == tn.PrimaryKeyDeferrable && fn.PrimaryKeyInitiallyDeferred == tn.PrimaryKeyInitiallyDeferred)) {
+		fn.PrimaryKeyDeferrable == tn.PrimaryKeyDeferrable && fn.PrimaryKeyInitiallyDeferred == tn.PrimaryKeyInitiallyDeferred {
 		return
 	}
 	name := to.Name + "_pkey"
@@ -1277,6 +1280,98 @@ func stagedSnapshot(desired, from *schema.Schema, changes []Change, opts DiffOpt
 		return desired
 	}
 	return &out
+}
+
+// foreignKeysToDeferrableKeys reports each foreign key of the normalized
+// desired schema s whose referenced columns are a deferrable primary key or
+// deferrable unique constraint of the target table. PostgreSQL refuses it when
+// the foreign key is created ("cannot use a deferrable unique constraint for
+// referenced table"), so the plan would fail half way through. A column set
+// that a non-deferrable key (a primary key, a unique constraint or a
+// non-partial unique index) also covers is accepted: PostgreSQL uses that key.
+//
+// The check is on the desired schema only, and it runs before any change is
+// produced, so a plan never changes the deferrability of a key that a foreign
+// key references: neither the DROP CONSTRAINT nor the ADD of such a key is
+// reachable. Only PostgreSQL has deferrable keys; the other renderers refuse
+// the deferrability itself.
+func foreignKeysToDeferrableKeys(s *schema.Schema, d dialect.Name) []error {
+	if d != "" && d != dialect.Postgres {
+		return nil
+	}
+	byKey := make(map[string]*schema.Table, len(s.Tables))
+	for i := range s.Tables {
+		byKey[tableKey(&s.Tables[i])] = &s.Tables[i]
+	}
+	var errs []error
+	for _, t := range s.Tables {
+		for _, fk := range t.ForeignKeys {
+			target := byKey[t.Schema+"\x00"+fk.RefTable]
+			if target == nil {
+				if ns, name, ok := strings.Cut(fk.RefTable, "."); ok {
+					target = byKey[ns+"\x00"+name]
+				}
+			}
+			if target == nil {
+				continue
+			}
+			if key := deferrableKeyCovering(target, fk.RefColumns); key != "" {
+				errs = append(errs, fmt.Errorf("migrate: foreign key %s of table %s references (%s) of %s, which is %s and deferrable; PostgreSQL cannot use a deferrable key as a foreign key target, so make the key not deferrable", fk.Name, t.Name, strings.Join(fk.RefColumns, ", "), target.Name, key))
+			}
+		}
+	}
+	return errs
+}
+
+// deferrableKeyCovering describes the deferrable primary key or unique
+// constraint of t that covers exactly cols, compared as sets. It returns ""
+// when no deferrable key covers cols, or when a non-deferrable primary key,
+// unique constraint or non-partial unique index over plain columns does too.
+func deferrableKeyCovering(t *schema.Table, cols []string) string {
+	same := func(key []string) bool {
+		if len(key) != len(cols) {
+			return false
+		}
+		a, c := slices.Clone(key), slices.Clone(cols)
+		slices.Sort(a)
+		slices.Sort(c)
+		return slices.Equal(a, c)
+	}
+	what := ""
+	if same(t.PrimaryKey) {
+		if !t.PrimaryKeyDeferrable && !t.PrimaryKeyInitiallyDeferred {
+			return ""
+		}
+		what = "the primary key"
+	}
+	for _, u := range t.Uniques {
+		if !same(u.Columns) {
+			continue
+		}
+		if !u.Deferrable && !u.InitiallyDeferred {
+			return ""
+		}
+		if what == "" {
+			what = "unique " + u.Name
+		}
+	}
+	for _, ix := range t.Indexes {
+		if !ix.Unique || ix.Where != "" {
+			continue
+		}
+		key := make([]string, 0, len(ix.Parts))
+		for _, p := range ix.Parts {
+			if p.Column == "" {
+				key = nil
+				break
+			}
+			key = append(key, p.Column)
+		}
+		if key != nil && same(key) {
+			return ""
+		}
+	}
+	return what
 }
 
 // serialOutsidePostgres reports each serial column of s when the target

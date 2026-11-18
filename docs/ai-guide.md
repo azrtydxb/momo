@@ -434,8 +434,12 @@ A unique constraint, a foreign key and a primary key can be `DEFERRABLE` on
 PostgreSQL: `c.Unique(...).Deferrable()` or `.InitiallyDeferred()` (a unique
 with any other option is an index, which cannot be deferred),
 `c.ForeignKey(...).Deferrable()` or `.InitiallyDeferred()`, and
-`c.PrimaryKeyDeferrable()` or `c.PrimaryKeyInitiallyDeferred()`. The other
-dialects refuse them. See [migrations](migrations.md#deferrable-constraints).
+`c.PrimaryKeyDeferrable()` or `c.PrimaryKeyInitiallyDeferred()` (call one of
+them once). The other dialects refuse them. A foreign key cannot reference a
+deferrable primary key or unique constraint, because PostgreSQL refuses it:
+the generator and `migrate.Diff` report an error that names the foreign key and the
+key, so keep a key that other tables reference immediate. See
+[migrations](migrations.md#deferrable-constraints).
 
 Many-to-many needs `join:` with the same table on both models you declare it on
 (the reverse side is optional, but if declared it must carry `join:` too):

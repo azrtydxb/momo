@@ -1064,8 +1064,9 @@ func (r *companionReader) config(c call) {
 			r.unsupported(c.expr)
 			return
 		}
-		if c.name == "PrimaryKeyDeferrable" && r.res.PrimaryKeyDeferrable && !r.res.PrimaryKeyInitiallyDeferred ||
-			c.name == "PrimaryKeyInitiallyDeferred" && r.res.PrimaryKeyInitiallyDeferred {
+		// Both calls set PrimaryKeyDeferrable, so any second call among the
+		// two, in either order, is a repeat.
+		if r.res.PrimaryKeyDeferrable {
 			r.diag(c.expr.Pos(), "duplicate "+c.name+" call")
 			return
 		}

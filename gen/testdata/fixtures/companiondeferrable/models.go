@@ -26,6 +26,14 @@ type Route struct {
 	Name       string
 }
 
-func (r *Route) MomoConfig(c *momo.Config) {
+// Depot has a deferrable primary key; no foreign key references it, because
+// PostgreSQL cannot use a deferrable key as a foreign key target.
+type Depot struct {
+	momo.Model `momo:"table:depots"`
+	ID         int64 `momo:"pk"`
+	Name       string
+}
+
+func (d *Depot) MomoConfig(c *momo.Config) {
 	c.PrimaryKeyInitiallyDeferred()
 }

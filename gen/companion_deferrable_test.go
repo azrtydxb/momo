@@ -51,9 +51,9 @@ func TestCompanionDeferrable(t *testing.T) {
 	if fk := stops.ForeignKeys[0]; !fk.Deferrable || fk.InitiallyDeferred || fk.OnDelete != "CASCADE" {
 		t.Errorf("stops foreign key = %+v, want deferrable with ON DELETE CASCADE", fk)
 	}
-	routes, _ := s.Table("routes")
-	if !routes.PrimaryKeyDeferrable || !routes.PrimaryKeyInitiallyDeferred {
-		t.Errorf("routes primary key = deferrable %v, initially %v, want both", routes.PrimaryKeyDeferrable, routes.PrimaryKeyInitiallyDeferred)
+	depots, _ := s.Table("depots")
+	if !depots.PrimaryKeyDeferrable || !depots.PrimaryKeyInitiallyDeferred {
+		t.Errorf("depots primary key = deferrable %v, initially %v, want both", depots.PrimaryKeyDeferrable, depots.PrimaryKeyInitiallyDeferred)
 	}
 }
 
@@ -97,10 +97,18 @@ func TestCompanionDeferrableRefusals(t *testing.T) {
 		`unique "a_name_key": a deferrable unique constraint cannot take other options`,
 		`duplicate Deferrable on index "a_dup_key"`,
 		`duplicate PrimaryKeyDeferrable call`,
+		// A second call among the two, in either order, is a repeat.
+		`duplicate PrimaryKeyInitiallyDeferred call`,
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing diagnostic %q in:\n%s", want, joined)
 		}
+	}
+
+	// Model A repeats PrimaryKeyDeferrable once, and model C calls
+	// PrimaryKeyDeferrable after PrimaryKeyInitiallyDeferred: both are repeats.
+	if n := strings.Count(joined, "duplicate PrimaryKeyDeferrable call"); n != 2 {
+		t.Errorf("duplicate PrimaryKeyDeferrable call reported %d times, want 2 (either call order):\n%s", n, joined)
 	}
 
 	// The schema builder reports the key, after the companion has been read.
@@ -110,5 +118,58 @@ func TestCompanionDeferrableRefusals(t *testing.T) {
 	}
 	if joined := diagStrings(diags); !strings.Contains(joined, `PrimaryKeyDeferrable: model B has no primary key`) {
 		t.Errorf("a deferrable primary key on a model without one is not refused:\n%s", joined)
+	}
+}
+
+// Catches: a foreign key that references a deferrable primary key (belongs_to)
+// or a deferrable unique constraint (Config.ForeignKey) passing the generator.
+// PostgreSQL refuses both as a foreign key target, so the migration would fail
+// at apply time instead of the generator naming the key.
+func TestBuildSchemaRefusesForeignKeyToDeferrableKey(t *testing.T) {
+	g, diags, err := Load([]string{"./companiondeferrablefk"}, Config{Dir: fixturesDir(t)})
+	if err != nil || len(diags) != 0 {
+		t.Fatalf("load: %v %v", err, diags)
+	}
+	_, diags = BuildSchema(g.Models, pg())
+	joined := diagStrings(diags)
+	for _, want := range []string{
+		"foreign key children_parent_id_fkey references (id) of parents, which is the primary key and deferrable",
+		"foreign key children_code_fkey references (code) of slots, which is unique slots_code_key and deferrable",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("missing diagnostic %q in:\n%s", want, joined)
+		}
+	}
+}
+
+// Catches: a refusal that fires when a non-deferrable key covers the same
+// columns (PostgreSQL uses that key), and one that misses a deferrable key
+// whose columns are listed in another order.
+func TestDeferrableKeyOf(t *testing.T) {
+	cases := []struct {
+		name string
+		tbl  schema.Table
+		cols []string
+		want string
+	}{
+		{"plain primary key", schema.Table{PrimaryKey: []string{"id"}}, []string{"id"}, ""},
+		{"deferrable primary key", schema.Table{PrimaryKey: []string{"id"}, PrimaryKeyDeferrable: true}, []string{"id"}, "the primary key"},
+		{"initially deferred primary key", schema.Table{PrimaryKey: []string{"id"}, PrimaryKeyInitiallyDeferred: true}, []string{"id"}, "the primary key"},
+		{"deferrable unique, other order", schema.Table{Uniques: []schema.Unique{{Name: "u", Columns: []string{"a", "b"}, Deferrable: true}}}, []string{"b", "a"}, "unique u"},
+		{"other columns", schema.Table{Uniques: []schema.Unique{{Name: "u", Columns: []string{"a"}, Deferrable: true}}}, []string{"b"}, ""},
+		{"covered by a plain unique too", schema.Table{Uniques: []schema.Unique{{Name: "u", Columns: []string{"a"}, Deferrable: true}, {Name: "v", Columns: []string{"a"}}}}, []string{"a"}, ""},
+		{"covered by a unique index too", schema.Table{
+			Uniques: []schema.Unique{{Name: "u", Columns: []string{"a"}, Deferrable: true}},
+			Indexes: []schema.Index{{Name: "i", Unique: true, Parts: []schema.IndexPart{{Column: "a"}}}},
+		}, []string{"a"}, ""},
+		{"partial unique index does not cover", schema.Table{
+			Uniques: []schema.Unique{{Name: "u", Columns: []string{"a"}, Deferrable: true}},
+			Indexes: []schema.Index{{Name: "i", Unique: true, Where: "a > 0", Parts: []schema.IndexPart{{Column: "a"}}}},
+		}, []string{"a"}, "unique u"},
+	}
+	for _, c := range cases {
+		if got := deferrableKeyOf(&c.tbl, c.cols); got != c.want {
+			t.Errorf("%s: deferrableKeyOf = %q, want %q", c.name, got, c.want)
+		}
 	}
 }

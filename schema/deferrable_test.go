@@ -133,3 +133,27 @@ func TestEqualComparesDeferrability(t *testing.T) {
 		t.Errorf("Normalized did not set deferrable on initially deferred constraints: %+v", n)
 	}
 }
+
+// Catches: the primary key flags of a table with no primary key surviving
+// normalization, so Equal (and Diff) tell apart two tables that are the same:
+// a flag on a key that does not exist is not a deferrable key.
+func TestNormalizedClearsPrimaryKeyFlagsWithoutKey(t *testing.T) {
+	mk := func(deferrable, initially bool) *Schema {
+		return &Schema{Dialect: "postgres", Tables: []Table{{
+			Name:                        "logs",
+			Columns:                     []Column{{Name: "msg", Type: "text"}},
+			PrimaryKeyDeferrable:        deferrable,
+			PrimaryKeyInitiallyDeferred: initially,
+		}}}
+	}
+	for _, flags := range [][2]bool{{true, false}, {false, true}, {true, true}} {
+		s := mk(flags[0], flags[1])
+		n := Normalized(s).Tables[0]
+		if n.PrimaryKeyDeferrable || n.PrimaryKeyInitiallyDeferred {
+			t.Errorf("flags %v: Normalized kept the primary key flags of a table with no key: %+v", flags, n)
+		}
+		if !Equal(s, mk(false, false)) {
+			t.Errorf("flags %v: a table with no primary key differs by its primary key flags", flags)
+		}
+	}
+}
