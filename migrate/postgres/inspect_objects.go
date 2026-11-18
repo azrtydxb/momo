@@ -23,14 +23,16 @@ FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('v','m') AND n.nspname = ANY($1)
   AND NOT EXISTS (SELECT 1 FROM pg_depend e WHERE e.classid = 'pg_class'::regclass AND e.objid = c.oid AND e.deptype = 'e')
 ORDER BY 2,3`
-	qViewDeps = `SELECT DISTINCT rn.nspname::text, rc.relname::text
+	// $1 is the set of view oids, passed as int8[]; each view's rows come in
+	// (schema, name) order.
+	qViewDeps = `SELECT DISTINCT v.oid, rn.nspname::text, rc.relname::text
 FROM pg_depend d
 JOIN pg_rewrite r ON r.oid = d.objid
 JOIN pg_class v ON v.oid = r.ev_class
 JOIN pg_class rc ON rc.oid = d.refobjid
 JOIN pg_namespace rn ON rn.oid = rc.relnamespace
-WHERE v.oid = $1 AND rc.oid <> v.oid AND d.classid = 'pg_rewrite'::regclass AND d.refclassid = 'pg_class'::regclass
-ORDER BY 1,2`
+WHERE v.oid = ANY($1::int8[]::oid[]) AND rc.oid <> v.oid AND d.classid = 'pg_rewrite'::regclass AND d.refclassid = 'pg_class'::regclass
+ORDER BY 1,2,3`
 	// Only sequences no column depends on: deptype 'a' is the auto dependency of
 	// an OWNED BY sequence (a serial column's) and 'i' the internal one of an
 	// identity column's. Those belong to their column and are read with it.
@@ -174,30 +176,52 @@ func (in *inspector) views(ctx context.Context, s *schema.Schema) error {
 	if err != nil {
 		return err
 	}
+	if len(raws) == 0 {
+		return nil
+	}
+	// One query for the dependencies of every view and one for the indexes of
+	// every materialized view, instead of two per view.
+	var all, mats []uint32
+	for _, x := range raws {
+		all = append(all, x.oid)
+		if x.materialized {
+			mats = append(mats, x.oid)
+		}
+	}
+	ids := make([]int64, len(all))
+	for i, o := range all {
+		ids[i] = int64(o)
+	}
+	deps := map[uint32][]string{}
+	err = forEach(ctx, in.c, qViewDeps, []any{ids}, func(r momo.Rows) error {
+		var oid uint32
+		var ns, name string
+		if err := r.Scan(&oid, &ns, &name); err != nil {
+			return err
+		}
+		deps[oid] = append(deps[oid], in.qualify(ns, name))
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("dependencies of views: %w", err)
+	}
+	var indexes map[uint32][]schema.Index
+	if len(mats) > 0 {
+		indexes, _, err = Dialect{}.inspectIndexesOf(ctx, in.c, mats)
+		if err != nil {
+			return fmt.Errorf("indexes of materialized views: %w", err)
+		}
+	}
 	for _, x := range raws {
 		v := schema.View{
 			Schema:       in.optSchema(x.ns),
 			Name:         x.name,
 			Materialized: x.materialized,
 			Query:        strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(deref(x.query)), ";")),
-		}
-		err := forEach(ctx, in.c, qViewDeps, []any{x.oid}, func(r momo.Rows) error {
-			var ns, name string
-			if err := r.Scan(&ns, &name); err != nil {
-				return err
-			}
-			v.Depends = append(v.Depends, in.qualify(ns, name))
-			return nil
-		})
-		if err != nil {
-			return fmt.Errorf("dependencies of %s.%s: %w", x.ns, x.name, err)
+			Depends:      deps[x.oid],
 		}
 		if x.materialized {
-			ixs, _, err := Dialect{}.inspectIndexes(ctx, in.c, x.oid)
-			if err != nil {
-				return fmt.Errorf("indexes of %s.%s: %w", x.ns, x.name, err)
-			}
-			v.Indexes = ixs
+			v.Indexes = indexes[x.oid]
 		}
 		s.Views = append(s.Views, v)
 	}
