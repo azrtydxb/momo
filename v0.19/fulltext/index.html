@@ -1,0 +1,2425 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Go ORM with typed queries, explicit SQL and a self-contained migration engine">
+      
+      
+      
+        <link rel="canonical" href="https://azrtydxb.github.io/momo/v0.19/fulltext/">
+      
+      
+        <link rel="prev" href="../vectors/">
+      
+      
+        <link rel="next" href="../mysql/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Full-text search - momo</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#full-text-search" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="momo" class="md-header__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            momo
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Full-text search
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_1">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="momo" class="md-nav__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    momo
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent usage and AGENTS.md snippet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TYPE_MAPPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Type mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../projections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vector search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full-text search
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full-text search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#declare-a-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Declare a search
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-each-dialect-creates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What each dialect creates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What each dialect creates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#postgresql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PostgreSQL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SQLite
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Search">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#query-syntax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Query syntax
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#score" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Score
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snippet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snippet
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#raw-text-and-the-mysql-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Raw text and the MySQL modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-dialects-differ" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the dialects differ
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspection-and-migration-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspection and migration tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hybrid-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hybrid search
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-column" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The column
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expressions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expressions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hybrid-ranking-vector-plus-text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hybrid ranking: vector plus text
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scanning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scanning
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mysql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MySQL and MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../importers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../replicas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read replicas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing applications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PRIVACY_RULES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interceptors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../momovet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    momovet raw-SQL check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-versions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#declare-a-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Declare a search
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-each-dialect-creates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What each dialect creates
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What each dialect creates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#postgresql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PostgreSQL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SQLite
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mysql-and-mariadb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MySQL and MariaDB
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Search
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Search">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#query-syntax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Query syntax
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#score" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Score
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snippet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snippet
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#raw-text-and-the-mysql-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Raw text and the MySQL modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-dialects-differ" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the dialects differ
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspection-and-migration-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspection and migration tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hybrid-search" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hybrid search
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-column" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The column
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expressions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expressions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hybrid-ranking-vector-plus-text" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hybrid ranking: vector plus text
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scanning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scanning
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="full-text-search">Full-text search<a class="headerlink" href="#full-text-search" title="Permanent link">&para;</a></h1>
+<p>Momo searches text on PostgreSQL, SQLite and MySQL or MariaDB. A model declares
+once which text columns are searchable; <code>momo migrate</code> creates the structure
+each database needs for that declaration, and one set of calls in package <code>fts</code>
+runs the search on all of them. Package <code>fts</code> also keeps the builders that
+write PostgreSQL full-text SQL by hand (<code>fts.Match</code>, <code>fts.Rank</code>,
+<code>fts.Headline</code>) and two builders for <code>MATCH ... AGAINST</code> on MySQL and MariaDB
+(<code>fts.MySQLMatch</code>, <code>fts.MySQLRelevance</code>). The capabilities table in
+<a href="../capabilities/">capabilities</a> shows the <code>dialect.Dialect.FullText</code> flag per dialect.</p>
+<p>The three databases do not search alike. The portable calls cover the common
+subset: all words, phrases, exclusion, prefixes, a relevance score and an
+excerpt. The <a href="#how-the-dialects-differ">comparison table</a> and the
+<a href="#limits">limits</a> list what differs. Momo documents the differences and does
+not hide them.</p>
+<h2 id="declare-a-search">Declare a search<a class="headerlink" href="#declare-a-search" title="Permanent link">&para;</a></h2>
+<p>A model declares one search index per table, either with the <code>search</code> tag on
+each text field or with <code>c.FullText</code> in <code>MomoConfig</code>.</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="kd">type</span><span class="w"> </span><span class="nx">Article</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Model</span><span class="w"> </span><span class="s">`momo:"table:articles"`</span>
+<span class="w">    </span><span class="nx">ID</span><span class="w">         </span><span class="kt">int64</span><span class="w">  </span><span class="s">`momo:"pk,identity"`</span>
+<span class="w">    </span><span class="nx">Title</span><span class="w">      </span><span class="kt">string</span><span class="w"> </span><span class="s">`momo:"search"`</span>
+<span class="w">    </span><span class="nx">Body</span><span class="w">       </span><span class="kt">string</span><span class="w"> </span><span class="s">`momo:"search"`</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>The tag names the index <code>&lt;table&gt;_search</code> and covers the tagged fields in field
+order. It carries no options. PostgreSQL needs a text search configuration, so
+on PostgreSQL write the explicit form, which takes the options a dialect
+honours:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">a</span><span class="w"> </span><span class="o">*</span><span class="nx">Article</span><span class="p">)</span><span class="w"> </span><span class="nx">MomoConfig</span><span class="p">(</span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Config</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">FullText</span><span class="p">(</span><span class="s">"articles_search"</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">a</span><span class="p">.</span><span class="nx">Title</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">a</span><span class="p">.</span><span class="nx">Body</span><span class="p">).</span>
+<span class="w">        </span><span class="nx">Config</span><span class="p">(</span><span class="s">"english"</span><span class="p">).</span>
+<span class="w">        </span><span class="nx">Weights</span><span class="p">(</span><span class="s">"A"</span><span class="p">,</span><span class="w"> </span><span class="s">"B"</span><span class="p">).</span>
+<span class="w">        </span><span class="nx">Tokenizer</span><span class="p">(</span><span class="s">"porter unicode61"</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>PostgreSQL</th>
+<th>SQLite</th>
+<th>MySQL and MariaDB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Config</code></td>
+<td>required: the text search configuration, <code>english</code></td>
+<td>ignored</td>
+<td>ignored</td>
+</tr>
+<tr>
+<td><code>Weights</code></td>
+<td><code>A</code> to <code>D</code> per column, written with <code>setweight</code></td>
+<td>read at query time as <code>bm25</code> column weights</td>
+<td>no effect</td>
+</tr>
+<tr>
+<td><code>Tokenizer</code></td>
+<td>ignored</td>
+<td>the FTS5 <code>tokenize</code> clause</td>
+<td>ignored</td>
+</tr>
+<tr>
+<td><code>Parser</code></td>
+<td>ignored</td>
+<td>ignored</td>
+<td><code>ngram</code> or <code>mecab</code> (MySQL only, see below)</td>
+</tr>
+<tr>
+<td><code>Expression</code></td>
+<td>an expression index instead of a generated column</td>
+<td>ignored</td>
+<td>ignored</td>
+</tr>
+</tbody>
+</table>
+<p>An option a dialect ignores is dropped before the declaration is compared, so
+changing it is no migration there. A weight changed on SQLite changes the next
+query and no schema.</p>
+<p><code>momo generate</code> refuses the tag on a column that is not text, a second
+declaration on one table, a column the table does not have, and a
+configuration, tokenizer or parser outside a strict list of names:</p>
+<ul>
+<li><code>Config</code> is a plain identifier such as <code>english</code> or <code>simple</code>.</li>
+<li><code>Weights</code> has one letter from <code>A</code>, <code>B</code>, <code>C</code>, <code>D</code> per column and cannot be
+  combined with <code>Expression</code>.</li>
+<li><code>Tokenizer</code> is <code>unicode61</code> (optionally followed by <code>remove_diacritics</code> and
+  0, 1 or 2), <code>ascii</code> or <code>trigram</code>, each optionally prefixed with <code>porter</code>.</li>
+<li><code>Parser</code> is <code>ngram</code> or <code>mecab</code>.</li>
+</ul>
+<p>The declaration is the only thing the schema snapshot records. Every dialect
+derives its own structures from it, so a snapshot written before the
+declaration existed loads unchanged.</p>
+<h2 id="what-each-dialect-creates">What each dialect creates<a class="headerlink" href="#what-each-dialect-creates" title="Permanent link">&para;</a></h2>
+<h3 id="postgresql">PostgreSQL<a class="headerlink" href="#postgresql" title="Permanent link">&para;</a></h3>
+<p>PostgreSQL 12 or newer is needed, for stored generated columns. A declaration
+becomes a stored generated tsvector column named <code>&lt;index&gt;_tsv</code> and a GIN index
+on it:</p>
+<div class="highlight"><pre><span></span><code>ALTER TABLE articles ADD COLUMN articles_search_tsv tsvector GENERATED ALWAYS AS (
+    setweight(to_tsvector('english', coalesce("title", '')), 'A') ||
+    setweight(to_tsvector('english', coalesce("body", '')), 'B')) STORED;
+CREATE INDEX articles_search ON articles USING gin (articles_search_tsv);
+</code></pre></div>
+<p>The configuration is a literal inside the expression, which PostgreSQL requires
+for an immutable generation expression. <code>coalesce</code> keeps a NULL column from
+making the whole vector NULL, so a row with one NULL column is found by the
+other. Without <code>Weights</code> the <code>setweight</code> calls are left out. The column is
+read-only: leave it out of inserts and updates, and the model needs no field
+for it.</p>
+<p>With <code>Expression</code> there is no extra column. The index is a GIN index on
+<code>to_tsvector('english', coalesce(title, '') || ' ' || coalesce(body, ''))</code>, and
+a search renders that same expression. <code>Expression</code> cannot be combined with
+<code>Weights</code>.</p>
+<p>Any change to the columns, the configuration, the weights or <code>Expression</code>
+cannot alter the expression in place. The migration drops the index, drops and
+adds the generated column, which rewrites the table under an
+<code>ACCESS EXCLUSIVE</code> lock, and creates the index again. <code>momo migrate lint</code>
+reports it as <code>fulltext-column-rewrite</code>. The column name is
+<code>&lt;index&gt;_tsv</code>; a model column of that name, an index name that makes the name
+longer than 63 bytes and a source column the table lacks are <code>ErrValidation</code>.</p>
+<p>The migration builds the index with a plain <code>CREATE INDEX</code>, which blocks writes
+while it builds. A declaration with <code>.Concurrently()</code>, for example
+<code>c.FullText("articles_search", &amp;a.Title).Config("english").Concurrently()</code>,
+splits the work instead: the generated column and the drop of an old index stay
+in the transactional migration, and <code>CREATE INDEX CONCURRENTLY</code> goes into the
+migration that follows it with <code>-- momo:no-transaction</code>. SQLite and MySQL have
+no concurrent build and ignore <code>Concurrently()</code> on a full-text index, as they do
+on any index. See
+<a href="../migrations/#3b-full-text-search-structures">migrations</a>.</p>
+<p>A tsvector column that a trigger maintains, as in <a href="#the-column">the column</a>, is
+not a declaration. It stays a plain <code>Method("gin")</code> index and diffs as before.</p>
+<h3 id="sqlite">SQLite<a class="headerlink" href="#sqlite" title="Permanent link">&para;</a></h3>
+<p>A declaration becomes an external-content FTS5 table named <code>&lt;table&gt;_fts</code> and
+three triggers, <code>&lt;table&gt;_fts_ai</code>, <code>&lt;table&gt;_fts_ad</code> and <code>&lt;table&gt;_fts_au</code>, that
+run after an insert, a delete and an update of the table:</p>
+<div class="highlight"><pre><span></span><code>CREATE VIRTUAL TABLE "articles_fts" USING fts5("title", "body", content='articles', content_rowid='id', tokenize='porter unicode61');
+INSERT INTO "articles_fts"("articles_fts") VALUES('rebuild');
+</code></pre></div>
+<p>The text is not stored twice: FTS5 reads it back from the table by rowid. The
+<code>'rebuild'</code> command that fills the new FTS5 table runs as part of the migration.
+The update trigger issues the FTS5 <code>'delete'</code> command before the insert; the
+reverse order corrupts the index.</p>
+<ul>
+<li>The table needs a rowid table whose primary key is one <code>INTEGER</code> column. A
+  composite or other key, a <code>WITHOUT ROWID</code> table, a declared column the table
+  lacks, and a column called <code>rank</code> or <code>rowid</code> are <code>ErrValidation</code> naming the
+  table.</li>
+<li>A change of the columns or the tokenizer drops the FTS5 table, creates it
+  again and fills it with <code>'rebuild'</code>. Removing the declaration, or the table, drops the
+  triggers first and then the FTS5 table. Renaming the table re-creates both
+  under the new name.</li>
+<li><code>INSERT OR REPLACE</code> and <code>ON CONFLICT REPLACE</code> delete the replaced row without
+  firing the delete trigger unless <code>PRAGMA recursive_triggers = ON</code>, which
+  leaves stale tokens in the FTS5 table. A bulk load that runs with the
+  triggers disabled has the same effect. Repair the index from the table with
+  <code>INSERT INTO articles_fts(articles_fts) VALUES('rebuild')</code>;
+  <code>INSERT INTO articles_fts(articles_fts) VALUES('integrity-check')</code> tests it.
+  <code>ON CONFLICT DO UPDATE</code> is safe: it fires the update trigger.</li>
+<li>The SQLite build needs the FTS5 module. The cgo driver <code>driver/sqlitedriver</code>
+  compiles it in only with the build tag <code>-tags sqlite_fts5</code> (or
+  <code>CGO_CFLAGS=-DSQLITE_ENABLE_FTS5</code>); the pure-Go driver <code>driver/sqlitepure</code>
+  includes it. A migration on a build without FTS5 fails with <code>ErrUnsupported</code>
+  naming FTS5, and a search whose FTS5 table does not exist fails with
+  <code>ErrUnsupported</code> naming the table.</li>
+</ul>
+<h3 id="mysql-and-mariadb">MySQL and MariaDB<a class="headerlink" href="#mysql-and-mariadb" title="Permanent link">&para;</a></h3>
+<p>A declaration becomes an InnoDB <code>FULLTEXT</code> index:</p>
+<div class="highlight"><pre><span></span><code>CREATE FULLTEXT INDEX articles_search ON articles (title, body) WITH PARSER ngram;
+</code></pre></div>
+<ul>
+<li>The columns must be <code>CHAR</code>, <code>VARCHAR</code> or one of the <code>TEXT</code> types, at most 16
+  of them, and the index cannot be unique. A violation is <code>ErrValidation</code>.</li>
+<li>The table must be InnoDB. Momo creates only InnoDB tables, and <code>AutoMigrate</code>
+  refuses a declaration on a table the database holds with another storage
+  engine.</li>
+<li><code>WITH PARSER</code> is written only when a parser is declared, and the parser is a
+  MySQL feature: MariaDB InnoDB has no full-text parser plugin. A parser on
+  MariaDB is <code>ErrUnsupported</code> when the engine knows the server is MariaDB. The
+  offline <code>momo migrate</code> commands open no database and cannot tell MariaDB from
+  MySQL, so they render the parser, and MariaDB rejects it when the migration
+  is applied. <code>mecab</code> needs the MeCab plugin on the MySQL server.</li>
+<li>The first <code>FULLTEXT</code> index of an InnoDB table adds a hidden <code>FTS_DOC_ID</code>
+  column and rebuilds the table, which can take long and block writes on a
+  large one. <code>momo migrate lint</code> reports every <code>CREATE FULLTEXT INDEX</code> on an
+  existing table as <code>fulltext-first-index</code>.</li>
+<li>Changing the parser rebuilds the index with a table copy.</li>
+</ul>
+<h2 id="search">Search<a class="headerlink" href="#search" title="Permanent link">&para;</a></h2>
+<p>The portable calls are in the package <code>github.com/azrtydxb/momo/fts</code>. They read
+the declaration of the model, so a typo in a column is a compile error and a
+model without a declaration is <code>ErrValidation</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fts.Over</code></td>
+<td>the <code>fts.Target</code>: the declared columns of model T, in the declared order</td>
+</tr>
+<tr>
+<td><code>fts.OverVector</code></td>
+<td>a tsvector column you maintain yourself, with its configuration</td>
+</tr>
+<tr>
+<td><code>fts.Search</code></td>
+<td>a predicate: rows whose searchable columns match the query</td>
+</tr>
+<tr>
+<td><code>fts.Score</code></td>
+<td>a float expression: the relevance of a row, higher is better</td>
+</tr>
+<tr>
+<td><code>fts.Snippet</code></td>
+<td>a string expression: an excerpt with the matched words marked</td>
+</tr>
+<tr>
+<td><code>fts.Web</code></td>
+<td>a query read like a search box</td>
+</tr>
+<tr>
+<td><code>fts.Plain</code></td>
+<td>a query whose words must all match</td>
+</tr>
+<tr>
+<td><code>fts.Raw</code></td>
+<td>a query in the dialect's own syntax</td>
+</tr>
+</tbody>
+</table>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">target</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">Over</span><span class="p">[</span><span class="nx">Article</span><span class="p">](</span><span class="nx">articleTitle</span><span class="p">,</span><span class="w"> </span><span class="nx">articleBody</span><span class="p">)</span>
+<span class="nx">q</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">Web</span><span class="p">(</span><span class="nx">userInput</span><span class="p">)</span>
+<span class="nx">score</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">Score</span><span class="p">(</span><span class="nx">target</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">)</span>
+
+<span class="nx">hits</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">Hit</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">From</span><span class="p">(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">TableRef</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">"articles"</span><span class="p">}).</span>
+<span class="w">    </span><span class="nx">Columns</span><span class="p">(</span><span class="nx">articleID</span><span class="p">,</span><span class="w"> </span><span class="nx">score</span><span class="p">.</span><span class="nx">As</span><span class="p">(</span><span class="s">"score"</span><span class="p">),</span>
+<span class="w">        </span><span class="nx">fts</span><span class="p">.</span><span class="nx">Snippet</span><span class="p">(</span><span class="nx">target</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">SnippetOpts</span><span class="p">{</span><span class="nx">Column</span><span class="p">:</span><span class="w"> </span><span class="nx">articleBody</span><span class="p">}).</span><span class="nx">As</span><span class="p">(</span><span class="s">"excerpt"</span><span class="p">)).</span>
+<span class="w">    </span><span class="nx">Where</span><span class="p">(</span><span class="nx">fts</span><span class="p">.</span><span class="nx">Search</span><span class="p">(</span><span class="nx">target</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">)).</span>
+<span class="w">    </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">score</span><span class="p">.</span><span class="nx">Desc</span><span class="p">()).</span>
+<span class="w">    </span><span class="nx">Limit</span><span class="p">(</span><span class="mi">20</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">All</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+</code></pre></div>
+<p><code>fts.Over</code> takes exactly the declared columns in the declared order; any other
+list is <code>ErrValidation</code> naming both. On PostgreSQL the search runs over the
+generated column <code>&lt;index&gt;_tsv</code> (or over the declared expression); on SQLite it
+selects through the FTS5 table <code>&lt;table&gt;_fts</code>; on MySQL and MariaDB it renders
+<code>MATCH(title, body) AGAINST (? IN BOOLEAN MODE)</code> over the <code>FULLTEXT</code> index.
+<code>fts.OverVector</code> targets a tsvector column that a trigger or a hand-written
+generated column maintains, and works on PostgreSQL only; other dialects fail
+the build with <code>ErrUnsupported</code>.</p>
+<p>The query text is always a bound parameter. The configuration, the tokenizer
+and the table names are never taken from input. A search that uses a column
+marked sensitive masks its arguments in hook events, as the other <code>fts</code>
+builders do. Each use of a call in one statement binds its own arguments, so
+the limits for <code>GROUP BY</code> and <code>SELECT DISTINCT</code> described under
+<a href="#expressions">Expressions</a> apply to <code>fts.Score</code> as well.</p>
+<h3 id="query-syntax">Query syntax<a class="headerlink" href="#query-syntax" title="Permanent link">&para;</a></h3>
+<p><code>fts.Web</code> reads quoted phrases, <code>-exclusions</code>, an uppercase <code>OR</code> between words
+and a trailing <code>*</code> for a prefix. It never raises a syntax error in the
+database, whatever the user types: every word is cut down to letters, digits,
+underscores and apostrophes, punctuation inside a word splits it (<code>well-known</code>
+reads as the phrase "well known"), and a bare <code>AND</code>, <code>NOT</code> or <code>NEAR</code> is
+dropped. <code>fts.Plain</code> reads every word as a term of one conjunction and ignores
+punctuation. <code>fts.Raw</code> passes the text to the database in its own syntax and
+leaves its correctness to you; a malformed text is a database error. The text
+is still bound.</p>
+<table>
+<thead>
+<tr>
+<th>Web query</th>
+<th>PostgreSQL</th>
+<th>SQLite</th>
+<th>MySQL and MariaDB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>red fox</code></td>
+<td>both words</td>
+<td><code>"red" "fox"</code></td>
+<td><code>+red +fox</code></td>
+</tr>
+<tr>
+<td><code>"red fox"</code></td>
+<td>the phrase operator <code>&lt;-&gt;</code></td>
+<td><code>"red fox"</code></td>
+<td><code>+"red fox"</code></td>
+</tr>
+<tr>
+<td><code>red OR fox</code></td>
+<td>either word</td>
+<td><code>("red") OR ("fox")</code></td>
+<td><code>(+red) (+fox)</code></td>
+</tr>
+<tr>
+<td><code>fox -hen</code></td>
+<td><code>fox</code> and not <code>hen</code></td>
+<td><code>"fox" NOT "hen"</code></td>
+<td><code>+fox -hen</code></td>
+</tr>
+<tr>
+<td><code>fo*</code></td>
+<td>the prefix <code>fo:*</code></td>
+<td><code>"fo"*</code></td>
+<td><code>+fo*</code></td>
+</tr>
+<tr>
+<td><code>fts.Raw</code> text</td>
+<td><code>to_tsquery</code> text</td>
+<td>an FTS5 query</td>
+<td>boolean-mode text</td>
+</tr>
+</tbody>
+</table>
+<p>On PostgreSQL a <code>fts.Web</code> query without a prefix term is bound as given to
+<code>websearch_to_tsquery</code>, which reads it by its own rules: a lowercase <code>or</code> is an
+OR too, and a <code>-word</code> binds to its own OR group. A query with a prefix term is
+rewritten by the shared parser instead and rendered as <code>to_tsquery</code> text with
+every word quoted; that reading takes only an uppercase <code>OR</code> and applies every
+exclusion to the whole query, as SQLite and MySQL do. <code>fts.Plain</code> is
+<code>plainto_tsquery</code> on PostgreSQL.</p>
+<p>A query without a positive word (empty, only blanks, or only exclusions) is not
+sent to the database: <code>fts.Search</code> renders a false predicate, <code>fts.Score</code> renders 0
+and <code>fts.Snippet</code> renders NULL. A negation-only query therefore returns no rows
+and no error on every dialect.</p>
+<p><code>fts.Query.Config</code> sets the PostgreSQL configuration for one query. On a target
+from <code>fts.Over</code> it must equal the declared configuration, because a different
+one cannot use the index; another name is <code>ErrValidation</code> at build time. On
+<code>fts.OverVector</code> it replaces the configuration given there. SQLite and MySQL fix
+the configuration in the index and ignore it.</p>
+<h3 id="score">Score<a class="headerlink" href="#score" title="Permanent link">&para;</a></h3>
+<p><code>fts.Score</code> is <code>ts_rank_cd</code> on PostgreSQL, the negated <code>bm25</code> on SQLite (FTS5
+reports <code>bm25</code> as a negative number where lower is better) and the <code>MATCH</code>
+value on MySQL and MariaDB. Higher is better on every dialect, and a row the
+query does not match scores 0.
+Scores are comparable only within one dialect and one query; no portable function takes a score threshold. Use a score to
+order rows, never to cut them off, and never compare it with a score from
+another query or another database. On SQLite the declared weights <code>A</code> to <code>D</code>
+are <code>bm25</code> column weights of 1, 0.4, 0.2 and 0.1.</p>
+<h3 id="snippet">Snippet<a class="headerlink" href="#snippet" title="Permanent link">&para;</a></h3>
+<p><code>fts.Snippet</code> excerpts the column named in <code>fts.SnippetOpts.Column</code>, which must
+be one of the declared columns, and marks the matched words with <code>&lt;b&gt;</code> and
+<code>&lt;/b&gt;</code> unless <code>fts.SnippetOpts.Open</code> and <code>fts.SnippetOpts.Close</code> say otherwise.
+It is <code>ts_headline</code> on PostgreSQL and <code>snippet()</code> on SQLite, where
+<code>fts.SnippetOpts.Ellipsis</code> marks the cut ends (default <code>...</code>) and
+<code>fts.SnippetOpts.Tokens</code> sets the length in words (1 to 64, default 16). MySQL
+and MariaDB have no excerpt function: <code>fts.Snippet</code> fails the build with
+<code>ErrUnsupported</code> there. Neither database escapes the text, so escape the
+excerpt before showing it as HTML.</p>
+<h3 id="raw-text-and-the-mysql-modes">Raw text and the MySQL modes<a class="headerlink" href="#raw-text-and-the-mysql-modes" title="Permanent link">&para;</a></h3>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">pgq</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">Raw</span><span class="p">(</span><span class="s">"fox:* &amp; !hen"</span><span class="p">).</span><span class="nx">Config</span><span class="p">(</span><span class="s">"english"</span><span class="p">)</span><span class="w"> </span><span class="c1">// to_tsquery text</span>
+<span class="nx">litq</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">Raw</span><span class="p">(</span><span class="s">`fox NOT hen`</span><span class="p">)</span><span class="w">                    </span><span class="c1">// FTS5 query</span>
+<span class="nx">myq</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">Raw</span><span class="p">(</span><span class="s">"+fox -hen"</span><span class="p">)</span><span class="w">                       </span><span class="c1">// boolean-mode text</span>
+</code></pre></div>
+<p>On MySQL and MariaDB <code>fts.Search</code> and <code>fts.Score</code> always use boolean mode with
+a string built from the parsed words, so no typed character acts as an
+operator. For natural-language mode or query expansion, which have no portable
+form, use <code>fts.MySQLMatch</code> and <code>fts.MySQLRelevance</code> with a mode of your own.
+The text is passed as given, so in <code>fts.Boolean</code> mode you own its operators.</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">cols</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="p">[]</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Column</span><span class="p">[</span><span class="kt">string</span><span class="p">]{</span><span class="nx">articleTitle</span><span class="p">,</span><span class="w"> </span><span class="nx">articleBody</span><span class="p">}</span>
+<span class="nx">rel</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">MySQLRelevance</span><span class="p">(</span><span class="nx">cols</span><span class="p">,</span><span class="w"> </span><span class="nx">userInput</span><span class="p">,</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">NaturalLanguage</span><span class="p">)</span>
+
+<span class="nx">hits</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">Hit</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">From</span><span class="p">(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">TableRef</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">"articles"</span><span class="p">}).</span>
+<span class="w">    </span><span class="nx">Columns</span><span class="p">(</span><span class="nx">articleID</span><span class="p">,</span><span class="w"> </span><span class="nx">rel</span><span class="p">.</span><span class="nx">As</span><span class="p">(</span><span class="s">"relevance"</span><span class="p">)).</span>
+<span class="w">    </span><span class="nx">Where</span><span class="p">(</span><span class="nx">fts</span><span class="p">.</span><span class="nx">MySQLMatch</span><span class="p">(</span><span class="nx">cols</span><span class="p">,</span><span class="w"> </span><span class="nx">userInput</span><span class="p">,</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">NaturalLanguage</span><span class="p">)).</span>
+<span class="w">    </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">rel</span><span class="p">.</span><span class="nx">Desc</span><span class="p">()).</span>
+<span class="w">    </span><span class="nx">All</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+</code></pre></div>
+<p>The columns must be exactly the columns of one <code>FULLTEXT</code> index, in its order.
+A <code>MATCH</code> without such an index is <code>ErrValidation</code>, not the server's error 1191.
+Both builders fail the build with <code>ErrUnsupported</code> on PostgreSQL and SQLite.</p>
+<h2 id="how-the-dialects-differ">How the dialects differ<a class="headerlink" href="#how-the-dialects-differ" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>PostgreSQL</th>
+<th>SQLite</th>
+<th>MySQL and MariaDB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Index type</td>
+<td>GIN on a stored generated tsvector column</td>
+<td>external-content FTS5 table and sync triggers</td>
+<td>InnoDB <code>FULLTEXT</code> index</td>
+</tr>
+<tr>
+<td>Query syntax</td>
+<td><code>@@</code> with a tsquery</td>
+<td>FTS5 <code>MATCH</code></td>
+<td><code>MATCH ... AGAINST (? IN BOOLEAN MODE)</code></td>
+</tr>
+<tr>
+<td>Ranking direction</td>
+<td><code>ts_rank_cd</code>, higher is better</td>
+<td><code>bm25</code> is lower-is-better, <code>fts.Score</code> negates</td>
+<td>the <code>MATCH</code> value, higher is better</td>
+</tr>
+<tr>
+<td>Stop words</td>
+<td>by configuration (<code>english</code> has them, <code>simple</code> has none)</td>
+<td>none with the <code>unicode61</code> tokenizer</td>
+<td>the InnoDB list, set by server variables</td>
+</tr>
+<tr>
+<td>Minimum token length</td>
+<td>none</td>
+<td>none</td>
+<td><code>innodb_ft_min_token_size</code>, 3 by default</td>
+</tr>
+<tr>
+<td>Phrase</td>
+<td>the <code>&lt;-&gt;</code> operator</td>
+<td>a quoted string, exact adjacency</td>
+<td>a quoted string in boolean mode</td>
+</tr>
+<tr>
+<td>Prefix</td>
+<td><code>:*</code> in tsquery text</td>
+<td><code>"pre"*</code></td>
+<td>a trailing <code>*</code></td>
+</tr>
+<tr>
+<td>Snippet</td>
+<td><code>ts_headline</code></td>
+<td><code>snippet()</code></td>
+<td><code>ErrUnsupported</code></td>
+</tr>
+<tr>
+<td>Transaction visibility</td>
+<td>a write is visible in its own transaction</td>
+<td>a write is visible in its own transaction</td>
+<td>only committed rows</td>
+</tr>
+</tbody>
+</table>
+<h2 id="limits">Limits<a class="headerlink" href="#limits" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Stop words. PostgreSQL drops the stop words of the configuration, so a phrase
+  such as "the cat" can reduce to one word. MySQL InnoDB drops the words of its
+  default stop word list unless <code>innodb_ft_enable_stopword</code> is off or a user
+  list is set. A required term that is a stop word matches nothing, so a
+  search that needs <code>the</code> or <code>it</code> finds nothing. SQLite <code>unicode61</code> has no
+  stop words.</li>
+<li>Minimum token length. InnoDB does not index a word shorter than
+  <code>innodb_ft_min_token_size</code> (3 by default), so a search for a two-letter word
+  finds nothing, even in rows that contain it. A prefix shorter than that still
+  matches the longer indexed words that start with it. The server settings are
+  applied when the index is built, so changing one needs an index rebuild.</li>
+<li>Committed rows only. On MySQL and MariaDB a row inserted or updated in an open
+  transaction is not found by a search, in the same transaction or any other,
+  until the transaction commits. Inserting and then searching inside one
+  <code>db.Tx</code> returns nothing. PostgreSQL and SQLite index changes are
+  transactional: the search sees them inside the transaction, and a rollback
+  removes them.</li>
+<li>MySQL boolean mode has no prefix phrase. A required prefix phrase such as
+  <code>well-kn*</code> is rendered as <code>+well +kn*</code>, so it also matches rows that hold
+  the words apart. An excluded prefix phrase is rendered as the exact phrase
+  without the wildcard (<code>-"well kn"</code>), so it never excludes more than the
+  phrase.</li>
+<li>A PostgreSQL tsvector is limited to 1 MB per value. A longer value is a
+  database error, not a silent cut.</li>
+<li>A MySQL <code>FULLTEXT</code> index covers at most 16 columns.</li>
+<li>Collation and case. FTS5 <code>unicode61</code> folds case and removes diacritics by
+  default. A PostgreSQL configuration lowercases but keeps diacritics unless
+  <code>unaccent</code> is added to it. MySQL follows the column collation. The same text
+  can therefore match differently on each dialect.</li>
+<li>NULL. A NULL column contributes nothing, and a row whose searchable columns
+  are all NULL never matches.</li>
+<li>A search that cannot run fails with a momo error, not the driver's text: a
+  missing FTS5 build or table is <code>ErrUnsupported</code>, a missing <code>FULLTEXT</code> index
+  or a configuration that differs from the index is <code>ErrValidation</code>.</li>
+</ul>
+<h2 id="inspection-and-migration-tools">Inspection and migration tools<a class="headerlink" href="#inspection-and-migration-tools" title="Permanent link">&para;</a></h2>
+<p><code>momo migrate diff</code> compares the declaration, with the structures each dialect
+derives from it, against the snapshot and writes the SQL above. A second <code>diff</code>
+after <code>apply</code> is empty. <code>momo migrate validate</code> and <code>AutoMigrate</code> apply the same
+checks. <code>momo migrate drift</code> and <code>generate --from-db</code> read the database back:</p>
+<ul>
+<li>PostgreSQL: a stored generated column and its GIN index, written in the shape
+  momo renders, read back as the declaration with its configuration, columns and
+  weights; so is a GIN index on a <code>to_tsvector</code> expression of that shape. Any
+  other tsvector column or expression stays a plain index.</li>
+<li>SQLite: an external-content FTS5 table is read from <code>sqlite_master</code> with its
+  columns and tokenizer. The shadow tables of an FTS5 table stay hidden, and a
+  virtual table of another module, or an FTS5 table with an option the
+  declaration has no field for, is not reported as a declaration. The sync
+  triggers are ordinary triggers: <code>momo migrate drift</code> reports a missing or
+  altered one.</li>
+<li>MySQL and MariaDB: an index of type <code>FULLTEXT</code> is read as the declaration, and
+  on MySQL its parser comes from <code>SHOW CREATE TABLE</code>. The storage engine of a
+  table that is not InnoDB is read too, which <code>AutoMigrate</code> uses to refuse a
+  declaration on it.</li>
+</ul>
+<p><code>generate --from-db</code> writes the <code>search</code> tag when it says everything (a
+declaration on SQLite, MySQL or MariaDB named <code>&lt;table&gt;_search</code>, with no option)
+and <code>c.FullText</code> otherwise. It writes no field for the generated tsvector
+column of PostgreSQL and none for the sync triggers of SQLite, because the
+declaration implies them. A full-text index the models cannot declare is
+reported as a warning and left out.</p>
+<h2 id="hybrid-search">Hybrid search<a class="headerlink" href="#hybrid-search" title="Permanent link">&para;</a></h2>
+<p><code>momo.HybridSearch</code> fuses a full-text leg and a cosine-distance vector leg with
+reciprocal rank fusion. It runs on PostgreSQL, on SQLite (FTS5 and sqlite-vec,
+so the cgo driver) and on MariaDB 11.8. MySQL has no vector distance function,
+so on MySQL the call fails with <code>ErrUnsupported</code> before any SQL is sent; it
+never falls back to a text-only search.</p>
+<p>On SQLite and MariaDB the text leg searches the structure of the model's
+declaration, the FTS5 table ordered by <code>bm25</code> or a boolean-mode <code>MATCH</code> over
+all declared columns. <code>HybridSpec.Text</code> must be one of the declared columns, or
+the call is <code>ErrValidation</code>. <code>HybridSpec.TextConfig</code> is ignored there, and
+<code>HybridSpec.Query</code> is read like a <code>fts.Web</code> query. A query without a positive
+word leaves the text leg empty and the result is the vector leg alone. On
+MariaDB the text leg inherits the stop word, minimum token length and
+committed-rows limits above, so a row inserted in the same transaction appears
+through the vector leg only. See <a href="../vectors/#hybrid-search">hybrid search</a> for
+the knobs, the tie-breaks and the PostgreSQL leg.</p>
+<h2 id="the-column">The column<a class="headerlink" href="#the-column" title="Permanent link">&para;</a></h2>
+<p>PostgreSQL full-text search keeps a column type and the typed builders it had
+before the portable calls. Every builder in this part returns <code>ErrUnsupported</code>
+when the statement is built for SQLite or MySQL; use the calls above on those
+dialects.</p>
+<p>A model field of type <code>types.TSVector</code> maps to a <code>tsvector</code> column (and a
+<code>types.TSQuery</code> field to <code>tsquery</code>). Both are codecs, so the generator and
+<code>migrate</code> pick the column type from the Go type, diff it and read it back from
+the database with no drift. The Go value is the text form PostgreSQL prints,
+for example <code>'cat':3 'fat':2</code>. A nullable column is a <code>*types.TSVector</code>.</p>
+<p>A declaration with <code>c.FullText</code> needs no such field: momo derives a generated
+column. To maintain the column yourself, leave it nil on insert and update (the
+application normally never sets it: the trigger overwrites it). Keep it current
+with a trigger declared in <code>MomoConfig</code>, and index it with GIN:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="kd">type</span><span class="w"> </span><span class="nx">Article</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Model</span><span class="w"> </span><span class="s">`momo:"table:kb_articles"`</span>
+<span class="w">    </span><span class="nx">ID</span><span class="w">         </span><span class="kt">int64</span><span class="w">            </span><span class="s">`momo:"pk,identity"`</span>
+<span class="w">    </span><span class="nx">Title</span><span class="w">      </span><span class="kt">string</span>
+<span class="w">    </span><span class="nx">Body</span><span class="w">       </span><span class="kt">string</span>
+<span class="w">    </span><span class="nx">SearchTsv</span><span class="w">  </span><span class="o">*</span><span class="nx">types</span><span class="p">.</span><span class="nx">TSVector</span>
+<span class="w">    </span><span class="nx">Embedding</span><span class="w">  </span><span class="nx">vector</span><span class="p">.</span><span class="nx">Vector</span><span class="w"> </span><span class="s">`momo:"dim:1536"`</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">a</span><span class="w"> </span><span class="o">*</span><span class="nx">Article</span><span class="p">)</span><span class="w"> </span><span class="nx">MomoConfig</span><span class="p">(</span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Config</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">Index</span><span class="p">(</span><span class="s">"kb_articles_search_gin"</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">a</span><span class="p">.</span><span class="nx">SearchTsv</span><span class="p">).</span><span class="nx">Method</span><span class="p">(</span><span class="s">"gin"</span><span class="p">)</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">Function</span><span class="p">(</span><span class="nx">schema</span><span class="p">.</span><span class="nx">Function</span><span class="p">{</span>
+<span class="w">        </span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">"kb_articles_tsv"</span><span class="p">,</span><span class="w"> </span><span class="nx">Returns</span><span class="p">:</span><span class="w"> </span><span class="s">"trigger"</span><span class="p">,</span><span class="w"> </span><span class="nx">Language</span><span class="p">:</span><span class="w"> </span><span class="s">"plpgsql"</span><span class="p">,</span><span class="w"> </span><span class="nx">Volatility</span><span class="p">:</span><span class="w"> </span><span class="s">"VOLATILE"</span><span class="p">,</span>
+<span class="w">        </span><span class="nx">Body</span><span class="p">:</span><span class="w"> </span><span class="s">"BEGIN NEW.search_tsv := setweight(to_tsvector('english', coalesce(NEW.title, '')), 'A') || "</span><span class="w"> </span><span class="o">+</span>
+<span class="w">            </span><span class="s">"to_tsvector('english', coalesce(NEW.body, '')); RETURN NEW; END;"</span><span class="p">,</span>
+<span class="w">    </span><span class="p">})</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">Trigger</span><span class="p">(</span><span class="nx">schema</span><span class="p">.</span><span class="nx">Trigger</span><span class="p">{</span>
+<span class="w">        </span><span class="nx">Table</span><span class="p">:</span><span class="w"> </span><span class="s">"kb_articles"</span><span class="p">,</span><span class="w"> </span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">"kb_articles_tsv_trg"</span><span class="p">,</span><span class="w"> </span><span class="nx">Timing</span><span class="p">:</span><span class="w"> </span><span class="s">"BEFORE"</span><span class="p">,</span>
+<span class="w">        </span><span class="nx">Events</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">"INSERT"</span><span class="p">,</span><span class="w"> </span><span class="s">"UPDATE"</span><span class="p">},</span><span class="w"> </span><span class="nx">ForEachRow</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nx">Function</span><span class="p">:</span><span class="w"> </span><span class="s">"kb_articles_tsv()"</span><span class="p">,</span>
+<span class="w">    </span><span class="p">})</span>
+<span class="p">}</span>
+</code></pre></div>
+<h2 id="expressions">Expressions<a class="headerlink" href="#expressions" title="Permanent link">&para;</a></h2>
+<p>The builders live in the package <code>github.com/azrtydxb/momo/fts</code>. They used to be
+functions of the root package; see <a href="../upgrading/">upgrading</a> for
+the name table.</p>
+<p>The text search configuration (<code>english</code>, <code>simple</code>, ...) is a string. It is
+bound as a parameter and cast to regconfig, so it cannot carry SQL; an empty
+one fails the build with <code>ErrValidation</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Builder</th>
+<th>SQL</th>
+<th>Result type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fts.Match</code></td>
+<td><code>vec @@ query</code></td>
+<td><code>Predicate</code></td>
+</tr>
+<tr>
+<td><code>fts.ToVector</code></td>
+<td><code>to_tsvector(config, text)</code></td>
+<td><code>fts.Expr[types.TSVector]</code></td>
+</tr>
+<tr>
+<td><code>fts.WebsearchToQuery</code></td>
+<td><code>websearch_to_tsquery(config, text)</code></td>
+<td><code>fts.Expr[types.TSQuery]</code></td>
+</tr>
+<tr>
+<td><code>fts.PlainToQuery</code></td>
+<td><code>plainto_tsquery(config, text)</code></td>
+<td><code>fts.Expr[types.TSQuery]</code></td>
+</tr>
+<tr>
+<td><code>fts.PhraseToQuery</code></td>
+<td><code>phraseto_tsquery(config, text)</code></td>
+<td><code>fts.Expr[types.TSQuery]</code></td>
+</tr>
+<tr>
+<td><code>fts.ToQuery</code></td>
+<td><code>to_tsquery(config, text)</code></td>
+<td><code>fts.Expr[types.TSQuery]</code></td>
+</tr>
+<tr>
+<td><code>fts.Rank</code></td>
+<td><code>ts_rank(vec, query [, normalization])</code></td>
+<td><code>fts.Expr[float64]</code></td>
+</tr>
+<tr>
+<td><code>fts.RankCD</code></td>
+<td><code>ts_rank_cd(vec, query [, normalization])</code></td>
+<td><code>fts.Expr[float64]</code></td>
+</tr>
+<tr>
+<td><code>fts.Headline</code></td>
+<td><code>ts_headline(config, text, query [, options])</code></td>
+<td><code>fts.Expr[string]</code></td>
+</tr>
+</tbody>
+</table>
+<p>The query text, the configuration and the headline options are always bound
+parameters. The normalization argument of the rank functions is the optional
+PostgreSQL flag mask (0 to 63) and renders as a literal. <code>fts.WebsearchToQuery</code>
+accepts any user input without raising a syntax error, so it is the builder for
+a search box; <code>fts.ToQuery</code> expects tsquery syntax and a malformed query is a
+database error.</p>
+<p>An <code>fts.Expr</code> has <code>As</code>, <code>Asc</code>, <code>Desc</code> and the comparison methods of any scalar
+expression, so it works in Where, OrderBy and Columns:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">q</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">WebsearchToQuery</span><span class="p">(</span><span class="s">"english"</span><span class="p">,</span><span class="w"> </span><span class="nx">userInput</span><span class="p">)</span>
+<span class="nx">rank</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">RankCD</span><span class="p">(</span><span class="nx">articleSearch</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">)</span>
+
+<span class="nx">hits</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">Hit</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">From</span><span class="p">(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">TableRef</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">"kb_articles"</span><span class="p">}).</span>
+<span class="w">    </span><span class="nx">Columns</span><span class="p">(</span><span class="nx">articleID</span><span class="p">,</span><span class="w"> </span><span class="nx">rank</span><span class="p">.</span><span class="nx">As</span><span class="p">(</span><span class="s">"rank"</span><span class="p">),</span>
+<span class="w">        </span><span class="nx">fts</span><span class="p">.</span><span class="nx">Headline</span><span class="p">(</span><span class="s">"english"</span><span class="p">,</span><span class="w"> </span><span class="nx">articleBody</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">"StartSel=&lt;b&gt;, StopSel=&lt;/b&gt;, MaxFragments=2"</span><span class="p">)).</span>
+<span class="w">    </span><span class="nx">Where</span><span class="p">(</span><span class="nx">fts</span><span class="p">.</span><span class="nx">Match</span><span class="p">(</span><span class="nx">articleSearch</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">)).</span>
+<span class="w">    </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">rank</span><span class="p">.</span><span class="nx">Desc</span><span class="p">()).</span>
+<span class="w">    </span><span class="nx">Limit</span><span class="p">(</span><span class="mi">20</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">All</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+</code></pre></div>
+<p>Here <code>articleSearch</code> is a <code>Column[types.TSVector]</code> and <code>articleBody</code> a
+<code>Column[string]</code>. Without a stored column, search a text column directly with
+<code>fts.ToVector</code> over <code>articleBody</code> as the first operand of <code>fts.Match</code> (an
+expression index on the same expression keeps it fast).</p>
+<p>Every use of a call binds its own parameters (the configuration and the query
+text), so the same expression written in the select list and again in GROUP BY
+gets different placeholders, and PostgreSQL rejects the statement as an
+ungrouped column. The same applies to SELECT DISTINCT with an ORDER BY on the
+call. Group by a stored tsvector instead, or compute the call once in a
+subquery or CTE and refer to its alias. A golden test pins the placeholders.</p>
+<p>Arguments bound by these calls are masked in hook events (shown as
+<code>RedactedArg</code>) when an operand reads a column marked sensitive; the driver
+still receives the real values.</p>
+<h2 id="hybrid-ranking-vector-plus-text">Hybrid ranking: vector plus text<a class="headerlink" href="#hybrid-ranking-vector-plus-text" title="Permanent link">&para;</a></h2>
+<p>For reciprocal rank fusion of the two signals, use <code>momo.HybridSearch</code> (see
+<a href="../vectors/#hybrid-search">hybrid search</a>). To weigh the signals yourself,
+combine them in one score with the typed arithmetic helpers. The cosine
+distance is lower for better matches and the text rank is higher, so subtract a
+weighted rank from the distance and order ascending:</p>
+<!-- docscheck:fragment -->
+
+<div class="highlight"><pre><span></span><code><span class="nx">dist</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">vecop</span><span class="p">.</span><span class="nx">Cosine</span><span class="p">(</span><span class="nx">articleEmb</span><span class="p">,</span><span class="w"> </span><span class="nx">queryEmbedding</span><span class="p">)</span><span class="w"> </span><span class="c1">// vector.Vector</span>
+<span class="nx">text</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">RankCD</span><span class="p">(</span><span class="nx">articleSearch</span><span class="p">,</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">WebsearchToQuery</span><span class="p">(</span><span class="s">"english"</span><span class="p">,</span><span class="w"> </span><span class="nx">userInput</span><span class="p">))</span>
+<span class="nx">score</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">sqlfn</span><span class="p">.</span><span class="nx">SubExpr</span><span class="p">[</span><span class="kt">float64</span><span class="p">](</span><span class="nx">dist</span><span class="p">,</span><span class="w"> </span><span class="nx">sqlfn</span><span class="p">.</span><span class="nx">Mul</span><span class="p">[</span><span class="kt">float64</span><span class="p">](</span><span class="nx">text</span><span class="p">,</span><span class="w"> </span><span class="mf">0.5</span><span class="p">))</span>
+
+<span class="nx">hits</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">Hit</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">From</span><span class="p">(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">TableRef</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">"kb_articles"</span><span class="p">}).</span>
+<span class="w">    </span><span class="nx">Columns</span><span class="p">(</span><span class="nx">articleID</span><span class="p">,</span><span class="w"> </span><span class="nx">score</span><span class="p">.</span><span class="nx">As</span><span class="p">(</span><span class="s">"score"</span><span class="p">),</span><span class="w"> </span><span class="nx">articleTitle</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">score</span><span class="p">.</span><span class="nx">Asc</span><span class="p">()).</span>
+<span class="w">    </span><span class="nx">Limit</span><span class="p">(</span><span class="mi">20</span><span class="p">).</span>
+<span class="w">    </span><span class="nx">All</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+</code></pre></div>
+<p>This scores every row. To restrict the candidate set to text matches, add
+a Where on <code>fts.Match</code> over <code>articleSearch</code> and the same query, which lets the GIN
+index prune the rows before the vector distance is computed. The
+<code>TestFullTextHybridRanking</code> integration test runs this pattern.</p>
+<h2 id="scanning">Scanning<a class="headerlink" href="#scanning" title="Permanent link">&para;</a></h2>
+<p>pgx returns tsvector and tsquery values as text, which <code>types.TSVector</code> and
+<code>types.TSQuery</code> scan. <code>ts_rank</code> and <code>ts_rank_cd</code> return real; they scan into
+<code>float64</code> fields.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  </body>
+</html>
