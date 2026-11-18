@@ -29,7 +29,11 @@ WHERE t.typtype = 'e' AND n.nspname = ANY($1) ORDER BY 1,2,e.enumsortorder`
 	qTables = `SELECT c.oid, n.nspname, c.relname, c.relrowsecurity, c.relforcerowsecurity
 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE c.relkind IN ('r','p') AND n.nspname = ANY($1) ORDER BY 2,3`
-	qColumns = `SELECT a.attname, format_type(a.atttypid, a.atttypmod), NOT a.attnotnull,
+	// The four per-table queries below take $1 as the set of relation oids,
+	// passed as int8[] so the driver encodes it without an oid[] codec, and
+	// return the relation oid first; rows come in oid order, then the order a
+	// single-table read would give.
+	qColumns = `SELECT a.attrelid, a.attname, format_type(a.atttypid, a.atttypmod), NOT a.attnotnull,
   pg_get_expr(d.adbin, d.adrelid), a.attidentity::text, a.attgenerated::text, t.typtype::text, t.typname,
   tn.nspname, a.attnum,
   CASE WHEN a.attcollation <> t.typcollation THEN (SELECT collname::text FROM pg_collation WHERE oid = a.attcollation) END,
@@ -38,12 +42,12 @@ FROM pg_attribute a
 LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
 JOIN pg_type t ON t.oid = a.atttypid
 JOIN pg_namespace tn ON tn.oid = t.typnamespace
-WHERE a.attrelid = $1 AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`
+WHERE a.attrelid = ANY($1::int8[]::oid[]) AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attrelid, a.attnum`
 	qOwnedSeq = `SELECT EXISTS (SELECT 1 FROM pg_depend
 WHERE classid = 'pg_class'::regclass AND objid = to_regclass($1)::oid
   AND refobjid = $2::oid AND refobjsubid = $3::int2 AND deptype = 'a')`
 	// conparentid = 0 drops constraints a partition child merely inherits.
-	qConstraints = `SELECT conname, contype::text,
+	qConstraints = `SELECT conrelid, conname, contype::text,
   (SELECT array_agg(a.attname::text ORDER BY k.ord) FROM unnest(conkey) WITH ORDINALITY k(n, ord)
      JOIN pg_attribute a ON a.attrelid = conrelid AND a.attnum = k.n),
   (SELECT n.nspname::text FROM pg_class rc JOIN pg_namespace n ON n.oid = rc.relnamespace WHERE rc.oid = confrelid),
@@ -51,12 +55,12 @@ WHERE classid = 'pg_class'::regclass AND objid = to_regclass($1)::oid
   (SELECT array_agg(a.attname::text ORDER BY k.ord) FROM unnest(confkey) WITH ORDINALITY k(n, ord)
      JOIN pg_attribute a ON a.attrelid = confrelid AND a.attnum = k.n),
   confupdtype::text, confdeltype::text, pg_get_constraintdef(oid)
-FROM pg_constraint WHERE conrelid = $1 AND conparentid = 0 ORDER BY conname`
-	qPartitioned = `SELECT pt.partstrat::text, pg_get_partkeydef(c.oid)
-FROM pg_partitioned_table pt JOIN pg_class c ON c.oid = pt.partrelid WHERE c.oid = $1`
-	qPartChild = `SELECT pg_get_expr(c.relpartbound, c.oid), p.relname, pn.nspname
+FROM pg_constraint WHERE conrelid = ANY($1::int8[]::oid[]) AND conparentid = 0 ORDER BY conrelid, conname`
+	qPartitioned = `SELECT c.oid, pt.partstrat::text, pg_get_partkeydef(c.oid)
+FROM pg_partitioned_table pt JOIN pg_class c ON c.oid = pt.partrelid WHERE c.oid = ANY($1::int8[]::oid[]) ORDER BY c.oid`
+	qPartChild = `SELECT c.oid, pg_get_expr(c.relpartbound, c.oid), p.relname, pn.nspname
 FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid JOIN pg_class p ON p.oid = i.inhparent
-JOIN pg_namespace pn ON pn.oid = p.relnamespace WHERE c.oid = $1`
+JOIN pg_namespace pn ON pn.oid = p.relnamespace WHERE c.oid = ANY($1::int8[]::oid[]) ORDER BY c.oid`
 )
 
 var (
@@ -207,13 +211,26 @@ func (in *inspector) tables(ctx context.Context, out *schema.Schema) error {
 	if err != nil {
 		return fmt.Errorf("postgres inspect: tables: %w", err)
 	}
+	// An excluded table is dropped before its columns and constraints are
+	// read, so one the model cannot represent (a virtual generated column)
+	// does not fail the inspection.
+	sel := make([]tableRow, 0, len(rows))
 	for _, tr := range rows {
-		// An excluded table is skipped before its columns and constraints are
-		// read, so one the model cannot represent (a virtual generated column)
-		// does not fail the inspection.
 		if in.excluded(tr.ns, tr.name) || in.outsideOnly(tr.ns, tr.name) {
 			continue
 		}
+		sel = append(sel, tr)
+	}
+	if len(sel) == 0 {
+		return nil
+	}
+	// One query per kind of metadata for every selected table, instead of four
+	// or more per table. tables is parallel to sel; pos maps an oid to its slot.
+	tables := make([]schema.Table, len(sel))
+	pos := make(map[uint32]int, len(sel))
+	ids := make([]int64, len(sel))
+	oids := make([]uint32, len(sel))
+	for i, tr := range sel {
 		t := schema.Table{Name: tr.name}
 		if tr.ns != in.current {
 			t.Schema = tr.ns
@@ -221,27 +238,87 @@ func (in *inspector) tables(ctx context.Context, out *schema.Schema) error {
 		if tr.rls || tr.forced {
 			t.RLS = &schema.RLS{Enabled: tr.rls, Forced: tr.forced}
 		}
-		if err := in.columns(ctx, tr, &t); err != nil {
-			return fmt.Errorf("postgres inspect: columns of %s.%s: %w", tr.ns, tr.name, err)
+		tables[i] = t
+		pos[tr.oid] = i
+		ids[i] = int64(tr.oid)
+		oids[i] = tr.oid
+	}
+	b := tableBatch{sel: sel, tables: tables, pos: pos, ids: ids}
+	if err := in.columns(ctx, b); err != nil {
+		return err
+	}
+	if err := in.constraints(ctx, b); err != nil {
+		return err
+	}
+	if err := in.partitions(ctx, b); err != nil {
+		return err
+	}
+	ixs, invalid, err := Dialect{}.inspectIndexesOf(ctx, in.c, oids)
+	if err != nil {
+		var re *relIndexError
+		if errors.As(err, &re) {
+			if i, ok := pos[re.rel]; ok {
+				return fmt.Errorf("postgres inspect: indexes of %s.%s: %w", sel[i].ns, sel[i].name, err)
+			}
 		}
-		if err := in.constraints(ctx, tr, &t); err != nil {
-			return fmt.Errorf("postgres inspect: constraints of %s.%s: %w", tr.ns, tr.name, err)
-		}
-		if err := in.partitions(ctx, tr, &t); err != nil {
-			return fmt.Errorf("postgres inspect: partitions of %s.%s: %w", tr.ns, tr.name, err)
-		}
-		ixs, invalid, err := Dialect{}.inspectIndexes(ctx, in.c, tr.oid)
-		if err != nil {
-			return fmt.Errorf("postgres inspect: indexes of %s.%s: %w", tr.ns, tr.name, err)
-		}
-		t.Indexes = ixs
-		foldFullText(&t)
-		for _, name := range invalid {
+		return fmt.Errorf("postgres inspect: indexes: %w", err)
+	}
+	for i, tr := range sel {
+		t := &tables[i]
+		t.Indexes = ixs[tr.oid]
+		foldFullText(t)
+		for _, name := range invalid[tr.oid] {
 			in.invalid = append(in.invalid, in.qualify(tr.ns, name))
 		}
-		out.Tables = append(out.Tables, t)
+		out.Tables = append(out.Tables, *t)
 	}
 	return nil
+}
+
+// tableBatch is the set of tables whose metadata one query reads: tables is
+// parallel to sel, pos maps a relation oid to its index and ids holds the oids
+// as the int8[] the catalog queries take.
+type tableBatch struct {
+	sel    []tableRow
+	tables []schema.Table
+	pos    map[uint32]int
+	ids    []int64
+}
+
+// attributedError is an error that already names its table.
+type attributedError struct{ err error }
+
+func (e *attributedError) Error() string { return e.err.Error() }
+func (e *attributedError) Unwrap() error { return e.err }
+
+// rowErr names the table of the row that failed when its oid is one of the
+// batch's; a row that cannot be attributed is returned as it is.
+func (b tableBatch) rowErr(kind string, rel uint32, err error) error {
+	i, ok := b.pos[rel]
+	if !ok {
+		return err
+	}
+	return &attributedError{fmt.Errorf("postgres inspect: %s of %s.%s: %w", kind, b.sel[i].ns, b.sel[i].name, err)}
+}
+
+// queryErr wraps the failure of a whole metadata query; an error that already
+// names its table is kept as it is.
+func queryErr(kind string, err error) error {
+	var a *attributedError
+	if errors.As(err, &a) {
+		return a.err
+	}
+	return fmt.Errorf("postgres inspect: %s: %w", kind, err)
+}
+
+// slot returns the table a catalog row belongs to; a row for a relation that
+// was not requested is a query bug, not data to skip.
+func (b tableBatch) slot(rel uint32) (int, error) {
+	i, ok := b.pos[rel]
+	if !ok {
+		return 0, fmt.Errorf("row belongs to relation oid %d, which was not requested", rel)
+	}
+	return i, nil
 }
 
 type rawColumn struct {
@@ -251,26 +328,35 @@ type rawColumn struct {
 	def, coll, cmt                                          *string
 }
 
-func (in *inspector) columns(ctx context.Context, tr tableRow, t *schema.Table) error {
-	var cols []rawColumn
-	err := forEach(ctx, in.c, qColumns, []any{tr.oid}, func(r momo.Rows) error {
+func (in *inspector) columns(ctx context.Context, b tableBatch) error {
+	// The rows are read in full before any column is built: building one may
+	// query (an owned-sequence check), which the open cursor would block.
+	cols := make([][]rawColumn, len(b.sel))
+	err := forEach(ctx, in.c, qColumns, []any{b.ids}, func(r momo.Rows) error {
+		var rel uint32
 		var x rawColumn
-		if err := r.Scan(&x.name, &x.formatted, &x.nullable, &x.def, &x.identity, &x.gen,
+		if err := r.Scan(&rel, &x.name, &x.formatted, &x.nullable, &x.def, &x.identity, &x.gen,
 			&x.typtype, &x.typname, &x.typns, &x.attnum, &x.coll, &x.cmt); err != nil {
-			return err
+			return b.rowErr("columns", rel, err)
 		}
-		cols = append(cols, x)
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	for _, x := range cols {
-		col, err := in.column(ctx, tr.oid, x)
+		i, err := b.slot(rel)
 		if err != nil {
 			return err
 		}
-		t.Columns = append(t.Columns, col)
+		cols[i] = append(cols[i], x)
+		return nil
+	})
+	if err != nil {
+		return queryErr("columns", err)
+	}
+	for i, tr := range b.sel {
+		for _, x := range cols[i] {
+			col, err := in.column(ctx, tr.oid, x)
+			if err != nil {
+				return fmt.Errorf("postgres inspect: columns of %s.%s: %w", tr.ns, tr.name, err)
+			}
+			b.tables[i].Columns = append(b.tables[i].Columns, col)
+		}
 	}
 	return nil
 }
@@ -337,16 +423,22 @@ func (in *inspector) ownedSerial(ctx context.Context, def string, rel uint32, at
 	return owned, nil
 }
 
-func (in *inspector) constraints(ctx context.Context, tr tableRow, t *schema.Table) error {
-	return forEach(ctx, in.c, qConstraints, []any{tr.oid}, func(r momo.Rows) error {
+func (in *inspector) constraints(ctx context.Context, b tableBatch) error {
+	err := forEach(ctx, in.c, qConstraints, []any{b.ids}, func(r momo.Rows) error {
 		var (
+			rel                      uint32
 			name, typ, upd, del, def string
 			refNS, refName           *string
 			cols, refCols            []string
 		)
-		if err := r.Scan(&name, &typ, &cols, &refNS, &refName, &refCols, &upd, &del, &def); err != nil {
+		if err := r.Scan(&rel, &name, &typ, &cols, &refNS, &refName, &refCols, &upd, &del, &def); err != nil {
+			return b.rowErr("constraints", rel, err)
+		}
+		i, err := b.slot(rel)
+		if err != nil {
 			return err
 		}
+		t := &b.tables[i]
 		switch typ {
 		case "p":
 			t.PrimaryKey = cols
@@ -370,27 +462,48 @@ func (in *inspector) constraints(ctx context.Context, tr tableRow, t *schema.Tab
 		}
 		return nil
 	})
+	if err != nil {
+		return queryErr("constraints", err)
+	}
+	return nil
 }
 
-func (in *inspector) partitions(ctx context.Context, tr tableRow, t *schema.Table) error {
-	var strat, key string
-	err := forEach(ctx, in.c, qPartitioned, []any{tr.oid}, func(r momo.Rows) error {
-		return r.Scan(&strat, &key)
-	})
-	if err != nil {
-		return err
-	}
-	if key != "" {
-		t.Partition = &schema.Partition{Strategy: partStrategies[strat], Key: key}
-	}
-	return forEach(ctx, in.c, qPartChild, []any{tr.oid}, func(r momo.Rows) error {
-		var bound, parent, ns string
-		if err := r.Scan(&bound, &parent, &ns); err != nil {
+func (in *inspector) partitions(ctx context.Context, b tableBatch) error {
+	err := forEach(ctx, in.c, qPartitioned, []any{b.ids}, func(r momo.Rows) error {
+		var rel uint32
+		var strat, key string
+		if err := r.Scan(&rel, &strat, &key); err != nil {
+			return b.rowErr("partitions", rel, err)
+		}
+		i, err := b.slot(rel)
+		if err != nil {
 			return err
 		}
-		t.PartitionOf = &schema.PartitionOf{Parent: in.qualify(ns, parent), Bound: bound}
+		if key != "" {
+			b.tables[i].Partition = &schema.Partition{Strategy: partStrategies[strat], Key: key}
+		}
 		return nil
 	})
+	if err != nil {
+		return queryErr("partitions", err)
+	}
+	err = forEach(ctx, in.c, qPartChild, []any{b.ids}, func(r momo.Rows) error {
+		var rel uint32
+		var bound, parent, ns string
+		if err := r.Scan(&rel, &bound, &parent, &ns); err != nil {
+			return b.rowErr("partitions", rel, err)
+		}
+		i, err := b.slot(rel)
+		if err != nil {
+			return err
+		}
+		b.tables[i].PartitionOf = &schema.PartitionOf{Parent: in.qualify(ns, parent), Bound: bound}
+		return nil
+	})
+	if err != nil {
+		return queryErr("partitions", err)
+	}
+	return nil
 }
 
 // forEach runs a query and calls fn for each row, always closing the rows.

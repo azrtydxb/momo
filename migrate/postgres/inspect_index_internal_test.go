@@ -38,10 +38,11 @@ func TestInspectIndexesReportsInvalid(t *testing.T) {
 	if err := queryOne(ctx, c, `SELECT to_regclass('inv')::oid`, nil, &oid); err != nil {
 		t.Fatal(err)
 	}
-	ixs, invalid, err := Dialect{}.inspectIndexes(ctx, c, oid)
+	ixMap, invalidMap, err := Dialect{}.inspectIndexesOf(ctx, c, []uint32{oid})
 	if err != nil {
 		t.Fatal(err)
 	}
+	ixs, invalid := ixMap[oid], invalidMap[oid]
 	if !slices.Equal(invalid, []string{"inv_v_key"}) {
 		t.Fatalf("invalid = %v", invalid)
 	}

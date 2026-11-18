@@ -50,17 +50,6 @@ type rawIndex struct {
 	reloptions       []string
 }
 
-// inspectIndexes reads the standalone indexes of one relation. The second
-// result names the indexes that are not valid (a failed CREATE INDEX
-// CONCURRENTLY); they are still listed with the others.
-func (d Dialect) inspectIndexes(ctx context.Context, c momo.PinnedConn, relOID uint32) ([]schema.Index, []string, error) {
-	ixs, invalid, err := d.inspectIndexesOf(ctx, c, []uint32{relOID})
-	if err != nil {
-		return nil, nil, err
-	}
-	return ixs[relOID], invalid[relOID], nil
-}
-
 // relIndexError is an index-reading error that remembers which relation's
 // index failed, so a caller that read several relations at once can name it.
 // Its text is the wrapped error's.
@@ -74,7 +63,9 @@ func (e *relIndexError) Unwrap() error { return e.err }
 
 // inspectIndexesOf reads the standalone indexes of several relations with one
 // catalog query, keyed by relation oid. Each relation's indexes and invalid
-// names come in the same order inspectIndexes gives them.
+// names come in relname order; an index that is not valid (a failed CREATE
+// INDEX CONCURRENTLY) is still listed with the others and also named in the
+// invalid map.
 func (Dialect) inspectIndexesOf(ctx context.Context, c momo.PinnedConn, relOIDs []uint32) (map[uint32][]schema.Index, map[uint32][]string, error) {
 	ids := make([]int64, len(relOIDs))
 	for i, o := range relOIDs {
