@@ -154,7 +154,7 @@ type:
   struct around a `time.Time` whose wall clock is written without a zone and
   read back as a UTC time, the way the column stores it.
 
-A `Range` holds `Lower` and `Upper`, each a `types.Bound` with a `Value`, an
+A `types.Range` holds a lower and an upper `types.Bound`, each with a `Value`, an
 `Inclusive` flag and an `Infinite` flag (no limit on that side), and an `Empty`
 flag. Build one with `types.ClosedOpen(lower, upper)` (`[lower,upper)`, the usual
 form for a period), `types.NewRange` with `types.Incl`, `types.Excl` and

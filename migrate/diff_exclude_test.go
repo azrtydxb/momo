@@ -128,7 +128,7 @@ func TestSnapshotExcludeCompatibility(t *testing.T) {
 	if err := json.Unmarshal(raw, &back); err != nil || !schema.Equal(&back, bookingsSchema(nil)) {
 		t.Fatalf("round trip: %v\n%s", err, raw)
 	}
-	for _, want := range []string{`"excludes"`, `"operator":"&&"`, `"column":"during"`} {
+	for _, want := range []string{`"excludes"`, `"elements"`, `"operator"`, `"column":"during"`} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("the snapshot lacks %s:\n%s", want, raw)
 		}

@@ -1,4 +1,10 @@
 # Pages whose bare backticked names are not root (momo) names.
 # Format: path package reason (see TestBareNamesAreRootNames).
 docs/migrations.md migrate the page documents the migrate package; its sections name it and write Engine.Apply, Engine.Rollback
+docs/capabilities.md types the generated capabilities table names the Range frame of a window, which is a method of the window and not the types.Range type
+docs/ai-guide.md types the window section names the Range frame, a window frame mode and not the types.Range type
+docs/mysql.md types the window notes name the Range frame, a window frame mode and not the types.Range type
+docs/upgrading.md types an older section names the Range frame of a window, a frame mode and not the types.Range type
+docs/upgrading.md schema an older section names the Exclude glob list of the migrate configuration and not the schema.Exclude type
+docs/migrations.md schema the section on the exclude rule names the Exclude glob list of the migrate configuration and not the schema.Exclude type
 docs/capabilities.md schema the generated capabilities table has one row per dialect.Dialect field, and the FullText row shares its name with the schema.FullText type
