@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.18.0](https://github.com/azrtydxb/momo/compare/v0.17.0...v0.18.0) (2026-11-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **gen:** a *vector.Vector field tagged read_only now generates momo.NullReadOnlyVectorColumn instead of momo.ReadOnlyVectorColumn; a helper typed ReadOnlyVectorColumn[V] stops compiling after regenerating and should take momo.VectorSource[V] or the new type. The read-only, create-only and immutable vector column types are no longer convertible into one another. See docs/upgrading.md.
+
+### Features
+
+* **importer/history:** add ReadContext to the table readers ([#236](https://github.com/azrtydxb/momo/issues/236)) ([1c359ef](https://github.com/azrtydxb/momo/commit/1c359ef06133a9878adaa9c6aabfa14e94c60390))
+
+
+### Bug Fixes
+
+* **generate:** keep only sequences used by listed tables ([#238](https://github.com/azrtydxb/momo/issues/238)) ([e76ca38](https://github.com/azrtydxb/momo/commit/e76ca38f3bd8c75ab8682772ff345612eddd9c5b)), closes [#231](https://github.com/azrtydxb/momo/issues/231)
+* **gen:** keep null ops on nullable read-only vector columns ([#234](https://github.com/azrtydxb/momo/issues/234)) ([cc8419b](https://github.com/azrtydxb/momo/commit/cc8419bf4181971b6a44f92d420a4fd2eb308e1c))
+* **migrate/postgres:** reject an index with no parts ([#243](https://github.com/azrtydxb/momo/issues/243)) ([a5aa47e](https://github.com/azrtydxb/momo/commit/a5aa47ebd3a35d1ccb3114219f4583d706b5b49b))
+* **migrate/postgres:** reject empty views, batch view inspection ([#235](https://github.com/azrtydxb/momo/issues/235)) ([4892fb7](https://github.com/azrtydxb/momo/commit/4892fb70644bf0f225cd3327ca100d407dcfce70))
+* **migratecfg:** report YAML syntax errors in a second document ([#240](https://github.com/azrtydxb/momo/issues/240)) ([46905cd](https://github.com/azrtydxb/momo/commit/46905cd49b0f895f3b1b5ee03ca739031892dc1d))
+* **schema:** compare value-list checks as sets in Equal ([#239](https://github.com/azrtydxb/momo/issues/239)) ([d194cb9](https://github.com/azrtydxb/momo/commit/d194cb9a0b8cad1fe41f709dd52c44cb7b7a8d64)), closes [#227](https://github.com/azrtydxb/momo/issues/227)
+
+
+### Performance Improvements
+
+* look up unnest column types without building a map ([#245](https://github.com/azrtydxb/momo/issues/245)) ([fceb3c2](https://github.com/azrtydxb/momo/commit/fceb3c2fefae877c41a367106ddc92371d6409c2))
+* **migrate/postgres:** inspect all tables in one query per kind ([#242](https://github.com/azrtydxb/momo/issues/242)) ([db0b1bf](https://github.com/azrtydxb/momo/commit/db0b1bf2879d40f374af77e022ac185e70b856bf))
+* move insert bodies off the generic InsertQuery ([#230](https://github.com/azrtydxb/momo/issues/230)) ([85bb077](https://github.com/azrtydxb/momo/commit/85bb07700d7f17f3abb33ca4d22fe2341f3966af)), closes [#217](https://github.com/azrtydxb/momo/issues/217)
+
 ## [0.17.0](https://github.com/azrtydxb/momo/compare/v0.16.1...v0.17.0) (2026-11-17)
 
 _Adopting a database built by another tool no longer needs a hand diff: the baseline refusal and `momo migrate drift` name every differing object, and `drift --fix-sql` prints the SQL that repairs it. `drift` on a database without momo history now compares it with a snapshot instead of listing every table as unmanaged, so a script that reads that output sees a different report; see [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.17.0/docs/upgrading.md). [Changes since 0.16.1](https://github.com/azrtydxb/momo/compare/v0.16.1...v0.17.0)._
