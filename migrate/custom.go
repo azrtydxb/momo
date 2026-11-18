@@ -31,14 +31,18 @@ func (e *Engine) NewCustom(name string) (*Migration, error) {
 	if !migrationName.MatchString(name) {
 		return nil, fmt.Errorf("%w: %q must match %s", ErrInvalidName, name, migrationName)
 	}
-	snap, err := LatestState(e.dir)
+	files, err := Discover(e.dir)
+	if err != nil {
+		return nil, err
+	}
+	snap, err := latestStateFrom(files)
 	if errors.Is(err, ErrNoSnapshot) {
 		return nil, fmt.Errorf("%w: a custom migration copies the latest snapshot; run momo migrate diff first", ErrNoSnapshot)
 	}
 	if err != nil {
 		return nil, err
 	}
-	version, err := NextVersion(e.opts.clock, e.dir)
+	version, err := nextVersionFrom(e.opts.clock, files)
 	if err != nil {
 		return nil, err
 	}

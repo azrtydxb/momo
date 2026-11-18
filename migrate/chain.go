@@ -176,6 +176,11 @@ func NextVersion(now func() time.Time, fsys fs.FS) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return nextVersionFrom(now, files)
+}
+
+// nextVersionFrom is NextVersion over files a caller has already discovered.
+func nextVersionFrom(now func() time.Time, files []File) (string, error) {
 	v := now().UTC().Format(versionLayout)
 	for _, f := range files {
 		if f.Version >= v {

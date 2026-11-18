@@ -87,7 +87,8 @@ func planFile(dir string, f File, overwrite bool) (Action, error) {
 		return Action{}, err
 	}
 	// A CRLF copy (core.autocrlf checkout) of the current file is current.
-	if bytes.Equal(existing, f.Content) || bytes.Equal(bytes.ReplaceAll(existing, []byte("\r\n"), []byte("\n")), f.Content) {
+	lf := bytes.ReplaceAll(existing, []byte("\r\n"), []byte("\n"))
+	if bytes.Equal(existing, f.Content) || bytes.Equal(lf, f.Content) {
 		a.Kind, a.Content = ActionUnchanged, nil
 		return a, nil
 	}
@@ -99,7 +100,6 @@ func planFile(dir string, f File, overwrite bool) (Action, error) {
 		a.Kind, a.Content = ActionHeader, refreshed
 		return a, nil
 	}
-	lf := bytes.ReplaceAll(existing, []byte("\r\n"), []byte("\n"))
 	edited, generated := Edited(lf)
 	if generated && edited {
 		// Edited by hand, but the database did not change the model since it

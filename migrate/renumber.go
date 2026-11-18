@@ -195,7 +195,8 @@ func (e *Engine) Renumber(applied []string) (removed []string, files map[string]
 	// A moved snapshot generated from a merged state holds only what was older
 	// than itself. Every migration that stays sorts before it afterwards, so one
 	// that was newer would vanish from the derived state: refuse, before writing.
-	for _, v := range slices.Sorted(maps.Keys(move)) {
+	moveOrder := slices.Sorted(maps.Keys(move))
+	for _, v := range moveOrder {
 		if !marked[v] {
 			continue
 		}
@@ -215,7 +216,7 @@ func (e *Engine) Renumber(applied []string) (removed []string, files map[string]
 			return nil, nil, nil, fmt.Errorf("migrate: %s is in a subdirectory; renumber moves files in the top level of the migration directory only", f.Path)
 		}
 	}
-	first, err := NextVersion(e.opts.clock, e.dir)
+	first, err := nextVersionFrom(e.opts.clock, all)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -224,7 +225,7 @@ func (e *Engine) Renumber(applied []string) (removed []string, files map[string]
 		return nil, nil, nil, fmt.Errorf("migrate: renumber: %w", err)
 	}
 	newVersion := map[string]string{}
-	for i, v := range slices.Sorted(maps.Keys(move)) {
+	for i, v := range moveOrder {
 		newVersion[v] = t.Add(time.Duration(i) * time.Second).Format(versionLayout)
 	}
 

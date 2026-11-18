@@ -49,10 +49,7 @@ func (e *Engine) Rebase(ctx context.Context, target fs.FS, desired *schema.Schem
 	}
 	// A broken target (bad momo.sum, a fork, a missing snapshot) would make the
 	// regenerated migration build on sand, so validate it before diffing.
-	rep, err := ValidateOffline(target)
-	if err != nil {
-		return nil, nil, fmt.Errorf("migrate: target: %w", err)
-	}
+	rep := validateFiles(target, tfiles, nil)
 	if len(rep.Problems) > 0 {
 		return nil, nil, fmt.Errorf("migrate: the target directory is not a valid migration chain, fix it before rebasing: %s", strings.Join(rep.Problems, "; "))
 	}
