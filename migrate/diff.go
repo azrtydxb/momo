@@ -434,7 +434,7 @@ func (d *differ) diffTable(fk string, fn, tn, fo, to *schema.Table) {
 	d.columns(fn, tn, fo, to, renameTo)
 	d.primaryKey(fn, tn, to)
 	d.uniques(fn, tn, to)
-	d.checks(fn, tn, to)
+	d.checks(fn, tn, d.remapFrom(fo, renameTo), to)
 	d.foreignKeys(fn, tn, to)
 	d.indexes(fn, tn, fo, to)
 	if effectiveRLS(fn.RLS) != effectiveRLS(tn.RLS) {
@@ -623,9 +623,19 @@ func (d *differ) uniques(fn, tn, to *schema.Table) {
 		func(u schema.Unique) goneUse { return usesGone(d.gone, u.Columns) })
 }
 
-func (d *differ) checks(fn, tn, to *schema.Table) {
+// checks compares the checks of two tables. fn and tn are normalized, which
+// lowercases a MySQL column inside its backticks; a value list is read from the
+// tables as given (rawFrom and to), the way schema.Equal reads it, so the two
+// agree on one list.
+func (d *differ) checks(fn, tn, rawFrom, to *schema.Table) {
 	d.validateCheckIns(tn)
 	name := func(c schema.Check) string { return c.Name }
+	raw := func(t *schema.Table, c schema.Check) schema.Check {
+		if r, ok := lookup(t.Checks, name, c.Name); ok {
+			return r
+		}
+		return c
+	}
 	// Two checks of one name that both hold a value list over the same column
 	// are compared as sets of values: equal sets are no change, whatever the
 	// order or the spelling of the expression, and a different set is one
@@ -634,13 +644,14 @@ func (d *differ) checks(fn, tn, to *schema.Table) {
 	var pairs [][2]schema.Check
 	for _, o := range fn.Checks {
 		n, ok := lookup(tn.Checks, name, o.Name)
-		if !ok || (o.In == nil && n.In == nil) {
+		ro, rn := raw(rawFrom, o), raw(to, n)
+		if !ok || (ro.In == nil && rn.In == nil) {
 			continue
 		}
 		// A side read back from a database carries no value list; read it from
 		// its expression, the way schema.Equal does.
-		lo, okO := o.ValueList()
-		ln, okN := n.ValueList()
+		lo, okO := ro.ValueList()
+		ln, okN := rn.ValueList()
 		if okO && okN && lo.Column == ln.Column {
 			o.In, n.In = &lo, &ln
 			paired[o.Name] = true
@@ -654,7 +665,13 @@ func (d *differ) checks(fn, tn, to *schema.Table) {
 		return slices.DeleteFunc(slices.Clone(cs), func(c schema.Check) bool { return paired[c.Name] })
 	}
 	diffNamed(d, rest(fn.Checks), rest(tn.Checks), to, name,
-		schema.SameCheck, DropCheck, AddCheck,
+		func(a, b schema.Check) bool {
+			ra, rb := raw(rawFrom, a), raw(to, b)
+			if ra.In != nil || rb.In != nil {
+				return schema.SameCheck(ra, rb)
+			}
+			return a.Expr == b.Expr
+		}, DropCheck, AddCheck,
 		func(c schema.Check) goneUse { return usesGone(d.gone, nil, c.Expr) })
 	for _, p := range pairs {
 		d.alterCheckIn(to, p[0], p[1])
