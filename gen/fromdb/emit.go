@@ -1238,8 +1238,18 @@ func (g *generator) globals() {
 		}
 		host.stmts = append(host.stmts, "c.Enum("+strings.Join(args, ", ")+")")
 	}
+	var seqs []schema.Sequence
 	for _, q := range g.clean.Sequences {
-		host.stmts = append(host.stmts, sequenceStmt(q))
+		h := g.sequenceHost(q)
+		if h == nil {
+			g.add(SevNote, q.Name, "sequence is used by no table matched by introspect.only and is not named in it: not declared and not in the snapshot")
+			continue
+		}
+		seqs = append(seqs, q)
+		h.stmts = append(h.stmts, sequenceStmt(q))
+	}
+	if len(g.o.Config.Only) > 0 {
+		g.clean.Sequences = seqs
 	}
 	for i := range g.clean.Views {
 		v := &g.clean.Views[i]
