@@ -116,7 +116,7 @@ func requires(ch Change) []string {
 			out = append(out, columnTypeRefs(c)...)
 		}
 	case CreateIndex:
-		if ix, ok := ch.After.(*schema.Index); ok {
+		if ix, ok := ch.After.(*schema.Index); ok && ix != nil {
 			var cols []string
 			for _, p := range ix.Parts {
 				if p.Column != "" {
@@ -128,7 +128,7 @@ func requires(ch Change) []string {
 			out = append(out, colRefs(ch.Schema, ch.Table)...)
 		}
 	case AddFK:
-		if fk, ok := ch.After.(*schema.ForeignKey); ok {
+		if fk, ok := ch.After.(*schema.ForeignKey); ok && fk != nil {
 			out = append(out, colRefs(ch.Schema, ch.Table, fk.Columns...)...)
 			out = append(out, colRefs(ch.Schema, fk.RefTable, fk.RefColumns...)...)
 		} else {

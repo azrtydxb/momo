@@ -661,6 +661,9 @@ var safeValue = regexp.MustCompile(`^[A-Za-z0-9_.+-]+$`)
 var nullsOrder = map[string]string{"first": "NULLS FIRST", "last": "NULLS LAST"}
 
 func createIndex(schemaName, table string, ix schema.Index) (migrate.Statement, error) {
+	if len(ix.Parts) == 0 {
+		return migrate.Statement{}, fmt.Errorf("index %q has no parts", ix.Name)
+	}
 	var b strings.Builder
 	b.WriteString("CREATE ")
 	if ix.Unique {
