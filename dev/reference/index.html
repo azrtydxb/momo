@@ -5278,6 +5278,11 @@
 <td>ExprFor returns the expression a renderer writes for the check on dialect d: the rendering of its value list when it has one, otherwise Expr.</td>
 </tr>
 <tr>
+<td><code>schema.Check.ValueList</code></td>
+<td>method</td>
+<td>ValueList returns the value list the check holds: In when it is set, else the list read from Expr when that is a value-list expression in any spelling the supported databases report (what an inspector returns carries no In).</td>
+</tr>
+<tr>
 <td><code>schema.CheckIn</code></td>
 <td>type</td>
 <td>CheckIn describes a CHECK constraint that restricts a text column to a set of values: CHECK (column IN ('a', 'b')).</td>
@@ -5441,6 +5446,11 @@
 <td><code>schema.RLS</code></td>
 <td>type</td>
 <td>RLS holds a table's row-level security flags (PostgreSQL).</td>
+</tr>
+<tr>
+<td><code>schema.SameCheck</code></td>
+<td>func</td>
+<td>SameCheck reports whether two checks of one name are the same constraint.</td>
 </tr>
 <tr>
 <td><code>schema.Schema</code></td>
