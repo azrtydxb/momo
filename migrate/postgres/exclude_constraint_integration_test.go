@@ -31,8 +31,10 @@ func excludeSchema(exclude *schema.Exclude) *schema.Schema {
 		t.Excludes = []schema.Exclude{*exclude}
 	}
 	return &schema.Schema{
-		Dialect:    "postgres",
-		Extensions: []schema.Extension{{Name: "btree_gist"}},
+		Dialect: "postgres",
+		// The scratch database has pgvector installed, as the deferrable tests
+		// declare it.
+		Extensions: []schema.Extension{{Name: "btree_gist"}, {Name: "vector"}},
 		Tables:     []schema.Table{t},
 	}
 }
