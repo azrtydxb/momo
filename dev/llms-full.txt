@@ -4150,10 +4150,12 @@ gets `momo.NullVectorColumn`, which adds `SetNull`.
 
 A vector field tagged `read_only`, `create_only` or `immutable` gets the
 matching `ReadOnlyVectorColumn`, `CreateOnlyVectorColumn` or
-`ImmutableVectorColumn`. They keep the write restriction of the plain
-permission columns (no `Column.Set` on a read-only column, an insert-only `Column.Set` on
-the other two) and every distance builder accepts them, so a read-only
-embedding can be searched.
+`ImmutableVectorColumn`. A nullable read-only vector field (`*vector.Vector`
+tagged `read_only`) gets `momo.NullReadOnlyVectorColumn` instead, which has
+the read-only surface of `ReadOnlyVectorColumn`. All of these keep the write
+restriction of the plain permission columns (no `Column.Set` on a read-only
+column, an insert-only `Column.Set` on the other two), and every distance
+builder accepts them, so a read-only embedding can be searched.
 
 The distance builders take a column and a query vector of the same type.
 The builders live in package `github.com/azrtydxb/momo/vecop`. Each returns a
@@ -10431,6 +10433,26 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.18.0
+
+A `*vector.Vector` field tagged `read_only` now generates a
+`momo.NullReadOnlyVectorColumn` instead of a `momo.ReadOnlyVectorColumn`, so
+run `momo generate` and fix any helper that names the old type.
+
+### A nullable read-only vector has its own column type
+
+Before, `momo generate` gave a nullable read-only vector field the
+non-nullable `momo.ReadOnlyVectorColumn[V]` and the field lost its null
+handling, which `momo.NullReadOnlyColumn` gives a plain column. The generated
+descriptor is now `momo.NullReadOnlyVectorColumn[V]`. The two types are not
+convertible, so after you regenerate, a helper that takes the field as a
+`momo.ReadOnlyVectorColumn[V]` no longer compiles. Make the helper take
+`momo.VectorSource[V]`, which every vector column type satisfies, or take
+`momo.NullReadOnlyVectorColumn[V]`. A non-pointer read-only vector field
+keeps `momo.ReadOnlyVectorColumn[V]`. The read-only, create-only and immutable
+vector types also stop converting into one another, as the scalar
+permission columns already do.
+
 ## Upgrading to 0.17.0
 
 `momo migrate drift` and the refusal of `momo migrate baseline` now name what
@@ -12996,6 +13018,7 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.NewNPlusOneHook`                 | func   | NewNPlusOneHook returns a development hook that calls report once per statement shape per scope when the shape has run more than threshold times (a threshold below 1 counts as 1).                                                                                               |
 | `momo.NewNullColumn`                   | func   | NewNullColumn is used by generated code.                                                                                                                                                                                                                                          |
 | `momo.NewNullReadOnlyColumn`           | func   | NewNullReadOnlyColumn is used by generated code.                                                                                                                                                                                                                                  |
+| `momo.NewNullReadOnlyVectorColumn`     | func   | NewNullReadOnlyVectorColumn is used by generated code.                                                                                                                                                                                                                            |
 | `momo.NewNullVectorColumn`             | func   | NewNullVectorColumn is used by generated code.                                                                                                                                                                                                                                    |
 | `momo.NewOffline`                      | func   | NewOffline returns a *DB for dialect d that compiles statements but never reaches a database: every execution returns an error matching ErrUnsupported.                                                                                                                           |
 | `momo.NewOps`                          | func   | NewOps binds the embedded comparison methods to host, the expression that embeds the returned Ops.                                                                                                                                                                                |
@@ -13015,6 +13038,8 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.NullReadOnlyColumn.As`           | method | As returns the same column qualified by a table alias.                                                                                                                                                                                                                            |
 | `momo.NullReadOnlyColumn.EqPtr`        | method | EqPtr compares the column with *v, or tests IS NULL when v is nil.                                                                                                                                                                                                                |
 | `momo.NullReadOnlyColumn.Excluded`     | method | Excluded is the value proposed for insertion, for an upsert condition.                                                                                                                                                                                                            |
+| `momo.NullReadOnlyVectorColumn`        | type   | NullReadOnlyVectorColumn is the descriptor of a nullable read-only vector column.                                                                                                                                                                                                 |
+| `momo.NullReadOnlyVectorColumn.As`     | method | As returns the same column qualified by a table alias.                                                                                                                                                                                                                            |
 | `momo.NullVectorColumn`                | type   | NullVectorColumn is the descriptor of a nullable vector column.                                                                                                                                                                                                                   |
 | `momo.NullVectorColumn.As`             | method | As returns the same column qualified by a table alias.                                                                                                                                                                                                                            |
 | `momo.NullVectorColumn.SetNull`        | method | SetNull assigns SQL NULL.                                                                                                                                                                                                                                                         |
@@ -13294,7 +13319,7 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.VectorColumn.SetExcluded`        | method | SetExcluded assigns the value proposed for insertion in an upsert.                                                                                                                                                                                                                |
 | `momo.VectorColumn.SetExpr`            | method | SetExpr assigns an expression.                                                                                                                                                                                                                                                    |
 | `momo.VectorColumnOf`                  | func   | VectorColumnOf returns the VectorColumn behind any vector column descriptor that satisfies VectorSource: VectorColumn itself, its nullable variant and the permission variants.                                                                                                   |
-| `momo.VectorSource`                    | type   | VectorSource is any vector column descriptor a distance builder accepts: VectorColumn and its nullable and permission variants (ReadOnlyVectorColumn, CreateOnlyVectorColumn, ImmutableVectorColumn).                                                                             |
+| `momo.VectorSource`                    | type   | VectorSource is any vector column descriptor a distance builder accepts: VectorColumn and its nullable and permission variants (ReadOnlyVectorColumn, NullReadOnlyVectorColumn, CreateOnlyVectorColumn, ImmutableVectorColumn).                                                   |
 | `momo.VectorValue`                     | type   | VectorValue is the set of Go types a vector column can hold.                                                                                                                                                                                                                      |
 | `momo.View`                            | type   | View is embedded next to Model in a struct that maps a database view or materialized view.                                                                                                                                                                                        |
 | `momo.WindowExpr`                      | type   | WindowExpr is call OVER (...).                                                                                                                                                                                                                                                    |

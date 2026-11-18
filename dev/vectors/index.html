@@ -1747,10 +1747,12 @@ so use a distance builder to order them. A nullable field (<code>*vector.Vector<
 gets <code>momo.NullVectorColumn</code>, which adds <code>SetNull</code>.</p>
 <p>A vector field tagged <code>read_only</code>, <code>create_only</code> or <code>immutable</code> gets the
 matching <code>ReadOnlyVectorColumn</code>, <code>CreateOnlyVectorColumn</code> or
-<code>ImmutableVectorColumn</code>. They keep the write restriction of the plain
-permission columns (no <code>Column.Set</code> on a read-only column, an insert-only <code>Column.Set</code> on
-the other two) and every distance builder accepts them, so a read-only
-embedding can be searched.</p>
+<code>ImmutableVectorColumn</code>. A nullable read-only vector field (<code>*vector.Vector</code>
+tagged <code>read_only</code>) gets <code>momo.NullReadOnlyVectorColumn</code> instead, which has
+the read-only surface of <code>ReadOnlyVectorColumn</code>. All of these keep the write
+restriction of the plain permission columns (no <code>Column.Set</code> on a read-only
+column, an insert-only <code>Column.Set</code> on the other two), and every distance
+builder accepts them, so a read-only embedding can be searched.</p>
 <p>The distance builders take a column and a query vector of the same type.
 The builders live in package <code>github.com/azrtydxb/momo/vecop</code>. Each returns a
 <code>vecop.Expr</code>, an <code>Expression[float64]</code> that works in the

@@ -1099,6 +1099,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0180" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.18.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.18.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-nullable-read-only-vector-has-its-own-column-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A nullable read-only vector has its own column type
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0170" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2363,6 +2391,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0180" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.18.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.18.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-nullable-read-only-vector-has-its-own-column-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A nullable read-only vector has its own column type
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0170" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3526,6 +3582,22 @@
 <a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
+<h2 id="upgrading-to-0180">Upgrading to 0.18.0<a class="headerlink" href="#upgrading-to-0180" title="Permanent link">&para;</a></h2>
+<p>A <code>*vector.Vector</code> field tagged <code>read_only</code> now generates a
+<code>momo.NullReadOnlyVectorColumn</code> instead of a <code>momo.ReadOnlyVectorColumn</code>, so
+run <code>momo generate</code> and fix any helper that names the old type.</p>
+<h3 id="a-nullable-read-only-vector-has-its-own-column-type">A nullable read-only vector has its own column type<a class="headerlink" href="#a-nullable-read-only-vector-has-its-own-column-type" title="Permanent link">&para;</a></h3>
+<p>Before, <code>momo generate</code> gave a nullable read-only vector field the
+non-nullable <code>momo.ReadOnlyVectorColumn[V]</code> and the field lost its null
+handling, which <code>momo.NullReadOnlyColumn</code> gives a plain column. The generated
+descriptor is now <code>momo.NullReadOnlyVectorColumn[V]</code>. The two types are not
+convertible, so after you regenerate, a helper that takes the field as a
+<code>momo.ReadOnlyVectorColumn[V]</code> no longer compiles. Make the helper take
+<code>momo.VectorSource[V]</code>, which every vector column type satisfies, or take
+<code>momo.NullReadOnlyVectorColumn[V]</code>. A non-pointer read-only vector field
+keeps <code>momo.ReadOnlyVectorColumn[V]</code>. The read-only, create-only and immutable
+vector types also stop converting into one another, as the scalar
+permission columns already do.</p>
 <h2 id="upgrading-to-0170">Upgrading to 0.17.0<a class="headerlink" href="#upgrading-to-0170" title="Permanent link">&para;</a></h2>
 <p><code>momo migrate drift</code> and the refusal of <code>momo migrate baseline</code> now name what
 differs, and <code>drift --fix-sql</code> prints the repair; no edit is needed in your

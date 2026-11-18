@@ -3482,6 +3482,11 @@
 <td>NewNullReadOnlyColumn is used by generated code.</td>
 </tr>
 <tr>
+<td><code>momo.NewNullReadOnlyVectorColumn</code></td>
+<td>func</td>
+<td>NewNullReadOnlyVectorColumn is used by generated code.</td>
+</tr>
+<tr>
 <td><code>momo.NewNullVectorColumn</code></td>
 <td>func</td>
 <td>NewNullVectorColumn is used by generated code.</td>
@@ -3575,6 +3580,16 @@
 <td><code>momo.NullReadOnlyColumn.Excluded</code></td>
 <td>method</td>
 <td>Excluded is the value proposed for insertion, for an upsert condition.</td>
+</tr>
+<tr>
+<td><code>momo.NullReadOnlyVectorColumn</code></td>
+<td>type</td>
+<td>NullReadOnlyVectorColumn is the descriptor of a nullable read-only vector column.</td>
+</tr>
+<tr>
+<td><code>momo.NullReadOnlyVectorColumn.As</code></td>
+<td>method</td>
+<td>As returns the same column qualified by a table alias.</td>
 </tr>
 <tr>
 <td><code>momo.NullVectorColumn</code></td>
@@ -4974,7 +4989,7 @@
 <tr>
 <td><code>momo.VectorSource</code></td>
 <td>type</td>
-<td>VectorSource is any vector column descriptor a distance builder accepts: VectorColumn and its nullable and permission variants (ReadOnlyVectorColumn, CreateOnlyVectorColumn, ImmutableVectorColumn).</td>
+<td>VectorSource is any vector column descriptor a distance builder accepts: VectorColumn and its nullable and permission variants (ReadOnlyVectorColumn, NullReadOnlyVectorColumn, CreateOnlyVectorColumn, ImmutableVectorColumn).</td>
 </tr>
 <tr>
 <td><code>momo.VectorValue</code></td>
