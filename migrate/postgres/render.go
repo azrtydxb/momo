@@ -798,12 +798,20 @@ func renderCreatePolicy(c migrate.Change) ([]migrate.Statement, error) {
 	return one(s), nil
 }
 
+// invalidChange is the error for a change whose payload is malformed.
+func invalidChange(format string, args ...any) error {
+	return &momo.Error{Kind: momo.ErrValidation, Op: "migrate/postgres", Err: fmt.Errorf(format, args...)}
+}
+
 func renderCreateView(c migrate.Change) ([]migrate.Statement, error) {
 	v, err := get[schema.View](c.After)
 	if err != nil {
 		return nil, err
 	}
 	q := strings.TrimRight(strings.TrimSpace(v.Query), "; \t\r\n")
+	if q == "" {
+		return nil, invalidChange("view %q has no query", c.Name)
+	}
 	kw := "VIEW "
 	if v.Materialized {
 		kw = "MATERIALIZED VIEW "

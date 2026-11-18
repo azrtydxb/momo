@@ -18,15 +18,17 @@ const (
 	// reported by the constraint, not here. An index attached to a parent
 	// partitioned index (a pg_inherits row on the index) belongs to the parent:
 	// Postgres creates, names and drops it.
-	qIndexes = `SELECT ci.oid, ci.relname, am.amname, i.indisunique, i.indisvalid, i.indnkeyatts,
+	// $1 is the set of relation oids, passed as int8[] so the driver encodes it
+	// without an oid[] codec; the rows of each relation come in relname order.
+	qIndexes = `SELECT i.indrelid, ci.oid, ci.relname, am.amname, i.indisunique, i.indisvalid, i.indnkeyatts,
        pg_get_expr(i.indpred, i.indrelid), i.indoption::text, i.indclass::text, ci.reloptions
 FROM pg_index i
 JOIN pg_class ci ON ci.oid = i.indexrelid
 JOIN pg_am am ON am.oid = ci.relam
-WHERE i.indrelid = $1 AND NOT i.indisprimary
+WHERE i.indrelid = ANY($1::int8[]::oid[]) AND NOT i.indisprimary
   AND NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conindid = i.indexrelid AND c.contype IN ('u','p','x'))
   AND NOT EXISTS (SELECT 1 FROM pg_inherits h WHERE h.inhrelid = i.indexrelid)
-ORDER BY ci.relname`
+ORDER BY i.indrelid, ci.relname`
 	// One row per key column. attnum 0 in indkey marks an expression key; the
 	// column name comes from pg_attribute so quoting is never parsed back.
 	qIndexKeys = `SELECT k.n, a.attname::text, pg_get_indexdef(i.indexrelid, k.n, true), oc.opcname::text, oc.opcdefault
@@ -38,6 +40,7 @@ WHERE i.indexrelid = $1 ORDER BY k.n`
 )
 
 type rawIndex struct {
+	rel              uint32
 	oid              uint32
 	name, method     string
 	unique, valid    bool
@@ -50,11 +53,37 @@ type rawIndex struct {
 // inspectIndexes reads the standalone indexes of one relation. The second
 // result names the indexes that are not valid (a failed CREATE INDEX
 // CONCURRENTLY); they are still listed with the others.
-func (Dialect) inspectIndexes(ctx context.Context, c momo.PinnedConn, relOID uint32) ([]schema.Index, []string, error) {
+func (d Dialect) inspectIndexes(ctx context.Context, c momo.PinnedConn, relOID uint32) ([]schema.Index, []string, error) {
+	ixs, invalid, err := d.inspectIndexesOf(ctx, c, []uint32{relOID})
+	if err != nil {
+		return nil, nil, err
+	}
+	return ixs[relOID], invalid[relOID], nil
+}
+
+// relIndexError is an index-reading error that remembers which relation's
+// index failed, so a caller that read several relations at once can name it.
+// Its text is the wrapped error's.
+type relIndexError struct {
+	rel uint32
+	err error
+}
+
+func (e *relIndexError) Error() string { return e.err.Error() }
+func (e *relIndexError) Unwrap() error { return e.err }
+
+// inspectIndexesOf reads the standalone indexes of several relations with one
+// catalog query, keyed by relation oid. Each relation's indexes and invalid
+// names come in the same order inspectIndexes gives them.
+func (Dialect) inspectIndexesOf(ctx context.Context, c momo.PinnedConn, relOIDs []uint32) (map[uint32][]schema.Index, map[uint32][]string, error) {
+	ids := make([]int64, len(relOIDs))
+	for i, o := range relOIDs {
+		ids[i] = int64(o)
+	}
 	var raws []rawIndex
-	err := forEach(ctx, c, qIndexes, []any{relOID}, func(r momo.Rows) error {
+	err := forEach(ctx, c, qIndexes, []any{ids}, func(r momo.Rows) error {
 		var x rawIndex
-		if err := r.Scan(&x.oid, &x.name, &x.method, &x.unique, &x.valid, &x.nkeys, &x.pred, &x.options, &x.classes, &x.reloptions); err != nil {
+		if err := r.Scan(&x.rel, &x.oid, &x.name, &x.method, &x.unique, &x.valid, &x.nkeys, &x.pred, &x.options, &x.classes, &x.reloptions); err != nil {
 			return err
 		}
 		raws = append(raws, x)
@@ -63,16 +92,16 @@ func (Dialect) inspectIndexes(ctx context.Context, c momo.PinnedConn, relOID uin
 	if err != nil {
 		return nil, nil, err
 	}
-	var out []schema.Index
-	var invalid []string
+	out := map[uint32][]schema.Index{}
+	invalid := map[uint32][]string{}
 	for _, x := range raws {
 		ix, err := buildIndex(ctx, c, x)
 		if err != nil {
-			return nil, nil, fmt.Errorf("index %s: %w", x.name, err)
+			return nil, nil, &relIndexError{rel: x.rel, err: fmt.Errorf("index %s: %w", x.name, err)}
 		}
-		out = append(out, ix)
+		out[x.rel] = append(out[x.rel], ix)
 		if !x.valid {
-			invalid = append(invalid, x.name)
+			invalid[x.rel] = append(invalid[x.rel], x.name)
 		}
 	}
 	return out, invalid, nil

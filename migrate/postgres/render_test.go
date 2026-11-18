@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/migrate"
 	mpg "github.com/azrtydxb/momo/migrate/postgres"
 	"github.com/azrtydxb/momo/schema"
@@ -195,6 +196,24 @@ func TestRenderViews(t *testing.T) {
 	st = renderSQL(t, migrate.Change{Kind: migrate.DropView, Name: "v", Before: v})
 	if st[0].SQL != `DROP MATERIALIZED VIEW "v"` {
 		t.Fatalf("drop: %q", st[0].SQL)
+	}
+}
+
+// TestRenderViewRefusesEmptyQuery: a view without a query must not render
+// CREATE VIEW x AS with nothing after it.
+func TestRenderViewRefusesEmptyQuery(t *testing.T) {
+	for name, q := range map[string]string{"empty": "", "blank": " \t\n", "only semicolon": " ; \n"} {
+		for _, mat := range []bool{false, true} {
+			v := &schema.View{Name: "v", Query: q, Materialized: mat}
+			out, err := mpg.Dialect{}.Render([]migrate.Change{{Kind: migrate.CreateView, Name: "v", After: v}})
+			if err == nil {
+				t.Errorf("%s (materialized=%v): rendered %+v, want an error", name, mat, out)
+				continue
+			}
+			if !errors.Is(err, momo.ErrValidation) || !strings.Contains(err.Error(), `view "v" has no query`) {
+				t.Errorf("%s (materialized=%v): err = %v", name, mat, err)
+			}
+		}
 	}
 }
 
