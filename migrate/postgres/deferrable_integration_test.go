@@ -174,3 +174,73 @@ func TestPostgresDeferrableChangeDiff(t *testing.T) {
 	applyStatements(t, db, back)
 	requireFlags(t, db, false)
 }
+
+// Catches: a foreign key that references a deferrable primary key or unique
+// constraint passing the planner. PostgreSQL refuses to create such a foreign
+// key ("cannot use a deferrable unique constraint for referenced table"), so
+// the plan would fail half way through its migration; Diff has to refuse the
+// schema before it plans anything. The first half of each case proves the
+// refusal is justified: the real database rejects the DDL.
+func TestPostgresForeignKeyToDeferrableKeyIsRefused(t *testing.T) {
+	cases := []struct {
+		name string
+		ddl  []string // the last statement is the one PostgreSQL rejects
+		keys string   // the routes table of the desired schema, after its columns
+	}{
+		{
+			name: "primary key",
+			ddl: []string{
+				`CREATE TABLE routes (id bigint NOT NULL, code text NOT NULL, CONSTRAINT routes_pkey PRIMARY KEY (id) DEFERRABLE)`,
+				`CREATE TABLE stops (id bigint PRIMARY KEY, route_id bigint NOT NULL, CONSTRAINT stops_route_id_fkey FOREIGN KEY (route_id) REFERENCES routes (id))`,
+			},
+			keys: `"primary_key": ["id"], "primary_key_deferrable": true`,
+		},
+		{
+			name: "unique",
+			ddl: []string{
+				`CREATE TABLE routes (id bigint PRIMARY KEY, code text NOT NULL, CONSTRAINT routes_code_key UNIQUE (code) DEFERRABLE)`,
+				`CREATE TABLE stops (id bigint PRIMARY KEY, route_id bigint NOT NULL, CONSTRAINT stops_route_id_fkey FOREIGN KEY (route_id) REFERENCES routes (code))`,
+			},
+			keys: `"primary_key": ["id"], "uniques": [{"name": "routes_code_key", "columns": ["code"], "deferrable": true}]`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			db := concurrentIndexDB(t)
+			var err error
+			for _, stmt := range c.ddl {
+				_, err = db.Driver().Exec(context.Background(), stmt, nil)
+			}
+			if err == nil || !strings.Contains(err.Error(), "cannot use a deferrable") {
+				t.Fatalf("PostgreSQL accepted a foreign key to a deferrable key, or failed for another reason: %v", err)
+			}
+
+			refCol := "id"
+			if c.name == "unique" {
+				refCol = "code"
+			}
+			raw := fmt.Sprintf(`{
+  "format_version": 1,
+  "dialect": "postgres",
+  "tables": [
+    {"name": "routes", "columns": [{"name": "id", "type": "bigint"}, {"name": "code", "type": "text"}], %s},
+    {"name": "stops",
+     "columns": [{"name": "id", "type": "bigint"}, {"name": "route_id", "type": "bigint"}],
+     "primary_key": ["id"],
+     "foreign_keys": [{"name": "stops_route_id_fkey", "columns": ["route_id"], "ref_table": "routes", "ref_columns": [%q]}]}
+  ]
+}`, c.keys, refCol)
+			var desired schema.Schema
+			if err := json.Unmarshal([]byte(raw), &desired); err != nil {
+				t.Fatal(err)
+			}
+			changes, _, err := migrate.Diff(&schema.Schema{Dialect: "postgres"}, &desired, migrate.DiffOptions{})
+			if err == nil || !strings.Contains(err.Error(), "deferrable") {
+				t.Errorf("Diff accepted a schema that PostgreSQL rejects: err = %v", err)
+			}
+			if len(changes) != 0 {
+				t.Errorf("a refused schema produced %d changes", len(changes))
+			}
+		})
+	}
+}
