@@ -93,7 +93,29 @@ type fieldRef struct {
 	// allocation.
 	def     uint64
 	defMore []bool
-	checks  []fieldCheck
+	// The Validate hooks in hook order: the first few inline, so a model with a
+	// handful of validators costs no allocation, the rest in more.
+	nChecks int
+	small   [4]fieldCheck
+	more    []fieldCheck
+}
+
+// addCheck appends a Validate hook.
+func (f *fieldRef) addCheck(c fieldCheck) {
+	if f.nChecks < len(f.small) {
+		f.small[f.nChecks] = c
+	} else {
+		f.more = append(f.more, c)
+	}
+	f.nChecks++
+}
+
+// check returns the i-th Validate hook.
+func (f *fieldRef) check(i int) fieldCheck {
+	if i < len(f.small) {
+		return f.small[i]
+	}
+	return f.more[i-len(f.small)]
 }
 
 // fieldCheck is the Validate hook of one column.
@@ -115,7 +137,8 @@ func (f fieldRef) hasDef(ci int) bool {
 
 // validate runs every Validate hook, as fieldPlan.validate does.
 func (f fieldRef) validate(op, table string, cols []ColumnMeta, value func(ci int) (v any, ok bool)) error {
-	for _, c := range f.checks {
+	for i := range f.nChecks {
+		c := f.check(i)
 		v, ok := value(c.col)
 		if !ok {
 			continue
@@ -172,7 +195,7 @@ func (fp fieldPlan[T]) refOf(ncols int) fieldRef {
 	r := fieldRef{n: len(fp.hooks)}
 	for _, h := range fp.hooks {
 		if h.Validate != nil {
-			r.checks = append(r.checks, fieldCheck{col: h.Column, fn: h.Validate})
+			r.addCheck(fieldCheck{col: h.Column, fn: h.Validate})
 		}
 	}
 	for ci := range fp.def {
