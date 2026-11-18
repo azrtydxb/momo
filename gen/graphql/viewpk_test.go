@@ -23,6 +23,9 @@ func TestSingleIntPKOfViewModel(t *testing.T) {
 		t.Fatalf("load: %v %v", err, diags)
 	}
 	cols := []column{{name: "id", field: "id", sc: scInt64}, {name: "name", field: "name", sc: scString}}
+	if len(g.Models) == 0 {
+		t.Fatal("gen.Load found no models in the viewpk fixture")
+	}
 	for _, m := range g.Models {
 		if got := singleIntPK(g, m, cols); got != "id" {
 			t.Errorf("singleIntPK(%s) = %q, want id", m.GoName, got)
