@@ -145,6 +145,9 @@ type embedCursor[T any] struct {
 	done      bool
 	pending   []staleRow[T]
 	limit     int
+	// extra holds the predicates the handle's interceptors added to the
+	// statement being rendered.
+	extra []Predicate
 }
 
 func newEmbedCursor[T any, PT Modeler[T]](q Querier, opts EmbedOptions) (*embedCursor[T], error) {
@@ -243,6 +246,11 @@ func (c *embedCursor[T]) fetch(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return newError(ErrCanceled, "embed", c.meta.Table, err)
 	}
+	extra, err := runInterceptors(ctx, c.q, "select", c.meta.Table)
+	if err != nil {
+		return err
+	}
+	c.extra = extra
 	comp, err := compile(c.d, c.renderPage)
 	if err != nil {
 		return err
@@ -335,6 +343,11 @@ func (c *embedCursor[T]) renderPage(b *Builder) {
 		sep = " AND "
 		softDeletePred(m, c.table.Qualifier(), false).AppendSQL(b)
 	}
+	for _, p := range c.extra {
+		b.WriteString(sep)
+		sep = " AND "
+		p.AppendSQL(b)
+	}
 	if c.after != nil {
 		b.WriteString(sep)
 		c.renderAfter(b)
@@ -387,6 +400,10 @@ func (c *embedCursor[T]) renderAfter(b *Builder) {
 func (c *embedCursor[T]) update(ctx context.Context, r staleRow[T], vec vector.Vector, drop bool) (bool, error) {
 	m := c.meta
 	q := c.table.Qualifier()
+	extra, err := runInterceptors(ctx, c.q, "update", m.Table)
+	if err != nil {
+		return false, err
+	}
 	comp, err := compile(c.d, func(b *Builder) {
 		b.WriteString("UPDATE ")
 		c.table.appendFrom(b)
@@ -416,6 +433,10 @@ func (c *embedCursor[T]) update(ctx context.Context, r staleRow[T], vec vector.V
 		}
 		b.WriteString(" AND ")
 		NewColumn[sql.NullString](q, c.spec.HashColumn, 0).IsNotDistinctFrom(r.stored).AppendSQL(b)
+		for _, p := range extra {
+			b.WriteString(" AND ")
+			p.AppendSQL(b)
+		}
 	})
 	if err != nil {
 		return false, err
@@ -438,9 +459,10 @@ func (c *embedCursor[T]) update(ctx context.Context, r staleRow[T], vec vector.V
 // The hash is computed in Go, so each call reads the key and the source
 // columns of every live row. opts.Vector picks the embedding when the model
 // has several. It fails with ErrUnsupported on MySQL and MariaDB and with
-// ErrValidation when T has no field tagged embed_from. Statements bypass the
-// interceptors, so a tenant filter does not apply: the iteration covers every
-// tenant.
+// ErrValidation when T has no field tagged embed_from. The page statements run
+// the handle's interceptors as a Select does (kind "select"), so a predicate
+// an interceptor adds, such as a tenant filter, limits the rows visited; an
+// interceptor that returns an error stops the iteration with it.
 func StaleEmbeddings[T any, PT Modeler[T]](ctx context.Context, q Querier, opts EmbedOptions) iter.Seq2[T, error] {
 	return func(yield func(T, error) bool) {
 		c, err := newEmbedCursor[T, PT](q, opts)
@@ -493,7 +515,11 @@ func StaleEmbeddings[T any, PT Modeler[T]](ctx context.Context, q Querier, opts 
 // next run starts from them.
 //
 // The write sets the vector and the hash column only. It does not change
-// updated_at or a version column, and it does not run hooks. Pass a *DB, not a
+// updated_at or a version column, and it does not run hooks. The handle's
+// interceptors run for the page statements (kind "select") and for each write
+// (kind "update"), and the predicates they add are ANDed to the statement, so
+// a row outside a tenant scope is neither read nor written; an interceptor
+// that denies the statement fails the run. Pass a *DB, not a
 // *Tx, so no transaction is open during the Embedder call.
 //
 // It fails with ErrUnsupported on MySQL and MariaDB, with ErrValidation when T

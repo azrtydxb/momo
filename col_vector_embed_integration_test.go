@@ -89,7 +89,7 @@ func embCreate(t *testing.T, db *momo.DB, d dialect.Name) {
 	} else {
 		mustExecPG(t, db, "CREATE EXTENSION IF NOT EXISTS vector")
 	}
-	mustExecPG(t, db, "CREATE TABLE embed_docs (id bigint PRIMARY KEY, title text NOT NULL, body text, emb "+vec+", emb_hash varchar(64))")
+	mustExecPG(t, db, "CREATE TABLE embed_docs (id bigint PRIMARY KEY, title text NOT NULL, body text, emb "+vec+", emb_hash varchar(64), tenant_id bigint NOT NULL DEFAULT 1)")
 }
 
 func embInsert(t *testing.T, db *momo.DB, id int64, title string, body *string) {
@@ -247,6 +247,39 @@ func TestStaleEmbeddingsFindsChangedRows(t *testing.T) {
 			t.Fatalf("stale after a limit-2 run = %v, want %v", got, want)
 		}
 	})
+}
+
+// Catches: the stale read or the write-back ignoring the handle's interceptors,
+// so a row outside a tenant scope would be listed as stale or have an
+// embedding written by a tenant-scoped runner.
+func TestSyncEmbeddingsAppliesInterceptors(t *testing.T) {
+	tenant := momo.NewColumn[int64]("embed_docs", "tenant_id", 0)
+	scope := momo.WithInterceptor(func(_ context.Context, op *momo.Operation) error {
+		op.Where = append(op.Where, tenant.Eq(1))
+		return nil
+	})
+	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		embCreate(t, db, d)
+		embInsert(t, db, 1, "mine", nil)
+		embInsert(t, db, 2, "also mine", nil)
+		embInsert(t, db, 3, "theirs", nil)
+		mustExecPG(t, db, "UPDATE embed_docs SET tenant_id = 2 WHERE id = ?", int64(3))
+
+		if got, want := embStale(t, db), []int64{1, 2}; !slices.Equal(got, want) {
+			t.Fatalf("stale in scope = %v, want %v", got, want)
+		}
+		res, err := momo.SyncEmbeddings[embDoc](t.Context(), db, &embFake{}, momo.EmbedOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Embedded != 2 {
+			t.Fatalf("result = %+v, want 2 embedded", res)
+		}
+		hashes := embHashes(t, db)
+		if !hashes[1].Valid || !hashes[2].Valid || hashes[3].Valid {
+			t.Fatalf("hashes = %+v, want rows 1 and 2 written and row 3 untouched", hashes)
+		}
+	}, scope)
 }
 
 // Catches: the keyset page boundary skipping or repeating a row. 300 rows are

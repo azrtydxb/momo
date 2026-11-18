@@ -181,6 +181,37 @@ func TestSyncEmbeddingsStatements(t *testing.T) {
 	}
 }
 
+// Catches: the page or write statement leaving out the predicate an
+// interceptor adds, which would read and write rows outside a tenant scope.
+func TestSyncEmbeddingsStatementsCarryInterceptorPredicates(t *testing.T) {
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{int64(1), "alpha", "one", nil, int64(1)}})
+	tenant := momo.NewColumn[int64]("docs", "tenant_id", 0)
+	db := momo.New(drv, momo.WithInterceptor(func(_ context.Context, op *momo.Operation) error {
+		op.Where = append(op.Where, tenant.Eq(7))
+		return nil
+	}))
+	if _, err := momo.SyncEmbeddings[embuDoc](t.Context(), db, &embuFixed{}, momo.EmbedOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	calls := drv.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("%d statements, want a page and one update: %v", len(calls), calls)
+	}
+	if want := `FROM "docs" WHERE "docs"."tenant_id" = $1 ORDER BY "id" LIMIT 256`; !strings.Contains(calls[0].SQL, want) {
+		t.Fatalf("page statement lacks the scope:\n%s", calls[0].SQL)
+	}
+	if want := `AND "docs"."tenant_id" = $7`; !strings.HasSuffix(calls[1].SQL, want) {
+		t.Fatalf("update statement does not end with the scope %q:\n%s", want, calls[1].SQL)
+	}
+	denied := momo.New(fakedriver.New(dialect.Postgres), momo.WithInterceptor(func(context.Context, *momo.Operation) error {
+		return errors.New("no")
+	}))
+	if _, err := momo.SyncEmbeddings[embuDoc](t.Context(), denied, &embuFixed{}, momo.EmbedOptions{}); !errors.Is(err, momo.ErrValidation) {
+		t.Fatalf("denied run error = %v, want ErrValidation", err)
+	}
+}
+
 // Catches: a second page that restarts from the top or skips rows, a composite
 // key compared as one column, a soft-deleted row being visited, and a Limit
 // that is not honored across pages.

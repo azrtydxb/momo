@@ -2235,6 +2235,9 @@ Keeping embeddings in sync with their source text:
 - A row with no source text gets a NULL vector, never a call to the provider.
   Tag the vector field `read_only` so ordinary inserts and updates cannot write
   an old embedding over a fresh one.
+- The handle's interceptors apply to both the stale read (kind `select`) and the
+  write-back (kind `update`), so a tenant-scoped handle only sees and writes its
+  own rows; the write still skips hooks, `updated_at` and version columns.
 - PostgreSQL and SQLite only: the generator refuses `embed_from` for MySQL or
   MariaDB and both functions return `ErrUnsupported` there.
 

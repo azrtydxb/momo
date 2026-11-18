@@ -465,8 +465,11 @@ network call. Pass a `*momo.DB`, not a `*momo.Tx`:
   `EmbedOptions.Vector` picks the embedding when a model has more than one.
 
 The write sets the vector and the hash column only. It does not touch
-`updated_at` or a version column, does not run hooks, and bypasses interceptors,
-so a tenant filter does not apply: the run covers every tenant.
+`updated_at` or a version column and does not run hooks. The interceptors of the
+handle run as for a typed query: the page statements are a `select` and each
+write an `update`, and the predicates an interceptor adds are applied to both.
+A row outside a tenant scope is therefore neither listed as stale nor written,
+and an interceptor that denies the statement fails the run.
 
 On SQLite the same functions work on a sqlite-vec column; concurrent runners
 queue behind SQLite's single writer. On MySQL and MariaDB both functions
