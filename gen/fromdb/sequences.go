@@ -10,23 +10,38 @@ import (
 )
 
 var (
-	nextvalCall    = regexp.MustCompile(`(?i)nextval\s*\(`)
-	nextvalLiteral = regexp.MustCompile(`(?i)nextval\s*\(\s*'([^']*)'`)
+	nextvalCall    = regexp.MustCompile(`(?i)\b(?:nextval|currval|setval)\s*\(`)
+	nextvalLiteral = regexp.MustCompile(`(?i)\b(?:nextval|currval|setval)\s*\(\s*'((?:[^']|'')*)'`)
 )
 
 // bareSeqName returns the sequence name of a nextval literal without its schema
-// and quotes.
+// and quotes. A dot inside double quotes belongs to the name, and a doubled
+// quote inside them is one quote.
 func bareSeqName(s string) string {
-	s = strings.TrimSpace(s)
-	if i := strings.LastIndex(s, "."); i >= 0 {
-		s = s[i+1:]
+	s = strings.TrimSpace(strings.ReplaceAll(s, "''", "'"))
+	var cur strings.Builder
+	quoted := false
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == '"' && quoted && i+1 < len(s) && s[i+1] == '"':
+			cur.WriteByte('"')
+			i++
+		case c == '"':
+			quoted = !quoted
+		case c == '.' && !quoted:
+			cur.Reset()
+		default:
+			cur.WriteByte(c)
+		}
 	}
-	return strings.Trim(s, `"`)
+	return cur.String()
 }
 
 // refsSequence reports whether text may call nextval on the sequence: a literal
-// that names it, or a nextval whose argument is not a plain literal and so
-// cannot be read reliably (which counts as a use, to fail safe).
+// that names it, or a call whose argument is not a plain literal and so cannot
+// be read reliably (which counts as a use, to fail safe). The schema of a
+// qualified literal is ignored, which keeps a sequence when two schemas share
+// a name.
 func refsSequence(text, bare string) bool {
 	calls := len(nextvalCall.FindAllStringIndex(text, -1))
 	if calls == 0 {
@@ -44,16 +59,9 @@ func refsSequence(text, bare string) bool {
 	return false
 }
 
-// tableUsesSequence reports whether a column default, a generation expression
-// or a check of the table calls nextval on the sequence.
-func tableUsesSequence(t *schema.Table, bare string) bool {
-	for _, c := range t.Columns {
-		if refsSequence(c.Default, bare) || refsSequence(c.Generated, bare) {
-			return true
-		}
-	}
-	for _, ck := range t.Checks {
-		if refsSequence(ck.Expr, bare) {
+func anyRefsSequence(texts []string, bare string) bool {
+	for _, t := range texts {
+		if refsSequence(t, bare) {
 			return true
 		}
 	}
@@ -62,17 +70,31 @@ func tableUsesSequence(t *schema.Table, bare string) bool {
 
 // sequenceHost returns the model that declares a standalone sequence, or nil
 // when the sequence is left out. Without introspect.only it is the first model.
-// With it, a sequence is kept only when a modeled table uses it (then the first
-// such table declares it) or when only names the sequence itself (then the
-// first model declares it). A sequence that a column owns is not standalone, so
-// inspection never reports it here.
-func (g *generator) sequenceHost(q schema.Sequence) *model {
+// With it, a sequence is kept only when something that is written uses it: a
+// column default, generated expression, check, index expression or predicate,
+// trigger or policy of a modeled table, or a function or view that is declared
+// (claimed holds the model of each function, as claimFunctions returns it).
+// The first model that has such a use declares it, and a view alone puts it on
+// the first model. A sequence that only names itself goes on the first model. A
+// sequence that a column owns is not standalone, so inspection never reports it
+// here.
+func (g *generator) sequenceHost(q schema.Sequence, claimed []*model) *model {
 	if len(g.o.Config.Only) == 0 {
 		return g.models[0]
 	}
 	for _, m := range g.models {
-		if tableUsesSequence(m.t, q.Name) {
+		if anyRefsSequence(g.tableTexts(m), q.Name) {
 			return m
+		}
+		for i, f := range g.clean.Functions {
+			if claimed[i] == m && anyRefsSequence([]string{f.Body, f.Args}, q.Name) {
+				return m
+			}
+		}
+	}
+	for _, v := range g.clean.Views {
+		if refsSequence(v.Query, q.Name) {
+			return g.models[0]
 		}
 	}
 	if schema.MatchObject(g.o.Config.Only, q.Schema, q.Name) {

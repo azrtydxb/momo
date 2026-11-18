@@ -35,7 +35,36 @@ func (g *generator) functions(host *model) {
 		}
 		return
 	}
+	claimed := g.claimFunctions(host)
+	var kept []schema.Function
+	byModel := map[*model][]int{}
+	for i, f := range fns {
+		if m := claimed[i]; m != nil {
+			kept = append(kept, f)
+			byModel[m] = append(byModel[m], i)
+		}
+	}
+	for _, m := range g.models {
+		for _, i := range byModel[m] {
+			m.global("Function", fns[i], g, fns[i].Name)
+		}
+	}
+	g.clean.Functions = kept
+}
+
+// claimFunctions returns, for each function of the schema, the model that
+// declares it, or nil when no modeled table or view uses it. It reads the
+// functions without changing anything, so the sequences can ask which function
+// bodies are written before the functions are.
+func (g *generator) claimFunctions(host *model) []*model {
+	fns := g.clean.Functions
 	claimed := make([]*model, len(fns))
+	if g.o.Config.Functions == "all" {
+		for i := range claimed {
+			claimed[i] = host
+		}
+		return claimed
+	}
 	claim := func(m *model, seeds []string) {
 		queue := seeds
 		for len(queue) > 0 {
@@ -59,20 +88,7 @@ func (g *generator) functions(host *model) {
 		viewTexts = append(viewTexts, v.Query)
 	}
 	claim(host, viewTexts)
-	var kept []schema.Function
-	byModel := map[*model][]int{}
-	for i, f := range fns {
-		if m := claimed[i]; m != nil {
-			kept = append(kept, f)
-			byModel[m] = append(byModel[m], i)
-		}
-	}
-	for _, m := range g.models {
-		for _, i := range byModel[m] {
-			m.global("Function", fns[i], g, fns[i].Name)
-		}
-	}
-	g.clean.Functions = kept
+	return claimed
 }
 
 // tableTexts are the SQL texts of a modeled table that can call a function.

@@ -1239,10 +1239,11 @@ func (g *generator) globals() {
 		host.stmts = append(host.stmts, "c.Enum("+strings.Join(args, ", ")+")")
 	}
 	var seqs []schema.Sequence
+	claimed := g.claimFunctions(host)
 	for _, q := range g.clean.Sequences {
-		h := g.sequenceHost(q)
+		h := g.sequenceHost(q, claimed)
 		if h == nil {
-			g.add(SevNote, q.Name, "sequence is used by no table matched by introspect.only and is not named in it: not declared and not in the snapshot")
+			g.add(SevNote, q.Name, "sequence is used by nothing that introspect.only keeps and is not named in it: not declared and not in the snapshot; add it to migrate.exclude so the baseline and drift ignore the live sequence")
 			continue
 		}
 		seqs = append(seqs, q)
