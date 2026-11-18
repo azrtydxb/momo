@@ -102,7 +102,7 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 	if err != nil {
 		return l.errf(exitDatabase, "inspect: %v", err)
 	}
-	if err := checkOnlyMatched(l.file.Introspect.Only, live.Tables, l.say); err != nil {
+	if err := checkOnlyMatched(l.file.Introspect.Only, live.Tables, live.Sequences, l.say); err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
 	flavor, extra, err := l.mysqlExtras(ctx)
@@ -145,7 +145,11 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 	if _, err := fromdb.Apply(outDir, actions, writeModelFile); err != nil {
 		return l.errf(exitUsage, "%v", err)
 	}
-	l.excludeHint()
+	var omitted []string
+	if len(l.file.Introspect.Only) > 0 {
+		omitted = omittedSequences(live.Sequences, res.Snapshot.Sequences)
+	}
+	l.excludeHint(omitted)
 	if initSnap != nil {
 		if code := l.writeInitSnapshot(initSnap); code != exitOK {
 			return code
@@ -163,16 +167,23 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 // table. Inspection already left out every table that matches none, so tables
 // holds only the matches: with no match at all it is an error (a typo would
 // otherwise read as an empty database), and a glob that matched none while
-// others did is named in a warning.
-func checkOnlyMatched(only []string, tables []schema.Table, say func(format string, args ...any)) error {
+// others did is named in a warning. A glob that names a standalone sequence
+// does not warn, but a sequence alone cannot be modeled, so with no table
+// matched it is still the error.
+func checkOnlyMatched(only []string, tables []schema.Table, seqs []schema.Sequence, say func(format string, args ...any)) error {
 	if len(only) == 0 {
 		return nil
 	}
 	var unmatched []string
 	for _, g := range only {
-		if !slices.ContainsFunc(tables, func(t schema.Table) bool {
+		onTable := slices.ContainsFunc(tables, func(t schema.Table) bool {
 			return schema.MatchObject([]string{g}, t.Schema, t.Name)
-		}) {
+		})
+		// A glob may also name a standalone sequence, which inspection keeps.
+		onSeq := slices.ContainsFunc(seqs, func(q schema.Sequence) bool {
+			return schema.MatchObject([]string{g}, q.Schema, q.Name)
+		})
+		if !onTable && !onSeq {
 			unmatched = append(unmatched, g)
 		}
 	}
@@ -180,7 +191,7 @@ func checkOnlyMatched(only []string, tables []schema.Table, say func(format stri
 		return fmt.Errorf("introspect.only matched no table (%s): a table in the current schema is matched by its bare name, not public.name; a table outside it by schema.name", strings.Join(only, ", "))
 	}
 	if len(unmatched) > 0 {
-		say("warning: introspect.only: %s matched no table", strings.Join(unmatched, ", "))
+		say("warning: introspect.only: %s matched no table or sequence", strings.Join(unmatched, ", "))
 	}
 	return nil
 }
@@ -302,8 +313,10 @@ func (l *cli) reportActions(dir string, actions []fromdb.Action, check bool) (st
 	return stale
 }
 
-// excludeHint names the skipped tables that migrate.exclude does not hide.
-func (l *cli) excludeHint() {
+// excludeHint names the skipped tables and the omitted sequences that
+// migrate.exclude does not hide. omitted holds the globs of the sequences
+// that --from-db left out of the models and the snapshot.
+func (l *cli) excludeHint(omitted []string) {
 	var missing []string
 	for _, g := range l.file.Introspect.Skip {
 		if !slices.Contains(l.file.Migrate.Exclude, g) {
@@ -313,6 +326,33 @@ func (l *cli) excludeHint() {
 	if len(missing) > 0 {
 		l.say("hint: add %s to migrate.exclude in momo.yaml so the baseline ignores the skipped tables", strings.Join(missing, ", "))
 	}
+	var seqs []string
+	for _, g := range omitted {
+		if !slices.Contains(l.file.Migrate.Exclude, g) && !slices.Contains(l.file.Introspect.Skip, g) {
+			seqs = append(seqs, g)
+		}
+	}
+	if len(seqs) > 0 {
+		l.say("hint: add %s to migrate.exclude in momo.yaml so the baseline and drift ignore the sequences that introspect.only left out of the models", strings.Join(seqs, ", "))
+	}
+}
+
+// omittedSequences returns the exclude names of the live sequences that the
+// snapshot of the generated models does not hold: a bare name, or schema.name
+// for a sequence outside the current schema.
+func omittedSequences(live, kept []schema.Sequence) []string {
+	var out []string
+	for _, q := range live {
+		if slices.ContainsFunc(kept, func(k schema.Sequence) bool { return k.Schema == q.Schema && k.Name == q.Name }) {
+			continue
+		}
+		if q.Schema != "" {
+			out = append(out, q.Schema+"."+q.Name)
+		} else {
+			out = append(out, q.Name)
+		}
+	}
+	return out
 }
 
 // initSnapshot is the outcome of planInitSnapshot: the migration to write, or
