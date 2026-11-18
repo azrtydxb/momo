@@ -1668,10 +1668,10 @@ MariaDB. This page describes what is built. Every Go snippet below is an <code>E
   there, because MySQL has no cosine distance function; see
   <a href="#hybrid-search">Hybrid search</a>.</li>
 <li>MySQL: the server stores vectors but has no distance function, so a distance
-  query fails with <code>ErrUnsupported</code>; see "MariaDB and MySQL" below. The
-  <code>momo migrate</code> command does not run <code>migrate/mysql</code>, which renders its
-  statements as-is, so a MySQL or MariaDB <code>VECTOR</code> column is created by your
-  own DDL.</li>
+  query fails with <code>ErrUnsupported</code>; see "MariaDB and MySQL" below.</li>
+<li>MariaDB <code>VECTOR INDEX</code>: <code>momo migrate --dialect mysql</code> creates a <code>VECTOR(N)</code>
+  column, but <code>migrate/mysql</code> refuses an index with the <code>vector</code> method, so a
+  MariaDB vector index is created by your own DDL.</li>
 </ul>
 <h2 id="value-types">Value types<a class="headerlink" href="#value-types" title="Permanent link">&para;</a></h2>
 <p>The <code>vector</code> package holds the four Go types. Each has a <code>Validate(dim)</code>
