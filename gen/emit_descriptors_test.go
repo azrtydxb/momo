@@ -126,7 +126,7 @@ func TestEmitDescriptorsVectorPermissions(t *testing.T) {
 	}
 	for _, want := range []string{
 		`Generated  momo.ReadOnlyVectorColumn[vector.Vector]`,
-		`GenNull    momo.ReadOnlyVectorColumn[vector.Vector]`,
+		`GenNull    momo.NullReadOnlyVectorColumn[vector.Vector]`,
 		`Once       momo.CreateOnlyVectorColumn[vector.Vector]`,
 		`Frozen     momo.ImmutableVectorColumn[vector.Vector]`,
 		`Plain      momo.VectorColumn[vector.Vector]`,
