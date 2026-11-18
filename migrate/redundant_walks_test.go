@@ -123,3 +123,16 @@ func TestRebaseDoesNotRediscoverTarget(t *testing.T) {
 		t.Fatalf("Rebase made %d reads of the target, want %d (validate %d minus its root check, plus diff %d)", *rc.reads, want, validateReads, diffReads)
 	}
 }
+
+func TestRenumberWalksOnce(t *testing.T) {
+	dir := pbMergedIndependent(t)
+	want := oneWalk(t, dir)
+	c := newWalkCountFS(dir)
+	e := migratetest.NewEngine(t, mpg.New(), nil, c, migrate.WithClock(func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }))
+	if _, files, _, err := e.Renumber([]string{pbV0, pbVB}); err != nil || len(files) == 0 {
+		t.Fatalf("renumber: %d files, %v", len(files), err)
+	}
+	if *c.reads != want {
+		t.Fatalf("Renumber made %d directory reads, want %d (one walk)", *c.reads, want)
+	}
+}
