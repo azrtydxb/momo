@@ -164,9 +164,10 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 		backPtr: func(row, ci int) any { return meta.Ptr(back[row], ci) },
 		clone:   func() { ms = slices.Clone(ms) },
 		fields:  fp.ref,
-		ferr:    ferr,
 	}
-	cs, err := q.ref().plan(a)
+	r := q.ref()
+	r.ferr = ferr
+	cs, err := r.plan(a)
 	if err != nil {
 		return nil, err
 	}

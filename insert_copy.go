@@ -78,8 +78,8 @@ func (q InsertQuery[T]) Copy(ctx context.Context, ms []T) (Result, error) {
 		hasBack: func(int) bool { return false },
 		clone:   func() { ms = slices.Clone(ms) },
 		fields:  fp.ref,
-		ferr:    ferr,
 	}
+	r.ferr = ferr
 	r.n, r.nBack = len(ms), 0
 	r, err := r.generateIDs(false, a)
 	if err != nil {
@@ -172,8 +172,8 @@ func (r insertRef) copyExec(ctx context.Context, names []string, rows [][]any) (
 
 // copyRows resolves and validates the COPY column list and the value rows.
 func (r insertRef) copyRows(a insAccess) ([]string, [][]any, error) {
-	if a.ferr != nil {
-		return nil, nil, a.ferr
+	if r.ferr != nil {
+		return nil, nil, r.ferr
 	}
 	r.i.noRowDefault = true
 	r.dbd = nil

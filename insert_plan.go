@@ -96,7 +96,7 @@ func (r insertRef) planBulk(a insAccess) (insertChunks, error) {
 		return insertChunks{}, err
 	}
 	rr.i.upsert = false // resolved: chunks keep target, set and identity decisions
-	if a.ferr != nil {
+	if r.ferr != nil {
 		return insertChunks{one: one}, nil // rendering reports it
 	}
 	cols, err := rr.modelCols(a)
@@ -240,7 +240,7 @@ func (r insertRef) rowsDefaultSigs(a insAccess) [][]bool {
 	if len(r.i.rows) < 2 {
 		return nil
 	}
-	if a.ferr != nil {
+	if r.ferr != nil {
 		return nil
 	}
 	n := len(r.m.Columns)

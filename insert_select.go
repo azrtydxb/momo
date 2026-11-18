@@ -240,8 +240,8 @@ func (r insertRef) renderFromSelect(b *Builder, a insAccess) {
 		b.SetErr(r.verr("", "FromSelect: select yields %d columns but %d target columns are listed", n, len(r.i.selCols)))
 		return
 	}
-	if a.ferr != nil {
-		b.SetErr(a.ferr)
+	if r.ferr != nil {
+		b.SetErr(r.ferr)
 		return
 	}
 	if err := r.validateConflictSet(a); err != nil {

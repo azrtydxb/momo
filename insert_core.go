@@ -59,7 +59,10 @@ type insertRef struct {
 	// n and nBack are len(models) and len(back).
 	n, nBack           int
 	idsDone, reconcile bool
-	pend               *[]func()
+	// ferr is the error resolving the field plan gave, reported where the
+	// statement first needs the plan. Set by the wrapper that builds the access.
+	ferr error
+	pend *[]func()
 }
 
 // ref returns the non-generic view of q.
@@ -106,10 +109,11 @@ type insAccess struct {
 	got        func(g, ci int) any
 	queueCopy  func(row, g, ci int)
 	queueSetID func(row, ci int, id string)
-	// fields is the field plan of the statement; ferr is the error that
-	// resolving it gave, reported where the statement first needs the plan.
+	// fields is the field plan of the statement. The error that resolving it
+	// gave is insertRef.ferr, not a field here: escape analysis treats a struct
+	// as one value, so storing that error in the heap would move every closure
+	// of the access to the heap with it.
 	fields fieldRef
-	ferr   error
 }
 
 // val is the bound value of column ci of model row of the statement's range.

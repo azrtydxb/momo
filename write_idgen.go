@@ -334,6 +334,7 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 	rows.noHooks = true // internal read: the models are half-filled
+	st := r.reconMatcher(rp, a)
 	for rows.Next() {
 		var g T
 		if err := rows.ScanModel(&g); err != nil {
@@ -341,6 +342,10 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 			return Result{}, err
 		}
 		got = append(got, g)
+		if err := st.row(len(got)-1, a); err != nil {
+			_ = rows.Close()
+			return Result{}, err
+		}
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
@@ -349,12 +354,21 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 	if err := rows.Close(); err != nil {
 		return Result{}, err
 	}
-	return r.finishReconcile(rp, len(got), a)
+	return st.finish(len(got))
 }
 
-// finishReconcile matches the nGot rows an id-reconciling insert returned to its
-// models and queues the stored ids and dbdefault values for the caller's models.
-func (r insertRef) finishReconcile(rp reconPlan, nGot int, a insAccess) (Result, error) {
+// reconState matches the rows an id-reconciling insert returns to its models
+// one row at a time, so a row that matches no model fails the insert before
+// later rows are read.
+type reconState struct {
+	r       insertRef
+	rp      reconPlan
+	byKey   map[string]int
+	matched []bool
+}
+
+// reconMatcher keys the models by their conflict-target columns.
+func (r insertRef) reconMatcher(rp reconPlan, a insAccess) *reconState {
 	byKey := make(map[string]int, r.n)
 	for i := range r.n {
 		k := idKeyOf(func(ci int) any { return a.val(i, ci) }, rp.keyCols)
@@ -362,28 +376,37 @@ func (r insertRef) finishReconcile(rp reconPlan, nGot int, a insAccess) (Result,
 			byKey[k] = i // the first model of a duplicate key is the one DO NOTHING inserts
 		}
 	}
-	matched := make([]bool, r.n)
-	for g := range nGot {
-		i, ok := byKey[idKeyOf(func(ci int) any { return a.got(g, ci) }, rp.keyCols)]
-		if !ok {
-			return Result{}, r.verr("", "idgen: a RETURNING row of %s matched no model on %s: the conflict-target columns must read back exactly as written (citext, char(n) and numeric columns may not); the write is rolled back unless the handle is a pinned OnConn one", r.m.Table, strings.Join(keyNamesOf(r.m.Columns, rp.keyCols), ", "))
-		}
-		matched[i] = true
-		if !a.hasBack(i) {
-			continue
-		}
-		for _, ci := range rp.dbCols {
-			if r.dbDefaultRow(i, ci) {
-				a.queueCopy(i, g, ci)
-			}
-		}
-		for _, ci := range rp.idCols {
-			if id, ok := idString(a.got(g, ci)); ok {
-				a.queueSetID(i, ci, id)
-			}
+	return &reconState{r: r, rp: rp, byKey: byKey, matched: make([]bool, r.n)}
+}
+
+// row matches returned row g to its model and queues the stored ids and
+// dbdefault values for the caller's model.
+func (s *reconState) row(g int, a insAccess) error {
+	r, rp := s.r, s.rp
+	i, ok := s.byKey[idKeyOf(func(ci int) any { return a.got(g, ci) }, rp.keyCols)]
+	if !ok {
+		return r.verr("", "idgen: a RETURNING row of %s matched no model on %s: the conflict-target columns must read back exactly as written (citext, char(n) and numeric columns may not); the write is rolled back unless the handle is a pinned OnConn one", r.m.Table, strings.Join(keyNamesOf(r.m.Columns, rp.keyCols), ", "))
+	}
+	s.matched[i] = true
+	if !a.hasBack(i) {
+		return nil
+	}
+	for _, ci := range rp.dbCols {
+		if r.dbDefaultRow(i, ci) {
+			a.queueCopy(i, g, ci)
 		}
 	}
-	if err := r.unread(matched, rp.dbCols); err != nil {
+	for _, ci := range rp.idCols {
+		if id, ok := idString(a.got(g, ci)); ok {
+			a.queueSetID(i, ci, id)
+		}
+	}
+	return nil
+}
+
+// finish reports a model the statement left unread, else the rows affected.
+func (s *reconState) finish(nGot int) (Result, error) {
+	if err := s.r.unread(s.matched, s.rp.dbCols); err != nil {
 		return Result{}, err
 	}
 	return Result{RowsAffected: int64(nGot)}, nil

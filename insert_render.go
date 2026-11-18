@@ -40,9 +40,10 @@ func (q InsertQuery[T]) render(b *Builder) {
 		backPtr: func(row, ci int) any { return meta.Ptr(back[row], ci) },
 		clone:   func() { ms = slices.Clone(ms) },
 		fields:  fp.ref,
-		ferr:    ferr,
 	}
-	q.ref().render(b, a)
+	r := q.ref()
+	r.ferr = ferr
+	r.render(b, a)
 }
 
 func (InsertQuery[T]) isDML() {}
@@ -221,8 +222,8 @@ func (r insertRef) resolve(d *dialect.Dialect, mode insertMode, a insAccess) (in
 	if p.now.IsZero() {
 		p.now = r.q.conn().now() // read once per statement
 	}
-	if a.ferr != nil {
-		return p, a.ferr
+	if r.ferr != nil {
+		return p, r.ferr
 	}
 	var err error
 	if mode == modeModels {

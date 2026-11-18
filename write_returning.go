@@ -79,15 +79,10 @@ func returningIndexesOf(columns []ColumnMeta, r returningSet) (idx []int, bad st
 	return idx, ""
 }
 
-// renderReturning gates RETURNING on the dialect, validates the columns
-// against m and appends the clause. invalid builds the error for an unmapped
-// column. It is the single entry point the Insert, Update and Delete
-// builders share.
-func renderReturning[T any](b *Builder, m *Meta[T], r returningSet, invalid func(col string) error) {
-	renderReturningCols(b, m.Columns, r, invalid)
-}
-
-// renderReturningCols is renderReturning over the columns alone.
+// renderReturningCols gates RETURNING on the dialect, validates the columns
+// against the mapped columns and appends the clause. invalid builds the error
+// for an unmapped column. It is the single entry point the Insert, Update and
+// Delete builders share.
 func renderReturningCols(b *Builder, columns []ColumnMeta, r returningSet, invalid func(col string) error) {
 	if !r.active() {
 		return
@@ -301,7 +296,7 @@ func (r returningSet) hasSource(table string) bool {
 	return slices.ContainsFunc(r.cols, func(c ColumnRef) bool { return isSourceColumn(c, table) })
 }
 
-// renderWriteReturning is renderReturning for UPDATE and DELETE, which can
+// renderWriteReturning is renderReturningCols for UPDATE and DELETE, which can
 // have FROM / USING sources (hasSources). The list may then name source
 // columns, rendered with their own qualifier, in the order given; under
 // ReturningAll the target's columns come first. On PostgreSQL a statement with
