@@ -368,7 +368,7 @@ An index name declared in `MomoConfig` must not collide with an auto-named
 yields `accounts_plan_idx`); the generator refuses the duplicate.
 
 Config methods: `Config.Index`, `Config.IndexExpr`, `Config.Unique`, `Config.ForeignKey`, `Config.Check`, `Config.CheckIn`, `Config.Enum`, `Config.Default`, `Config.Generated`,
-`Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.PrimaryKey`, `Config.PrimaryKeyDeferrable`, `Config.PrimaryKeyInitiallyDeferred`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
+`Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.Exclude`, `Config.PrimaryKey`, `Config.PrimaryKeyDeferrable`, `Config.PrimaryKeyInitiallyDeferred`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
 `Config.PartitionOf`. Index chain: `IndexOpts.Unique()` (on `Config.Index` or `Config.IndexExpr`), `Where(pred)`, `Method(m)`, `IndexOpts.With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
 `Concurrently()` (`diff` writes the index as `CREATE INDEX CONCURRENTLY` in its own no-transaction migration).
@@ -429,6 +429,15 @@ columns; otherwise the generator reports a diagnostic. The key is a plain
 constraint: `diff` adds, replaces and drops it like a single-column key, and
 `generate --from-db` writes it back. There is no `belongs_to` form for a
 composite key; the relation still needs a single-column key.
+
+An exclusion constraint (PostgreSQL) is declared with `c.Exclude(name, &m.A,
+"=", &m.B, "&&")`: pairs of a field and an operator, so `&m.RoomID, "=", &m.During,
+"&&"` forbids two rows of one room with overlapping `During` ranges. Chain
+`.Using("gist")` (the default; `spgist`, `btree` and `hash` also work),
+`.Deferrable()` or `.InitiallyDeferred()`. A GiST constraint over a scalar column
+makes the generator add the `btree_gist` extension. It models plain columns only
+(no `WHERE`, expression or operator class); the other dialects refuse it. See
+[migrations](migrations.md#exclusion-constraints).
 
 A unique constraint, a foreign key and a primary key can be `DEFERRABLE` on
 PostgreSQL: `c.Unique(...).Deferrable()` or `.InitiallyDeferred()` (a unique
@@ -1024,6 +1033,25 @@ column, call or `momo.Value` elements (an empty list is `ErrValidation`), and
 `momo.ArraySubquery[T]` renders `ARRAY(subquery)` for a one-column
 `SelectQuery` or `momo.Union`. Both are `Expression[[]T]`, so they scan into
 a `[]T` field and feed `arrayop` predicates; PostgreSQL only.
+
+Range columns (a PostgreSQL type). A `types.Range[T]` field is generated as the
+range type of its element: `int32` is `int4range`, `int64` is `int8range`,
+`types.Numeric` is `numrange`, `types.Date` is `daterange`, `time.Time` is
+`tstzrange` and `types.Timestamp` (a timestamp without a zone) is `tsrange`.
+Build a value with `types.ClosedOpen(lower, upper)` (`[lower,upper)`),
+`types.NewRange(types.Incl(a), types.NoBound[T]())` for any other shape, or
+`types.EmptyRange[T]()`; a bound is a `types.Bound` with `Value`, `Inclusive` and
+`Infinite`. The predicates are generic functions over the typed column, in the
+package `github.com/azrtydxb/momo/rangeop`: `rangeop.Contains(col, element)`
+(`@>`), `rangeop.ContainsRange`, `rangeop.ContainedBy` (`<@`),
+`rangeop.Overlaps` (`&&`), `rangeop.Adjacent` (`-|-`), `rangeop.StrictlyLeft`
+(`<<`), `rangeop.StrictlyRight` (`>>`), `rangeop.IsEmpty`,
+`rangeop.LowerInfinite`, `rangeop.UpperInfinite`, and `rangeop.Lower` and
+`rangeop.Upper`, which are scalar expressions (`rangeop.Lower(during).Ge(start)`).
+Each binds its operand with a cast to the range or element type. PostgreSQL
+stores the discrete ranges as `[lower,upper)`, so `(0,9]` reads back as
+`[1,10)`. On other dialects the generator refuses the field and the builders fail
+the build with `ErrUnsupported`. Multiranges are not mapped.
 
 Searching with user input safely. `Like` and `ILike` always render
 `ESCAPE '!'` on every dialect, matching `EscapeLike`. Wildcards (`%`, `_`) in

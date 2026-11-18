@@ -436,6 +436,7 @@ func (d *differ) diffTable(fk string, fn, tn, fo, to *schema.Table) {
 	d.columns(fn, tn, fo, to, renameTo)
 	d.primaryKey(fn, tn, to)
 	d.uniques(fn, tn, to)
+	d.excludes(fn, tn, to)
 	d.checks(fn, tn, d.remapFrom(fo, renameTo), to)
 	d.foreignKeys(fn, tn, to)
 	d.indexes(fn, tn, fo, to)
@@ -628,6 +629,25 @@ func (d *differ) uniques(fn, tn, to *schema.Table) {
 			return slices.Equal(a.Columns, b.Columns) && a.Deferrable == b.Deferrable && a.InitiallyDeferred == b.InitiallyDeferred
 		}, DropUnique, AddUnique,
 		func(u schema.Unique) goneUse { return usesGone(d.gone, u.Columns) })
+}
+
+// excludes compares the exclusion constraints of two tables. fn and tn are
+// normalized, so an empty access method is gist and the deferral flags have one
+// spelling. A constraint that changes in any way is dropped and added again:
+// PostgreSQL cannot alter the elements or the method of one.
+func (d *differ) excludes(fn, tn, to *schema.Table) {
+	diffNamed(d, fn.Excludes, tn.Excludes, to, func(x schema.Exclude) string { return x.Name },
+		func(a, b schema.Exclude) bool {
+			return a.Method == b.Method && slices.Equal(a.Elements, b.Elements) &&
+				a.Deferrable == b.Deferrable && a.InitiallyDeferred == b.InitiallyDeferred
+		}, DropExclude, AddExclude,
+		func(x schema.Exclude) goneUse {
+			cols := make([]string, len(x.Elements))
+			for i, e := range x.Elements {
+				cols[i] = e.Column
+			}
+			return usesGone(d.gone, cols)
+		})
 }
 
 // checks compares the checks of two tables. fn and tn are normalized, which
@@ -908,6 +928,8 @@ var riskNotes = map[ChangeKind]string{
 	DropCheck:      "the rule is no longer enforced; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
 	DropFK:         "referential integrity is no longer enforced; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
 	AddUnique:      "built with CREATE UNIQUE INDEX CONCURRENTLY and adopted with USING INDEX in a no-transaction migration; fails on duplicate rows and then leaves an INVALID index to drop",
+	DropExclude:    "overlapping rows are no longer refused; the ALTER TABLE takes an ACCESS EXCLUSIVE lock",
+	AddExclude:     "builds a GiST index and checks every row under an ACCESS EXCLUSIVE lock, which blocks reads and writes of the table until it finishes; fails if existing rows already conflict",
 	AddCheck:       "added NOT VALID, then validated by a full scan in a no-transaction migration; the validation fails if existing rows violate it",
 	AlterCheckIn:   "dropped and added again NOT VALID under an ACCESS EXCLUSIVE lock, then validated by a full scan in a no-transaction migration; the validation fails if existing rows violate it",
 }
@@ -1116,6 +1138,13 @@ func (d *differ) remapFrom(fn *schema.Table, renameTo map[string]string) *schema
 	out.Uniques = slices.Clone(fn.Uniques)
 	for i := range out.Uniques {
 		out.Uniques[i].Columns = cols(out.Uniques[i].Columns)
+	}
+	out.Excludes = slices.Clone(fn.Excludes)
+	for i := range out.Excludes {
+		out.Excludes[i].Elements = slices.Clone(out.Excludes[i].Elements)
+		for j := range out.Excludes[i].Elements {
+			out.Excludes[i].Elements[j].Column = col(out.Excludes[i].Elements[j].Column)
+		}
 	}
 	out.Checks = slices.Clone(fn.Checks)
 	for i := range out.Checks {

@@ -59,6 +59,20 @@ func Map(goType string, d dialect.Name, tg tags.Tags) (string, error) {
 	return sql, nil
 }
 
+// rangeTypes maps the element of a types.Range to the PostgreSQL range type.
+// Only PostgreSQL has range types: SQLite, MySQL and MariaDB have no mapping,
+// so a range field is a generator diagnostic that wraps momo.ErrUnsupported
+// there. A types.Timestamp element is a tsrange (no time zone) and a time.Time
+// element a tstzrange.
+var rangeTypes = map[string]string{
+	"int32":           "int4range",
+	"int64":           "int8range",
+	"types.Numeric":   "numrange",
+	"types.Date":      "daterange",
+	"types.Timestamp": "tsrange",
+	"time.Time":       "tstzrange",
+}
+
 func postgres(t string, tg tags.Tags) string {
 	switch t {
 	case "int8", "int16":
@@ -99,6 +113,9 @@ func postgres(t string, tg tags.Tags) string {
 	}
 	if strings.HasPrefix(t, "types.JSON[") && strings.HasSuffix(t, "]") {
 		return "jsonb"
+	}
+	if elem, ok := strings.CutPrefix(t, "types.Range["); ok && strings.HasSuffix(elem, "]") {
+		return rangeTypes[strings.TrimSuffix(elem, "]")]
 	}
 	if elem, ok := strings.CutPrefix(t, "[]"); ok && elem != "byte" && elem != "uint8" {
 		if elemSQL := postgresElem(elem, tg); elemSQL != "" {

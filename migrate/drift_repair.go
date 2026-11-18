@@ -314,7 +314,7 @@ func covers(changes []Change, ref ObjectRef) bool {
 		return c.Schema == ref.Schema
 	}
 	switch ref.Kind {
-	case "column", "unique", "index", "fk", "check", "trigger", "policy":
+	case "column", "unique", "exclude", "index", "fk", "check", "trigger", "policy":
 		i := strings.LastIndexByte(ref.Name, '.')
 		if i < 0 {
 			// A name without its owner (an invalid index whose table drift could
@@ -399,9 +399,10 @@ var dropsFor = map[ChangeKind][]ChangeKind{
 	CreatePolicy:   {DropPolicy},
 	// An index, a unique constraint and a primary key are all backed by an index
 	// of their own name, so any of them can collide with any other.
-	CreateIndex:   {DropIndex, DropUnique, DropPrimaryKey},
-	AddUnique:     {DropUnique, DropIndex, DropPrimaryKey},
-	AddPrimaryKey: {DropPrimaryKey, DropUnique, DropIndex},
+	CreateIndex:   {DropIndex, DropUnique, DropExclude, DropPrimaryKey},
+	AddUnique:     {DropUnique, DropIndex, DropExclude, DropPrimaryKey},
+	AddExclude:    {DropExclude, DropIndex, DropUnique, DropPrimaryKey},
+	AddPrimaryKey: {DropPrimaryKey, DropUnique, DropExclude, DropIndex},
 	AddCheck:      {DropCheck},
 	AlterCheckIn:  {DropCheck},
 	AddFK:         {DropFK},
@@ -414,7 +415,7 @@ var dropsFor = map[ChangeKind][]ChangeKind{
 // is named by schema, table and name.
 func dropKey(kind ChangeKind, ch Change) string {
 	switch kind {
-	case DropIndex, CreateIndex, DropUnique, AddUnique, DropPrimaryKey, AddPrimaryKey:
+	case DropIndex, CreateIndex, DropUnique, AddUnique, DropExclude, AddExclude, DropPrimaryKey, AddPrimaryKey:
 		return "relation\x00" + ch.Schema + "\x00" + ch.Name
 	case DropFunction, CreateFunction:
 		return "function\x00" + ch.Schema + "\x00" + ch.Name + "(" + functionArgs(ch) + ")"

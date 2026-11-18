@@ -440,7 +440,9 @@ func scratchModel(s *schema.Schema) (*schema.Schema, error) {
 	}
 	for i := range m.Tables {
 		t := &m.Tables[i]
-		t.Schema, t.ForeignKeys = "", nil
+		// Exclusion constraints carry no text and may need an extension
+		// (btree_gist) the live database has not got yet, so they stay out.
+		t.Schema, t.ForeignKeys, t.Excludes = "", nil, nil
 		t.Indexes = slices.DeleteFunc(t.Indexes, func(ix schema.Index) bool { return !indexHasText(ix) })
 		for j := range t.Indexes {
 			t.Indexes[j].Concurrently = false

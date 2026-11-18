@@ -96,7 +96,17 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 			return nil, err
 		}
 		return one("ALTER TABLE " + tableRef(c.Schema, c.Table) + " ADD CONSTRAINT " + ident(c.Name) + " PRIMARY KEY (" + identList(cols) + ")" + deferral(c.Deferrable, c.InitiallyDeferred)), nil
-	case migrate.DropPrimaryKey, migrate.DropUnique, migrate.DropCheck, migrate.DropFK:
+	case migrate.AddExclude:
+		x, err := get[schema.Exclude](c.After)
+		if err != nil {
+			return nil, err
+		}
+		def, err := excludeDef(x)
+		if err != nil {
+			return nil, err
+		}
+		return one("ALTER TABLE " + tableRef(c.Schema, c.Table) + " ADD " + def), nil
+	case migrate.DropPrimaryKey, migrate.DropUnique, migrate.DropExclude, migrate.DropCheck, migrate.DropFK:
 		ifExists := ""
 		if c.IfExists {
 			ifExists = "IF EXISTS "
@@ -409,6 +419,38 @@ func uniqueDef(u schema.Unique) string {
 	return "CONSTRAINT " + ident(u.Name) + " UNIQUE (" + identList(u.Columns) + ")" + deferral(u.Deferrable, u.InitiallyDeferred)
 }
 
+// excludeMethods are the index access methods PostgreSQL accepts for an
+// exclusion constraint.
+var excludeMethods = map[string]bool{"gist": true, "spgist": true, "btree": true, "hash": true}
+
+// operatorText matches the spelling of a PostgreSQL operator name: a run of the
+// characters an operator may be made of. An operator reaches the statement
+// unquoted, so nothing else is let through.
+var operatorText = regexp.MustCompile("^[-+*/<>=~!@#%^&|`?]+$")
+
+// excludeDef renders an exclusion constraint. The method defaults to gist; an
+// element names a column and the operator two rows are compared with on it.
+func excludeDef(x schema.Exclude) (string, error) {
+	method := strings.ToLower(strings.TrimSpace(x.Method))
+	if method == "" {
+		method = "gist"
+	}
+	if !excludeMethods[method] {
+		return "", fmt.Errorf("exclusion constraint %q: access method %q is not one of gist, spgist, btree, hash", x.Name, x.Method)
+	}
+	if len(x.Elements) == 0 {
+		return "", fmt.Errorf("exclusion constraint %q has no elements", x.Name)
+	}
+	elems := make([]string, len(x.Elements))
+	for i, e := range x.Elements {
+		if e.Column == "" || !operatorText.MatchString(e.Operator) {
+			return "", fmt.Errorf("exclusion constraint %q: element %d needs a column and an operator such as = or &&, got column %q operator %q", x.Name, i+1, e.Column, e.Operator)
+		}
+		elems[i] = ident(e.Column) + " WITH " + e.Operator
+	}
+	return "CONSTRAINT " + ident(x.Name) + " EXCLUDE USING " + method + " (" + strings.Join(elems, ", ") + ")" + deferral(x.Deferrable, x.InitiallyDeferred), nil
+}
+
 // deferral renders the deferrability clause of a constraint: empty for the
 // default NOT DEFERRABLE, with a leading space otherwise. INITIALLY DEFERRED
 // implies DEFERRABLE, and PostgreSQL accepts the clause in this order on
@@ -530,6 +572,13 @@ func renderCreateTable(c migrate.Change) ([]migrate.Statement, error) {
 	}
 	for _, ck := range t.Checks {
 		parts = append(parts, checkDef(ck))
+	}
+	for _, x := range t.Excludes {
+		def, err := excludeDef(x)
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, def)
 	}
 	for _, fk := range t.ForeignKeys {
 		def, err := fkDef(fk)

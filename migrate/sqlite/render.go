@@ -363,6 +363,8 @@ func (r *renderer) renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		return nil, unsupported("SQLite has no schemas")
 	case migrate.CreateExtension:
 		return nil, unsupported("SQLite has no CREATE EXTENSION; extensions are loaded by the driver")
+	case migrate.AddExclude, migrate.DropExclude:
+		return nil, unsupported("SQLite has no exclusion constraints; they are PostgreSQL only")
 	case migrate.SetRLS, migrate.CreatePolicy, migrate.DropPolicy:
 		return nil, unsupported("SQLite has no row-level security")
 	case migrate.CreateFunction, migrate.ReplaceFunction, migrate.DropFunction:
@@ -592,7 +594,11 @@ func createTableSQL(name string, t schema.Table, enums map[string][]string) (str
 // INITIALLY DEFERRED on a foreign key only, and PRAGMA foreign_key_list does not
 // report it, so momo could not read it back and every inspection would differ
 // from the declaration; a primary key or unique constraint cannot be deferred.
+// It also refuses an exclusion constraint, which SQLite does not have.
 func checkDeferral(t schema.Table) error {
+	if len(t.Excludes) > 0 {
+		return unsupported("exclusion constraint %q of table %q: SQLite has no exclusion constraints; they are PostgreSQL only", t.Excludes[0].Name, t.Name)
+	}
 	const why = "is DEFERRABLE; momo models deferrable constraints on PostgreSQL only (SQLite cannot report a foreign key's deferrability, and cannot defer a primary key or unique constraint)"
 	if t.PrimaryKeyDeferrable || t.PrimaryKeyInitiallyDeferred {
 		return unsupported("the primary key of table %q %s", t.Name, why)

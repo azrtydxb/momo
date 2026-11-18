@@ -58,6 +58,12 @@ has no array columns, so the generator rejects them there.
 | `types.Date`                           | date                     | TEXT        | text        |
 | `types.Numeric`                        | numeric                  | TEXT        | text        |
 | `types.JSON[T]`                        | jsonb                    | TEXT        | json        |
+| `types.Range[int32]`                   | int4range                | unsupported | unsupported |
+| `types.Range[int64]`                   | int8range                | unsupported | unsupported |
+| `types.Range[types.Numeric]`           | numrange                 | unsupported | unsupported |
+| `types.Range[types.Date]`              | daterange                | unsupported | unsupported |
+| `types.Range[types.Timestamp]`         | tsrange                  | unsupported | unsupported |
+| `types.Range[time.Time]`               | tstzrange                | unsupported | unsupported |
 | `vector.Vector`                        | vector(N)                | unsupported | vector(N)   |
 | `vector.HalfVector`                    | halfvec(N)               | unsupported | unsupported |
 | `vector.SparseVector`                  | sparsevec(N)             | unsupported | unsupported |
@@ -134,6 +140,51 @@ document because nothing generates one.
 | ----------------------- | ----------- | ------ |
 | `time.Time (timestamp)` | `timestamp` | `n/a`  |
 | `string (decimal)`      | `numeric`   | `n/a`  |
+
+## Range types
+
+`types.Range[T]` is a PostgreSQL range column, with an empty range, infinite
+bounds and inclusive or exclusive bounds. The element type `T` picks the range
+type:
+
+- `int32` is `int4range` and `int64` is `int8range`;
+- `types.Numeric` is `numrange` and `types.Date` is `daterange`;
+- `time.Time` is `tstzrange`, a range of timestamps with a time zone;
+- `types.Timestamp` is `tsrange`, a range of timestamps without a zone. It is a
+  struct around a `time.Time` whose wall clock is written without a zone and
+  read back as a UTC time, the way the column stores it.
+
+A `Range` holds `Lower` and `Upper`, each a `types.Bound` with a `Value`, an
+`Inclusive` flag and an `Infinite` flag (no limit on that side), and an `Empty`
+flag. Build one with `types.ClosedOpen(lower, upper)` (`[lower,upper)`, the usual
+form for a period), `types.NewRange` with `types.Incl`, `types.Excl` and
+`types.NoBound` for any other shape, or `types.EmptyRange`. A nullable column is
+a `*types.Range[T]` field.
+
+A range travels as the text PostgreSQL prints, such as `[1,10)`, `(,5]` or
+`empty`: `Value` writes it and `Scan` reads it, so it needs no driver codec and
+works with every driver the generator supports. The pgx driver turns its binary
+form into that text before it reaches `Scan`. PostgreSQL stores `int4range`,
+`int8range` and `daterange` in the canonical form `[lower,upper)`, so a range
+written `(0,9]` reads back as `[1,10)`: compare ranges of those types in that
+form. A `numrange`, `tsrange` and `tstzrange` keep the bounds as written. A
+timestamp bound has microsecond precision.
+
+The `rangeop` package queries them: `rangeop.Contains` for an element,
+`rangeop.ContainsRange`, `rangeop.ContainedBy`, `rangeop.Overlaps`,
+`rangeop.Adjacent`, `rangeop.StrictlyLeft`, `rangeop.StrictlyRight`,
+`rangeop.IsEmpty`, `rangeop.LowerInfinite`, `rangeop.UpperInfinite`, and
+`rangeop.Lower` and `rangeop.Upper` for the bounds, which compare like any scalar
+expression. Each binds its operand with a cast to the range or element type.
+
+Range types exist on PostgreSQL alone. The generator reports a `types.Range`
+field when the target dialect is SQLite, MySQL or MariaDB, and a `rangeop`
+builder fails the build with `momo.ErrUnsupported` there. Multiranges
+(`int4multirange` and the others) and a range over another element type have no
+Go type; `generate --from-db` reports such a column as unmapped, and an
+`introspect` types rule or a `type` tag declares it. A GiST exclusion
+constraint over a range is declared with `Config.Exclude`; see
+[migrations](migrations.md#exclusion-constraints).
 
 ## Edge values and behavior
 
