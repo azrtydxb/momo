@@ -17,6 +17,7 @@ import (
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/migrate/migratetest"
+	mmysql "github.com/azrtydxb/momo/migrate/mysql"
 	mpg "github.com/azrtydxb/momo/migrate/postgres"
 	msqlite "github.com/azrtydxb/momo/migrate/sqlite"
 	"github.com/azrtydxb/momo/obs"
@@ -34,6 +35,8 @@ func createTable(t *testing.T, db *momo.DB, d dialect.Name) {
 		md = mpg.New()
 	case dialect.SQLite:
 		md = msqlite.New()
+	case dialect.MySQL:
+		md = mmysql.New()
 	default:
 		t.Fatalf("no migration dialect for %s", d)
 	}
@@ -162,7 +165,7 @@ func count(t *testing.T, db *momo.DB) int64 {
 // Catches: events handed out in the wrong order for one key, lost headers or
 // payloads, or a published row that is not marked.
 func TestRelayPublishesInKeyOrder(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		o := setup(t, db, d)
 		ids := addAll(t, db, o,
 			outbox.Event{Topic: "orders", Key: "a", Payload: []byte("a1"), Headers: map[string]string{"trace": "t1"}},
@@ -218,7 +221,7 @@ func TestRelayPublishesInKeyOrder(t *testing.T) {
 // Catches: an event that survives the rollback of the transaction that wrote
 // it, which is the whole point of the outbox.
 func TestAddRollsBackWithTransaction(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		o := setup(t, db, d)
 		abort := errors.New("abort")
 		err := db.Tx(context.Background(), momo.TxOptions{}, func(tx *momo.Tx) error {
@@ -244,7 +247,7 @@ func TestAddRollsBackWithTransaction(t *testing.T) {
 // later event of its key overtake it, and a requeue that does not unblock the
 // key.
 func TestFailureRetriesThenDeadThenRequeue(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		ctx := context.Background()
 		o := setup(t, db, d)
 		ids := addAll(t, db, o,
@@ -321,7 +324,7 @@ func TestFailureRetriesThenDeadThenRequeue(t *testing.T) {
 // Catches: a later event of a key published while an earlier one waits for its
 // retry.
 func TestFailedEventHoldsBackItsKey(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		ctx := context.Background()
 		o := setup(t, db, d)
 		ids := addAll(t, db, o,
@@ -366,7 +369,7 @@ func TestFailedEventHoldsBackItsKey(t *testing.T) {
 // Catches: retention that removes dead or pending rows, or that ignores the
 // age.
 func TestCleanupRemovesOnlyOldPublished(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		ctx := context.Background()
 		o := setup(t, db, d)
 		addAll(t, db, o,
@@ -406,7 +409,7 @@ func TestCleanupRemovesOnlyOldPublished(t *testing.T) {
 // never see.
 func TestRelayStatementsReachHooks(t *testing.T) {
 	rec := &obs.Recorder{}
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		o := setup(t, db, d)
 		rec.Reset()
 		addAll(t, db, o, outbox.Event{Topic: "t", Payload: []byte("x")})
@@ -419,8 +422,8 @@ func TestRelayStatementsReachHooks(t *testing.T) {
 				t.Errorf("hooks saw no %q statement:\n%s", want, all)
 			}
 		}
-		if d == dialect.Postgres && !strings.Contains(all, "SKIP LOCKED") {
-			t.Errorf("the PostgreSQL claim does not use SKIP LOCKED:\n%s", all)
+		if d != dialect.SQLite && !strings.Contains(all, "SKIP LOCKED") {
+			t.Errorf("the %s claim does not use SKIP LOCKED:\n%s", d, all)
 		}
 	}, momo.WithHook(rec))
 }

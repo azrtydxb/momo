@@ -4,11 +4,15 @@ package outbox
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -110,18 +114,22 @@ func WithOnError(fn func(error)) RelayOption { return func(c *relayConfig) { c.o
 // is the intended use; run several Relays, in one process or many, to share the
 // work.
 type Relay struct {
-	o    *Outbox
-	db   *momo.DB
-	d    *dialect.Dialect
-	pub  Publisher
-	cfg  relayConfig
-	wake chan struct{}
+	o        *Outbox
+	db       *momo.DB
+	d        *dialect.Dialect
+	st       *statements
+	pub      Publisher
+	cfg      relayConfig
+	wake     chan struct{}
+	serverOK atomic.Bool
 }
 
 // NewRelay returns a Relay that publishes the events of o, read through db,
 // with pub. It fails with momo.ErrValidation for a nil argument or an option
-// out of range, and with momo.ErrUnsupported for MySQL and MariaDB and for
-// WithListen on a database other than PostgreSQL.
+// out of range, and with momo.ErrUnsupported for WithListen on a database other
+// than PostgreSQL. A MySQL or MariaDB server too old for SKIP LOCKED (before
+// MySQL 8.0 or MariaDB 10.6) is found when the relay first claims: RunOnce
+// returns momo.ErrUnsupported, and so does Run, which stops.
 func (o *Outbox) NewRelay(db *momo.DB, pub Publisher, opts ...RelayOption) (*Relay, error) {
 	if db == nil {
 		return nil, validation("outbox relay", "NewRelay needs a *momo.DB")
@@ -172,7 +180,7 @@ func (o *Outbox) NewRelay(db *momo.DB, pub Publisher, opts ...RelayOption) (*Rel
 		table := o.table
 		cfg.onError = func(err error) { slog.Warn("outbox relay", "table", table, "err", err) }
 	}
-	return &Relay{o: o, db: db, d: d, pub: pub, cfg: cfg, wake: make(chan struct{}, 1)}, nil
+	return &Relay{o: o, db: db, d: d, st: o.stmts(d), pub: pub, cfg: cfg, wake: make(chan struct{}, 1)}, nil
 }
 
 // Wake makes an idle Run look for events now instead of at the end of its poll
@@ -204,6 +212,9 @@ func (r *Relay) Run(ctx context.Context) error {
 			return nil
 		}
 		n, err := r.RunOnce(ctx)
+		if errors.Is(err, momo.ErrUnsupported) {
+			return err
+		}
 		if err != nil && ctx.Err() == nil {
 			r.cfg.onError(err)
 		}
@@ -249,6 +260,9 @@ func (r *Relay) cleanup(ctx context.Context, last *time.Time) {
 // advances by one event per batch. Run calls RunOnce again at once when a batch
 // was not empty.
 func (r *Relay) RunOnce(ctx context.Context) (int, error) {
+	if err := r.checkServer(ctx); err != nil {
+		return 0, err
+	}
 	now := time.Now()
 	deadline := now.Add(r.cfg.lease)
 	batch, err := r.claim(ctx, now, deadline)
@@ -272,10 +286,13 @@ type claimRow = momo.Row6[int64, string, *string, []byte, *string, int]
 func (r *Relay) claim(ctx context.Context, now, deadline time.Time) ([]Event, error) {
 	var rows []claimRow
 	var err error
-	if r.d.Name == dialect.SQLite {
-		rows, err = momo.Query[claimRow](ctx, r.db, r.o.sql.claimSQLite, stamp(r.d, deadline), stamp(r.d, now), r.cfg.batch)
-	} else {
-		rows, err = momo.Query[claimRow](ctx, r.db, r.o.sql.claimPG, stamp(r.d, now), r.cfg.batch, stamp(r.d, deadline))
+	switch r.d.Name {
+	case dialect.SQLite:
+		rows, err = momo.Query[claimRow](ctx, r.db, r.st.claim, stamp(r.d, deadline), stamp(r.d, now), r.cfg.batch)
+	case dialect.MySQL:
+		rows, err = r.claimMySQL(ctx, now, deadline)
+	default:
+		rows, err = momo.Query[claimRow](ctx, r.db, r.st.claim, stamp(r.d, now), r.cfg.batch, stamp(r.d, deadline))
 	}
 	if err != nil {
 		return nil, err
@@ -305,6 +322,82 @@ func (r *Relay) claim(ctx context.Context, now, deadline time.Time) ([]Event, er
 	return out, nil
 }
 
+// claimMySQL claims a batch on MySQL and MariaDB in one short transaction: it
+// selects the due rows with FOR UPDATE SKIP LOCKED, leases them and commits.
+// READ COMMITTED avoids the gap locks of the default isolation level. Nothing
+// is published inside the transaction.
+func (r *Relay) claimMySQL(ctx context.Context, now, deadline time.Time) ([]claimRow, error) {
+	var rows []claimRow
+	err := r.db.Tx(ctx, momo.TxOptions{Isolation: sql.LevelReadCommitted}, func(tx *momo.Tx) error {
+		var err error
+		rows, err = momo.Query[claimRow](ctx, tx, r.st.claim, stamp(r.d, now), r.cfg.batch)
+		if err != nil || len(rows) == 0 {
+			return err
+		}
+		args := make([]any, 0, len(rows)+1)
+		args = append(args, stamp(r.d, deadline))
+		for _, row := range rows {
+			args = append(args, row.C1)
+		}
+		_, err = momo.Exec(ctx, tx, r.st.lease+"("+strings.Repeat("?,", len(rows)-1)+"?)", args...)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// checkServer fails with momo.ErrUnsupported when a MySQL or MariaDB server is
+// too old for SKIP LOCKED. It asks the server once and remembers a success.
+func (r *Relay) checkServer(ctx context.Context) error {
+	if r.d.Name != dialect.MySQL || r.serverOK.Load() {
+		return nil
+	}
+	got, err := momo.Scalars[string](ctx, r.db, "SELECT VERSION()")
+	if err != nil {
+		return err
+	}
+	if len(got) != 1 {
+		return &momo.Error{Kind: momo.ErrNotFound, Op: "outbox relay", Err: errors.New("SELECT VERSION() returned no row")}
+	}
+	if err := skipLockedSupported(r.d.Flavor, got[0]); err != nil {
+		return err
+	}
+	r.serverOK.Store(true)
+	return nil
+}
+
+// skipLockedSupported reports whether a server of the given flavor and
+// VERSION() string has FOR UPDATE SKIP LOCKED: MySQL 8.0 and MariaDB 10.6. A
+// version it cannot read is refused rather than guessed.
+func skipLockedSupported(flavor dialect.Flavor, version string) error {
+	minMajor, minMinor, name := 8, 0, "MySQL 8.0"
+	if flavor == dialect.FlavorMariaDB {
+		minMajor, minMinor, name = 10, 6, "MariaDB 10.6"
+	}
+	v := strings.TrimPrefix(version, "5.5.5-")
+	parts := strings.SplitN(v, ".", 3)
+	major, err := strconv.Atoi(parts[0])
+	minor := -1
+	if err == nil && len(parts) > 1 {
+		end := 0
+		for end < len(parts[1]) && parts[1][end] >= '0' && parts[1][end] <= '9' {
+			end++
+		}
+		if m, merr := strconv.Atoi(parts[1][:end]); merr == nil {
+			minor = m
+		}
+	}
+	if err != nil || minor < 0 {
+		return &momo.Error{Kind: momo.ErrUnsupported, Op: "outbox relay", Err: fmt.Errorf("the outbox needs FOR UPDATE SKIP LOCKED (%s or newer) and the server version %q cannot be read", name, version)}
+	}
+	if major < minMajor || (major == minMajor && minor < minMinor) {
+		return &momo.Error{Kind: momo.ErrUnsupported, Op: "outbox relay", Err: fmt.Errorf("the outbox needs FOR UPDATE SKIP LOCKED (%s or newer), and the server is %s", name, version)}
+	}
+	return nil
+}
+
 // bookkeeping returns a context for recording an outcome: it ignores the
 // cancellation of ctx, so a relay that is stopping still records what happened.
 func bookkeeping(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -324,7 +417,7 @@ func (r *Relay) deliver(ctx context.Context, ev Event, deadline time.Time) {
 	now := time.Now()
 	switch {
 	case err == nil:
-		r.record(bg, r.o.sql.published, stamp(r.d, now), ev.ID)
+		r.record(bg, r.st.published, stamp(r.d, now), ev.ID)
 		r.observe(Outcome{Event: ev, Duration: took})
 	case ctx.Err() != nil:
 		// The relay is stopping and cut the publish short: that is not the
@@ -334,9 +427,9 @@ func (r *Relay) deliver(ctx context.Context, ev Event, deadline time.Time) {
 		msg := truncate(err.Error())
 		dead := ev.Attempt >= r.cfg.maxAttempts
 		if dead {
-			r.record(bg, r.o.sql.dead, stamp(r.d, now), msg, ev.ID)
+			r.record(bg, r.st.dead, stamp(r.d, now), msg, ev.ID)
 		} else {
-			r.record(bg, r.o.sql.retry, stamp(r.d, now.Add(r.backoff(ev.Attempt))), msg, ev.ID)
+			r.record(bg, r.st.retry, stamp(r.d, now.Add(r.backoff(ev.Attempt))), msg, ev.ID)
 		}
 		r.observe(Outcome{Event: ev, Err: err, Dead: dead, Duration: took})
 	}
@@ -368,7 +461,7 @@ func (r *Relay) release(ctx context.Context, evs []Event) {
 	defer done()
 	now := stamp(r.d, time.Now())
 	for _, ev := range evs {
-		r.record(bg, r.o.sql.release, now, ev.ID)
+		r.record(bg, r.st.release, now, ev.ID)
 	}
 }
 

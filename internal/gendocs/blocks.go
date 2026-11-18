@@ -244,7 +244,7 @@ var features = []feature{
 		API:    []string{"outbox.New", "outbox.Outbox", "outbox.Relay", "outbox.Publisher", "outbox.WithListen"},
 		PG:     "yes: `outbox.Outbox.Add` writes the event in the caller's transaction and sends `NOTIFY`; `outbox.Relay` claims batches with `FOR UPDATE SKIP LOCKED` and a lease, publishes with no lock held, retries with backoff up to a maximum of attempts, keeps the order of each key, and wakes on `NOTIFY` through `outbox.WithListen` with polling as the fallback; several relays in several processes share one table",
 		SQLite: "yes: the same table, `outbox.Outbox.Add` and `outbox.Relay`, polling only; the single writer serializes the claims, and `outbox.WithListen` is `ErrUnsupported`",
-		MySQL:  "`ErrUnsupported`: the claim needs `UPDATE ... RETURNING`, which MySQL and MariaDB do not have; `outbox.Outbox.Add` and `outbox.Outbox.NewRelay` return the error",
+		MySQL:  "yes on MySQL 8.4, MySQL 9.7 and MariaDB 11.8: the claim is one short `READ COMMITTED` transaction that selects with `FOR UPDATE SKIP LOCKED`, leases the rows and commits before anything is published; polling only, `outbox.WithListen` is `ErrUnsupported`; a server before MySQL 8.0 or MariaDB 10.6 makes `outbox.Relay.Run` return `ErrUnsupported`",
 	},
 }
 

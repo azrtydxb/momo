@@ -13,9 +13,8 @@ them to a `outbox.Publisher` that the application implements. Momo ships no
 broker client: the publisher is your code for Kafka, NATS, SQS or an HTTP
 endpoint.
 
-It runs on PostgreSQL and SQLite. MySQL and MariaDB are refused with
-`momo.ErrUnsupported`, because claiming a batch takes `UPDATE ... RETURNING`,
-which they do not have.
+It runs on PostgreSQL, SQLite, MySQL and MariaDB; see
+[Dialects](#dialects).
 
 ## Declare the table
 
@@ -51,12 +50,13 @@ type OutboxEvent struct {
 	LastError   *string    `momo:"column:last_error,type:text"`
 }
 
-// MomoConfig declares the partial indexes the relay and the retention cleanup
-// read through.
+// MomoConfig declares the two indexes the relay and the retention cleanup read
+// through. They are plain indexes, not partial ones, because MySQL and MariaDB
+// have no partial indexes; a NULL published_at or dead_at is searched as a key
+// value.
 func (e *OutboxEvent) MomoConfig(c *momo.Config) {
-	c.Index("outbox_events_due_idx", &e.AvailableAt).Where("published_at IS NULL AND dead_at IS NULL")
-	c.Index("outbox_events_key_idx", &e.Key, &e.ID).Where("published_at IS NULL")
-	c.Index("outbox_events_published_idx", &e.PublishedAt).Where("published_at IS NOT NULL")
+	c.Index("outbox_events_due_idx", &e.PublishedAt, &e.DeadAt, &e.AvailableAt)
+	c.Index("outbox_events_key_idx", &e.Key, &e.PublishedAt, &e.ID)
 }
 
 func main() {
@@ -80,8 +80,10 @@ What each column is for:
 | `dead_at`      | Set when the last allowed attempt failed.                                                |
 | `last_error`   | The text of the last publish error, cut to 1000 bytes.                                   |
 
-The table holds only what the relay needs. The partial indexes keep the claim
-fast however many published rows are kept.
+The table holds only what the relay needs. The two indexes keep the claim and
+the retention cleanup fast however many published rows are kept. On MySQL and
+MariaDB `payload` is a `blob` (65,535 bytes at most) and `headers` is `text`;
+change the column type in a migration if events are larger.
 
 ## Write an event with the data
 
@@ -218,9 +220,9 @@ an event.
 
 One statement claims a batch of due events. It moves each event's
 `available_at` to the end of a lease (30 seconds by default) and counts an
-attempt. On PostgreSQL the statement selects with `FOR UPDATE SKIP LOCKED`, so a
-second relay skips the rows the first is claiming. The row locks end with that
-statement. The events are then published one at a time, in id order, with no
+attempt. The statement selects with `FOR UPDATE SKIP LOCKED`, so a second relay
+skips the rows the first is claiming. The row locks end with that statement
+(on MySQL and MariaDB with one short transaction). The events are then published one at a time, in id order, with no
 transaction and no lock held, so a slow broker does not hold a row lock or a
 connection. After each publish the relay records the outcome:
 
@@ -276,8 +278,29 @@ that claims, so the hosts need clocks that agree to within a small part of the
 lease.
 
 On SQLite there is one writer: each claim is one statement, so claims are
-serialized. There is no `LISTEN`, so the relay polls, and `outbox.WithListen`
-fails with `momo.ErrUnsupported`.
+serialized. There is no `LISTEN` on SQLite, MySQL or MariaDB, so the relay polls
+there, and `outbox.WithListen` fails with `momo.ErrUnsupported`.
+
+## Dialects
+
+| Dialect       | Claim                                                                                                      | Wake-up                |
+| ------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------- |
+| PostgreSQL    | One `UPDATE ... RETURNING` over a `FOR UPDATE SKIP LOCKED` selection                                       | `LISTEN`, then polling |
+| SQLite        | One `UPDATE ... RETURNING`; the single writer serializes claims                                            | Polling                |
+| MySQL 8.0+    | A short `READ COMMITTED` transaction: `SELECT ... FOR UPDATE SKIP LOCKED`, `UPDATE` with the lease, commit | Polling                |
+| MariaDB 10.6+ | The same transaction as MySQL                                                                              | Polling                |
+
+MySQL and MariaDB have no `UPDATE ... RETURNING`, so the claim selects and
+leases in one transaction and commits before anything is published: the
+semantics are those of the PostgreSQL claim, with the same lease, retries,
+order and at-least-once delivery. The relay asks the server for its version
+when it first claims. A server older than MySQL 8.0 or MariaDB 10.6 has no
+`SKIP LOCKED`, and `outbox.Relay.RunOnce` and `outbox.Relay.Run` return
+`momo.ErrUnsupported`. `outbox.WithListen` on a database other than PostgreSQL
+fails in `outbox.Outbox.NewRelay` with `momo.ErrUnsupported`. The remaining
+statements are the same on every dialect, apart from the quoting of
+identifiers and the retention delete, which MySQL writes as
+`DELETE ... ORDER BY id LIMIT`.
 
 ## Waking the relay
 
@@ -375,8 +398,7 @@ func main() {
 
 ## Limits
 
-- Only PostgreSQL and SQLite. MySQL and MariaDB return `momo.ErrUnsupported`
-  from `outbox.Outbox.Add` and `outbox.Outbox.NewRelay`.
+- MySQL needs 8.0 and MariaDB 10.6 for `SKIP LOCKED`.
 - The table name is one identifier of at most 63 letters, digits and
   underscores. `outbox.New` rejects anything else with `momo.ErrValidation`.
 - Delivery is at least once and order holds per key only, as described above.

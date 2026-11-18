@@ -25,7 +25,7 @@ const relayWait = 30 * time.Second
 // publish as a failed attempt, or that leaves the event leased so another
 // relay must wait for the lease to run out.
 func TestRunStopsOnCancelAndReleasesEvent(t *testing.T) {
-	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		o := setup(t, db, d)
 		addAll(t, db, o, outbox.Event{Topic: "t", Payload: []byte("x")})
 
@@ -76,8 +76,17 @@ func TestRunStopsOnCancelAndReleasesEvent(t *testing.T) {
 // Catches: two relays that publish the same event, which is what SKIP LOCKED
 // and the lease are there to prevent.
 func TestTwoRelaysPublishEachEventOnce(t *testing.T) {
-	db := testopen.Postgres(t)
-	o := setup(t, db, dialect.Postgres)
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		if d == dialect.SQLite {
+			t.Skip("SQLite has one writer; relays on one file are not run concurrently here")
+		}
+		twoRelays(t, db, d)
+	})
+}
+
+func twoRelays(t *testing.T, db *momo.DB, d dialect.Name) {
+	t.Helper()
+	o := setup(t, db, d)
 	const total = 60
 	evs := make([]outbox.Event, total)
 	for i := range evs {
@@ -128,6 +137,75 @@ func TestTwoRelaysPublishEachEventOnce(t *testing.T) {
 			t.Errorf("row %d is not marked published", s.C1)
 		}
 	}
+}
+
+// Catches: two relays that publish the events of one key out of order, which
+// the per-key rule in the claim exists to prevent.
+func TestTwoRelaysKeepKeyOrder(t *testing.T) {
+	testopen.EachWithMySQL(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		if d == dialect.SQLite {
+			t.Skip("SQLite has one writer; relays on one file are not run concurrently here")
+		}
+		o := setup(t, db, d)
+		const keys, perKey = 5, 6
+		var evs []outbox.Event
+		for n := range perKey {
+			for k := range keys {
+				evs = append(evs, outbox.Event{Topic: "t", Key: "k" + strconv.Itoa(k), Payload: []byte(strconv.Itoa(n))})
+			}
+		}
+		addAll(t, db, o, evs...)
+
+		var mu sync.Mutex
+		got := map[string][]int{}
+		total := 0
+		pub := outbox.PublisherFunc(func(_ context.Context, e outbox.Event) error {
+			n, err := strconv.Atoi(string(e.Payload))
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			got[e.Key] = append(got[e.Key], n)
+			total++
+			mu.Unlock()
+			return nil
+		})
+		ctx, cancel := context.WithTimeout(context.Background(), 2*relayWait)
+		defer cancel()
+		var wg sync.WaitGroup
+		for range 2 {
+			r := newRelay(t, o, db, pub, outbox.WithBatchSize(3), outbox.WithPollInterval(5*time.Millisecond))
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_ = r.Run(ctx)
+			}()
+		}
+		for {
+			mu.Lock()
+			n := total
+			mu.Unlock()
+			if n >= keys*perKey {
+				break
+			}
+			if ctx.Err() != nil {
+				t.Fatalf("only %d of %d events were published", n, keys*perKey)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel()
+		wg.Wait()
+		mu.Lock()
+		defer mu.Unlock()
+		for key, seq := range got {
+			for i, n := range seq {
+				if n != i {
+					t.Errorf("key %s was published as %v, want 0 to %d in order", key, seq, perKey-1)
+					break
+				}
+			}
+		}
+	})
 }
 
 // listenerCount counts the sessions of the test database that last ran LISTEN

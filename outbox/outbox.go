@@ -28,7 +28,7 @@
 // Outbox.NewRelay returns a Relay. Relay.Run claims a batch of due events with
 // one statement (FOR UPDATE SKIP LOCKED on PostgreSQL), which moves their
 // available_at to the end of a lease and counts an attempt. The row locks last
-// only for that statement: the events are published afterwards, one at a time,
+// only for that statement (on MySQL and MariaDB, one short transaction): the events are published afterwards, one at a time,
 // with no lock and no transaction held across the publish. A published event
 // is marked with published_at. An event whose publish fails is retried after an
 // exponential backoff, and becomes dead (dead_at) after the maximum number of
@@ -60,10 +60,14 @@
 //
 // # Dialects
 //
-// PostgreSQL and SQLite are supported. On SQLite the relay polls, and the
-// single-writer database serializes the claims. MySQL and MariaDB are refused
-// with momo.ErrUnsupported: the claim needs UPDATE ... RETURNING, which they
-// lack.
+// PostgreSQL, SQLite, MySQL and MariaDB are supported. On SQLite the relay
+// polls, and the single-writer database serializes the claims. On MySQL and
+// MariaDB, which have no UPDATE ... RETURNING, the claim is a short transaction
+// that selects the due rows with FOR UPDATE SKIP LOCKED, leases them and
+// commits before anything is published, so the semantics are those of the
+// PostgreSQL claim; it needs MySQL 8.0 or MariaDB 10.6, and a relay on an older
+// server fails with momo.ErrUnsupported. Only PostgreSQL has a LISTEN wake-up;
+// the others poll.
 package outbox
 
 import (
@@ -131,7 +135,7 @@ func (f PublisherFunc) Publish(ctx context.Context, e Event) error { return f(ct
 type Outbox struct {
 	table  string
 	notify bool
-	sql    statements
+	sql    map[dialect.Name]*statements
 }
 
 // Option configures an Outbox.
@@ -159,7 +163,11 @@ func New(opts ...Option) (*Outbox, error) {
 	if !tableName.MatchString(o.table) {
 		return nil, validation("outbox new", fmt.Sprintf("table name %q is not an identifier of at most 63 letters, digits and underscores", o.table))
 	}
-	o.sql = newStatements(o.table)
+	o.sql = map[dialect.Name]*statements{}
+	for _, n := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
+		s := newStatements(n, o.table)
+		o.sql[n] = &s
+	}
 	return o, nil
 }
 
@@ -170,9 +178,9 @@ func (o *Outbox) Table() string { return o.table }
 // visible to the relay when tx commits and never appears if tx rolls back.
 //
 // tx must be the transaction that writes the data the event describes. A nil
-// tx and an empty topic fail with momo.ErrValidation; MySQL and MariaDB fail
-// with momo.ErrUnsupported. On PostgreSQL Add also sends NOTIFY on the channel
-// named after the table, unless WithoutNotify was given.
+// tx and an empty topic fail with momo.ErrValidation. On PostgreSQL Add also
+// sends NOTIFY on the channel named after the table, unless WithoutNotify was
+// given.
 //
 // The payload and headers are bound as statement arguments, so a hook opened
 // with momo.WithArgLogging sees them.
@@ -203,7 +211,17 @@ func (o *Outbox) Add(ctx context.Context, tx *momo.Tx, e Event) (int64, error) {
 		payload = []byte{}
 	}
 	now := stamp(d, time.Now())
-	ids, err := momo.Scalars[int64](ctx, tx, o.sql.insert, e.Topic, key, payload, headers, now, now)
+	st := o.stmts(d)
+	var ids []int64
+	var err error
+	if d.Name == dialect.MySQL {
+		// MySQL has no INSERT ... RETURNING; the id is the connection's own.
+		if _, err = momo.Exec(ctx, tx, st.insert, e.Topic, key, payload, headers, now, now); err == nil {
+			ids, err = momo.Scalars[int64](ctx, tx, "SELECT LAST_INSERT_ID()")
+		}
+	} else {
+		ids, err = momo.Scalars[int64](ctx, tx, st.insert, e.Topic, key, payload, headers, now, now)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -241,7 +259,7 @@ func (o *Outbox) Cleanup(ctx context.Context, q momo.Querier, retention time.Dur
 	cutoff := stamp(d, time.Now().Add(-retention))
 	var total int64
 	for {
-		n, err := momo.Exec(ctx, q, o.sql.cleanup, cutoff, cleanupChunk)
+		n, err := momo.Exec(ctx, q, o.stmts(d).cleanup, cutoff, cleanupChunk)
 		if err != nil {
 			return total, err
 		}
@@ -278,7 +296,7 @@ func (o *Outbox) Requeue(ctx context.Context, q momo.Querier, ids ...int64) (int
 		for _, id := range chunk {
 			args = append(args, id)
 		}
-		n, err := momo.Exec(ctx, q, o.sql.requeue+"("+strings.Repeat("?,", len(chunk)-1)+"?)", args...)
+		n, err := momo.Exec(ctx, q, o.stmts(d).requeue+"("+strings.Repeat("?,", len(chunk)-1)+"?)", args...)
 		if err != nil {
 			return total, err
 		}
@@ -292,25 +310,29 @@ func validation(op, msg string) error {
 	return &momo.Error{Kind: momo.ErrValidation, Op: op, Err: errors.New(msg)}
 }
 
-// supported reports whether the outbox runs on d.
+// stmts returns the statements for d. The caller has checked supported(d).
+func (o *Outbox) stmts(d *dialect.Dialect) *statements { return o.sql[d.Name] }
+
+// supported reports whether the outbox has statements for d.
 func supported(d *dialect.Dialect, op string) error {
 	switch d.Name {
-	case dialect.Postgres, dialect.SQLite:
+	case dialect.Postgres, dialect.SQLite, dialect.MySQL:
 		return nil
 	}
-	return &momo.Error{Kind: momo.ErrUnsupported, Op: op, Err: errors.New("the outbox runs on PostgreSQL and SQLite: claiming a batch takes UPDATE ... RETURNING, which MySQL and MariaDB do not have")}
+	return &momo.Error{Kind: momo.ErrUnsupported, Op: op, Err: fmt.Errorf("the outbox runs on PostgreSQL, SQLite, MySQL and MariaDB, not %s", d.Name)}
 }
 
-// sqliteLayout is the fixed-width text SQLite stores a time in, so that the
-// text order of two stamps is their time order.
-const sqliteLayout = "2006-01-02 15:04:05.000000"
+// timeLayout is the fixed-width text a time is bound as on SQLite, MySQL and
+// MariaDB, in UTC. On SQLite it keeps the text order of two stamps equal to
+// their time order; on MySQL a datetime column holds a wall clock, and binding
+// text keeps the connection's time zone out of it.
+const timeLayout = "2006-01-02 15:04:05.000000"
 
 // stamp returns t as the argument that binds to a time column of d: a UTC
-// time.Time for PostgreSQL and fixed-width text for SQLite, whose time columns
-// are text compared as text.
+// time.Time for PostgreSQL and fixed-width UTC text for the others.
 func stamp(d *dialect.Dialect, t time.Time) any {
-	if d.Name == dialect.SQLite {
-		return t.UTC().Format(sqliteLayout)
+	if d.Name == dialect.Postgres {
+		return t.UTC()
 	}
-	return t.UTC()
+	return t.UTC().Format(timeLayout)
 }

@@ -1940,8 +1940,9 @@ func retrySerializable(ctx context.Context, db *momo.DB, fn func(tx *momo.Tx) er
   `*Tx`: `Replace`, `CreateGraph`, chunked `InsertQuery.Models`, `vecsearch.With`.
 
 - Publish an event together with a data change through the transactional
-  outbox (PostgreSQL and SQLite; `ErrUnsupported` on MySQL and MariaDB): declare
-  the outbox table as a model, call `outbox.Outbox.Add(ctx, tx, event)` with the
+  outbox (PostgreSQL, SQLite, MySQL 8.0+ and MariaDB 10.6+; only PostgreSQL
+  wakes the relay with `LISTEN`, the others poll): declare the outbox table as a
+  model, call `outbox.Outbox.Add(ctx, tx, event)` with the
   `tx` that writes the data, and run `outbox.Relay.Run` with a `outbox.Publisher`
   you implement. Delivery is at least once, so consumers deduplicate on
   `outbox.Event.ID`; events with the same key keep their order. See

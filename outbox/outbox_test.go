@@ -52,7 +52,13 @@ func loadDeclared(t testing.TB, d dialect.Name) *schema.Schema {
 // Catches: a declared model that drifts from the columns the relay reads and
 // writes, which would only show as a SQL error at run time.
 func TestDeclaredModelMatchesRelayColumns(t *testing.T) {
-	s := loadDeclared(t, dialect.Postgres)
+	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
+		t.Run(string(d), func(t *testing.T) { checkDeclared(t, loadDeclared(t, d)) })
+	}
+}
+
+func checkDeclared(t *testing.T, s *schema.Schema) {
+	t.Helper()
 	var tbl *schema.Table
 	for i := range s.Tables {
 		if s.Tables[i].Name == outbox.DefaultTable {
@@ -83,8 +89,8 @@ func TestDeclaredModelMatchesRelayColumns(t *testing.T) {
 	if len(tbl.PrimaryKey) != 1 || tbl.PrimaryKey[0] != "id" {
 		t.Errorf("primary key = %v, want [id]", tbl.PrimaryKey)
 	}
-	if len(tbl.Indexes) != 3 {
-		t.Errorf("indexes = %d, want the three partial indexes: %+v", len(tbl.Indexes), tbl.Indexes)
+	if len(tbl.Indexes) != 2 {
+		t.Errorf("indexes = %d, want the due and the key index: %+v", len(tbl.Indexes), tbl.Indexes)
 	}
 }
 
@@ -132,13 +138,13 @@ func TestAddRefusals(t *testing.T) {
 		t.Errorf("empty topic: err = %v, want ErrValidation", err)
 	}
 
-	my := momo.New(fakedriver.New(dialect.MySQL))
-	mtx, err := my.Begin(ctx, momo.TxOptions{})
+	other := momo.New(fakedriver.NewDialect(&dialect.Dialect{Name: "other"}))
+	otx, err := other.Begin(ctx, momo.TxOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := o.Add(ctx, mtx, outbox.Event{Topic: "t"}); !errors.Is(err, momo.ErrUnsupported) {
-		t.Errorf("mysql tx: err = %v, want ErrUnsupported", err)
+	if _, err := o.Add(ctx, otx, outbox.Event{Topic: "t"}); !errors.Is(err, momo.ErrUnsupported) {
+		t.Errorf("unknown dialect tx: err = %v, want ErrUnsupported", err)
 	}
 }
 
@@ -152,8 +158,15 @@ func TestNewRelayRefusals(t *testing.T) {
 	pub := outbox.PublisherFunc(func(context.Context, outbox.Event) error { return nil })
 	pg := momo.New(fakedriver.New(dialect.Postgres))
 
-	if _, err := o.NewRelay(momo.New(fakedriver.New(dialect.MySQL)), pub); !errors.Is(err, momo.ErrUnsupported) {
-		t.Errorf("mysql: err = %v, want ErrUnsupported", err)
+	if _, err := o.NewRelay(momo.New(fakedriver.NewDialect(&dialect.Dialect{Name: "other"})), pub); !errors.Is(err, momo.ErrUnsupported) {
+		t.Errorf("unknown dialect: err = %v, want ErrUnsupported", err)
+	}
+	my := momo.New(fakedriver.New(dialect.MySQL))
+	if _, err := o.NewRelay(my, pub); err != nil {
+		t.Errorf("mysql defaults: %v", err)
+	}
+	if _, err := o.NewRelay(my, pub, outbox.WithListen(&pgx.ConnConfig{})); !errors.Is(err, momo.ErrUnsupported) {
+		t.Errorf("listen on mysql: err = %v, want ErrUnsupported", err)
 	}
 	if _, err := o.NewRelay(pg, nil); !errors.Is(err, momo.ErrValidation) {
 		t.Errorf("nil publisher: err = %v, want ErrValidation", err)

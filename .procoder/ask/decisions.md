@@ -1347,3 +1347,21 @@ Issue #225: the adopt refusal gave only counts, `drift` on a database without hi
 - A missing NOT NULL column is added nullable with a hint (the differ's staging), since the table may hold rows; an existing column's SET NOT NULL is emitted (EnforceNotNull), because the repair is what makes the database match.
 - Not done: no `repair` command that applies the statements. A caller reviews and runs the script.
 - Review round: a create that replaces a withheld drop (same kind, schema, table, name: a changed view, trigger, policy, index or constraint) is withheld with it, so the script never prints an "already exists" create. `drift --version N` and `DriftOptions.Version` / `RepairOptions.Version` compare with the snapshot of exactly version N (the one `baseline --version N` checks), and `DriftReport.SnapshotVersion` names the one compared. A repair is complete only when nothing is withheld, unsupported or uncovered (a report entry no change touches: invalid index, unmanaged extension or schema) and no NOT NULL column was staged nullable; `Unverified` entries do not count, as in `drift`. `--fix-sql` keeps standard output SQL only (`no drift`, notes and reasons go to stderr) and notes that MySQL and MariaDB do not roll DDL back.
+
+## Outbox design (#251)
+
+Issue #251, PR #260: the transactional outbox (`outbox` package) with a relay.
+
+Decision (2026-11-18, the user, via AskUserQuestion): the outbox table is a model that users copy from docs/outbox.md; the package ships no importable model.
+
+Decision (2026-11-18, the user, via AskUserQuestion): a dead event keeps blocking the later events of its key until `Requeue` or a delete.
+
+Decision (2026-11-18, the user, via AskUserQuestion): MySQL and MariaDB are supported in this PR. The claim is a short READ COMMITTED transaction (`SELECT ... FOR UPDATE SKIP LOCKED`, `UPDATE` with the lease, commit) before anything is published, the server version is checked on the first claim (MySQL 8.0, MariaDB 10.6; older is `ErrUnsupported`), and the relay polls because there is no LISTEN.
+
+Integrator notes, decided and not asked:
+
+- Delivery is at least once: an event is published again after a relay crashes between the publish and the mark, or when a publish outlives the lease. `Event.ID` is stable and is the deduplication key.
+- Order per key is the id order, and an event is claimed only when no earlier event of its key is unpublished. PostgreSQL assigns the id at insert, not at commit, so writers of one key must be serialized by the application (documented in docs/outbox.md).
+- Lease and backoff use the clock of the process that claims, so relay hosts need agreeing clocks.
+- The table has two plain indexes instead of partial ones, because MySQL and MariaDB have no partial indexes.
+- Times are bound as UTC `time.Time` on PostgreSQL and as fixed-width UTC text on SQLite, MySQL and MariaDB.

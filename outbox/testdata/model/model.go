@@ -27,10 +27,11 @@ type OutboxEvent struct {
 	LastError   *string    `momo:"column:last_error,type:text"`
 }
 
-// MomoConfig declares the three partial indexes the relay and the retention
-// cleanup read through.
+// MomoConfig declares the two indexes the relay and the retention cleanup read
+// through. They are plain indexes, not partial ones, because MySQL and MariaDB
+// have no partial indexes; a NULL published_at or dead_at is searched as a key
+// value.
 func (e *OutboxEvent) MomoConfig(c *momo.Config) {
-	c.Index("outbox_events_due_idx", &e.AvailableAt).Where("published_at IS NULL AND dead_at IS NULL")
-	c.Index("outbox_events_key_idx", &e.Key, &e.ID).Where("published_at IS NULL")
-	c.Index("outbox_events_published_idx", &e.PublishedAt).Where("published_at IS NOT NULL")
+	c.Index("outbox_events_due_idx", &e.PublishedAt, &e.DeadAt, &e.AvailableAt)
+	c.Index("outbox_events_key_idx", &e.Key, &e.PublishedAt, &e.ID)
 }
