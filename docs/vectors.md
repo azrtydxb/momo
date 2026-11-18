@@ -90,7 +90,9 @@ gets `momo.NullVectorColumn`, which adds `SetNull`.
 
 A vector field tagged `read_only`, `create_only` or `immutable` gets the
 matching `ReadOnlyVectorColumn`, `CreateOnlyVectorColumn` or
-`ImmutableVectorColumn`. They keep the write restriction of the plain
+`ImmutableVectorColumn`. A nullable read-only vector field (`*vector.Vector`
+tagged `read_only`) gets `momo.NullReadOnlyVectorColumn`, which keeps the
+read-only surface of `ReadOnlyVectorColumn`. They keep the write restriction of the plain
 permission columns (no `Column.Set` on a read-only column, an insert-only `Column.Set` on
 the other two) and every distance builder accepts them, so a read-only
 embedding can be searched.

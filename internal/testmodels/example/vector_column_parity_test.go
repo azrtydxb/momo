@@ -122,6 +122,15 @@ func TestVectorPermissionColumnsSearchable(t *testing.T) {
 			t.Errorf("%s: %q err %v", name, b.String(), b.Err())
 		}
 	}
+	nro := momo.NewNullReadOnlyVectorColumn[vector.Vector]("t", "nro", 3, momo.FlagReadOnly)
+	if nro.Flags()&momo.FlagNullable == 0 {
+		t.Error("NullReadOnlyVectorColumn lacks FlagNullable")
+	}
+	b := momo.NewBuilder(vecDB().Dialect())
+	vecop.Cosine(nro.As("a"), v).AppendSQL(b)
+	if b.Err() != nil || !strings.Contains(b.String(), `"`) {
+		t.Errorf("null read_only: %q err %v", b.String(), b.Err())
+	}
 	// Create-only and immutable writes are insert-only values; read-only has
 	// no Set at all (a compile-time guarantee, so nothing to call here).
 	var _ momo.InsertValue = co.Set(v)

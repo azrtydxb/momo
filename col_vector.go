@@ -149,6 +149,22 @@ func (c ReadOnlyVectorColumn[V]) As(alias string) ReadOnlyVectorColumn[V] {
 	return c
 }
 
+// NullReadOnlyVectorColumn is the descriptor of a nullable read-only vector
+// column. It offers the searchable, filterable surface of ReadOnlyVectorColumn
+// and has no write method.
+type NullReadOnlyVectorColumn[V VectorValue] struct{ ReadOnlyVectorColumn[V] }
+
+// NewNullReadOnlyVectorColumn is used by generated code.
+func NewNullReadOnlyVectorColumn[V VectorValue](table, name string, dim int, flags uint16) NullReadOnlyVectorColumn[V] {
+	return NullReadOnlyVectorColumn[V]{NewReadOnlyVectorColumn[V](table, name, dim, flags|FlagNullable)}
+}
+
+// As returns the same column qualified by a table alias.
+func (c NullReadOnlyVectorColumn[V]) As(alias string) NullReadOnlyVectorColumn[V] {
+	c.ReadOnlyVectorColumn = c.ReadOnlyVectorColumn.As(alias)
+	return c
+}
+
 // CreateOnlyVectorColumn is a vector column writable in INSERT only. Its Set
 // returns an InsertAssignment, which Update.Set does not accept.
 type CreateOnlyVectorColumn[V VectorValue] struct{ vectorBase[V] }
