@@ -495,6 +495,9 @@ for usage or configuration errors, and 3 for database errors.
 - [docs/fulltext.md](docs/fulltext.md) covers declaring a search on a model,
   the search, score and snippet calls on every dialect, the PostgreSQL tsvector
   builders and hybrid vector plus text search.
+- [docs/outbox.md](docs/outbox.md) covers the transactional outbox: writing
+  an event in the same transaction as the data and a relay that publishes it
+  with retries, per-key order and `LISTEN` wake-ups.
 - [docs/TYPE_MAPPING.md](docs/TYPE_MAPPING.md) maps every Go type to its
   column type.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the packages and

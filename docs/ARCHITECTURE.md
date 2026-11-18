@@ -161,6 +161,9 @@ carries the format number and no release version.
 - `obs`: ready-made `Hook` and `RelationHook` implementations (a recorder and
   an N+1 relation-load detector); imports only `momo`. See
   [observability](observability.md).
+- `outbox`: the transactional outbox, `outbox.Outbox.Add` in the caller's
+  transaction and `outbox.Relay` with a publisher the application supplies. It
+  imports `momo` and `driver/pgxdriver` for `LISTEN`; see [outbox](outbox.md).
 - `importer`, `importer/{gorm,bun,ent}`: static readers of other ORMs' models;
   see [importers](importers.md).
 - `bench` is a separate Go module with the comparison benchmarks; see

@@ -20,7 +20,7 @@ import (
 // the command line a project builds its own momo binary from.
 var APIPackages = []string{
 	".", "dialect", "schema", "types", "vector", "migrate", "momolog", "momotest",
-	"advisory", "agg", "arrayop", "cli", "fts", "jsonop", "obs", "sqlfn", "timeop", "vecop", "vecsearch",
+	"advisory", "agg", "arrayop", "cli", "fts", "jsonop", "obs", "outbox", "sqlfn", "timeop", "vecop", "vecsearch",
 }
 
 // Ident is one exported identifier of a package.

@@ -239,6 +239,13 @@ var features = []feature{
 		SQLite: "`ErrUnsupported`: a declaration is a generator error and the renderer refuses it, because `PRAGMA foreign_key_list` does not report the deferrability of a foreign key and a primary key or unique constraint cannot be deferred",
 		MySQL:  "`ErrUnsupported`: MySQL and MariaDB check each constraint at the end of the statement and have no `DEFERRABLE`; a declaration is a generator error and the renderer refuses it",
 	},
+	{
+		Name:   "Transactional outbox",
+		API:    []string{"outbox.New", "outbox.Outbox", "outbox.Relay", "outbox.Publisher", "outbox.WithListen"},
+		PG:     "yes: `outbox.Outbox.Add` writes the event in the caller's transaction and sends `NOTIFY`; `outbox.Relay` claims batches with `FOR UPDATE SKIP LOCKED` and a lease, publishes with no lock held, retries with backoff up to a maximum of attempts, keeps the order of each key, and wakes on `NOTIFY` through `outbox.WithListen` with polling as the fallback; several relays in several processes share one table",
+		SQLite: "yes: the same table, `outbox.Outbox.Add` and `outbox.Relay`, polling only; the single writer serializes the claims, and `outbox.WithListen` is `ErrUnsupported`",
+		MySQL:  "`ErrUnsupported`: the claim needs `UPDATE ... RETURNING`, which MySQL and MariaDB do not have; `outbox.Outbox.Add` and `outbox.Outbox.NewRelay` return the error",
+	},
 }
 
 // featuresBlock is the feature support table built from the features data and

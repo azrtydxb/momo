@@ -26,6 +26,7 @@ New here? Start with [getting started](getting-started.md).
 - [Coming from Bun](guides/bun.md): the same mapping for Bun users.
 - [Coming from Ent](guides/ent.md): the same mapping for Ent users, with the `momo import ent` path.
 - [LISTEN and NOTIFY](listen-notify.md): `pgxdriver.Listen` and `pgxdriver.Notify`, reconnecting, and payload limits.
+- [Transactional outbox](outbox.md): `outbox.Outbox.Add` in the caller's transaction, the relay with leases, retries, per-key order and retention, and waking it with `LISTEN`.
 - [Read replicas](replicas.md): `WithReplicas`, which statements go to a replica, reading your own writes, and what happens when a replica is down.
 - [Testing applications](testing.md): the `momotest` kit: a schema or a rolled-back transaction per test, migrations applied, fixture seeding, parallel-safe.
 - [Interceptors](PRIVACY_RULES.md): application-level per-handle rules that add predicates or deny typed statements, the tenant recipe, and the paths they do not cover (not a security boundary).
