@@ -72,13 +72,16 @@ func TestCheckInDiffAndEqualAgreeOnTheStoredForm(t *testing.T) {
 		return s
 	}
 	cases := map[string]struct {
-		stored *schema.Schema
-		want   *schema.Schema
-		same   bool
+		stored  *schema.Schema
+		want    *schema.Schema
+		same    bool
+		added   []string // set for an alter_check_in
+		removed []string
 	}{
-		"same set":     {read("(kind = ANY (ARRAY['b'::text, 'a'::text]))"), checkInSchema("a", "b"), true},
-		"wider":        {read("(kind = ANY (ARRAY['a'::text, 'b'::text]))"), checkInSchema("a", "b", "c"), false},
-		"other column": {read("(other = ANY (ARRAY['a'::text, 'b'::text]))"), checkInSchema("a", "b"), false},
+		"same set":     {read("(kind = ANY (ARRAY['b'::text, 'a'::text]))"), checkInSchema("a", "b"), true, nil, nil},
+		"wider":        {read("(kind = ANY (ARRAY['a'::text, 'b'::text]))"), checkInSchema("a", "b", "c"), false, []string{"c"}, nil},
+		"narrower":     {read("(kind = ANY (ARRAY['a'::text, 'b'::text]))"), checkInSchema("a"), false, nil, []string{"b"}},
+		"other column": {read("(other = ANY (ARRAY['a'::text, 'b'::text]))"), checkInSchema("a", "b"), false, nil, nil},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -88,6 +91,13 @@ func TestCheckInDiffAndEqualAgreeOnTheStoredForm(t *testing.T) {
 			}
 			if got := len(changes) == 0; got != c.same {
 				t.Errorf("Diff reports no change = %v, want %v: %+v", got, c.same, changes)
+			}
+			if c.added != nil || c.removed != nil {
+				if len(changes) != 1 || changes[0].Kind != migrate.AlterCheckIn ||
+					!slices.Equal(changes[0].Added, c.added) || !slices.Equal(changes[0].Removed, c.removed) ||
+					changes[0].Destructive != (c.removed != nil) {
+					t.Errorf("changes = %+v, want one alter_check_in adding %v and removing %v", changes, c.added, c.removed)
+				}
 			}
 			if got := schema.Equal(c.stored, c.want); got != c.same {
 				t.Errorf("Equal = %v, want %v", got, c.same)

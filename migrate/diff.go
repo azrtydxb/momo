@@ -670,6 +670,8 @@ func (d *differ) checks(fn, tn, rawFrom, to *schema.Table) {
 			if ra.In != nil || rb.In != nil {
 				return schema.SameCheck(ra, rb)
 			}
+			// Neither side declares a list, so SameCheck would compare the raw
+			// Expr anyway; the normalized Expr is what every other check uses.
 			return a.Expr == b.Expr
 		}, DropCheck, AddCheck,
 		func(c schema.Check) goneUse { return usesGone(d.gone, nil, c.Expr) })
