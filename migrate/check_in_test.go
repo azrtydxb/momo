@@ -190,7 +190,11 @@ func TestCheckInTwoBranchesMergeToOneChange(t *testing.T) {
 // column, being compared as sets instead of replaced.
 func TestCheckInFallsBackToDropAndAdd(t *testing.T) {
 	plain := checkInSchema("a")
+	// A plain check is one whose expression is no value list: an expression
+	// that is one is read as a list on the side that carries no In, because
+	// that is how a database reports it (see TestCheckInDiffAndEqualAgreeOnTheStoredForm).
 	plain.Tables[0].Checks[0].In = nil
+	plain.Tables[0].Checks[0].Expr = "kind <> ''"
 	other := checkInSchema("a")
 	other.Tables[0].Columns = append(other.Tables[0].Columns, schema.Column{Name: "tag", Type: "text", Nullable: true})
 	other.Tables[0].Checks[0].In.Column = "tag"
