@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.18.0](https://github.com/azrtydxb/momo/compare/v0.17.0...v0.18.0) (2026-11-18)
+
+_A package with 100 models and 500 typed queries now compiles in about 4.5 GB of compiler memory instead of 6 GB, `schema.Equal` agrees with `Diff` on value-list checks, and `--from-db` with `introspect.only` declares only the sequences the listed tables use. Upgrading needs a code change only where a helper takes `momo.ReadOnlyVectorColumn` for a nullable read-only vector field; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.18.0/docs/upgrading.md). A project that sets `introspect.only` should add the `migrate.exclude` entries that `generate --from-db` prints before its next `migrate diff`, as [docs/migrations.md](https://github.com/azrtydxb/momo/blob/v0.18.0/docs/migrations.md) describes. [Changes since 0.17.0](https://github.com/azrtydxb/momo/compare/v0.17.0...v0.18.0)._
+
+### ⚠ BREAKING CHANGES
+
+- **gen:** a `*vector.Vector` field tagged `read_only` generates `momo.NullReadOnlyVectorColumn`, which keeps the null operations, instead of `momo.ReadOnlyVectorColumn`; a helper typed `ReadOnlyVectorColumn[V]` should take `momo.VectorSource[V]` or the new type. The read-only, create-only and immutable vector column types no longer convert into one another, as the scalar permission columns already did not ([#234](https://github.com/azrtydxb/momo/pull/234))
+
+### Features
+
+- **importer/history:** the goose, golang-migrate and bun history readers gain `ReadContext(ctx, dir, c, table)`, so the read of the migrations table can be cancelled; `Read` is unchanged ([#236](https://github.com/azrtydxb/momo/pull/236))
+
+### Bug Fixes
+
+- **generate:** with `introspect.only` set, `--from-db` declares a standalone sequence only when a listed table, or a function or view kept for it, uses it, on the model that uses it, and prints the `migrate.exclude` entries for the sequences it leaves out ([#238](https://github.com/azrtydxb/momo/pull/238), closes [#231](https://github.com/azrtydxb/momo/issues/231))
+- **schema:** `schema.Equal`, `Diff` and drift compare a value-list CHECK, declared with `CheckIn` or read back as `= ANY (ARRAY[...])` or `IN (...)`, as a set of values with one shared comparison, `schema.SameCheck` ([#239](https://github.com/azrtydxb/momo/pull/239), closes [#227](https://github.com/azrtydxb/momo/issues/227))
+- **migrate:** the PostgreSQL and MySQL renderers refuse an index with no parts, and the PostgreSQL renderer a view with an empty query, instead of emitting SQL the server rejects ([#235](https://github.com/azrtydxb/momo/pull/235), [#243](https://github.com/azrtydxb/momo/pull/243))
+- **migratecfg:** a syntax error in a second YAML document of `momo.yaml` is reported as that error instead of "multiple YAML documents are not supported" ([#240](https://github.com/azrtydxb/momo/pull/240))
+
+### Performance Improvements
+
+- **query:** the bodies of `InsertQuery[T]` move onto non-generic code, cutting the compiler's peak memory on the 100-model benchmark package from 5954 MiB to 4558 MiB with no change in allocations ([#230](https://github.com/azrtydxb/momo/pull/230), closes [#217](https://github.com/azrtydxb/momo/issues/217))
+- **migrate/postgres:** inspection reads columns, constraints, partitions, indexes and materialized-view dependencies with one query per kind instead of one per table or view ([#235](https://github.com/azrtydxb/momo/pull/235), [#242](https://github.com/azrtydxb/momo/pull/242))
+- **query:** an unnest insert looks up column types without building a map per render ([#245](https://github.com/azrtydxb/momo/pull/245))
+
 ## [0.17.0](https://github.com/azrtydxb/momo/compare/v0.16.1...v0.17.0) (2026-11-17)
 
 _Adopting a database built by another tool no longer needs a hand diff: the baseline refusal and `momo migrate drift` name every differing object, and `drift --fix-sql` prints the SQL that repairs it. `drift` on a database without momo history now compares it with a snapshot instead of listing every table as unmanaged, so a script that reads that output sees a different report; see [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.17.0/docs/upgrading.md). [Changes since 0.16.1](https://github.com/azrtydxb/momo/compare/v0.16.1...v0.17.0)._
