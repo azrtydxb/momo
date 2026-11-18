@@ -368,7 +368,7 @@ An index name declared in `MomoConfig` must not collide with an auto-named
 yields `accounts_plan_idx`); the generator refuses the duplicate.
 
 Config methods: `Config.Index`, `Config.IndexExpr`, `Config.Unique`, `Config.ForeignKey`, `Config.Check`, `Config.CheckIn`, `Config.Enum`, `Config.Default`, `Config.Generated`,
-`Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.PrimaryKey`, `Config.PrimaryKeyDeferrable`, `Config.PrimaryKeyInitiallyDeferred`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
+`Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.PrimaryKey`, `Config.PrimaryKeyDeferrable`, `Config.PrimaryKeyInitiallyDeferred`, `Config.History`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
 `Config.PartitionOf`. Index chain: `IndexOpts.Unique()` (on `Config.Index` or `Config.IndexExpr`), `Where(pred)`, `Method(m)`, `IndexOpts.With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
 `Concurrently()` (`diff` writes the index as `CREATE INDEX CONCURRENTLY` in its own no-transaction migration).
@@ -440,6 +440,24 @@ deferrable primary key or unique constraint, because PostgreSQL refuses it:
 the generator and `migrate.Diff` report an error that names the foreign key and the
 key, so keep a key that other tables reference immediate. See
 [migrations](migrations.md#deferrable-constraints).
+
+A model keeps an audit history on PostgreSQL with `c.History()` (call it once;
+the model needs a primary key and a table in the current schema). The generator
+declares `<table>_history` (the model's columns plus `history_id`,
+`history_operation`, `history_changed_at` and `history_changed_by`), the function
+`<table>_history_fn` and the trigger `<table>_history_trg`, which records the new
+row of an insert or update and the removed row of a delete, whoever makes the
+change. Never declare those objects by hand next to `c.History()`: they are
+ordinary schema objects, so `migrate diff` mirrors every column change of the
+model on the history table in the same plan, and `generate --from-db` writes
+`c.History()` for a database whose history objects match exactly. Record the
+actor with `momo.SetActor` on the `*momo.Tx` before the change (a
+transaction-local setting; a change made without it records a NULL actor), and
+read the versions with `momo.HistoryOf` (every version of a row) and
+`momo.HistoryAsOf` (its state at a time, `momo.ErrNotFound` when the row did not
+exist then); both take the primary key values after the handle. SQLite, MySQL and MariaDB refuse it: a generator
+diagnostic, and `momo.ErrUnsupported` from the three calls. See
+[history](history.md).
 
 Many-to-many needs `join:` with the same table on both models you declare it on
 (the reverse side is optional, but if declared it must carry `join:` too):

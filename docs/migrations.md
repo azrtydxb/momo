@@ -1572,7 +1572,10 @@ The models of a SQLite database keep what a rebuild from the models needs:
   `has_many` or `has_one` on the other side), with their `on_delete` and
   `on_update` actions; STORED and VIRTUAL generated columns become `read_only`
   fields with `generated` and, for VIRTUAL, `virtual`; views and triggers are
-  declared with `c.View` and `c.Trigger`.
+  declared with `c.View` and `c.Trigger`. On PostgreSQL, a table with the
+  history table, function and trigger that `c.History()` builds is declared by
+  that one call, and the three objects get no declaration of their own; see
+  [audit history tables](history.md#generate-from-db).
 
 SQLite has no schemas, extensions, native enums, functions, policies or row-level
 security, so none is read or written. A shadow table of a virtual table, the

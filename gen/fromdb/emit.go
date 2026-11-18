@@ -202,6 +202,13 @@ type generator struct {
 	used   map[string]bool
 	types  map[string]TypeRule
 	files  []File
+	// histTables and histBase are the tables of the recognised audit
+	// histories and of the tables they belong to, by tableKey; histFns and
+	// histTrgs are their functions and triggers, held out of the schema while
+	// the models are written. See recogniseHistory.
+	histTables, histBase map[string]bool
+	histFns              []schema.Function
+	histTrgs             []schema.Trigger
 }
 
 func (g *generator) add(sev Severity, obj, format string, args ...any) {
@@ -224,6 +231,7 @@ func (g *generator) run() error {
 		g.inverses()
 	}
 	g.globals()
+	g.restoreHistory()
 	names := map[string]bool{}
 	for _, m := range g.models {
 		f, err := g.render(m, names)
@@ -289,11 +297,18 @@ func (g *generator) collectTables() {
 	}
 	g.clean.Tables = kept
 	g.dropUnmodeledObjects()
+	g.recogniseHistory()
 	for i := range g.clean.Tables {
 		t := &g.clean.Tables[i]
+		if g.histTables[tableKey(t.Schema, t.Name)] {
+			continue // declared by the History call of its table's model
+		}
 		m := &model{
 			t: t, byCol: map[string]*field{}, imports: map[string]bool{importMomo: true},
 			used: map[string]bool{"Model": true, "MomoConfig": true},
+		}
+		if g.histBase[tableKey(t.Schema, t.Name)] {
+			m.stmts = append(m.stmts, historyStmt)
 		}
 		m.name = g.uniqueStruct(g.structName(t.Name))
 		g.models = append(g.models, m)

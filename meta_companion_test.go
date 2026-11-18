@@ -94,3 +94,20 @@ func TestCompanionDeferrableDSLCompiles(t *testing.T) {
 	var d compDeferrableDoc
 	d.MomoConfig(&Config{})
 }
+
+// compHistoryDoc keeps an audit history.
+type compHistoryDoc struct {
+	Model
+	ID int64
+}
+
+func (d *compHistoryDoc) MomoConfig(c *Config) {
+	c.History()
+}
+
+// TestCompanionHistoryDSLCompiles checks that History is accepted and runs as
+// a no-op.
+func TestCompanionHistoryDSLCompiles(t *testing.T) {
+	var d compHistoryDoc
+	d.MomoConfig(&Config{})
+}

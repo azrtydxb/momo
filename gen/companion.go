@@ -52,6 +52,9 @@ type CompanionResult struct {
 	// PrimaryKeyDeferrable and PrimaryKeyInitiallyDeferred calls; the second
 	// implies the first.
 	PrimaryKeyDeferrable, PrimaryKeyInitiallyDeferred bool
+	// History is set by the History call: the model keeps an audit history
+	// table, filled by a trigger.
+	History bool
 
 	Views       []schema.View
 	Functions   []schema.Function
@@ -1072,6 +1075,16 @@ func (r *companionReader) config(c call) {
 		}
 		r.res.PrimaryKeyDeferrable = true
 		r.res.PrimaryKeyInitiallyDeferred = r.res.PrimaryKeyInitiallyDeferred || c.name == "PrimaryKeyInitiallyDeferred"
+	case "History":
+		if len(c.expr.Args) != 0 {
+			r.unsupported(c.expr)
+			return
+		}
+		if r.res.History {
+			r.diag(c.expr.Pos(), "duplicate History call")
+			return
+		}
+		r.res.History = true
 	case "FKName":
 		r.columnText(c, r.res.FKNames, "foreign key name")
 	default:

@@ -145,6 +145,20 @@ func (c *Config) PrimaryKeyDeferrable() {}
 // generator; never executed for its effect.
 func (c *Config) PrimaryKeyInitiallyDeferred() {}
 
+// History opts the model into an audit history (PostgreSQL). The generator
+// declares the table <table>_history with every column of the model plus
+// history_id, history_operation, history_changed_at and history_changed_by, a
+// trigger function and an AFTER INSERT OR UPDATE OR DELETE row trigger on the
+// model's table that records the new row (the removed row for a delete), so
+// changes made outside momo are captured too. They are ordinary schema
+// objects: Diff mirrors every column added to, dropped from or changed on the
+// model onto the history table in the same plan. Call it once; the model must
+// have a primary key and its table must be in the current schema. Set the
+// actor of a transaction with SetActor, and read the versions with HistoryOf
+// and HistoryAsOf. SQLite, MySQL and MariaDB refuse it. Read statically by the
+// generator; never executed for its effect.
+func (c *Config) History() {}
+
 // View declares a view or materialized view. The argument must be a
 // composite literal; read statically by the generator, never executed.
 func (c *Config) View(v schema.View) {}

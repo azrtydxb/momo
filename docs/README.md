@@ -21,6 +21,7 @@ New here? Start with [getting started](getting-started.md).
 - [Projections](projections.md): declaring a projection, `From` and `Columns`, the generated metadata, tuple rows (`Row1` to `Row10`), the soft-delete filter.
 - [Relations](relations.md): declaring, loading, filtering and writing relations, with error behavior and limits.
 - [Migration safety and recovery](migrations.md): snapshots, apply semantics, locks, failure recovery, production checklist, CLI reference.
+- [Audit history tables](history.md): `Config.History`, the history table, function and trigger the generator declares, the actor of a transaction, the versions of a row and its state at a time, schema changes, and `generate --from-db`.
 - [Importing models from other ORMs](importers.md): the GORM, Bun and Ent readers (static, they never execute your code), the `momo import` command, the import report and what each report kind means, and the readers that import Atlas, goose, golang-migrate and Bun migration history.
 - [Coming from GORM](guides/gorm.md): a call-by-call cheat sheet from GORM models, queries, relations, hooks, transactions, migrations and errors to Momo.
 - [Coming from Bun](guides/bun.md): the same mapping for Bun users.

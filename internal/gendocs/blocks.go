@@ -239,6 +239,13 @@ var features = []feature{
 		SQLite: "`ErrUnsupported`: a declaration is a generator error and the renderer refuses it, because `PRAGMA foreign_key_list` does not report the deferrability of a foreign key and a primary key or unique constraint cannot be deferred",
 		MySQL:  "`ErrUnsupported`: MySQL and MariaDB check each constraint at the end of the statement and have no `DEFERRABLE`; a declaration is a generator error and the renderer refuses it",
 	},
+	{
+		Name:   "Audit history tables",
+		API:    []string{"momo.SetActor", "momo.HistoryOf", "momo.HistoryAsOf", "momo.HistoryEntry", "schema.History", "schema.HistoryFor"},
+		PG:     "yes: `Config.History` declares `<table>_history`, a trigger function and an `AFTER INSERT OR UPDATE OR DELETE` row trigger as ordinary schema objects, so `diff`, `Baseline`, `drift` and `generate --from-db` handle them and a column change of the model reaches the history table in the same plan; the actor is the transaction-local setting `momo.actor`, set by `momo.SetActor`; `momo.HistoryOf` reads the versions of a row and `momo.HistoryAsOf` its state at a time",
+		SQLite: "`ErrUnsupported`: a declaration is a generator error, and `momo.SetActor`, `momo.HistoryOf` and `momo.HistoryAsOf` return `ErrUnsupported`, because SQLite has no transaction-local setting to carry the actor",
+		MySQL:  "`ErrUnsupported`: a declaration is a generator error, and `momo.SetActor`, `momo.HistoryOf` and `momo.HistoryAsOf` return `ErrUnsupported`, because MySQL and MariaDB have no transaction-local setting to carry the actor",
+	},
 }
 
 // featuresBlock is the feature support table built from the features data and
