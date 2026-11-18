@@ -5,6 +5,26 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.18.0
+
+A `*vector.Vector` field tagged `read_only` now generates a
+`momo.NullReadOnlyVectorColumn` instead of a `momo.ReadOnlyVectorColumn`, so
+run `momo generate` and fix any helper that names the old type.
+
+### A nullable read-only vector has its own column type
+
+Before, `momo generate` gave a nullable read-only vector field the
+non-nullable `momo.ReadOnlyVectorColumn[V]` and the field lost its null
+handling, which `momo.NullReadOnlyColumn` gives a plain column. The generated
+descriptor is now `momo.NullReadOnlyVectorColumn[V]`. The two types are not
+convertible, so after you regenerate, a helper that takes the field as a
+`momo.ReadOnlyVectorColumn[V]` no longer compiles. Make the helper take
+`momo.VectorSource[V]`, which every vector column type satisfies, or take
+`momo.NullReadOnlyVectorColumn[V]`. A non-pointer read-only vector field
+keeps `momo.ReadOnlyVectorColumn[V]`. The read-only, create-only and immutable
+vector types also stop converting into one another, as the scalar
+permission columns already do.
+
 ## Upgrading to 0.17.0
 
 `momo migrate drift` and the refusal of `momo migrate baseline` now name what
