@@ -1387,7 +1387,10 @@ migrations does not run them again. Four readers produce the input:</p>
 </tr>
 </tbody>
 </table>
-<p>Each package exports <code>Read</code>, which returns a <code>history.Source</code>. <code>history.Convert</code>
+<p>Each package exports <code>Read</code>, which returns a <code>history.Source</code>. The goose,
+golangmigrate and bun readers query the migrations table and also export
+<code>ReadContext</code>, which takes a <code>context.Context</code> for that query; <code>Read</code> is
+<code>ReadContext</code> with <code>context.Background()</code>. <code>history.Convert</code>
 refuses a source that is dirty, that holds migrations the tool never applied, or
 that holds migrations it cannot convert (Bun and goose Go-function migrations).
 A source version that is not a 14-digit timestamp is mapped to
