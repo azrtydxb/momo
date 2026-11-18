@@ -37,10 +37,12 @@ jobs:
       # (run 44039243561, go1.27.4, 100 models and 500 queries): 9477388 KiB,
       # 9255 MiB. After the typed-query bodies moved off the generic types
       # (run 44066175274): 6318800 KiB, 6170 MiB (-l 4415, -c=1 4803); budget is
-      # that plus about 15%. The same code measured 5809780 KiB on an earlier
+      # that plus about 15%. After the insert bodies moved off InsertQuery[T]
+      # (run 44252566935): 4549 MiB, 4658176 KiB; budget is that plus about 15%.
+      # The same code measured 5809780 KiB on an earlier
       # run, so a runner varies by about 8%; the margin is for that. Lower it when an optimisation
       # lands, never raise it to make a regression pass. It is the only knob.
-      PEAK_RSS_BUDGET_KB: "7270000"
+      PEAK_RSS_BUDGET_KB: "5360000"
     steps:
       - uses: actions/checkout@v7
         with:
