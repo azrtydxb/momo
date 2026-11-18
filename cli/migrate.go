@@ -51,9 +51,21 @@ Commands:
   new --custom <name>   write an empty hand-written migration: an up file, a snapshot copied
               from the latest one and the extended momo.sum (offline)
   baseline --version N [--force]   record migrations as applied without running them (needs a database)
-  drift [--strict]   compare the live database with the latest applied snapshot (needs a database);
-              view, trigger and policy text is compared when the role has CREATE on the database,
-              else listed as unverified; --strict makes that an error (exit 3)
+  drift [--version N] [--strict] [--fix-sql [--allow-destructive]]   compare the live database
+              with the latest applied snapshot (needs a database); without momo history it
+              compares with the latest snapshot of the directory, and --version N with the
+              snapshot of version N, the one baseline --version N checks; stderr says which
+              version was compared; each differing object is named with its live and snapshot
+              definition; view, trigger and policy text is compared when the role has CREATE
+              on the database, else listed as unverified; --strict makes that an error (exit 3);
+              --fix-sql prints the DDL that brings the database to that snapshot (print only,
+              nothing is applied; review it, then run it yourself; PostgreSQL and SQLite roll
+              it back as one transaction, except that a SQLite table rebuild needs
+              PRAGMA foreign_keys = OFF set outside the transaction; MySQL and MariaDB do not
+              roll DDL back); drops and column type changes, and the steps that replace them,
+              are withheld and listed on stderr, exit 1, unless --allow-destructive; a step the
+              dialect cannot render, a difference no statement covers and a NOT NULL column
+              added nullable are listed on stderr and exit 1, never printed as wrong SQL
   resolve --version N --applied|--rolled-back   settle a dirty migration (needs a database)
   rehash --version N [--accept]   show, and with --accept store, the new checksum of an
               applied migration whose file was edited (needs a database; run hash first)
@@ -619,21 +631,31 @@ func (l *cli) statusCmd(fs *flag.FlagSet) func([]string) int {
 }
 
 func (l *cli) driftCmd(fs *flag.FlagSet) func([]string) int {
-	var strict bool
+	var strict, fixSQL, allowDestructive bool
+	var version string
+	fs.StringVar(&version, "version", "", "compare with the snapshot of this migration version (what baseline --version N checks); default: the latest applied, else the latest snapshot")
 	fs.BoolVar(&strict, "strict", false, "fail when view, trigger and policy text cannot be compared (needs CREATE on the database)")
-	return l.withEngine(fs, nil, func(ctx context.Context, e *migrate.Engine, _ []string) int {
-		rep, err := e.DriftWith(ctx, migrate.DriftOptions{Strict: strict})
+	fs.BoolVar(&fixSQL, "fix-sql", false, "print the DDL that brings the database to the snapshot instead of the report")
+	fs.BoolVar(&allowDestructive, "allow-destructive", false, "with --fix-sql, also print the destructive steps (drops, column type changes)")
+	check := func() ([]migrate.Option, error) {
+		if allowDestructive && !fixSQL {
+			return nil, errors.New("--allow-destructive needs --fix-sql")
+		}
+		return nil, nil
+	}
+	return l.withEngine(fs, check, func(ctx context.Context, e *migrate.Engine, _ []string) int {
+		if fixSQL {
+			return l.driftFix(ctx, e, migrate.RepairOptions{DriftOptions: migrate.DriftOptions{Strict: strict, Version: version}, AllowDestructive: allowDestructive})
+		}
+		rep, err := e.DriftWith(ctx, migrate.DriftOptions{Strict: strict, Version: version})
 		if err != nil {
 			return l.failure(err)
 		}
-		for _, d := range rep.Changed {
-			l.say("changed: %s %s: %s", d.Object.Kind, qualifiedName(d.Object), d.Detail)
+		if rep.SnapshotVersion != "" {
+			l.warnf("compared with the snapshot of version %s", rep.SnapshotVersion)
 		}
-		for _, o := range rep.Missing {
-			l.say("missing: %s %s", o.Kind, qualifiedName(o))
-		}
-		for _, o := range rep.Unmanaged {
-			l.say("unmanaged: %s %s", o.Kind, qualifiedName(o))
+		for _, line := range rep.Lines(0) {
+			l.say("%s", line)
 		}
 		for _, o := range rep.Unverified {
 			l.say("unverified: %s %s", o.Kind, qualifiedName(o))
@@ -644,6 +666,75 @@ func (l *cli) driftCmd(fs *flag.FlagSet) func([]string) int {
 		l.say("no drift")
 		return exitOK
 	})
+}
+
+// driftFix prints the repair script on standard output and everything that is
+// not in it (withheld destructive steps, steps the dialect cannot render, notes)
+// on standard error. It exits 1 when the script is not the whole repair.
+func (l *cli) driftFix(ctx context.Context, e *migrate.Engine, o migrate.RepairOptions) int {
+	r, err := e.DriftRepair(ctx, o)
+	if err != nil {
+		return l.failure(err)
+	}
+	if r.Report.Clean() {
+		// Standard output stays SQL only, so a pipe into a database client never sees prose.
+		l.warnf("no drift")
+		return exitOK
+	}
+	_, _ = fmt.Fprint(l.out, r.SQL())
+	l.warnf("repair for the snapshot of version %s", r.Report.SnapshotVersion)
+	if len(r.Statements) > 0 && !r.Transactional {
+		l.warnf("note: %s does not roll DDL back; a step that fails (a constraint the data violates, SET NOT NULL over NULLs) leaves the steps before it applied", l.dialectName)
+	}
+	for _, h := range r.Hints {
+		l.warnf("note: %s", h)
+	}
+	for _, s := range r.Staged {
+		l.warnf("staged: %s", s)
+	}
+	for _, u := range r.Uncovered {
+		l.warnf("not covered: %s", u)
+	}
+	for _, s := range r.Withheld {
+		l.warnf("withheld: %s %s: %s", s.Change.Kind, qualifiedChange(s.Change), s.Reason)
+	}
+	for _, s := range r.Unsupported {
+		l.warnf("not rendered: %s %s: %s", s.Change.Kind, qualifiedChange(s.Change), s.Reason)
+	}
+	if len(r.Withheld) > 0 {
+		l.warnf("%d destructive step(s) withheld; review them, then pass --allow-destructive to print them", len(r.Withheld))
+	}
+	if len(r.Unsupported) > 0 {
+		l.warnf("%d step(s) cannot be rendered for this dialect; write them by hand", len(r.Unsupported))
+	}
+	if len(r.Staged) > 0 {
+		l.warnf("%d NOT NULL column(s) were added nullable; the database still differs from the snapshot until they are backfilled and set NOT NULL", len(r.Staged))
+	}
+	if len(r.Uncovered) > 0 {
+		l.warnf("%d difference(s) have no repair statement; fix them by hand or hide them with migrate.exclude", len(r.Uncovered))
+	}
+	if !r.Complete() {
+		return exitFindings
+	}
+	return exitOK
+}
+
+// warnf writes one line to standard error.
+func (l *cli) warnf(format string, args ...any) {
+	_, _ = fmt.Fprintf(l.errOut, "%s\n", migrate.RedactURLs(fmt.Sprintf(format, args...), l.secrets...))
+}
+
+// qualifiedChange names the object a change acts on: table.name, or the name
+// alone when the change is the table's own.
+func qualifiedChange(c migrate.Change) string {
+	name := c.Name
+	if c.Table != "" && c.Table != c.Name {
+		name = c.Table + "." + c.Name
+	}
+	if c.Schema != "" {
+		name = c.Schema + "." + name
+	}
+	return name
 }
 
 func qualifiedName(o migrate.ObjectRef) string {

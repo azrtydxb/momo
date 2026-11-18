@@ -219,7 +219,7 @@ func TestBaselineGates(t *testing.T) {
 	}
 }
 
-func TestDriftIsReadOnlyAndTreatsEverythingAsUnmanagedWithoutHistory(t *testing.T) {
+func TestDriftIsReadOnlyAndComparesWithTheLatestSnapshotWithoutHistory(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
 	mustExecDB(t, db, `CREATE TABLE stray (id INTEGER PRIMARY KEY)`)
@@ -229,11 +229,11 @@ func TestDriftIsReadOnlyAndTreatsEverythingAsUnmanagedWithoutHistory(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	// No migration applied: the empty schema is the baseline, so the live table
-	// and the vector extension are unmanaged and the snapshot objects are not
-	// consulted.
+	// No migration applied: the latest snapshot of the directory is the
+	// baseline, so the live stray table is unmanaged and the snapshot's users
+	// table, which the database lacks, is missing.
 	got := strings.Join(refNames(rep.Unmanaged), ",")
-	if !strings.Contains(got, "table:stray") || len(rep.Changed) != 0 || len(rep.Missing) != 0 {
+	if got != "table:stray" || len(rep.Changed) != 0 || strings.Join(refNames(rep.Missing), ",") != "table:users" {
 		t.Fatalf("drift without history: %+v", rep)
 	}
 	if tableExists(t, db, "momo_migrations") {
