@@ -303,14 +303,17 @@ func (r insertRef) reconPlan(a insAccess) (reconPlan, error) {
 // had.
 func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 	ms, back, meta, pend := q.models, q.back, q.meta, q.pend
-	var got []T
+	// cur is the row being matched: one T at a time is held, and a row is
+	// copied only when a caller's model needs a value from it.
+	var cur T
 	a := insAccess{
 		value:   func(row, ci int) any { return meta.Value(&ms[row], ci) },
 		zero:    func(ci int) (any, bool) { return zeroValue(meta, ci) },
 		hasBack: func(row int) bool { return row < len(back) && back[row] != nil },
-		got:     func(g, ci int) any { return meta.Value(&got[g], ci) },
-		queueCopy: func(row, g, ci int) {
-			dst, src := back[row], &got[g]
+		got:     func(_, ci int) any { return meta.Value(&cur, ci) },
+		queueCopy: func(row, _, ci int) {
+			dst, src := back[row], new(T)
+			*src = cur
 			later(pend, func() { copyField(meta, dst, src, ci) })
 		},
 		queueSetID: func(row, ci int, id string) {
@@ -335,17 +338,19 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 	}
 	rows.noHooks = true // internal read: the models are half-filled
 	st := r.reconMatcher(rp, a)
+	n := 0
 	for rows.Next() {
-		var g T
-		if err := rows.ScanModel(&g); err != nil {
+		var zero T
+		cur = zero
+		if err := rows.ScanModel(&cur); err != nil {
 			_ = rows.Close()
 			return Result{}, err
 		}
-		got = append(got, g)
-		if err := st.row(len(got)-1, a); err != nil {
+		if err := st.row(n, a); err != nil {
 			_ = rows.Close()
 			return Result{}, err
 		}
+		n++
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
@@ -354,7 +359,7 @@ func (q InsertQuery[T]) execReconcile(ctx context.Context) (Result, error) {
 	if err := rows.Close(); err != nil {
 		return Result{}, err
 	}
-	return st.finish(len(got))
+	return st.finish(n)
 }
 
 // reconState matches the rows an id-reconciling insert returns to its models

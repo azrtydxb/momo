@@ -81,18 +81,17 @@ type fieldPlan[T any] struct {
 	// def and upd map a column index to its Default or OnUpdate function; the
 	// last hook declared for a column wins.
 	def, upd map[int]func(*T) any
-	// ref is the part of the plan that does not mention T, for the insert
-	// renderer that lives on a non-generic receiver.
-	ref fieldRef
 }
 
 // fieldRef is a fieldPlan stripped of T: how many hooks there are, which
 // columns have a Go-side default and the validators in hook order. Calling a
 // default needs T and goes through insAccess.
 type fieldRef struct {
-	n       int
-	defCols []int // sorted
-	checks  []fieldCheck
+	n int
+	// def[ci] reports a Go-side default for column ci; nil when there is none.
+	// Ranging over it visits the columns in index order.
+	def    []bool
+	checks []fieldCheck
 }
 
 // fieldCheck is the Validate hook of one column.
@@ -102,7 +101,7 @@ type fieldCheck struct {
 }
 
 // hasDef reports whether column ci has a Go-side default.
-func (f fieldRef) hasDef(ci int) bool { return slices.Contains(f.defCols, ci) }
+func (f fieldRef) hasDef(ci int) bool { return ci >= 0 && ci < len(f.def) && f.def[ci] }
 
 // validate runs every Validate hook, as fieldPlan.validate does.
 func (f fieldRef) validate(op, table string, cols []ColumnMeta, value func(ci int) (v any, ok bool)) error {
@@ -152,19 +151,29 @@ func newFieldPlan[T any](q Querier, m *Meta[T]) (fieldPlan[T], error) {
 			}
 			fp.upd[h.Column] = h.OnUpdate
 		}
-		if h.Validate != nil {
-			fp.ref.checks = append(fp.ref.checks, fieldCheck{col: h.Column, fn: h.Validate})
-		}
-	}
-	fp.ref.n = len(hooks)
-	if len(fp.def) > 0 {
-		fp.ref.defCols = make([]int, 0, len(fp.def))
-		for ci := range fp.def {
-			fp.ref.defCols = append(fp.ref.defCols, ci)
-		}
-		slices.Sort(fp.ref.defCols)
 	}
 	return fp, nil
+}
+
+// refOf is the part of the plan that does not mention T, for the insert
+// renderer. Only the insert path builds it: Update and Merge share the plan
+// and never read it.
+func (fp fieldPlan[T]) refOf(ncols int) fieldRef {
+	r := fieldRef{n: len(fp.hooks)}
+	for _, h := range fp.hooks {
+		if h.Validate != nil {
+			r.checks = append(r.checks, fieldCheck{col: h.Column, fn: h.Validate})
+		}
+	}
+	if len(fp.def) > 0 {
+		r.def = make([]bool, ncols)
+		for ci := range fp.def {
+			if ci >= 0 && ci < ncols {
+				r.def[ci] = true
+			}
+		}
+	}
+	return r
 }
 
 // validate runs every Validate hook. value reports the value the statement

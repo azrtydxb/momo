@@ -77,7 +77,7 @@ func (q InsertQuery[T]) Copy(ctx context.Context, ms []T) (Result, error) {
 		ptr:     func(row, ci int) any { return meta.Ptr(&ms[row], ci) },
 		hasBack: func(int) bool { return false },
 		clone:   func() { ms = slices.Clone(ms) },
-		fields:  fp.ref,
+		fields:  fp.refOf(len(meta.Columns)),
 	}
 	r.ferr = ferr
 	r.n, r.nBack = len(ms), 0

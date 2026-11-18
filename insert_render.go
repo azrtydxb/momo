@@ -39,7 +39,7 @@ func (q InsertQuery[T]) render(b *Builder) {
 		hasBack: func(row int) bool { return row < len(back) && back[row] != nil },
 		backPtr: func(row, ci int) any { return meta.Ptr(back[row], ci) },
 		clone:   func() { ms = slices.Clone(ms) },
-		fields:  fp.ref,
+		fields:  fp.refOf(len(meta.Columns)),
 	}
 	r := q.ref()
 	r.ferr = ferr
@@ -375,7 +375,10 @@ func (r insertRef) valueRows(d *dialect.Dialect, now time.Time, a insAccess) ([]
 		}
 		// Go-side defaults fill the columns this row leaves out; an explicit
 		// assignment, including SetDefault and SetNull, wins.
-		for _, ci := range a.fields.defCols {
+		for ci, has := range a.fields.def {
+			if !has {
+				continue
+			}
 			if _, assigned := m[ci]; assigned || !r.writable(ci) {
 				continue
 			}

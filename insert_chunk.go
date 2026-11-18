@@ -154,7 +154,16 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 		return nil, err
 	}
 	ms, back, meta := q.models, q.back, q.meta
-	fp, ferr := newFieldPlan(q.q, meta)
+	// The field plan is read only to split several models or to compare
+	// ValuesRows; a single statement is planned without it and render builds
+	// it once.
+	var (
+		fp   fieldPlan[T]
+		ferr error
+	)
+	if len(ms) > 1 || q.i.hasRows {
+		fp, ferr = newFieldPlan(q.q, meta)
+	}
 	a := insAccess{
 		value:   func(row, ci int) any { return meta.Value(&ms[row], ci) },
 		zero:    func(ci int) (any, bool) { return zeroValue(meta, ci) },
@@ -163,7 +172,7 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 		hasBack: func(row int) bool { return row < len(back) && back[row] != nil },
 		backPtr: func(row, ci int) any { return meta.Ptr(back[row], ci) },
 		clone:   func() { ms = slices.Clone(ms) },
-		fields:  fp.ref,
+		fields:  fp.refOf(len(meta.Columns)),
 	}
 	r := q.ref()
 	r.ferr = ferr
