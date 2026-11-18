@@ -659,7 +659,7 @@ func Equal(a, b *Schema) bool {
 			}
 		}
 	}
-	reconcileCheckIns(na, nb)
+	reconcileCheckIns(na, nb, a, b)
 	for i := range na.Extensions {
 		for j := range nb.Extensions {
 			x, y := &na.Extensions[i], &nb.Extensions[j]
@@ -681,27 +681,54 @@ func Equal(a, b *Schema) bool {
 
 // reconcileCheckIns makes the checks of one name on one table that SameCheck
 // calls the same compare equal: the value list is another view of the
-// expression, so both lose it and share one spelling. The schemas are the
-// normalized copies Equal owns.
-func reconcileCheckIns(a, b *Schema) {
+// expression, so both lose it and share one spelling. na and nb are the
+// normalized copies Equal owns; the decision is taken on the schemas as given
+// (a and b), because normalizing lowercases a MySQL column and Diff reads the
+// expression as written.
+func reconcileCheckIns(na, nb, a, b *Schema) {
 	for i := range a.Tables {
 		for j := range b.Tables {
 			ta, tb := &a.Tables[i], &b.Tables[j]
 			if ta.Schema != tb.Schema || ta.Name != tb.Name {
 				continue
 			}
-			for x := range ta.Checks {
-				for y := range tb.Checks {
-					ca, cb := &ta.Checks[x], &tb.Checks[y]
-					if ca.Name != cb.Name || (ca.In == nil && cb.In == nil) || !SameCheck(*ca, *cb) {
+			xa, xb := tableIn(na, ta.Schema, ta.Name), tableIn(nb, tb.Schema, tb.Name)
+			if xa == nil || xb == nil {
+				continue
+			}
+			for _, ca := range ta.Checks {
+				for _, cb := range tb.Checks {
+					if ca.Name != cb.Name || (ca.In == nil && cb.In == nil) || !SameCheck(ca, cb) {
 						continue
 					}
-					cb.Expr = ca.Expr
-					ca.In, cb.In = nil, nil
+					ya, yb := checkByName(xa, ca.Name), checkByName(xb, cb.Name)
+					if ya == nil || yb == nil {
+						continue
+					}
+					yb.Expr = ya.Expr
+					ya.In, yb.In = nil, nil
 				}
 			}
 		}
 	}
+}
+
+func tableIn(s *Schema, schemaName, name string) *Table {
+	for i := range s.Tables {
+		if s.Tables[i].Schema == schemaName && s.Tables[i].Name == name {
+			return &s.Tables[i]
+		}
+	}
+	return nil
+}
+
+func checkByName(t *Table, name string) *Check {
+	for i := range t.Checks {
+		if t.Checks[i].Name == name {
+			return &t.Checks[i]
+		}
+	}
+	return nil
 }
 
 // Normalized returns a deep copy of s with every type and expression
