@@ -172,7 +172,7 @@ func autoSkipReason(ch Change, desired *schema.Schema, created map[string]bool) 
 		}
 		return ""
 	case CreateIndex:
-		if ix, ok := ch.After.(*schema.Index); ok && ix.Unique && !newTable {
+		if ix, ok := ch.After.(*schema.Index); ok && ix != nil && ix.Unique && !newTable {
 			return "unique index on an existing table requires a migration"
 		}
 		return ""
@@ -228,7 +228,7 @@ func (e *Engine) fullTextConflict(ch Change, desired, live *schema.Schema) strin
 		}
 	case CreateIndex:
 		ix, ok := ch.After.(*schema.Index)
-		if !ok || ix.FullText == nil {
+		if !ok || ix == nil || ix.FullText == nil {
 			return ""
 		}
 		for _, t := range live.Tables {

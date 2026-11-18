@@ -78,7 +78,7 @@ func (e *Engine) splitNoTx(version, name, parent string, ordered []Change, to *s
 			if c.Kind == AddUnique {
 				movedUnique[c.Schema+"\x00"+c.Table] = true
 			}
-			if ix, isIx := c.After.(*schema.Index); c.Kind == CreateIndex && isIx && ix.Unique {
+			if ix, isIx := c.After.(*schema.Index); c.Kind == CreateIndex && isIx && ix != nil && ix.Unique {
 				movedUnique[c.Schema+"\x00"+c.Table] = true
 			}
 		}
@@ -138,7 +138,7 @@ func nameKey(c Change) string { return c.Schema + "\x00" + c.Table + "\x00" + c.
 // reference carries none.
 func refTableKey(c Change) string {
 	fk, ok := c.After.(*schema.ForeignKey)
-	if !ok {
+	if !ok || fk == nil {
 		return ""
 	}
 	sch, tbl := c.Schema, fk.RefTable
@@ -182,15 +182,15 @@ func undoInTail(s *schema.Schema, c Change, whole bool) {
 	case AddFK:
 		t.ForeignKeys = slices.DeleteFunc(t.ForeignKeys, func(f schema.ForeignKey) bool { return f.Name == c.Name })
 	case DropIndex:
-		if ix, ok := c.Before.(*schema.Index); ok && !slices.ContainsFunc(t.Indexes, func(o schema.Index) bool { return o.Name == ix.Name }) {
+		if ix, ok := c.Before.(*schema.Index); ok && ix != nil && !slices.ContainsFunc(t.Indexes, func(o schema.Index) bool { return o.Name == ix.Name }) {
 			t.Indexes = append(t.Indexes, *ix)
 		}
 	case DropUnique:
-		if u, ok := c.Before.(*schema.Unique); ok && !slices.ContainsFunc(t.Uniques, func(o schema.Unique) bool { return o.Name == u.Name }) {
+		if u, ok := c.Before.(*schema.Unique); ok && u != nil && !slices.ContainsFunc(t.Uniques, func(o schema.Unique) bool { return o.Name == u.Name }) {
 			t.Uniques = append(t.Uniques, *u)
 		}
 	case DropFK:
-		if f, ok := c.Before.(*schema.ForeignKey); ok && !slices.ContainsFunc(t.ForeignKeys, func(o schema.ForeignKey) bool { return o.Name == f.Name }) {
+		if f, ok := c.Before.(*schema.ForeignKey); ok && f != nil && !slices.ContainsFunc(t.ForeignKeys, func(o schema.ForeignKey) bool { return o.Name == f.Name }) {
 			t.ForeignKeys = append(t.ForeignKeys, *f)
 		}
 	}
