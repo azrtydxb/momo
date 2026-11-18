@@ -52,7 +52,10 @@ migrations does not run them again. Four readers produce the input:
 | `importer/history/golangmigrate` | `<version>_<title>.up.sql` and `.down.sql` files and `schema_migrations`                          |
 | `importer/history/bun`           | Bun's SQL migrations and the `bun_migrations` table                                               |
 
-Each package exports `Read`, which returns a `history.Source`. `history.Convert`
+Each package exports `Read`, which returns a `history.Source`. The goose,
+golangmigrate and bun readers query the migrations table and also export
+`ReadContext`, which takes a `context.Context` for that query; `Read` is
+`ReadContext` with `context.Background()`. `history.Convert`
 refuses a source that is dirty, that holds migrations the tool never applied, or
 that holds migrations it cannot convert (Bun and goose Go-function migrations).
 A source version that is not a 14-digit timestamp is mapped to

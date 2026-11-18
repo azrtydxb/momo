@@ -39,6 +39,12 @@ var sqlSuffixes = []struct {
 // bun_migration_locks is ignored. A row with no file in the
 // directory is an error.
 func Read(dir fs.FS, c momo.PinnedConn, table string) (history.Source, error) {
+	return ReadContext(context.Background(), dir, c, table)
+}
+
+// ReadContext is Read with a context: ctx is passed to the query on the
+// migrations table, so cancelling it stops the read.
+func ReadContext(ctx context.Context, dir fs.FS, c momo.PinnedConn, table string) (history.Source, error) {
 	if table == "" {
 		table = "bun_migrations"
 	}
@@ -118,7 +124,7 @@ func Read(dir fs.FS, c momo.PinnedConn, table string) (history.Source, error) {
 	if err != nil {
 		return src, err
 	}
-	rows, err := c.Query(context.Background(), "SELECT name FROM "+tbl+" ORDER BY id", nil)
+	rows, err := c.Query(ctx, "SELECT name FROM "+tbl+" ORDER BY id", nil)
 	if err != nil {
 		return src, fmt.Errorf("bun: read %s: %w", table, err)
 	}

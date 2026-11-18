@@ -103,6 +103,12 @@ func parseFile(body []byte) (up, down []byte, noTx bool, err error) {
 // the table lists as applied that has no file is an error: the history would
 // not match the directory.
 func Read(dir fs.FS, c momo.PinnedConn, table string) (history.Source, error) {
+	return ReadContext(context.Background(), dir, c, table)
+}
+
+// ReadContext is Read with a context: ctx is passed to the query on the
+// version table, so cancelling it stops the read.
+func ReadContext(ctx context.Context, dir fs.FS, c momo.PinnedConn, table string) (history.Source, error) {
 	src := history.Source{Tool: "goose", Applied: []string{}}
 	ents, err := fs.ReadDir(dir, ".")
 	if err != nil {
@@ -145,7 +151,7 @@ func Read(dir fs.FS, c momo.PinnedConn, table string) (history.Source, error) {
 	if err != nil {
 		return src, err
 	}
-	rows, err := c.Query(context.Background(), "SELECT version_id, is_applied FROM "+tbl+" ORDER BY id", nil)
+	rows, err := c.Query(ctx, "SELECT version_id, is_applied FROM "+tbl+" ORDER BY id", nil)
 	if err != nil {
 		return src, fmt.Errorf("goose: read %s: %w", table, err)
 	}

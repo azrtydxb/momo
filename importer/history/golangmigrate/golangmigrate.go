@@ -32,6 +32,12 @@ var fileRe = regexp.MustCompile(`^(\d+)_(.*)\.(up|down)\.sql$`)
 // that version failed half way: Dirty is true and Applied lists the versions
 // before it. An empty table means nothing is applied.
 func Read(dir fs.FS, c momo.PinnedConn, table string) (history.Source, error) {
+	return ReadContext(context.Background(), dir, c, table)
+}
+
+// ReadContext is Read with a context: ctx is passed to the query on the
+// schema_migrations table, so cancelling it stops the read.
+func ReadContext(ctx context.Context, dir fs.FS, c momo.PinnedConn, table string) (history.Source, error) {
 	src := history.Source{Tool: "golangmigrate", Applied: []string{}}
 	ents, err := fs.ReadDir(dir, ".")
 	if err != nil {
@@ -85,7 +91,7 @@ func Read(dir fs.FS, c momo.PinnedConn, table string) (history.Source, error) {
 	if err != nil {
 		return src, err
 	}
-	rows, err := c.Query(context.Background(), "SELECT version, dirty FROM "+tbl, nil)
+	rows, err := c.Query(ctx, "SELECT version, dirty FROM "+tbl, nil)
 	if err != nil {
 		return src, fmt.Errorf("golangmigrate: read %s: %w", table, err)
 	}
