@@ -11,12 +11,25 @@
 #      starts in column 0 with "Docs: no reader-visible change: " and a real
 #      reason (not blank, not a <placeholder>).
 #
+# Compatibility gate (docs/compatibility.md): once the module version on the
+# base is 1.0.0 or later (read from .release-please-manifest.json), an
+# incompatible change also fails unless the change is declared breaking: the
+# pull request title is a Conventional Commits title with "!" (feat!: ...), or
+# the pull request body or a commit message has a line that starts in column 0
+# with "BREAKING CHANGE: " and a description. Incompatible changes in the
+# packages listed in scripts/apidiff-experimental.txt never fail it. Before
+# 1.0.0 the gate behaves as it always did: only the docs rule above applies.
+#
 # Environment:
 #   APIDIFF   command that runs apidiff, e.g. "go run golang.org/x/exp/cmd/apidiff@<ver>" (required)
 #   BASE_REF  ref to compare against; default: the origin/main or origin/sprint-* branch
 #             with the fewest commits not in HEAD
 #   PR_BODY_FILE  file holding the pull request body, searched for the escape line
 #   PR_BODY       the body itself, if PR_BODY_FILE is not set
+#   PR_TITLE_FILE file holding the pull request title, read for the "!" marker
+#   PR_TITLE      the title itself, if PR_TITLE_FILE is not set
+#   MODULE_VERSION  the module version to judge by; default: the "." entry of
+#             .release-please-manifest.json at the merge base
 #   REPORT    markdown report file (default $RUNNER_TEMP/apidiff-report.md, else
 #             ./apidiff-report.md, which is git-ignored)
 set -euo pipefail
@@ -26,6 +39,10 @@ REPORT=${REPORT:-${RUNNER_TEMP:-.}/apidiff-report.md}
 PR_BODY=${PR_BODY:-}
 if [ -n "${PR_BODY_FILE:-}" ]; then
 	PR_BODY=$(cat "$PR_BODY_FILE")
+fi
+PR_TITLE=${PR_TITLE:-}
+if [ -n "${PR_TITLE_FILE:-}" ]; then
+	PR_TITLE=$(cat "$PR_TITLE_FILE")
 fi
 MARKER='<!-- apidiff-docs -->'
 rm -f "$REPORT"
@@ -49,6 +66,25 @@ fi
 BASE_SHA=$(git merge-base "$BASE_REF" HEAD)
 MOD=$(awk '$1 == "module" { print $2; exit }' go.mod)
 echo "apidiff gate: base $BASE_REF ($BASE_SHA), module $MOD"
+
+# The version is read from the base, not from HEAD, so a pull request cannot
+# switch the compatibility gate off by editing the manifest.
+if [ -z "${MODULE_VERSION:-}" ]; then
+	MODULE_VERSION=$(git show "$BASE_SHA:.release-please-manifest.json" |
+		sed -n 's/^[[:space:]]*"\.":[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+fi
+MAJOR=${MODULE_VERSION%%.*}
+case "$MAJOR" in
+'' | *[!0-9]*)
+	echo "apidiff gate: cannot read the module version from .release-please-manifest.json (got '$MODULE_VERSION')" >&2
+	exit 2
+	;;
+esac
+ENFORCE_COMPAT=0
+if [ "$MAJOR" -ge 1 ]; then
+	ENFORCE_COMPAT=1
+fi
+echo "apidiff gate: module version $MODULE_VERSION, compatibility enforced: $ENFORCE_COMPAT"
 
 tmp=$(mktemp -d)
 cleanup() {
@@ -81,6 +117,48 @@ escape=$({
 	printf '```\n\n'
 } >"$REPORT"
 cat "$tmp/report.txt"
+
+if [ "$ENFORCE_COMPAT" -eq 1 ]; then
+	# The "Incompatible changes:" section of the report, minus the packages the
+	# promise does not cover. apidiff writes each change as "- <name>: <what>".
+	incompat=$(awk '/^Incompatible changes:/ { on = 1; next } /^Compatible changes:/ { on = 0 } on' "$tmp/report.txt" |
+		awk -v mod="$MOD" '
+			NR == FNR { if ($1 != "" && $1 !~ /^#/) ex[$1] = 1; next }
+			{
+				line = $0
+				sub(/^- /, "", line)
+				sub(/^package /, "", line)
+				if (index(line, mod "/") == 1) line = substr(line, length(mod) + 2)
+				skip = 0
+				for (p in ex) {
+					if (index(line, p) == 1) {
+						c = substr(line, length(p) + 1, 1)
+						if (c == "" || c == "." || c == "/" || c == ":" || c == " ") skip = 1
+					}
+				}
+				if (!skip) print $0
+			}' scripts/apidiff-experimental.txt -)
+	if [ -n "$incompat" ]; then
+		declared=$({
+			printf '%s\n' "$PR_TITLE" | grep -E '^[a-z]+(\([^)]*\))?!:' || true
+			{
+				printf '%s\n' "$PR_BODY"
+				git log --format=%B "$BASE_SHA..HEAD"
+			} | tr -d '\r' | grep -E '^BREAKING[ -]CHANGE: [^[:space:]]' || true
+		} | head -1)
+		if [ -z "$declared" ]; then
+			{
+				printf 'Compatibility gate failed: this module is at %s and the change is incompatible:\n\n' "$MODULE_VERSION"
+				printf '%s\n\n' "$incompat"
+				printf 'Keep the old API working and deprecate it (docs/compatibility.md), or declare the change\n'
+				printf 'breaking: a pull request title such as `feat!: ...` or a `BREAKING CHANGE: <what>` line in\n'
+				printf 'the pull request body. A breaking change ships in the next major version.\n'
+			} | tee -a "$REPORT" >&2
+			exit 1
+		fi
+		printf 'Compatibility gate passed: the incompatible change is declared breaking: `%s`\n' "$declared" | tee -a "$REPORT"
+	fi
+fi
 
 if [ -n "$docs_changed" ]; then
 	printf 'Docs gate passed: the change touches docs.\n' | tee -a "$REPORT"
