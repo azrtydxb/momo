@@ -659,6 +659,7 @@ func Equal(a, b *Schema) bool {
 			}
 		}
 	}
+	reconcileCheckIns(na, nb)
 	for i := range na.Extensions {
 		for j := range nb.Extensions {
 			x, y := &na.Extensions[i], &nb.Extensions[j]
@@ -676,6 +677,31 @@ func Equal(a, b *Schema) bool {
 		return false
 	}
 	return bytes.Equal(ca, cb)
+}
+
+// reconcileCheckIns makes the checks of one name on one table that SameCheck
+// calls the same compare equal: the value list is another view of the
+// expression, so both lose it and share one spelling. The schemas are the
+// normalized copies Equal owns.
+func reconcileCheckIns(a, b *Schema) {
+	for i := range a.Tables {
+		for j := range b.Tables {
+			ta, tb := &a.Tables[i], &b.Tables[j]
+			if ta.Schema != tb.Schema || ta.Name != tb.Name {
+				continue
+			}
+			for x := range ta.Checks {
+				for y := range tb.Checks {
+					ca, cb := &ta.Checks[x], &tb.Checks[y]
+					if ca.Name != cb.Name || (ca.In == nil && cb.In == nil) || !SameCheck(*ca, *cb) {
+						continue
+					}
+					cb.Expr = ca.Expr
+					ca.In, cb.In = nil, nil
+				}
+			}
+		}
+	}
 }
 
 // Normalized returns a deep copy of s with every type and expression

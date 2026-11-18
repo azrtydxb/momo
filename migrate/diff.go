@@ -634,7 +634,15 @@ func (d *differ) checks(fn, tn, to *schema.Table) {
 	var pairs [][2]schema.Check
 	for _, o := range fn.Checks {
 		n, ok := lookup(tn.Checks, name, o.Name)
-		if ok && o.In != nil && n.In != nil && o.In.Column == n.In.Column {
+		if !ok || (o.In == nil && n.In == nil) {
+			continue
+		}
+		// A side read back from a database carries no value list; read it from
+		// its expression, the way schema.Equal does.
+		lo, okO := o.ValueList()
+		ln, okN := n.ValueList()
+		if okO && okN && lo.Column == ln.Column {
+			o.In, n.In = &lo, &ln
 			paired[o.Name] = true
 			pairs = append(pairs, [2]schema.Check{o, n})
 		}
@@ -646,7 +654,7 @@ func (d *differ) checks(fn, tn, to *schema.Table) {
 		return slices.DeleteFunc(slices.Clone(cs), func(c schema.Check) bool { return paired[c.Name] })
 	}
 	diffNamed(d, rest(fn.Checks), rest(tn.Checks), to, name,
-		func(a, b schema.Check) bool { return a.Expr == b.Expr }, DropCheck, AddCheck,
+		schema.SameCheck, DropCheck, AddCheck,
 		func(c schema.Check) goneUse { return usesGone(d.gone, nil, c.Expr) })
 	for _, p := range pairs {
 		d.alterCheckIn(to, p[0], p[1])

@@ -77,6 +77,36 @@ func (c Check) ExprFor(d dialect.Name) string {
 	return c.Expr
 }
 
+// ValueList returns the value list the check holds: In when it is set, else the
+// list read from Expr when that is a value-list expression in any spelling the
+// supported databases report (what an inspector returns carries no In).
+func (c Check) ValueList() (CheckIn, bool) {
+	if c.In != nil && c.In.Column != "" && len(c.In.Values) > 0 {
+		return *c.In, true
+	}
+	col, vals, ok := ParseCheckIn(c.Expr)
+	if !ok {
+		return CheckIn{}, false
+	}
+	return CheckIn{Column: col, Values: vals}, true
+}
+
+// SameCheck reports whether two checks of one name are the same constraint.
+// When at least one declares a value list and both hold one, the column and the
+// set of values are compared, whatever the order, repeats or spelling of the
+// expression. Otherwise the expressions are compared as written. Diff and Equal
+// both decide on this, so they agree on a value-list check.
+func SameCheck(a, b Check) bool {
+	if a.In != nil || b.In != nil {
+		la, okA := a.ValueList()
+		lb, okB := b.ValueList()
+		if okA && okB {
+			return la.Column == lb.Column && slices.Equal(SortedValues(la.Values), SortedValues(lb.Values))
+		}
+	}
+	return a.Expr == b.Expr
+}
+
 type checkTok struct {
 	text   string
 	str    bool // a string literal; text holds its value
