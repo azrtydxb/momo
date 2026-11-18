@@ -81,7 +81,10 @@ func TestStateFingerprintV1CoversEveryField(t *testing.T) {
 			t.Fatalf("object %s cannot be encoded: %v", k, err)
 		}
 	}
-	const want = "4dae13321682bdb86c945f76c7ccfbbe5a630dbdba2dd6374c1b0684d1572e28"
+	// Updated for the deferrability fields (issue 237): they are omitted from the
+	// JSON of every schema that does not set them, which TestStateFingerprintV1IsPinned
+	// still proves, so the markers already written still verify.
+	const want = "8ff8164a68a8b7465932750140626caea2d2f93c8388b2285bc49c3d263294c8"
 	if got := stateFingerprint(&s); got != want {
 		t.Fatalf("fingerprint v1 of the full fixture: got %s, want %s", got, want)
 	}

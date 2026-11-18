@@ -19,12 +19,3 @@ func (a *A) MomoConfig(c *momo.Config) {
 	c.PrimaryKeyDeferrable()
 	c.PrimaryKeyDeferrable()
 }
-
-type B struct {
-	momo.Model `momo:"table:b"`
-	Name       string
-}
-
-func (b *B) MomoConfig(c *momo.Config) {
-	c.PrimaryKeyDeferrable()
-}

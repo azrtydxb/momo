@@ -97,10 +97,18 @@ func TestCompanionDeferrableRefusals(t *testing.T) {
 		`unique "a_name_key": a deferrable unique constraint cannot take other options`,
 		`duplicate Deferrable on index "a_dup_key"`,
 		`duplicate PrimaryKeyDeferrable call`,
-		`PrimaryKeyDeferrable: model B has no primary key`,
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing diagnostic %q in:\n%s", want, joined)
 		}
+	}
+
+	// The schema builder reports the key, after the companion has been read.
+	_, diags, err = Load([]string{"./companiondeferrablenopk"}, Config{Dir: fixturesDir(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if joined := diagStrings(diags); !strings.Contains(joined, `PrimaryKeyDeferrable: model B has no primary key`) {
+		t.Errorf("a deferrable primary key on a model without one is not refused:\n%s", joined)
 	}
 }

@@ -173,8 +173,9 @@ so the snapshot format version stays 1 and no snapshot needs rewriting.
 The declaration is read from `MomoConfig`:
 
 - `Config.Unique` takes `IndexOpts.Deferrable` or `IndexOpts.InitiallyDeferred`.
-  A deferrable unique stays a constraint, so it takes no other option: a
-  `Where`, `Method`, `With`, `Opclass`, `Desc`, `Nulls`, `Concurrently` or
+  A deferrable unique stays a constraint, so it takes no other option:
+  `IndexOpts.Where`, `IndexOpts.Method`, `IndexOpts.With`, `IndexOpts.Opclass`,
+  `IndexOpts.Desc`, `IndexOpts.Nulls`, `IndexOpts.Concurrently` or
   `IndexOpts.Unique` makes it an index, which PostgreSQL cannot defer, and the
   generator refuses the combination. `Config.Index` and `Config.IndexExpr` refuse
   both options.
