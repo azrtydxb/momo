@@ -2,10 +2,11 @@
 
 ## [0.19.0](https://github.com/azrtydxb/momo/compare/v0.18.0...v0.19.0) (2026-11-18)
 
+_PostgreSQL `DEFERRABLE` and `INITIALLY DEFERRED` constraints survive `--from-db`, migrations, `Baseline` and drift. Upgrading needs no code change, but a database that already has a deferrable constraint its snapshot lacks now shows up in `drift` and `Baseline`; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.19.0/docs/upgrading.md). [Changes since 0.18.0](https://github.com/azrtydxb/momo/compare/v0.18.0...v0.19.0)._
 
 ### Features
 
-* **schema:** model deferrable constraints ([#246](https://github.com/azrtydxb/momo/issues/246)) ([e2f1117](https://github.com/azrtydxb/momo/commit/e2f1117532d07403eee5034820a8a7768ab4ffd6)), closes [#237](https://github.com/azrtydxb/momo/issues/237)
+- **schema:** unique, primary key and foreign key constraints carry `DEFERRABLE` and `INITIALLY DEFERRED`, declared with `c.Unique(...).Deferrable()`, `c.ForeignKey(...).InitiallyDeferred()` and `Config.PrimaryKeyDeferrable()`. The PostgreSQL inspector reads them, `generate --from-db` writes them, and `Diff`, `schema.Equal`, `Baseline` and `drift --fix-sql` compare them. A change of deferrability drops and re-adds the constraint. The generator and `Diff` refuse a foreign key that references a deferrable key, and SQLite, MySQL and MariaDB refuse deferrable constraints with `momo.ErrUnsupported`, as [docs/migrations.md](https://github.com/azrtydxb/momo/blob/v0.19.0/docs/migrations.md) describes ([#246](https://github.com/azrtydxb/momo/pull/246), closes [#237](https://github.com/azrtydxb/momo/issues/237))
 
 ## [0.18.0](https://github.com/azrtydxb/momo/compare/v0.17.0...v0.18.0) (2026-11-18)
 
