@@ -2,31 +2,28 @@
 
 ## [0.18.0](https://github.com/azrtydxb/momo/compare/v0.17.0...v0.18.0) (2026-11-18)
 
+_A package with 100 models and 500 typed queries now compiles in about 4.5 GB of compiler memory instead of 6 GB, `schema.Equal` agrees with `Diff` on value-list checks, and `--from-db` with `introspect.only` declares only the sequences the listed tables use. Upgrading needs a code change only where a helper takes `momo.ReadOnlyVectorColumn` for a nullable read-only vector field; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.18.0/docs/upgrading.md). A project that sets `introspect.only` should add the `migrate.exclude` entries that `generate --from-db` prints before its next `migrate diff`, as [docs/migrations.md](https://github.com/azrtydxb/momo/blob/v0.18.0/docs/migrations.md) describes. [Changes since 0.17.0](https://github.com/azrtydxb/momo/compare/v0.17.0...v0.18.0)._
 
 ### ⚠ BREAKING CHANGES
 
-* **gen:** a *vector.Vector field tagged read_only now generates momo.NullReadOnlyVectorColumn instead of momo.ReadOnlyVectorColumn; a helper typed ReadOnlyVectorColumn[V] stops compiling after regenerating and should take momo.VectorSource[V] or the new type. The read-only, create-only and immutable vector column types are no longer convertible into one another. See docs/upgrading.md.
+- **gen:** a `*vector.Vector` field tagged `read_only` generates `momo.NullReadOnlyVectorColumn`, which keeps the null operations, instead of `momo.ReadOnlyVectorColumn`; a helper typed `ReadOnlyVectorColumn[V]` should take `momo.VectorSource[V]` or the new type. The read-only, create-only and immutable vector column types no longer convert into one another, as the scalar permission columns already did not ([#234](https://github.com/azrtydxb/momo/pull/234))
 
 ### Features
 
-* **importer/history:** add ReadContext to the table readers ([#236](https://github.com/azrtydxb/momo/issues/236)) ([1c359ef](https://github.com/azrtydxb/momo/commit/1c359ef06133a9878adaa9c6aabfa14e94c60390))
-
+- **importer/history:** the goose, golang-migrate and bun history readers gain `ReadContext(ctx, dir, c, table)`, so the read of the migrations table can be cancelled; `Read` is unchanged ([#236](https://github.com/azrtydxb/momo/pull/236))
 
 ### Bug Fixes
 
-* **generate:** keep only sequences used by listed tables ([#238](https://github.com/azrtydxb/momo/issues/238)) ([e76ca38](https://github.com/azrtydxb/momo/commit/e76ca38f3bd8c75ab8682772ff345612eddd9c5b)), closes [#231](https://github.com/azrtydxb/momo/issues/231)
-* **gen:** keep null ops on nullable read-only vector columns ([#234](https://github.com/azrtydxb/momo/issues/234)) ([cc8419b](https://github.com/azrtydxb/momo/commit/cc8419bf4181971b6a44f92d420a4fd2eb308e1c))
-* **migrate/postgres:** reject an index with no parts ([#243](https://github.com/azrtydxb/momo/issues/243)) ([a5aa47e](https://github.com/azrtydxb/momo/commit/a5aa47ebd3a35d1ccb3114219f4583d706b5b49b))
-* **migrate/postgres:** reject empty views, batch view inspection ([#235](https://github.com/azrtydxb/momo/issues/235)) ([4892fb7](https://github.com/azrtydxb/momo/commit/4892fb70644bf0f225cd3327ca100d407dcfce70))
-* **migratecfg:** report YAML syntax errors in a second document ([#240](https://github.com/azrtydxb/momo/issues/240)) ([46905cd](https://github.com/azrtydxb/momo/commit/46905cd49b0f895f3b1b5ee03ca739031892dc1d))
-* **schema:** compare value-list checks as sets in Equal ([#239](https://github.com/azrtydxb/momo/issues/239)) ([d194cb9](https://github.com/azrtydxb/momo/commit/d194cb9a0b8cad1fe41f709dd52c44cb7b7a8d64)), closes [#227](https://github.com/azrtydxb/momo/issues/227)
-
+- **generate:** with `introspect.only` set, `--from-db` declares a standalone sequence only when a listed table, or a function or view kept for it, uses it, on the model that uses it, and prints the `migrate.exclude` entries for the sequences it leaves out ([#238](https://github.com/azrtydxb/momo/pull/238), closes [#231](https://github.com/azrtydxb/momo/issues/231))
+- **schema:** `schema.Equal`, `Diff` and drift compare a value-list CHECK, declared with `CheckIn` or read back as `= ANY (ARRAY[...])` or `IN (...)`, as a set of values with one shared comparison, `schema.SameCheck` ([#239](https://github.com/azrtydxb/momo/pull/239), closes [#227](https://github.com/azrtydxb/momo/issues/227))
+- **migrate:** the PostgreSQL and MySQL renderers refuse an index with no parts, and the PostgreSQL renderer a view with an empty query, instead of emitting SQL the server rejects ([#235](https://github.com/azrtydxb/momo/pull/235), [#243](https://github.com/azrtydxb/momo/pull/243))
+- **migratecfg:** a syntax error in a second YAML document of `momo.yaml` is reported as that error instead of "multiple YAML documents are not supported" ([#240](https://github.com/azrtydxb/momo/pull/240))
 
 ### Performance Improvements
 
-* look up unnest column types without building a map ([#245](https://github.com/azrtydxb/momo/issues/245)) ([fceb3c2](https://github.com/azrtydxb/momo/commit/fceb3c2fefae877c41a367106ddc92371d6409c2))
-* **migrate/postgres:** inspect all tables in one query per kind ([#242](https://github.com/azrtydxb/momo/issues/242)) ([db0b1bf](https://github.com/azrtydxb/momo/commit/db0b1bf2879d40f374af77e022ac185e70b856bf))
-* move insert bodies off the generic InsertQuery ([#230](https://github.com/azrtydxb/momo/issues/230)) ([85bb077](https://github.com/azrtydxb/momo/commit/85bb07700d7f17f3abb33ca4d22fe2341f3966af)), closes [#217](https://github.com/azrtydxb/momo/issues/217)
+- **query:** the bodies of `InsertQuery[T]` move onto non-generic code, cutting the compiler's peak memory on the 100-model benchmark package from 5954 MiB to 4558 MiB with no change in allocations ([#230](https://github.com/azrtydxb/momo/pull/230), closes [#217](https://github.com/azrtydxb/momo/issues/217))
+- **migrate/postgres:** inspection reads columns, constraints, partitions, indexes and materialized-view dependencies with one query per kind instead of one per table or view ([#235](https://github.com/azrtydxb/momo/pull/235), [#242](https://github.com/azrtydxb/momo/pull/242))
+- **query:** an unnest insert looks up column types without building a map per render ([#245](https://github.com/azrtydxb/momo/pull/245))
 
 ## [0.17.0](https://github.com/azrtydxb/momo/compare/v0.16.1...v0.17.0) (2026-11-17)
 
