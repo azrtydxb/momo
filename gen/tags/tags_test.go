@@ -58,6 +58,12 @@ func TestParseTags(t *testing.T) {
 		}},
 		{name: "dbdefault with value", raw: "dbdefault:yes", wantMsg: "dbdefault does not take a value"},
 		{name: "idgen without value", raw: "idgen", wantMsg: "idgen requires a value"},
+		{name: "embed_from", raw: "dim:3,embed_from:title|body", check: func(t *testing.T, g Tags) {
+			if g.Dim != 3 || g.EmbedFrom != "title|body" {
+				t.Fatalf("got %+v", g)
+			}
+		}},
+		{name: "embed_from without value", raw: "embed_from", wantMsg: "embed_from requires a value"},
 		{name: "unknown key", raw: "bogus", wantMsg: `unknown tag option "bogus"`},
 		{name: "retired vector key", raw: "vector:3", wantMsg: `unknown tag option "vector"`},
 		{name: "bad integer", raw: "size:abc", wantMsg: "size must be an integer"},

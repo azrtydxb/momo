@@ -239,6 +239,13 @@ var features = []feature{
 		SQLite: "`ErrUnsupported`: a declaration is a generator error and the renderer refuses it, because `PRAGMA foreign_key_list` does not report the deferrability of a foreign key and a primary key or unique constraint cannot be deferred",
 		MySQL:  "`ErrUnsupported`: MySQL and MariaDB check each constraint at the end of the statement and have no `DEFERRABLE`; a declaration is a generator error and the renderer refuses it",
 	},
+	{
+		Name:   "Embeddings kept in sync with their source columns (`embed_from`)",
+		API:    []string{"vector.Embedder", "vector.SourceHash"},
+		PG:     "yes: the generator adds a `varchar(64)` hash column beside the `*vector.Vector` field, `momo.StaleEmbeddings` finds the rows whose source hash or NULL vector says they are out of date, and `momo.SyncEmbeddings` embeds them in batches with a compare-and-set write, no transaction held during the `vector.Embedder` call",
+		SQLite: "yes: the same hash column and the same two functions on a sqlite-vec vector column; concurrent runners are limited by SQLite's single writer",
+		MySQL:  "`ErrUnsupported`: `embed_from` is a generator error and `momo.SyncEmbeddings` and `momo.StaleEmbeddings` refuse the dialect",
+	},
 }
 
 // featuresBlock is the feature support table built from the features data and
