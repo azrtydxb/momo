@@ -393,6 +393,7 @@ func sortTables(items []Change, create bool) (sorted, addFKs []Change, err error
 				if ok && j != i && inCycle[j] {
 					addFKs = append(addFKs, Change{Kind: AddFK, Schema: t.Schema, Table: t.Name, Name: fk.Name, After: &schema.ForeignKey{
 						Name: fk.Name, Columns: fk.Columns, RefTable: fk.RefTable, RefColumns: fk.RefColumns, OnDelete: fk.OnDelete, OnUpdate: fk.OnUpdate,
+						Deferrable: fk.Deferrable, InitiallyDeferred: fk.InitiallyDeferred,
 					}})
 					stripped = true
 					continue

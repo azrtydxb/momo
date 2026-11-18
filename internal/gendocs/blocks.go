@@ -232,6 +232,13 @@ var features = []feature{
 			"`timeop.AddDaysExpr` and `timeop.DaysBetween` run on MySQL 8.4, MySQL 9.7 and MariaDB 11.8; month arithmetic clamps to the last day of the month; " +
 			"`timeop.AtTimeZone` is PostgreSQL only; `timeop.Age` and `timeop.StatementTimestamp` are `ErrUnsupported` (golden-tested); a bound infinite `types.Date` fails the build with `ErrValidation`",
 	},
+	{
+		Name:   "Deferrable constraints",
+		API:    []string{"momo.Config", "schema.Unique", "schema.ForeignKey"},
+		PG:     "yes: `DEFERRABLE` and `DEFERRABLE INITIALLY DEFERRED` on a unique constraint, a primary key and a foreign key are declared, read from `pg_constraint`, written by `generate --from-db`, rendered, compared by `diff`, `Baseline` and `drift`, and kept by a snapshot; a change of deferrability drops and adds the constraint again",
+		SQLite: "`ErrUnsupported`: a declaration is a generator error and the renderer refuses it, because `PRAGMA foreign_key_list` does not report the deferrability of a foreign key and a primary key or unique constraint cannot be deferred",
+		MySQL:  "`ErrUnsupported`: MySQL and MariaDB check each constraint at the end of the statement and have no `DEFERRABLE`; a declaration is a generator error and the renderer refuses it",
+	},
 }
 
 // featuresBlock is the feature support table built from the features data and

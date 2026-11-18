@@ -156,6 +156,64 @@ enum column. A list needs a text column: an enum column, a column of another
 type, an empty list, and a value that holds a backslash or a control character
 are refused.
 
+### Deferrable constraints
+
+A unique constraint, a primary key and a foreign key can be `DEFERRABLE` or
+`DEFERRABLE INITIALLY DEFERRED` on PostgreSQL: the transaction checks the
+constraint at commit, so it can move rows through a state that would collide
+(reordering the rows of a list under `UNIQUE (route_id, position)` is the usual
+case). The model keeps two flags per constraint: `schema.Unique.Deferrable` and
+`schema.Unique.InitiallyDeferred`, the same pair on `schema.ForeignKey`, and
+`schema.Table.PrimaryKeyDeferrable` and `schema.Table.PrimaryKeyInitiallyDeferred`
+for the primary key. `INITIALLY DEFERRED` implies `DEFERRABLE`, so the two
+spellings of an initially deferred constraint compare equal. A snapshot written
+before the flags existed loads with none of them set, which is `NOT DEFERRABLE`,
+so the snapshot format version stays 1 and no snapshot needs rewriting.
+
+The declaration is read from `MomoConfig`:
+
+- `Config.Unique` takes `IndexOpts.Deferrable` or `IndexOpts.InitiallyDeferred`.
+  A deferrable unique stays a constraint, so it takes no other option: a
+  `Where`, `Method`, `With`, `Opclass`, `Desc`, `Nulls`, `Concurrently` or
+  `IndexOpts.Unique` makes it an index, which PostgreSQL cannot defer, and the
+  generator refuses the combination. `Config.Index` and `Config.IndexExpr` refuse
+  both options.
+- `Config.ForeignKey` takes `ForeignKeyOpts.Deferrable` or
+  `ForeignKeyOpts.InitiallyDeferred`. A `belongs_to` tag has no such option, so
+  declare a deferrable key with `Config.ForeignKey`.
+- `Config.PrimaryKeyDeferrable` and `Config.PrimaryKeyInitiallyDeferred` mark
+  the primary key; the model must have one.
+
+SQLite, MySQL and MariaDB cannot model them. MySQL and MariaDB check every
+constraint at the end of the statement and have no `DEFERRABLE`. SQLite defers
+a foreign key only, and `PRAGMA foreign_key_list` does not report that, so momo
+could not read a declared flag back and every inspection would differ from the
+model. The generator reports a diagnostic for a deferrable constraint when the
+target dialect is not PostgreSQL, and the SQLite and MySQL renderers return an
+error that wraps `momo.ErrUnsupported`.
+
+What the tools do on PostgreSQL:
+
+- `momo generate --from-db` reads `pg_constraint.condeferrable` and
+  `condeferred` and writes the declarations above; a deferrable foreign key is
+  written as `Config.ForeignKey`, because the tag form cannot say it. A database
+  built from the generated init migration recreates the constraints deferrable.
+- `diff` renders `DEFERRABLE` or `DEFERRABLE INITIALLY DEFERRED` after the
+  constraint in `CREATE TABLE` and `ADD CONSTRAINT` (a unique added to an
+  existing table keeps the concurrent index build, and the flags go on the
+  `ADD CONSTRAINT ... UNIQUE USING INDEX` statement).
+- A change of deferrability is a change of the constraint: `diff` drops it and
+  adds it again, like any other change of a constraint, in one transaction.
+  PostgreSQL has `ALTER TABLE ... ALTER CONSTRAINT` for a foreign key, but
+  not for a unique constraint or a primary key, so one rule covers all three.
+  Re-adding a foreign key validates the table again. Dropping a primary key
+  that a foreign key references fails until that key is dropped, as for a change
+  of the key columns.
+- `Baseline`, `drift` and `drift --fix-sql` compare the flags with the other
+  attributes. A difference reads `deferrable=false` on one side and
+  `deferrable=true` on the other, and the repair is the drop and add above. As
+  every drop, it is withheld unless `--allow-destructive` is given.
+
 ### Checksums
 
 Two independent checks, both SHA-256 of the file bytes:

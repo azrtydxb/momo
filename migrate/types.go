@@ -99,6 +99,11 @@ type Change struct {
 	// whole schema.Check on each side. A change with Removed values is
 	// Destructive: rows that hold a removed value fail the new constraint.
 	Added, Removed []string
+	// Deferrable and InitiallyDeferred are the deferrability an AddPrimaryKey
+	// gives the key, whose After payload is only the column list. A foreign key
+	// and a unique constraint carry theirs in the schema.ForeignKey and
+	// schema.Unique of the payload. Only PostgreSQL renders them.
+	Deferrable, InitiallyDeferred bool
 }
 
 // Migration is one migration version.

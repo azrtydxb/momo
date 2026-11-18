@@ -522,6 +522,9 @@ func createTableSQL(name string, t schema.Table, enums map[string][]string) (str
 	if t.Autoincrement && (t.WithoutRowID || len(t.PrimaryKey) != 1) {
 		return "", unsupported("table %q is AUTOINCREMENT; that needs an INTEGER primary key of one column on a rowid table", t.Name)
 	}
+	if err := checkDeferral(t); err != nil {
+		return "", err
+	}
 	var parts []string
 	for _, col := range t.Columns {
 		def, err := columnSQL(&t, col)
@@ -583,6 +586,28 @@ func createTableSQL(name string, t schema.Table, enums map[string][]string) (str
 		return "", unsupported("table %q uses partitioning or row-level security, which SQLite does not have", t.Name)
 	}
 	return sql, nil
+}
+
+// checkDeferral refuses a deferrable constraint. SQLite takes DEFERRABLE
+// INITIALLY DEFERRED on a foreign key only, and PRAGMA foreign_key_list does not
+// report it, so momo could not read it back and every inspection would differ
+// from the declaration; a primary key or unique constraint cannot be deferred.
+func checkDeferral(t schema.Table) error {
+	const why = "is DEFERRABLE; momo models deferrable constraints on PostgreSQL only (SQLite cannot report a foreign key's deferrability, and cannot defer a primary key or unique constraint)"
+	if t.PrimaryKeyDeferrable || t.PrimaryKeyInitiallyDeferred {
+		return unsupported("the primary key of table %q %s", t.Name, why)
+	}
+	for _, u := range t.Uniques {
+		if u.Deferrable || u.InitiallyDeferred {
+			return unsupported("unique constraint %q of table %q %s", u.Name, t.Name, why)
+		}
+	}
+	for _, fk := range t.ForeignKeys {
+		if fk.Deferrable || fk.InitiallyDeferred {
+			return unsupported("foreign key %q of table %q %s", fk.Name, t.Name, why)
+		}
+	}
+	return nil
 }
 
 func constraintName(name string) string {

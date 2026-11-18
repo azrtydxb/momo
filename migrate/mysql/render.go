@@ -80,12 +80,18 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := noDeferral("the primary key "+c.Name, c.Deferrable, c.InitiallyDeferred); err != nil {
+			return nil, err
+		}
 		return one("ALTER TABLE " + t + " ADD PRIMARY KEY (" + identList(cols) + ")"), nil
 	case migrate.DropPrimaryKey:
 		return one("ALTER TABLE " + t + " DROP PRIMARY KEY"), nil
 	case migrate.AddUnique:
 		u, err := get[schema.Unique](c.After)
 		if err != nil {
+			return nil, err
+		}
+		if err := noDeferral("unique constraint "+u.Name, u.Deferrable, u.InitiallyDeferred); err != nil {
 			return nil, err
 		}
 		return one("ALTER TABLE " + t + " ADD " + uniqueDef(u)), nil
@@ -113,6 +119,9 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 	case migrate.AddFK:
 		fk, err := get[schema.ForeignKey](c.After)
 		if err != nil {
+			return nil, err
+		}
+		if err := noDeferral("foreign key "+fk.Name, fk.Deferrable, fk.InitiallyDeferred); err != nil {
 			return nil, err
 		}
 		def, err := fkDef(fk)
@@ -309,6 +318,33 @@ func columnDef(col schema.Column) (string, error) {
 	return b.String(), nil
 }
 
+// noDeferral refuses a deferrable constraint: MySQL and MariaDB check every
+// constraint at the end of the statement and have no DEFERRABLE.
+func noDeferral(what string, deferrable, initiallyDeferred bool) error {
+	if !deferrable && !initiallyDeferred {
+		return nil
+	}
+	return &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate/mysql", Err: fmt.Errorf("%s is DEFERRABLE, which MySQL and MariaDB do not support: they check a constraint at the end of each statement; deferrable constraints are PostgreSQL only", what)}
+}
+
+// checkDeferral refuses every deferrable constraint of t.
+func checkDeferral(t schema.Table) error {
+	if err := noDeferral("the primary key of table "+t.Name, t.PrimaryKeyDeferrable, t.PrimaryKeyInitiallyDeferred); err != nil {
+		return err
+	}
+	for _, u := range t.Uniques {
+		if err := noDeferral("unique constraint "+u.Name, u.Deferrable, u.InitiallyDeferred); err != nil {
+			return err
+		}
+	}
+	for _, fk := range t.ForeignKeys {
+		if err := noDeferral("foreign key "+fk.Name, fk.Deferrable, fk.InitiallyDeferred); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func uniqueDef(u schema.Unique) string {
 	return "CONSTRAINT " + ident(u.Name) + " UNIQUE (" + identList(u.Columns) + ")"
 }
@@ -344,6 +380,9 @@ func renderCreateTable(c migrate.Change) ([]migrate.Statement, error) {
 	}
 	if t.Partition != nil || t.PartitionOf != nil {
 		return nil, errors.New("partitioned tables are not supported on MySQL")
+	}
+	if err := checkDeferral(t); err != nil {
+		return nil, err
 	}
 	var parts []string
 	for _, col := range t.Columns {

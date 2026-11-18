@@ -54,7 +54,7 @@ WHERE classid = 'pg_class'::regclass AND objid = to_regclass($1)::oid
   (SELECT rc.relname::text FROM pg_class rc WHERE rc.oid = confrelid),
   (SELECT array_agg(a.attname::text ORDER BY k.ord) FROM unnest(confkey) WITH ORDINALITY k(n, ord)
      JOIN pg_attribute a ON a.attrelid = confrelid AND a.attnum = k.n),
-  confupdtype::text, confdeltype::text, pg_get_constraintdef(oid)
+  confupdtype::text, confdeltype::text, pg_get_constraintdef(oid), condeferrable, condeferred
 FROM pg_constraint WHERE conrelid = ANY($1::int8[]::oid[]) AND conparentid = 0 ORDER BY conrelid, conname`
 	qPartitioned = `SELECT c.oid, pt.partstrat::text, pg_get_partkeydef(c.oid)
 FROM pg_partitioned_table pt JOIN pg_class c ON c.oid = pt.partrelid WHERE c.oid = ANY($1::int8[]::oid[]) ORDER BY c.oid`
@@ -430,8 +430,9 @@ func (in *inspector) constraints(ctx context.Context, b tableBatch) error {
 			name, typ, upd, del, def string
 			refNS, refName           *string
 			cols, refCols            []string
+			deferrable, deferred     bool
 		)
-		if err := r.Scan(&rel, &name, &typ, &cols, &refNS, &refName, &refCols, &upd, &del, &def); err != nil {
+		if err := r.Scan(&rel, &name, &typ, &cols, &refNS, &refName, &refCols, &upd, &del, &def, &deferrable, &deferred); err != nil {
 			return b.rowErr("constraints", rel, err)
 		}
 		i, err := b.slot(rel)
@@ -442,8 +443,9 @@ func (in *inspector) constraints(ctx context.Context, b tableBatch) error {
 		switch typ {
 		case "p":
 			t.PrimaryKey = cols
+			t.PrimaryKeyDeferrable, t.PrimaryKeyInitiallyDeferred = deferrable, deferred
 		case "u":
-			t.Uniques = append(t.Uniques, schema.Unique{Name: name, Columns: cols})
+			t.Uniques = append(t.Uniques, schema.Unique{Name: name, Columns: cols, Deferrable: deferrable, InitiallyDeferred: deferred})
 		case "c":
 			expr := def
 			if m := checkBody.FindStringSubmatch(def); m != nil {
@@ -458,6 +460,7 @@ func (in *inspector) constraints(ctx context.Context, b tableBatch) error {
 			t.ForeignKeys = append(t.ForeignKeys, schema.ForeignKey{
 				Name: name, Columns: cols, RefTable: ref, RefColumns: refCols,
 				OnUpdate: fkActions[upd], OnDelete: fkActions[del],
+				Deferrable: deferrable, InitiallyDeferred: deferred,
 			})
 		}
 		return nil

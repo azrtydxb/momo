@@ -434,6 +434,27 @@ func (g *generator) columns(m *model) {
 			g.add(SevWarn, t.Name, "the primary key uses a column the models do not have: the baseline will report the table")
 		}
 	}
+	switch {
+	case len(t.PrimaryKey) == 0:
+		t.PrimaryKeyDeferrable, t.PrimaryKeyInitiallyDeferred = false, false
+	case t.PrimaryKeyInitiallyDeferred:
+		m.stmts = append(m.stmts, "c.PrimaryKeyInitiallyDeferred()")
+	case t.PrimaryKeyDeferrable:
+		m.stmts = append(m.stmts, "c.PrimaryKeyDeferrable()")
+	}
+}
+
+// deferralCalls spells the options that declare a constraint DEFERRABLE or
+// DEFERRABLE INITIALLY DEFERRED: InitiallyDeferred implies Deferrable, so one
+// call says it.
+func deferralCalls(deferrable, initiallyDeferred bool) string {
+	switch {
+	case initiallyDeferred:
+		return ".InitiallyDeferred()"
+	case deferrable:
+		return ".Deferrable()"
+	}
+	return ""
 }
 
 func pkInColumnOrder(t *schema.Table) bool {
@@ -764,7 +785,7 @@ func (g *generator) constraints(m *model) {
 			g.add(SevWarn, t.Name, "unique constraint %q uses a column the models do not have: left out of the models and the snapshot", u.Name)
 			continue
 		}
-		m.stmts = append(m.stmts, "c.Unique("+strconv.Quote(u.Name)+", "+strings.Join(refs, ", ")+")")
+		m.stmts = append(m.stmts, "c.Unique("+strconv.Quote(u.Name)+", "+strings.Join(refs, ", ")+")"+deferralCalls(u.Deferrable, u.InitiallyDeferred))
 		uniques = append(uniques, u)
 	}
 	t.Uniques = uniques
@@ -862,7 +883,9 @@ func (g *generator) foreignKey(m *model, fk schema.ForeignKey) bool {
 	if target == nil {
 		return drop("it references " + fk.RefTable + ", which has no model")
 	}
-	if len(fk.Columns) != 1 || len(fk.RefColumns) != 1 {
+	if len(fk.Columns) != 1 || len(fk.RefColumns) != 1 || fk.Deferrable || fk.InitiallyDeferred {
+		// A belongs_to tag cannot say DEFERRABLE, so a deferrable key is
+		// written with c.ForeignKey, which can.
 		return g.compositeForeignKey(m, target, fk, drop)
 	}
 	if len(target.t.PrimaryKey) != 1 || target.t.PrimaryKey[0] != fk.RefColumns[0] {
@@ -938,6 +961,7 @@ func (g *generator) compositeForeignKey(m *model, target *model, fk schema.Forei
 	if fk.OnUpdate != "" {
 		s += ".OnUpdate(" + strconv.Quote(fk.OnUpdate) + ")"
 	}
+	s += deferralCalls(fk.Deferrable, fk.InitiallyDeferred)
 	m.stmts = append(m.stmts, s)
 	return true
 }

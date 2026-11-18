@@ -48,6 +48,10 @@ type CompanionResult struct {
 	FKNames map[string]string
 	// PrimaryKey is the column order set by PrimaryKey, empty when not called.
 	PrimaryKey []string
+	// PrimaryKeyDeferrable and PrimaryKeyInitiallyDeferred are set by the
+	// PrimaryKeyDeferrable and PrimaryKeyInitiallyDeferred calls; the second
+	// implies the first.
+	PrimaryKeyDeferrable, PrimaryKeyInitiallyDeferred bool
 
 	Views       []schema.View
 	Functions   []schema.Function
@@ -479,8 +483,33 @@ func (r *companionReader) index(calls []call) {
 			ix.Parts = append(ix.Parts, schema.IndexPart{Column: f.Column})
 		}
 	}
+	var deferrable, initially bool
+	options := 0
 	for _, c := range calls[1:] {
-		r.indexOption(&ix, c)
+		if c.name != "Deferrable" && c.name != "InitiallyDeferred" {
+			options++
+			r.indexOption(&ix, c)
+			continue
+		}
+		if len(c.expr.Args) != 0 {
+			r.unsupported(c.expr)
+			continue
+		}
+		if r.optSeen[c.name] {
+			r.diag(c.expr.Pos(), fmt.Sprintf("duplicate %s on index %q", c.name, name))
+			continue
+		}
+		r.optSeen[c.name] = true
+		deferrable = true
+		initially = initially || c.name == "InitiallyDeferred"
+	}
+	if deferrable && len(r.diags) == startDiags {
+		switch {
+		case first.name != "Unique":
+			r.diag(first.expr.Pos(), fmt.Sprintf("index %q: only a unique constraint, declared with Config.Unique, can be deferrable; PostgreSQL cannot defer an index", name))
+		case options > 0:
+			r.diag(first.expr.Pos(), fmt.Sprintf("unique %q: a deferrable unique constraint cannot take other options (Where, Method, With, Opclass, Desc, Nulls, Concurrently, Unique): those make it an index, and PostgreSQL cannot defer an index", name))
+		}
 	}
 	if len(r.diags) != startDiags {
 		return
@@ -488,12 +517,12 @@ func (r *companionReader) index(calls []call) {
 	if !r.declare(r.indexAt, "index", name, args[0].Pos()) {
 		return
 	}
-	if first.name == "Unique" && len(calls) == 1 {
+	if first.name == "Unique" && options == 0 {
 		cols := make([]string, len(ix.Parts))
 		for i, p := range ix.Parts {
 			cols[i] = p.Column
 		}
-		r.res.Uniques = append(r.res.Uniques, schema.Unique{Name: name, Columns: cols})
+		r.res.Uniques = append(r.res.Uniques, schema.Unique{Name: name, Columns: cols, Deferrable: deferrable, InitiallyDeferred: initially})
 		return
 	}
 	// A unique with options is a unique index: constraints cannot be partial.
@@ -800,6 +829,20 @@ func (r *companionReader) foreignKey(calls []call) {
 	}
 	seen := map[string]bool{}
 	for _, c := range calls[1:] {
+		if c.name == "Deferrable" || c.name == "InitiallyDeferred" {
+			if len(c.expr.Args) != 0 {
+				r.unsupported(c.expr)
+				continue
+			}
+			if seen[c.name] {
+				r.diag(c.expr.Pos(), fmt.Sprintf("duplicate %s on foreign key %q", c.name, name))
+				continue
+			}
+			seen[c.name] = true
+			fk.Deferrable = true
+			fk.InitiallyDeferred = fk.InitiallyDeferred || c.name == "InitiallyDeferred"
+			continue
+		}
 		if len(c.expr.Args) != 1 || (c.name != "OnDelete" && c.name != "OnUpdate") {
 			r.unsupported(c.expr)
 			continue
@@ -1016,6 +1059,18 @@ func (r *companionReader) config(c call) {
 		if len(cols) == len(c.expr.Args) {
 			r.res.PrimaryKey = cols
 		}
+	case "PrimaryKeyDeferrable", "PrimaryKeyInitiallyDeferred":
+		if len(c.expr.Args) != 0 {
+			r.unsupported(c.expr)
+			return
+		}
+		if c.name == "PrimaryKeyDeferrable" && r.res.PrimaryKeyDeferrable && !r.res.PrimaryKeyInitiallyDeferred ||
+			c.name == "PrimaryKeyInitiallyDeferred" && r.res.PrimaryKeyInitiallyDeferred {
+			r.diag(c.expr.Pos(), "duplicate "+c.name+" call")
+			return
+		}
+		r.res.PrimaryKeyDeferrable = true
+		r.res.PrimaryKeyInitiallyDeferred = r.res.PrimaryKeyInitiallyDeferred || c.name == "PrimaryKeyInitiallyDeferred"
 	case "FKName":
 		r.columnText(c, r.res.FKNames, "foreign key name")
 	default:

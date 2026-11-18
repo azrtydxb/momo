@@ -605,7 +605,8 @@ func (d *differ) alterColumn(t *schema.Table, a, b *schema.Column, ao, bo *schem
 // ------------------------------------------------------------ constraints
 
 func (d *differ) primaryKey(fn, tn, to *schema.Table) {
-	if slices.Equal(fn.PrimaryKey, tn.PrimaryKey) {
+	if slices.Equal(fn.PrimaryKey, tn.PrimaryKey) &&
+		(len(tn.PrimaryKey) == 0 || (fn.PrimaryKeyDeferrable == tn.PrimaryKeyDeferrable && fn.PrimaryKeyInitiallyDeferred == tn.PrimaryKeyInitiallyDeferred)) {
 		return
 	}
 	name := to.Name + "_pkey"
@@ -613,13 +614,15 @@ func (d *differ) primaryKey(fn, tn, to *schema.Table) {
 		d.emitRisky(Change{Kind: DropPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, Before: slices.Clone(fn.PrimaryKey)})
 	}
 	if len(tn.PrimaryKey) > 0 {
-		d.emit(Change{Kind: AddPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, After: slices.Clone(tn.PrimaryKey)})
+		d.emit(Change{Kind: AddPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, After: slices.Clone(tn.PrimaryKey), Deferrable: tn.PrimaryKeyDeferrable, InitiallyDeferred: tn.PrimaryKeyInitiallyDeferred})
 	}
 }
 
 func (d *differ) uniques(fn, tn, to *schema.Table) {
 	diffNamed(d, fn.Uniques, tn.Uniques, to, func(u schema.Unique) string { return u.Name },
-		func(a, b schema.Unique) bool { return slices.Equal(a.Columns, b.Columns) }, DropUnique, AddUnique,
+		func(a, b schema.Unique) bool {
+			return slices.Equal(a.Columns, b.Columns) && a.Deferrable == b.Deferrable && a.InitiallyDeferred == b.InitiallyDeferred
+		}, DropUnique, AddUnique,
 		func(u schema.Unique) goneUse { return usesGone(d.gone, u.Columns) })
 }
 
@@ -751,7 +754,8 @@ func (d *differ) foreignKeys(fn, tn, to *schema.Table) {
 		func(a, b schema.ForeignKey) bool {
 			return slices.Equal(a.Columns, b.Columns) && a.RefTable == b.RefTable &&
 				slices.Equal(a.RefColumns, b.RefColumns) &&
-				fkAction(a.OnDelete) == fkAction(b.OnDelete) && fkAction(a.OnUpdate) == fkAction(b.OnUpdate)
+				fkAction(a.OnDelete) == fkAction(b.OnDelete) && fkAction(a.OnUpdate) == fkAction(b.OnUpdate) &&
+				a.Deferrable == b.Deferrable && a.InitiallyDeferred == b.InitiallyDeferred
 		}, DropFK, AddFK, func(f schema.ForeignKey) goneUse { return usesGone(d.gone, f.Columns) })
 }
 

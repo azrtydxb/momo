@@ -5,6 +5,34 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.19.0
+
+`momo migrate drift`, the refusal of `momo migrate baseline` and
+`momo generate --from-db` now see `DEFERRABLE` constraints on PostgreSQL; no
+edit is needed in your code, but a database that holds a deferrable constraint
+your snapshot does not describe now reports a difference.
+
+### Deferrable constraints are part of the schema
+
+Before, momo ignored `DEFERRABLE` and `INITIALLY DEFERRED` on unique, primary
+key and foreign key constraints: inspection did not read them, `generate
+--from-db` wrote a plain constraint and the init migration it produced built
+one, so a transaction that relied on a deferred check failed on a fresh install
+with a unique violation. Inspection now reads `pg_constraint.condeferrable`
+and `condeferred`, and `momo generate --from-db` writes them as
+`IndexOpts.Deferrable`, `IndexOpts.InitiallyDeferred`,
+`ForeignKeyOpts.Deferrable`, `ForeignKeyOpts.InitiallyDeferred`,
+`Config.PrimaryKeyDeferrable` and `Config.PrimaryKeyInitiallyDeferred`
+declarations. A snapshot you already have loads as not deferrable, so the
+snapshot format version is unchanged and no snapshot needs rewriting.
+
+If your database has such a constraint, `drift` and `baseline` now report it as
+changed until the snapshot says so. Run `momo generate --from-db` again, or
+declare the constraint in `MomoConfig` and run `momo migrate diff`, which drops
+and adds the constraint again; see
+[migrations](migrations.md#deferrable-constraints) for the declaration, the
+migration it renders and the dialects that refuse it.
+
 ## Upgrading to 0.18.0
 
 A `*vector.Vector` field tagged `read_only` now generates a

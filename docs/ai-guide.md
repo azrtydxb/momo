@@ -368,7 +368,7 @@ An index name declared in `MomoConfig` must not collide with an auto-named
 yields `accounts_plan_idx`); the generator refuses the duplicate.
 
 Config methods: `Config.Index`, `Config.IndexExpr`, `Config.Unique`, `Config.ForeignKey`, `Config.Check`, `Config.CheckIn`, `Config.Enum`, `Config.Default`, `Config.Generated`,
-`Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.PrimaryKey`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
+`Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.PrimaryKey`, `Config.PrimaryKeyDeferrable`, `Config.PrimaryKeyInitiallyDeferred`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
 `Config.PartitionOf`. Index chain: `IndexOpts.Unique()` (on `Config.Index` or `Config.IndexExpr`), `Where(pred)`, `Method(m)`, `IndexOpts.With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
 `Concurrently()` (`diff` writes the index as `CREATE INDEX CONCURRENTLY` in its own no-transaction migration).
@@ -429,6 +429,13 @@ columns; otherwise the generator reports a diagnostic. The key is a plain
 constraint: `diff` adds, replaces and drops it like a single-column key, and
 `generate --from-db` writes it back. There is no `belongs_to` form for a
 composite key; the relation still needs a single-column key.
+
+A unique constraint, a foreign key and a primary key can be `DEFERRABLE` on
+PostgreSQL: `c.Unique(...).Deferrable()` or `.InitiallyDeferred()` (a unique
+with any other option is an index, which cannot be deferred),
+`c.ForeignKey(...).Deferrable()` or `.InitiallyDeferred()`, and
+`c.PrimaryKeyDeferrable()` or `c.PrimaryKeyInitiallyDeferred()`. The other
+dialects refuse them. See [migrations](migrations.md#deferrable-constraints).
 
 Many-to-many needs `join:` with the same table on both models you declare it on
 (the reverse side is optional, but if declared it must carry `join:` too):
