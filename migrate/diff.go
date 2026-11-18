@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/deferkey"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -69,6 +70,7 @@ func Diff(from, to *schema.Schema, opts DiffOptions) (changes []Change, hints []
 		d.d = from.Dialect
 	}
 	d.errs = append(d.errs, serialOutsidePostgres(to, d.d)...)
+	d.errs = append(d.errs, foreignKeysToDeferrableKeys(d.toNorm, d.d)...)
 	d.run(from, to)
 	for _, k := range sortedMapKeys(opts.RenameTables) {
 		if !d.usedRT[k] {
@@ -605,7 +607,10 @@ func (d *differ) alterColumn(t *schema.Table, a, b *schema.Column, ao, bo *schem
 // ------------------------------------------------------------ constraints
 
 func (d *differ) primaryKey(fn, tn, to *schema.Table) {
-	if slices.Equal(fn.PrimaryKey, tn.PrimaryKey) {
+	// fn and tn are normalized, which clears the deferral flags of a table with
+	// no primary key, so the flags can be compared whatever the key.
+	if slices.Equal(fn.PrimaryKey, tn.PrimaryKey) &&
+		fn.PrimaryKeyDeferrable == tn.PrimaryKeyDeferrable && fn.PrimaryKeyInitiallyDeferred == tn.PrimaryKeyInitiallyDeferred {
 		return
 	}
 	name := to.Name + "_pkey"
@@ -613,13 +618,15 @@ func (d *differ) primaryKey(fn, tn, to *schema.Table) {
 		d.emitRisky(Change{Kind: DropPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, Before: slices.Clone(fn.PrimaryKey)})
 	}
 	if len(tn.PrimaryKey) > 0 {
-		d.emit(Change{Kind: AddPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, After: slices.Clone(tn.PrimaryKey)})
+		d.emit(Change{Kind: AddPrimaryKey, Schema: to.Schema, Table: to.Name, Name: name, After: slices.Clone(tn.PrimaryKey), Deferrable: tn.PrimaryKeyDeferrable, InitiallyDeferred: tn.PrimaryKeyInitiallyDeferred})
 	}
 }
 
 func (d *differ) uniques(fn, tn, to *schema.Table) {
 	diffNamed(d, fn.Uniques, tn.Uniques, to, func(u schema.Unique) string { return u.Name },
-		func(a, b schema.Unique) bool { return slices.Equal(a.Columns, b.Columns) }, DropUnique, AddUnique,
+		func(a, b schema.Unique) bool {
+			return slices.Equal(a.Columns, b.Columns) && a.Deferrable == b.Deferrable && a.InitiallyDeferred == b.InitiallyDeferred
+		}, DropUnique, AddUnique,
 		func(u schema.Unique) goneUse { return usesGone(d.gone, u.Columns) })
 }
 
@@ -751,7 +758,8 @@ func (d *differ) foreignKeys(fn, tn, to *schema.Table) {
 		func(a, b schema.ForeignKey) bool {
 			return slices.Equal(a.Columns, b.Columns) && a.RefTable == b.RefTable &&
 				slices.Equal(a.RefColumns, b.RefColumns) &&
-				fkAction(a.OnDelete) == fkAction(b.OnDelete) && fkAction(a.OnUpdate) == fkAction(b.OnUpdate)
+				fkAction(a.OnDelete) == fkAction(b.OnDelete) && fkAction(a.OnUpdate) == fkAction(b.OnUpdate) &&
+				a.Deferrable == b.Deferrable && a.InitiallyDeferred == b.InitiallyDeferred
 		}, DropFK, AddFK, func(f schema.ForeignKey) goneUse { return usesGone(d.gone, f.Columns) })
 }
 
@@ -1273,6 +1281,47 @@ func stagedSnapshot(desired, from *schema.Schema, changes []Change, opts DiffOpt
 		return desired
 	}
 	return &out
+}
+
+// foreignKeysToDeferrableKeys reports each foreign key of the normalized
+// desired schema s whose referenced columns are a deferrable primary key or
+// deferrable unique constraint of the target table. PostgreSQL refuses it when
+// the foreign key is created ("cannot use a deferrable unique constraint for
+// referenced table"), so the plan would fail half way through. A column set
+// that a non-deferrable key (a primary key, a unique constraint or a
+// non-partial unique index) also covers is accepted: PostgreSQL uses that key.
+//
+// The check is on the desired schema only, and it runs before any change is
+// produced, so a plan never changes the deferrability of a key that a foreign
+// key references: neither the DROP CONSTRAINT nor the ADD of such a key is
+// reachable. Only PostgreSQL has deferrable keys; the other renderers refuse
+// the deferrability itself.
+func foreignKeysToDeferrableKeys(s *schema.Schema, d dialect.Name) []error {
+	if d != "" && d != dialect.Postgres {
+		return nil
+	}
+	byKey := make(map[string]*schema.Table, len(s.Tables))
+	for i := range s.Tables {
+		byKey[tableKey(&s.Tables[i])] = &s.Tables[i]
+	}
+	var errs []error
+	for _, t := range s.Tables {
+		for _, fk := range t.ForeignKeys {
+			target := byKey[t.Schema+"\x00"+fk.RefTable]
+			if target == nil {
+				if ns, name, ok := strings.Cut(fk.RefTable, "."); ok {
+					target = byKey[ns+"\x00"+name]
+				}
+			}
+			if target == nil {
+				continue
+			}
+			if key := deferkey.Covering(target, fk.RefColumns); key != "" {
+				errs = append(errs, fmt.Errorf("migrate: foreign key %s of table %s references (%s) of %s, which is %s and deferrable; PostgreSQL cannot use a deferrable key as a foreign key target, so make the key not deferrable", fk.Name, t.Name, strings.Join(fk.RefColumns, ", "), target.Name, key))
+			}
+		}
+	}
+	return errs
 }
 
 // serialOutsidePostgres reports each serial column of s when the target

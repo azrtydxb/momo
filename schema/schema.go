@@ -107,6 +107,13 @@ type Table struct {
 	Indexes     []Index      `json:"indexes,omitempty"`
 	ForeignKeys []ForeignKey `json:"foreign_keys,omitempty"`
 	Checks      []Check      `json:"checks,omitempty"`
+	// PrimaryKeyDeferrable marks the primary key DEFERRABLE and
+	// PrimaryKeyInitiallyDeferred INITIALLY DEFERRED (PostgreSQL only). An
+	// initially deferred key is deferrable: the two compare as one spelling.
+	// A snapshot written before these fields existed loads as not deferrable,
+	// so the snapshot format version stays 1.
+	PrimaryKeyDeferrable        bool `json:"primary_key_deferrable,omitempty"`
+	PrimaryKeyInitiallyDeferred bool `json:"primary_key_initially_deferred,omitempty"`
 	// WithoutRowID marks a SQLite WITHOUT ROWID table.
 	WithoutRowID bool `json:"without_rowid,omitempty"`
 	// Strict marks a SQLite STRICT table (column types are enforced).
@@ -239,6 +246,14 @@ type Column struct {
 type Unique struct {
 	Name    string   `json:"name"`
 	Columns []string `json:"columns"`
+	// Deferrable marks the constraint DEFERRABLE and InitiallyDeferred
+	// INITIALLY DEFERRED (PostgreSQL only): the check runs at commit, so one
+	// transaction can reorder rows through a state that would collide. An
+	// initially deferred constraint is deferrable, and the two compare as one
+	// spelling. A snapshot written before these fields existed loads as not
+	// deferrable, so the snapshot format version stays 1.
+	Deferrable        bool `json:"deferrable,omitempty"`
+	InitiallyDeferred bool `json:"initially_deferred,omitempty"`
 }
 
 // Index is a (possibly unique, partial or expression) index.
@@ -288,6 +303,11 @@ type ForeignKey struct {
 	RefColumns []string `json:"ref_columns"`
 	OnDelete   string   `json:"on_delete,omitempty"` // "CASCADE", "SET NULL", ...; empty = NO ACTION
 	OnUpdate   string   `json:"on_update,omitempty"`
+	// Deferrable marks the constraint DEFERRABLE and InitiallyDeferred
+	// INITIALLY DEFERRED (PostgreSQL only), with the same meaning and the same
+	// spelling rules as on Unique.
+	Deferrable        bool `json:"deferrable,omitempty"`
+	InitiallyDeferred bool `json:"initially_deferred,omitempty"`
 }
 
 // Check is a CHECK constraint.

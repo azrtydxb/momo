@@ -133,6 +133,18 @@ func (c *Config) FKName(field any, name string) {}
 // statically by the generator; never executed for its effect.
 func (c *Config) PrimaryKey(fields ...any) {}
 
+// PrimaryKeyDeferrable makes the primary key DEFERRABLE (PostgreSQL): a
+// transaction can defer its check to commit with SET CONSTRAINTS. Call it once;
+// the model must have a primary key. SQLite, MySQL and MariaDB refuse it.
+// Read statically by the generator; never executed for its effect.
+func (c *Config) PrimaryKeyDeferrable() {}
+
+// PrimaryKeyInitiallyDeferred makes the primary key DEFERRABLE INITIALLY
+// DEFERRED: the check runs at commit unless a transaction asks for it sooner.
+// It implies PrimaryKeyDeferrable. Call it once. Read statically by the
+// generator; never executed for its effect.
+func (c *Config) PrimaryKeyInitiallyDeferred() {}
+
 // View declares a view or materialized view. The argument must be a
 // composite literal; read statically by the generator, never executed.
 func (c *Config) View(v schema.View) {}
@@ -188,6 +200,19 @@ func (o *IndexOpts) Nulls(field any, order string) *IndexOpts { return o }
 // Concurrently marks the index to be built concurrently. Read statically;
 // no-op at runtime.
 func (o *IndexOpts) Concurrently() *IndexOpts { return o }
+
+// Deferrable makes the unique constraint DEFERRABLE (PostgreSQL): a transaction
+// can defer its check to commit with SET CONSTRAINTS, so it can reorder rows
+// through a state that would collide. It applies to Config.Unique only, and
+// only without the other options, because a deferrable constraint cannot be a
+// partial or an expression index. SQLite, MySQL and MariaDB refuse it. Read
+// statically; no-op at runtime.
+func (o *IndexOpts) Deferrable() *IndexOpts { return o }
+
+// InitiallyDeferred makes the unique constraint DEFERRABLE INITIALLY DEFERRED:
+// the check runs at commit unless a transaction asks for it sooner. It implies
+// Deferrable, and has the same limits. Read statically; no-op at runtime.
+func (o *IndexOpts) InitiallyDeferred() *IndexOpts { return o }
 
 // Config sets the PostgreSQL text search configuration. Read statically;
 // no-op at runtime.
@@ -262,3 +287,13 @@ func (o *ForeignKeyOpts) OnDelete(action string) *ForeignKeyOpts { return o }
 // OnUpdate sets the ON UPDATE action of a foreign key, with the same values as
 // OnDelete. Read statically; no-op at runtime.
 func (o *ForeignKeyOpts) OnUpdate(action string) *ForeignKeyOpts { return o }
+
+// Deferrable makes the foreign key DEFERRABLE (PostgreSQL): a transaction can
+// defer its check to commit with SET CONSTRAINTS. SQLite, MySQL and MariaDB
+// refuse it. Read statically; no-op at runtime.
+func (o *ForeignKeyOpts) Deferrable() *ForeignKeyOpts { return o }
+
+// InitiallyDeferred makes the foreign key DEFERRABLE INITIALLY DEFERRED: the
+// check runs at commit unless a transaction asks for it sooner. It implies
+// Deferrable. Read statically; no-op at runtime.
+func (o *ForeignKeyOpts) InitiallyDeferred() *ForeignKeyOpts { return o }

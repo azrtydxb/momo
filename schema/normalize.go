@@ -774,6 +774,7 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 				fk.OnDelete, fk.OnUpdate = mysqlFKAction(fk.OnDelete), mysqlFKAction(fk.OnUpdate)
 			}
 		}
+		normalizeDeferral(t)
 		normalizeIndexes(d, t.Columns, t.Indexes)
 		if d == dialect.MySQL {
 			foldMySQLUniques(t)
@@ -803,6 +804,26 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 	}
 	c.Sort()
 	return &c, nil
+}
+
+// normalizeDeferral gives the deferrability of the constraints of t one
+// spelling: INITIALLY DEFERRED implies DEFERRABLE, so a constraint that is
+// initially deferred is marked deferrable too. A table with no primary key has
+// no primary key to defer, so its two primary key flags are cleared: they could
+// only make two tables that are the same differ. It is idempotent.
+func normalizeDeferral(t *Table) {
+	if len(t.PrimaryKey) == 0 {
+		t.PrimaryKeyDeferrable, t.PrimaryKeyInitiallyDeferred = false, false
+	}
+	t.PrimaryKeyDeferrable = t.PrimaryKeyDeferrable || t.PrimaryKeyInitiallyDeferred
+	for j := range t.Uniques {
+		u := &t.Uniques[j]
+		u.Deferrable = u.Deferrable || u.InitiallyDeferred
+	}
+	for j := range t.ForeignKeys {
+		fk := &t.ForeignKeys[j]
+		fk.Deferrable = fk.Deferrable || fk.InitiallyDeferred
+	}
 }
 
 // describeLegacyFullText gives a FULLTEXT index that was declared before the

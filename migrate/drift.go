@@ -278,13 +278,13 @@ func differingFields(a, b string) string {
 
 // fieldText spells the value of one JSON field of an object for a person. A
 // field the JSON omits is "none", except nullable, whose omission means NOT
-// NULL.
+// NULL, and the deferrability flags, whose omission means not deferrable.
 func fieldText(m map[string]json.RawMessage, k string) string {
 	v, ok := m[k]
 	switch {
 	case ok:
 		return k + "=" + string(v)
-	case k == "nullable":
+	case k == "nullable", k == "deferrable", k == "initially_deferred", k == "primary_key_deferrable", k == "primary_key_initially_deferred":
 		return k + "=false"
 	}
 	return k + "=none"

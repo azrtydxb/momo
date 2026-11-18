@@ -70,3 +70,27 @@ func TestCompanionSchemaDSLCompiles(t *testing.T) {
 	var d compSchemaDoc
 	d.MomoConfig(&Config{})
 }
+
+// compDeferrableDoc declares deferrable constraints.
+type compDeferrableDoc struct {
+	Model
+	ID      int64
+	GroupID int64
+	Pos     int64
+}
+
+func (d *compDeferrableDoc) MomoConfig(c *Config) {
+	c.Unique("docs_group_pos_key", &d.GroupID, &d.Pos).InitiallyDeferred()
+	c.Unique("docs_pos_key", &d.Pos).Deferrable()
+	c.ForeignKey("docs_group_fkey", []any{&d.GroupID}, "groups", []string{"id"}).OnDelete("CASCADE").Deferrable()
+	c.ForeignKey("docs_group2_fkey", []any{&d.GroupID}, "groups", []string{"id"}).InitiallyDeferred()
+	c.PrimaryKeyDeferrable()
+	c.PrimaryKeyInitiallyDeferred()
+}
+
+// TestCompanionDeferrableDSLCompiles checks that the deferrability options are
+// accepted and run as no-ops.
+func TestCompanionDeferrableDSLCompiles(t *testing.T) {
+	var d compDeferrableDoc
+	d.MomoConfig(&Config{})
+}

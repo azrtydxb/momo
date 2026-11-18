@@ -95,7 +95,7 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		if err != nil {
 			return nil, err
 		}
-		return one("ALTER TABLE " + tableRef(c.Schema, c.Table) + " ADD CONSTRAINT " + ident(c.Name) + " PRIMARY KEY (" + identList(cols) + ")"), nil
+		return one("ALTER TABLE " + tableRef(c.Schema, c.Table) + " ADD CONSTRAINT " + ident(c.Name) + " PRIMARY KEY (" + identList(cols) + ")" + deferral(c.Deferrable, c.InitiallyDeferred)), nil
 	case migrate.DropPrimaryKey, migrate.DropUnique, migrate.DropCheck, migrate.DropFK:
 		ifExists := ""
 		if c.IfExists {
@@ -406,7 +406,21 @@ func columnDef(col schema.Column) (string, error) {
 }
 
 func uniqueDef(u schema.Unique) string {
-	return "CONSTRAINT " + ident(u.Name) + " UNIQUE (" + identList(u.Columns) + ")"
+	return "CONSTRAINT " + ident(u.Name) + " UNIQUE (" + identList(u.Columns) + ")" + deferral(u.Deferrable, u.InitiallyDeferred)
+}
+
+// deferral renders the deferrability clause of a constraint: empty for the
+// default NOT DEFERRABLE, with a leading space otherwise. INITIALLY DEFERRED
+// implies DEFERRABLE, and PostgreSQL accepts the clause in this order on
+// CREATE TABLE, ADD CONSTRAINT and ADD ... USING INDEX.
+func deferral(deferrable, initiallyDeferred bool) string {
+	switch {
+	case initiallyDeferred:
+		return " DEFERRABLE INITIALLY DEFERRED"
+	case deferrable:
+		return " DEFERRABLE"
+	}
+	return ""
 }
 
 // renderAddUnique adds a unique constraint to an existing table without
@@ -422,7 +436,7 @@ func renderAddUnique(c migrate.Change, u schema.Unique) []migrate.Statement {
 	}
 	return []migrate.Statement{
 		{SQL: "CREATE UNIQUE INDEX CONCURRENTLY " + ident(u.Name) + " ON " + t + " (" + identList(u.Columns) + ")", NoTx: true},
-		{SQL: "ALTER TABLE " + t + " ADD CONSTRAINT " + ident(u.Name) + " UNIQUE USING INDEX " + ident(u.Name), NoTx: true},
+		{SQL: "ALTER TABLE " + t + " ADD CONSTRAINT " + ident(u.Name) + " UNIQUE USING INDEX " + ident(u.Name) + deferral(u.Deferrable, u.InitiallyDeferred), NoTx: true},
 	}
 }
 
@@ -474,7 +488,7 @@ func fkDef(fk schema.ForeignKey) (string, error) {
 	if upd != "" {
 		s += " ON UPDATE " + upd
 	}
-	return s, nil
+	return s + deferral(fk.Deferrable, fk.InitiallyDeferred), nil
 }
 
 func commentStmt(schemaName, table, column, comment string) (migrate.Statement, error) {
@@ -509,7 +523,7 @@ func renderCreateTable(c migrate.Change) ([]migrate.Statement, error) {
 		parts = append(parts, def)
 	}
 	if len(t.PrimaryKey) > 0 {
-		parts = append(parts, "CONSTRAINT "+ident(t.Name+"_pkey")+" PRIMARY KEY ("+identList(t.PrimaryKey)+")")
+		parts = append(parts, "CONSTRAINT "+ident(t.Name+"_pkey")+" PRIMARY KEY ("+identList(t.PrimaryKey)+")"+deferral(t.PrimaryKeyDeferrable, t.PrimaryKeyInitiallyDeferred))
 	}
 	for _, u := range t.Uniques {
 		parts = append(parts, uniqueDef(u))

@@ -15,6 +15,7 @@ import (
 	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/gen/tags"
 	"github.com/azrtydxb/momo/gen/typemap"
+	"github.com/azrtydxb/momo/internal/deferkey"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -840,7 +841,7 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 			continue
 		}
 		if b.claimName(u.Name, m.Pos, "MomoConfig") {
-			t.Uniques = append(t.Uniques, schema.Unique{Name: u.Name, Columns: slices.Clone(u.Columns)})
+			t.Uniques = append(t.Uniques, schema.Unique{Name: u.Name, Columns: slices.Clone(u.Columns), Deferrable: u.Deferrable, InitiallyDeferred: u.InitiallyDeferred})
 		}
 	}
 	if len(c.PrimaryKey) > 0 {
@@ -852,6 +853,13 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 			b.diag(m.Pos, fmt.Sprintf("MomoConfig: PrimaryKey lists (%s) but the fields tagged pk are (%s); it must name exactly those, once each", strings.Join(c.PrimaryKey, ", "), strings.Join(t.PrimaryKey, ", ")))
 		} else {
 			t.PrimaryKey = slices.Clone(c.PrimaryKey)
+		}
+	}
+	if c.PrimaryKeyDeferrable {
+		if len(t.PrimaryKey) == 0 {
+			b.diag(m.Pos, fmt.Sprintf("MomoConfig: PrimaryKeyDeferrable: model %s has no primary key", m.GoName))
+		} else {
+			t.PrimaryKeyDeferrable, t.PrimaryKeyInitiallyDeferred = true, c.PrimaryKeyInitiallyDeferred
 		}
 	}
 	checks := map[string]string{}
@@ -939,6 +947,83 @@ func (b *schemaBuilder) checkSequences(m *Model, seqs []schema.Sequence) {
 		for _, d := range append(slices.Clone(b.dialects), b.primary) {
 			if d != dialect.Postgres {
 				b.diag(m.Pos, fmt.Sprintf("sequence %q: a standalone sequence is not supported on %s (momo declares sequences for PostgreSQL only)", q.Name, d))
+			}
+		}
+	}
+}
+
+// checkDeferrable reports each deferrable constraint declared for a dialect
+// that cannot defer it. Only PostgreSQL models DEFERRABLE: MySQL and MariaDB
+// have no deferrable constraints, and SQLite defers a foreign key only, which
+// it cannot report back, so momo could not tell a declared constraint from an
+// inspected one.
+func (b *schemaBuilder) checkDeferrable() {
+	// The dialects to check: the listed ones, and the primary one when the
+	// list is empty. The primary dialect is the first listed, so it is not
+	// added twice.
+	targets := slices.Clone(b.dialects)
+	if !slices.Contains(targets, b.primary) {
+		targets = append(targets, b.primary)
+	}
+	b.checkReferencedDeferrable()
+	for _, t := range b.s.Tables {
+		var what []string
+		if t.PrimaryKeyDeferrable {
+			what = append(what, "the primary key")
+		}
+		for _, u := range t.Uniques {
+			if u.Deferrable {
+				what = append(what, "unique "+u.Name)
+			}
+		}
+		for _, fk := range t.ForeignKeys {
+			if fk.Deferrable {
+				what = append(what, "foreign key "+fk.Name)
+			}
+		}
+		if len(what) == 0 {
+			continue
+		}
+		var pos token.Position
+		if m := b.tableBy[t.Schema+"\x00"+t.Name]; m != nil {
+			pos = m.Pos
+		}
+		for _, d := range targets {
+			if d != dialect.Postgres {
+				b.diag(pos, fmt.Sprintf("table %s: %s is deferrable, which is not supported on %s (momo models DEFERRABLE for PostgreSQL only)", t.Name, strings.Join(what, ", "), d))
+			}
+		}
+	}
+}
+
+// checkReferencedDeferrable reports each foreign key that references a
+// deferrable primary key or unique constraint. PostgreSQL refuses such a key as
+// a foreign key target ("cannot use a deferrable unique constraint for
+// referenced table"), so the migration would fail at apply time; a key that a
+// foreign key references stays immediate. A referenced column set that a
+// non-deferrable key also covers is accepted: PostgreSQL uses that one.
+func (b *schemaBuilder) checkReferencedDeferrable() {
+	byKey := make(map[string]*schema.Table, len(b.s.Tables))
+	for i := range b.s.Tables {
+		t := &b.s.Tables[i]
+		byKey[t.Schema+"\x00"+t.Name] = t
+	}
+	for _, t := range b.s.Tables {
+		var pos token.Position
+		if m := b.tableBy[t.Schema+"\x00"+t.Name]; m != nil {
+			pos = m.Pos
+		}
+		for _, fk := range t.ForeignKeys {
+			ns, name := t.Schema, fk.RefTable
+			if i := strings.IndexByte(name, '.'); i >= 0 {
+				ns, name = name[:i], name[i+1:]
+			}
+			target := byKey[ns+"\x00"+name]
+			if target == nil {
+				continue
+			}
+			if key := deferkey.Covering(target, fk.RefColumns); key != "" {
+				b.diag(pos, fmt.Sprintf("table %s: foreign key %s references (%s) of %s, which is %s and deferrable; PostgreSQL cannot use a deferrable key as a foreign key target, so make it not deferrable", t.Name, fk.Name, strings.Join(fk.RefColumns, ", "), target.Name, key))
 			}
 		}
 	}
@@ -1195,6 +1280,9 @@ func (b *schemaBuilder) companionForeignKeys(m *Model) {
 			RefColumns: slices.Clone(fk.RefColumns),
 			OnDelete:   fk.OnDelete,
 			OnUpdate:   fk.OnUpdate,
+
+			Deferrable:        fk.Deferrable,
+			InitiallyDeferred: fk.InitiallyDeferred,
 		})
 	}
 }
@@ -1384,6 +1472,7 @@ func (b *schemaBuilder) finish() {
 	if b.primary == dialect.MySQL {
 		b.checkMySQLKeys()
 	}
+	b.checkDeferrable()
 	for _, u := range b.enumUses {
 		if _, ok := b.enums[u.name]; !ok {
 			b.diag(u.pos, fmt.Sprintf("enum %q is not declared in any MomoConfig", u.name))
