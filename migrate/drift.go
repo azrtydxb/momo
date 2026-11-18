@@ -360,23 +360,9 @@ func reconcileCheckLists(a, b *schema.Schema) {
 			ta.Checks, tb.Checks = slices.Clone(ta.Checks), slices.Clone(tb.Checks)
 			for x := range ta.Checks {
 				ca := &ta.Checks[x]
-				if ca.In == nil {
-					continue
-				}
 				for y := range tb.Checks {
 					cb := &tb.Checks[y]
-					if cb.Name != ca.Name {
-						continue
-					}
-					in := cb.In
-					if in == nil {
-						col, vals, ok := schema.ParseCheckIn(cb.Expr)
-						if !ok {
-							continue
-						}
-						in = &schema.CheckIn{Column: col, Values: vals}
-					}
-					if in.Column == ca.In.Column && slices.Equal(schema.SortedValues(in.Values), schema.SortedValues(ca.In.Values)) {
+					if cb.Name == ca.Name && schema.SameCheck(*ca, *cb) {
 						cb.Expr = ca.Expr
 					}
 				}

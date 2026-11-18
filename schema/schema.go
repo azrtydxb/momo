@@ -296,7 +296,9 @@ type Check struct {
 	Expr string `json:"expr"`
 	// In is set when the constraint restricts a text column to a list of values.
 	// The differ then compares the values as a set, and Expr holds the canonical
-	// rendering of the sorted values.
+	// rendering of the sorted values. Equal and the drift comparison do the
+	// same (see SameCheck). A check read back from a database carries no In;
+	// when the other side has one, its list is read from its Expr.
 	In *CheckIn `json:"in,omitempty"`
 }
 

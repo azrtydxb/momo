@@ -63,6 +63,79 @@ func TestCheckInDiffIsASetComparison(t *testing.T) {
 	}
 }
 
+// Catches: a value list read back from PostgreSQL, which carries no In, diffed
+// as a drop and add of the constraint, or Equal and Diff disagreeing on it.
+func TestCheckInDiffAndEqualAgreeOnTheStoredForm(t *testing.T) {
+	read := func(expr string) *schema.Schema {
+		s := checkInSchema("a", "b")
+		s.Tables[0].Checks[0] = schema.Check{Name: "notes_kind_check", Expr: expr}
+		return s
+	}
+	cases := map[string]struct {
+		stored  *schema.Schema
+		want    *schema.Schema
+		same    bool
+		added   []string // set for an alter_check_in
+		removed []string
+	}{
+		"same set":     {read("(kind = ANY (ARRAY['b'::text, 'a'::text]))"), checkInSchema("a", "b"), true, nil, nil},
+		"wider":        {read("(kind = ANY (ARRAY['a'::text, 'b'::text]))"), checkInSchema("a", "b", "c"), false, []string{"c"}, nil},
+		"narrower":     {read("(kind = ANY (ARRAY['a'::text, 'b'::text]))"), checkInSchema("a"), false, nil, []string{"b"}},
+		"other column": {read("(other = ANY (ARRAY['a'::text, 'b'::text]))"), checkInSchema("a", "b"), false, nil, nil},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			changes, _, err := migrate.Diff(c.stored, c.want, migrate.DiffOptions{AllowDestructive: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := len(changes) == 0; got != c.same {
+				t.Errorf("Diff reports no change = %v, want %v: %+v", got, c.same, changes)
+			}
+			if c.added != nil || c.removed != nil {
+				if len(changes) != 1 || changes[0].Kind != migrate.AlterCheckIn ||
+					!slices.Equal(changes[0].Added, c.added) || !slices.Equal(changes[0].Removed, c.removed) ||
+					changes[0].Destructive != (c.removed != nil) {
+					t.Errorf("changes = %+v, want one alter_check_in adding %v and removing %v", changes, c.added, c.removed)
+				}
+			}
+			if got := schema.Equal(c.stored, c.want); got != c.same {
+				t.Errorf("Equal = %v, want %v", got, c.same)
+			}
+		})
+	}
+}
+
+// Catches: Equal reconciling value lists after the expressions were normalized,
+// which lowercases a MySQL column, so a mixed-case column is Equal=false while
+// Diff, which reads the expression as written, reports no change.
+func TestCheckInMixedCaseColumnAgreesInEqualAndDiff(t *testing.T) {
+	table := func(c schema.Check) *schema.Schema {
+		return &schema.Schema{Dialect: dialect.MySQL, Tables: []schema.Table{{
+			Name:       "notes",
+			Columns:    []schema.Column{{Name: "id", Type: "bigint"}, {Name: "Status", Type: "varchar(40)"}},
+			PrimaryKey: []string{"id"},
+			Checks:     []schema.Check{c},
+		}}}
+	}
+	declared := table(schema.Check{
+		Name: "notes_status_check",
+		Expr: schema.CheckInExpr(dialect.MySQL, "Status", []string{"a", "b"}),
+		In:   &schema.CheckIn{Column: "Status", Values: []string{"a", "b"}},
+	})
+	stored := table(schema.Check{Name: "notes_status_check", Expr: "(`Status` in (_utf8mb4\\'b\\',_utf8mb4\\'a\\'))"})
+	changes, _, err := migrate.Diff(stored, declared, migrate.DiffOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 0 {
+		t.Fatalf("Diff reports %+v, want none", changes)
+	}
+	if !schema.Equal(declared, stored) || !schema.Equal(stored, declared) {
+		t.Error("Equal must agree with Diff on a mixed-case column")
+	}
+}
+
 // Catches: an added value rendered as a drop and add of the whole object, or
 // flagged destructive.
 func TestCheckInDiffAddsValues(t *testing.T) {
@@ -127,7 +200,11 @@ func TestCheckInTwoBranchesMergeToOneChange(t *testing.T) {
 // column, being compared as sets instead of replaced.
 func TestCheckInFallsBackToDropAndAdd(t *testing.T) {
 	plain := checkInSchema("a")
+	// A plain check is one whose expression is no value list: an expression
+	// that is one is read as a list on the side that carries no In, because
+	// that is how a database reports it (see TestCheckInDiffAndEqualAgreeOnTheStoredForm).
 	plain.Tables[0].Checks[0].In = nil
+	plain.Tables[0].Checks[0].Expr = "kind <> ''"
 	other := checkInSchema("a")
 	other.Tables[0].Columns = append(other.Tables[0].Columns, schema.Column{Name: "tag", Type: "text", Nullable: true})
 	other.Tables[0].Checks[0].In.Column = "tag"
