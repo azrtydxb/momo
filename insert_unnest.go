@@ -38,25 +38,25 @@ func (q InsertQuery[T]) Unnest() InsertQuery[T] {
 }
 
 // unnestCheck rejects the combinations Unnest cannot render.
-func (q InsertQuery[T]) unnestCheck(d *dialect.Dialect, mode insertMode) error {
+func (r insertRef) unnestCheck(d *dialect.Dialect, mode insertMode) error {
 	if d.Name != dialect.Postgres {
-		return &Error{Kind: ErrUnsupported, Op: "insert", Table: q.meta.Table,
+		return &Error{Kind: ErrUnsupported, Op: "insert", Table: r.m.Table,
 			Err: fmt.Errorf("Unnest needs PostgreSQL array parameters, not %s", d.Name)}
 	}
 	if mode != modeModels {
-		return q.verr("", "Unnest works with Model and Models only")
+		return r.verr("", "Unnest works with Model and Models only")
 	}
-	if q.meta.TableSchema == nil {
-		return q.verr("", "Unnest needs the table schema in the generated metadata for the column types")
+	if r.m.TableSchema == nil {
+		return r.verr("", "Unnest needs the table schema in the generated metadata for the column types")
 	}
 	return nil
 }
 
 // writeUnnest writes the column list and the unnest row source of a plan: one
 // array parameter per written column, cast to the column's array type.
-func (q InsertQuery[T]) writeUnnest(b *Builder, d *dialect.Dialect, p insertPlan[T]) {
-	types := make(map[string]string, len(q.meta.TableSchema.Columns))
-	for _, c := range q.meta.TableSchema.Columns {
+func (r insertRef) writeUnnest(b *Builder, d *dialect.Dialect, p insertPlan, a insAccess) {
+	types := make(map[string]string, len(r.m.TableSchema.Columns))
+	for _, c := range r.m.TableSchema.Columns {
 		types[c.Name] = c.Type
 	}
 	b.WriteString(" (")
@@ -64,32 +64,32 @@ func (q InsertQuery[T]) writeUnnest(b *Builder, d *dialect.Dialect, p insertPlan
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.Ident(q.meta.Columns[ci].Name)
+		b.Ident(r.m.Columns[ci].Name)
 	}
 	b.writeByte(')')
-	if q.overriding(d, p.cols) {
+	if r.overriding(d, p.cols) {
 		b.WriteString(" OVERRIDING SYSTEM VALUE")
 	}
 	b.WriteString(" SELECT * FROM unnest(")
 	for i, ci := range p.cols {
-		name := q.meta.Columns[ci].Name
+		name := r.m.Columns[ci].Name
 		typ := types[name]
 		if typ == "" {
-			b.SetErr(q.verr(name, "Unnest: column %q has no type in the table schema", name))
+			b.SetErr(r.verr(name, "Unnest: column %q has no type in the table schema", name))
 			return
 		}
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		col := make([]any, len(q.models))
-		for r := range q.models {
+		col := make([]any, r.n)
+		for row := range r.n {
 			if p.vals != nil {
-				col[r] = p.vals[r][i]
+				col[row] = p.vals[row][i]
 			} else {
-				col[r] = q.modelValue(r, ci, p.now, p.fp)
+				col[row] = r.modelValue(row, ci, p.now, a)
 			}
 		}
-		b.argFor(q.meta.Columns[ci].Flags, typedColumn(col))
+		b.argFor(r.m.Columns[ci].Flags, typedColumn(col))
 		b.WriteString("::")
 		b.WriteString(typ)
 		b.WriteString("[]")

@@ -313,7 +313,7 @@ func (m MergeQuery[T]) emulation() ([]mergeStep, error) {
 			}
 			for _, a := range mp.ip.tsAssign {
 				b.WriteString(", ")
-				mp.ins.appendValue(b, a)
+				appendAssignedValue(b, a)
 			}
 			b.WriteString(" FROM ")
 			from(b, mergeSnapshotTable, "src")

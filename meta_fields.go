@@ -83,6 +83,73 @@ type fieldPlan[T any] struct {
 	def, upd map[int]func(*T) any
 }
 
+// fieldRef is a fieldPlan stripped of T: how many hooks there are, which
+// columns have a Go-side default and the validators in hook order. Calling a
+// default needs T and goes through insAccess.
+type fieldRef struct {
+	n int
+	// def has bit ci set when column ci (below 64) has a Go-side default, and
+	// defMore[ci-64] for a later column; a bitset, so the common model costs no
+	// allocation.
+	def     uint64
+	defMore []bool
+	// The Validate hooks in hook order: the first few inline, so a model with a
+	// handful of validators costs no allocation, the rest in more.
+	nChecks int
+	small   [4]fieldCheck
+	more    []fieldCheck
+}
+
+// addCheck appends a Validate hook.
+func (f *fieldRef) addCheck(c fieldCheck) {
+	if f.nChecks < len(f.small) {
+		f.small[f.nChecks] = c
+	} else {
+		f.more = append(f.more, c)
+	}
+	f.nChecks++
+}
+
+// check returns the i-th Validate hook.
+func (f *fieldRef) check(i int) fieldCheck {
+	if i < len(f.small) {
+		return f.small[i]
+	}
+	return f.more[i-len(f.small)]
+}
+
+// fieldCheck is the Validate hook of one column.
+type fieldCheck struct {
+	col int
+	fn  func(v any) error
+}
+
+// hasDef reports whether column ci has a Go-side default.
+func (f fieldRef) hasDef(ci int) bool {
+	switch {
+	case ci < 0:
+		return false
+	case ci < 64:
+		return f.def&(1<<uint(ci)) != 0
+	}
+	return ci-64 < len(f.defMore) && f.defMore[ci-64]
+}
+
+// validate runs every Validate hook, as fieldPlan.validate does.
+func (f fieldRef) validate(op, table string, cols []ColumnMeta, value func(ci int) (v any, ok bool)) error {
+	for i := range f.nChecks {
+		c := f.check(i)
+		v, ok := value(c.col)
+		if !ok {
+			continue
+		}
+		if err := c.fn(v); err != nil {
+			return fieldError(op, table, cols[c.col].Name, err)
+		}
+	}
+	return nil
+}
+
 // newFieldPlan collects Meta.Fields and the DB's hooks for m and checks the
 // column indexes.
 func newFieldPlan[T any](q Querier, m *Meta[T]) (fieldPlan[T], error) {
@@ -119,6 +186,31 @@ func newFieldPlan[T any](q Querier, m *Meta[T]) (fieldPlan[T], error) {
 		}
 	}
 	return fp, nil
+}
+
+// refOf is the part of the plan that does not mention T, for the insert
+// renderer. Only the insert path builds it: Update and Merge share the plan
+// and never read it.
+func (fp fieldPlan[T]) refOf(ncols int) fieldRef {
+	r := fieldRef{n: len(fp.hooks)}
+	for _, h := range fp.hooks {
+		if h.Validate != nil {
+			r.addCheck(fieldCheck{col: h.Column, fn: h.Validate})
+		}
+	}
+	for ci := range fp.def {
+		switch {
+		case ci < 0 || ci >= ncols:
+		case ci < 64:
+			r.def |= 1 << uint(ci)
+		default:
+			if r.defMore == nil {
+				r.defMore = make([]bool, ncols-64)
+			}
+			r.defMore[ci-64] = true
+		}
+	}
+	return r
 }
 
 // validate runs every Validate hook. value reports the value the statement

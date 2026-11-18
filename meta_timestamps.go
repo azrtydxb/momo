@@ -63,9 +63,14 @@ func checkTimestampField[T any](m *Meta[T], ci int) error {
 		return nil
 	}
 	var zero T
-	sample := m.Value(&zero, ci)
+	return checkTimestampSample(m.Columns[ci].Name, m.Value(&zero, ci))
+}
+
+// checkTimestampSample is checkTimestampField for the value a zero model holds
+// in the timestamp column called name.
+func checkTimestampSample(name string, sample any) error {
 	if _, ok := timestampValue(time.Time{}, sample); ok {
 		return nil
 	}
-	return fmt.Errorf("automatic timestamp column %q has unsupported field type %T; use time.Time, *time.Time, int64 or *int64", m.Columns[ci].Name, sample)
+	return fmt.Errorf("automatic timestamp column %q has unsupported field type %T; use time.Time, *time.Time, int64 or *int64", name, sample)
 }

@@ -150,35 +150,30 @@ func mysqlTargetError(target []string, why string) error {
 
 // wantsGeneratedKey reports whether execOne should read LAST_INSERT_ID and
 // write it back: a single Model insert on MySQL or MariaDB without a conflict
-// clause, whose identity column the statement leaves to the server.
-func (q InsertQuery[T]) wantsGeneratedKey() bool {
-	return len(q.back) == 1 && q.back[0] != nil && len(q.models) == 1 && q.leavesKeyToServer()
+// clause, whose identity column the statement leaves to the server. a.hasBack
+// tells whether the caller's model is there to receive it.
+func (r insertRef) wantsGeneratedKey(a insAccess) bool {
+	return r.nBack == 1 && a.hasBack(0) && r.n == 1 && r.leavesKeyToServer()
 }
 
 // leavesKeyToServer reports whether the statement is a plain INSERT on MySQL
 // or MariaDB whose identity column the server generates (no conflict clause,
 // no Go-side id, not named in Explicit).
-func (q InsertQuery[T]) leavesKeyToServer() bool {
-	id := q.meta.Identity
-	return q.q != nil && q.q.Dialect().OnDuplicateKey &&
-		!q.i.upsert && q.i.conflict == conflictNone && !q.explicitCol(id) && id >= 0 && id < len(q.meta.Columns) &&
-		q.meta.Ptr != nil && q.meta.Columns[id].Flags&FlagIdentity != 0 && !q.isIDGenColumn(id)
+func (r insertRef) leavesKeyToServer() bool {
+	id := r.m.Identity
+	return r.q != nil && r.q.Dialect().OnDuplicateKey &&
+		!r.i.upsert && r.i.conflict == conflictNone && !r.explicitCol(id) && id >= 0 && id < len(r.m.Columns) &&
+		r.m.HasPtr && r.m.Columns[id].Flags&FlagIdentity != 0 && !r.isIDGenColumn(id)
 }
 
-// isIDGenColumn reports whether column ci takes a Go-side generated id. Those
-// ids are written back by generateIDs and always win: LAST_INSERT_ID is read
-// only for a key the database generates.
-func (q InsertQuery[T]) isIDGenColumn(ci int) bool { return q.ref().isIDGenColumn(ci) }
-
-// assignGeneratedKey stores id in the identity field of the model passed to
+// assignGeneratedKey stores id in the identity field p of the model passed to
 // Model (see identityIsInteger for the field kinds). A multi-row insert through
 // Exec returns and writes back no keys, because the ids of a multi-row
 // statement depend on innodb_autoinc_lock_mode; CreateGraph inserts one row per
 // statement on MySQL for that reason. MariaDB callers who need keys use
 // Returning, which renders INSERT ... RETURNING; MySQL has no equivalent and
 // Returning is ErrUnsupported there.
-func (q InsertQuery[T]) assignGeneratedKey(id int64) {
-	p := q.meta.Ptr(q.back[0], q.meta.Identity)
+func assignGeneratedKey(p any, id int64) {
 	if p == nil {
 		return
 	}
@@ -218,17 +213,17 @@ func identityIsInteger[T any](meta *Meta[T]) bool {
 // resolveMySQLIdentity makes a multi-row model insert on MySQL write the
 // identity column when every row carries an explicit value, so the rows keep
 // the keys the caller chose. Other inserts are returned unchanged.
-func (q InsertQuery[T]) resolveMySQLIdentity() InsertQuery[T] {
-	id := q.meta.Identity
-	if q.q == nil || !q.q.Dialect().OnDuplicateKey || len(q.models) < 2 || id < 0 || id >= len(q.meta.Columns) ||
-		q.meta.Columns[id].Flags&FlagIdentity == 0 || slices.Contains(q.i.omit, q.meta.Columns[id].Name) {
-		return q
+func (r insertRef) resolveMySQLIdentity(a insAccess) insertRef {
+	id := r.m.Identity
+	if r.q == nil || !r.q.Dialect().OnDuplicateKey || r.n < 2 || id < 0 || id >= len(r.m.Columns) ||
+		r.m.Columns[id].Flags&FlagIdentity == 0 || slices.Contains(r.i.omit, r.m.Columns[id].Name) {
+		return r
 	}
-	for r := range q.models {
-		if reflect.ValueOf(q.meta.Value(&q.models[r], id)).IsZero() {
-			return q
+	for row := range r.n {
+		if reflect.ValueOf(a.val(row, id)).IsZero() {
+			return r
 		}
 	}
-	q.i.withIdentity = true
-	return q
+	r.i.withIdentity = true
+	return r
 }

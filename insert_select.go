@@ -198,7 +198,7 @@ func (s ExprSelect) renderBare(b *Builder, onConflictFollows bool) {
 // source. FromSelect runs no model hooks.
 func (q InsertQuery[T]) FromSelect(sel Subquery, cols ...ColumnRef) InsertQuery[T] {
 	if sel == nil {
-		return q.fail(q.verr("", "FromSelect: nil select"))
+		return q.fail(insertVerr(q.meta.Table, "", "FromSelect: nil select"))
 	}
 	names := make([]string, len(cols))
 	for i, c := range cols {
@@ -210,66 +210,65 @@ func (q InsertQuery[T]) FromSelect(sel Subquery, cols ...ColumnRef) InsertQuery[
 
 // renderFromSelect renders INSERT INTO t (cols) SELECT ... plus the conflict
 // and RETURNING clauses.
-func (q InsertQuery[T]) renderFromSelect(b *Builder) {
+func (r insertRef) renderFromSelect(b *Builder, a insAccess) {
 	switch {
-	case len(q.models) > 0 || q.i.hasValues || q.i.hasRows:
-		b.SetErr(q.verr("", "FromSelect cannot be combined with Model, Models, Values or ValuesRows"))
+	case r.n > 0 || r.i.hasValues || r.i.hasRows:
+		b.SetErr(r.verr("", "FromSelect cannot be combined with Model, Models, Values or ValuesRows"))
 		return
-	case len(q.i.omit) > 0:
-		b.SetErr(q.verr("", "Omit cannot be combined with FromSelect: list only the columns to write"))
+	case len(r.i.omit) > 0:
+		b.SetErr(r.verr("", "Omit cannot be combined with FromSelect: list only the columns to write"))
 		return
-	case len(q.i.selCols) == 0:
-		b.SetErr(q.verr("", "FromSelect: no target columns"))
+	case len(r.i.selCols) == 0:
+		b.SetErr(r.verr("", "FromSelect: no target columns"))
 		return
 	}
-	for i, n := range q.i.selCols {
-		ci := q.column(n)
+	for i, n := range r.i.selCols {
+		ci := r.column(n)
 		switch {
 		case ci < 0:
-			b.SetErr(q.verr(n, "FromSelect: column %q is not mapped by %s", n, q.meta.Table))
+			b.SetErr(r.verr(n, "FromSelect: column %q is not mapped by %s", n, r.m.Table))
 			return
-		case !q.writable(ci):
-			b.SetErr(q.verr(n, "FromSelect: column %q is identity, serial or read-only and is never written", n))
+		case !r.writable(ci):
+			b.SetErr(r.verr(n, "FromSelect: column %q is identity, serial or read-only and is never written", n))
 			return
-		case slices.Contains(q.i.selCols[:i], n):
-			b.SetErr(q.verr(n, "FromSelect: column %q listed twice", n))
+		case slices.Contains(r.i.selCols[:i], n):
+			b.SetErr(r.verr(n, "FromSelect: column %q listed twice", n))
 			return
 		}
 	}
-	if n, ok := arityOf(q.i.sel); ok && n != len(q.i.selCols) {
-		b.SetErr(q.verr("", "FromSelect: select yields %d columns but %d target columns are listed", n, len(q.i.selCols)))
+	if n, ok := arityOf(r.i.sel); ok && n != len(r.i.selCols) {
+		b.SetErr(r.verr("", "FromSelect: select yields %d columns but %d target columns are listed", n, len(r.i.selCols)))
 		return
 	}
-	fp, err := newFieldPlan(q.q, q.meta)
-	if err != nil {
+	if r.ferr != nil {
+		b.SetErr(r.ferr)
+		return
+	}
+	if err := r.validateConflictSet(a); err != nil {
 		b.SetErr(err)
 		return
 	}
-	if err := q.validateConflictSet(fp); err != nil {
-		b.SetErr(err)
-		return
-	}
-	q.writeInsertHead(b)
+	r.writeInsertHead(b)
 	b.WriteString(" (")
-	for i, n := range q.i.selCols {
+	for i, n := range r.i.selCols {
 		if i > 0 {
 			b.WriteString(", ")
 		}
 		b.Ident(n)
 	}
 	b.WriteString(") ")
-	if v, ok := q.i.sel.(selectViewer); ok {
+	if v, ok := r.i.sel.(selectViewer); ok {
 		// SQLite parses ON after a FROM select without WHERE as a join.
-		v.selectView().renderBare(b, b.d.Name == dialect.SQLite && q.i.conflict != conflictNone)
-	} else if e, ok := q.i.sel.(interface{ renderBare(*Builder, bool) }); ok {
-		e.renderBare(b, b.d.Name == dialect.SQLite && q.i.conflict != conflictNone)
-	} else if r, ok := q.i.sel.(interface{ render(*Builder) }); ok {
-		r.render(b) // bare: SQLite rejects a parenthesized SELECT here
+		v.selectView().renderBare(b, b.d.Name == dialect.SQLite && r.i.conflict != conflictNone)
+	} else if e, ok := r.i.sel.(interface{ renderBare(*Builder, bool) }); ok {
+		e.renderBare(b, b.d.Name == dialect.SQLite && r.i.conflict != conflictNone)
+	} else if s, ok := r.i.sel.(interface{ render(*Builder) }); ok {
+		s.render(b) // bare: SQLite rejects a parenthesized SELECT here
 	} else {
-		q.i.sel.AppendSQL(b)
+		r.i.sel.AppendSQL(b)
 	}
-	q.renderConflict(b, q.i.selCols)
-	renderReturning(b, q.meta, q.i.returning, func(col string) error {
-		return q.verr(col, "Returning: column %q is not mapped by %s", col, q.meta.Table)
+	r.renderConflict(b, r.i.selCols)
+	renderReturningCols(b, r.m.Columns, r.i.returning, func(col string) error {
+		return r.verr(col, "Returning: column %q is not mapped by %s", col, r.m.Table)
 	})
 }

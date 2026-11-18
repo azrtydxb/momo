@@ -5,9 +5,7 @@ package momo
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
-	"time"
 )
 
 // Exec runs the statement and reports the rows it inserted.
@@ -69,23 +67,25 @@ func (q InsertQuery[T]) Exec(ctx context.Context) (Result, error) {
 }
 
 func (q InsertQuery[T]) execOne(ctx context.Context) (Result, error) {
-	if q.reconcile {
+	r := q.ref()
+	if r.reconcile {
 		return q.execReconcile(ctx)
 	}
 	c, err := q.SQL()
 	if err != nil {
 		return Result{}, err
 	}
-	if cols := q.dbDefaultReadBack(); len(cols) > 0 {
+	if cols := r.dbDefaultReadBack(); len(cols) > 0 {
 		return q.execReadBack(ctx, cols)
 	}
-	if q.wantsGeneratedKey() {
+	back := q.back
+	if r.wantsGeneratedKey(insAccess{hasBack: func(row int) bool { return back[row] != nil }}) {
 		n, id, err := q.q.conn().execInsertID(ctx, "insert", q.meta.Table, c)
 		if err != nil {
 			return Result{}, err
 		}
 		if n > 0 && id != 0 {
-			q.assignGeneratedKey(id)
+			assignGeneratedKey(q.meta.Ptr(q.back[0], q.meta.Identity), id)
 		}
 		return Result{RowsAffected: n, InsertID: id}, nil
 	}
@@ -105,7 +105,7 @@ func (q InsertQuery[T]) execOne(ctx context.Context) (Result, error) {
 // chunk can fail there, which rolls the whole insert back.
 func (q InsertQuery[T]) Rows(ctx context.Context) (*ModelRows[T], error) {
 	if !q.i.returning.active() {
-		return nil, q.verr("", "Rows needs a Returning list")
+		return nil, insertVerr(q.meta.Table, "", "Rows needs a Returning list")
 	}
 	q, err := q.beforeWrite(ctx)
 	if err != nil {
@@ -153,239 +153,55 @@ func (q InsertQuery[T]) plan() ([]InsertQuery[T], error) {
 	if err := viewWriteErr("insert", q.meta); err != nil {
 		return nil, err
 	}
-	q, err := q.generateIDs(true)
+	ms, back, meta := q.models, q.back, q.meta
+	// The field plan is read only to split several models or to compare
+	// ValuesRows; a single statement is planned without it and render builds
+	// it once.
+	var (
+		fp   fieldPlan[T]
+		ferr error
+	)
+	if len(ms) > 1 || q.i.hasRows {
+		fp, ferr = newFieldPlan(q.q, meta)
+	}
+	a := insAccess{
+		value:   func(row, ci int) any { return meta.Value(&ms[row], ci) },
+		zero:    func(ci int) (any, bool) { return zeroValue(meta, ci) },
+		def:     func(ci, row int) any { return fieldDefault(&fp, ms, ci, row) },
+		ptr:     func(row, ci int) any { return meta.Ptr(&ms[row], ci) },
+		hasBack: func(row int) bool { return row < len(back) && back[row] != nil },
+		backPtr: func(row, ci int) any { return meta.Ptr(back[row], ci) },
+		clone:   func() { ms = slices.Clone(ms) },
+		fields:  fp.refOf(len(meta.Columns)),
+	}
+	r := q.ref()
+	r.ferr = ferr
+	cs, err := r.plan(a)
 	if err != nil {
 		return nil, err
 	}
-	q.idsDone = true
-	if q.q != nil {
-		if err := q.checkExplicit(); err != nil {
-			return nil, err
-		}
-		if err := q.checkExplicitZero(q.q.Dialect()); err != nil { // every row, before the first chunk runs
-			return nil, err
-		}
+	q.models = ms
+	if cs.many == nil {
+		return []InsertQuery[T]{chunkQuery(q, ms, back, cs.one)}, nil
 	}
-	q = q.withDBD() // after hooks and ids: the plan is computed once and sliced per chunk
-	runs, err := q.defaultRuns()
-	if err != nil {
-		return nil, err
-	}
-	if runs == nil {
-		return q.planBulk()
-	}
-	var out []InsertQuery[T]
-	for _, r := range runs {
-		cs, err := r.planBulk()
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, cs...)
+	out := make([]InsertQuery[T], len(cs.many))
+	for i, ch := range cs.many {
+		out[i] = chunkQuery(q, ms, back, ch)
 	}
 	return out, nil
 }
 
-// planBulk splits a bulk model insert over the bind-parameter limit; see plan.
-func (q InsertQuery[T]) planBulk() ([]InsertQuery[T], error) {
-	one := []InsertQuery[T]{q}
-	if q.i.unnest {
-		return one, nil // one array parameter per column: the bind count does not grow with the rows
-	}
-	if q.q == nil || q.i.err != nil || q.meta.Table == "" || len(q.models) < 2 {
-		return one, nil
-	}
-	d := q.q.Dialect()
-	if d.MaxParams <= 0 {
-		return one, nil
-	}
-	r, err := q.resolveUpsert()
-	if err != nil {
-		return nil, err
-	}
-	r.i.upsert = false // resolved: chunks keep target, set and identity decisions
-	fp, err := newFieldPlan(q.q, q.meta)
-	if err != nil {
-		return one, nil // rendering reports it
-	}
-	cols, err := r.modelCols(fp)
-	if err != nil || len(cols) == 0 {
-		return one, nil
-	}
-	r.i.fixedCols = cols  // every chunk writes the columns of the whole set
-	if r.clock.IsZero() { // an updated_at bump in resolveUpsert already read it
-		r.clock = q.q.conn().now()
-	}
-	// Compute and validate every row before the first chunk runs, so a bad
-	// row late in a bulk insert executes nothing. The computed values are
-	// kept and bound by the chunks, so a non-deterministic default cannot
-	// pass here and change afterwards.
-	if len(fp.hooks) > 0 {
-		r.pre = r.modelValues(fp, cols, r.clock)
-		if err := r.validateModelRows(fp, cols, r.pre); err != nil {
-			return nil, err
-		}
-		one[0].pre = r.pre // a fallback to the single statement binds the same values
-		one[0].clock = r.clock
-	}
-	probe := r
-	probe.models = r.models[:1]
-	probe.dbd = r.dbd.slice(0, 1)
-	if r.pre != nil {
-		probe.pre = r.pre[:1]
-	}
-	c1, err := compile(d, probe.render)
-	if err != nil {
-		return one, nil
-	}
-	bound := 0 // cells the probe row binds: a dbdefault cell writes DEFAULT, no parameter
-	for _, ci := range cols {
-		if !probe.dbDefaultRow(0, ci) {
-			bound++
+// chunkQuery is the statement of one planned chunk: q with the state of the
+// chunk and, for a split insert, the models (and the caller's models) it holds.
+func chunkQuery[T any](q InsertQuery[T], ms []T, back []*T, ch insertChunk) InsertQuery[T] {
+	c := q.withRef(ch.r)
+	if ch.sub {
+		c.models = ms[ch.lo:ch.hi:ch.hi]
+		if ch.back {
+			c.back = back[ch.lo:ch.hi:ch.hi]
 		}
 	}
-	fixed := len(c1.Args) - bound // parameters outside the VALUES rows
-	per := (d.MaxParams - fixed) / len(cols)
-	if per < 1 {
-		return nil, &Error{Kind: ErrLimitExceeded, Op: "insert", Table: q.meta.Table,
-			Err: fmt.Errorf("one row binds %d parameters, over the %s limit of %d", len(cols)+fixed, d.Name, d.MaxParams)}
-	}
-	if len(r.models) <= per {
-		return []InsertQuery[T]{r}, nil
-	}
-	if len(r.i.with) > 0 {
-		// A WITH clause would run once per chunk, repeating a data-modifying CTE.
-		return nil, r.verr("", "With: the insert needs %d statements at the %s parameter limit and a WITH clause would repeat in each; insert fewer rows", (len(r.models)+per-1)/per, d.Name)
-	}
-	var out []InsertQuery[T]
-	for lo := 0; lo < len(r.models); lo += per {
-		c := r
-		hi := min(lo+per, len(r.models))
-		c.models = r.models[lo:hi]
-		c.dbd = r.dbd.slice(lo, hi)
-		if len(r.back) == len(r.models) {
-			c.back = r.back[lo:hi]
-		}
-		if r.pre != nil {
-			c.pre = r.pre[lo:hi]
-		}
-		out = append(out, c)
-	}
-	return out, nil
-}
-
-// defaultRuns splits a multi-row insert on a dialect whose VALUES list cannot
-// hold DEFAULT (SQLite) into runs of consecutive rows that leave the same
-// columns to the database default. Within a run every column is either default
-// in every row, so it leaves the column list and the column default applies, or
-// given in every row, so each run is an ordinary statement. Runs are
-// consecutive, never regrouped, so rows are stored and returned in the order
-// the caller gave them. It returns nil when no split is needed: the dialect
-// takes DEFAULT, Unnest, a single row or a uniform statement.
-func (q InsertQuery[T]) defaultRuns() ([]InsertQuery[T], error) {
-	if q.q == nil || q.i.unnest || q.i.err != nil || q.meta.Table == "" || q.q.Dialect().DefaultInValues {
-		return nil, nil
-	}
-	var sigs [][]bool
-	if q.i.hasRows {
-		sigs = q.rowsDefaultSigs()
-	} else if len(q.models) > 1 {
-		sigs = q.dbd.rows
-	}
-	if len(sigs) < 2 {
-		return nil, nil
-	}
-	var bounds []int // the start of each run
-	for r := range sigs {
-		if r == 0 || !slices.Equal(sigs[r], sigs[r-1]) {
-			bounds = append(bounds, r)
-		}
-	}
-	if len(bounds) < 2 {
-		return nil, nil
-	}
-	if len(q.i.with) > 0 {
-		return nil, q.verr("", "With: the rows leave different columns to the database default, so the insert needs %d statements on %s and a WITH clause would repeat in each; give every row the same columns", len(bounds), q.q.Dialect().Name)
-	}
-	if q.clock.IsZero() {
-		q.clock = q.q.conn().now() // one statement time for every run
-	}
-	out := make([]InsertQuery[T], 0, len(bounds))
-	for i, lo := range bounds {
-		hi := len(sigs)
-		if i+1 < len(bounds) {
-			hi = bounds[i+1]
-		}
-		c := q
-		if q.i.hasRows {
-			c.i.rows = q.i.rows[lo:hi:hi]
-		} else {
-			c.models = q.models[lo:hi:hi]
-			c.dbd = q.dbd.slice(lo, hi)
-			if len(q.back) == len(q.models) {
-				c.back = q.back[lo:hi:hi]
-			}
-			if q.pre != nil {
-				c.pre = q.pre[lo:hi:hi]
-			}
-		}
-		out = append(out, c)
-	}
-	return out, nil
-}
-
-// rowsDefaultSigs returns, per ValuesRows row, which columns of the statement
-// the row leaves to the database default: a column some row assigns that this
-// row omits or sets with SetDefault, unless a Go-side default or an automatic
-// timestamp fills it. It returns nil when the rows cannot be resolved; render
-// reports that.
-func (q InsertQuery[T]) rowsDefaultSigs() [][]bool {
-	if len(q.i.rows) < 2 {
-		return nil
-	}
-	fp, err := newFieldPlan(q.q, q.meta)
-	if err != nil {
-		return nil
-	}
-	n := len(q.meta.Columns)
-	kinds := make([]map[int]setKind, len(q.i.rows))
-	union := make([]bool, n)
-	for r, row := range q.i.rows {
-		kinds[r] = map[int]setKind{}
-		for _, a := range row {
-			ci := q.column(a.col)
-			if ci < 0 {
-				return nil
-			}
-			kinds[r][ci] = a.kind
-			union[ci] = true
-		}
-	}
-	sigs := make([][]bool, len(q.i.rows))
-	for r := range q.i.rows {
-		seen := make(map[int]struct{}, len(kinds[r]))
-		for ci := range kinds[r] {
-			seen[ci] = struct{}{}
-		}
-		stamped, _, err := q.timestampAssigns(seen, time.Time{}) // presence only
-		if err != nil {
-			return nil
-		}
-		sig := make([]bool, n)
-		for ci := range n {
-			kind, assigned := kinds[r][ci]
-			switch {
-			case assigned:
-				sig[ci] = kind == setDefault
-			case !union[ci]:
-			case fp.def[ci] != nil && q.writable(ci):
-			case slices.Contains(stamped, ci):
-			default:
-				sig[ci] = true
-			}
-		}
-		sigs[r] = sig
-	}
-	return sigs
+	return c
 }
 
 // chunkRows is the Rows of a chunked insert with RETURNING: it queries the

@@ -146,6 +146,18 @@ BenchmarkAllocs_RecentOrders/bun-4                  	    3469	    358953 ns/op	 
 BenchmarkAllocs_RecentOrders/bun-4                  	    3321	    360201 ns/op	   11264 B/op	     175 allocs/op
 BenchmarkAllocs_RecentOrders/bun-4                  	    3303	    364312 ns/op	   11264 B/op	     175 allocs/op
 BenchmarkAllocs_RecentOrders/bun-4                  	    3331	    361222 ns/op	   11263 B/op	     175 allocs/op
+BenchmarkAllocs_InsertHooked/momo-4                 	    4377	    427595 ns/op	    2609 B/op	      46 allocs/op
+BenchmarkAllocs_InsertHooked/momo-4                 	    1480	   3192203 ns/op	    2609 B/op	      46 allocs/op
+BenchmarkAllocs_InsertHooked/momo-4                 	    4628	    375903 ns/op	    2609 B/op	      46 allocs/op
+BenchmarkAllocs_InsertHooked/momo-4                 	    2944	    432430 ns/op	    2610 B/op	      46 allocs/op
+BenchmarkAllocs_InsertHooked/momo-4                 	    3499	    321765 ns/op	    2609 B/op	      46 allocs/op
+BenchmarkAllocs_InsertHooked/momo-4                 	    2277	   1013650 ns/op	    2609 B/op	      46 allocs/op
+BenchmarkAllocs_UpdateHooked/momo-4                 	    2372	    842613 ns/op	    2305 B/op	      45 allocs/op
+BenchmarkAllocs_UpdateHooked/momo-4                 	    4221	    456365 ns/op	    2306 B/op	      45 allocs/op
+BenchmarkAllocs_UpdateHooked/momo-4                 	    4051	    317244 ns/op	    2306 B/op	      45 allocs/op
+BenchmarkAllocs_UpdateHooked/momo-4                 	    4395	    306278 ns/op	    2306 B/op	      45 allocs/op
+BenchmarkAllocs_UpdateHooked/momo-4                 	    4567	    328582 ns/op	    2306 B/op	      45 allocs/op
+BenchmarkAllocs_UpdateHooked/momo-4                 	    4179	    323119 ns/op	    2306 B/op	      45 allocs/op
 PASS
 ok  	github.com/azrtydxb/momo/bench	180.318s
 PASS

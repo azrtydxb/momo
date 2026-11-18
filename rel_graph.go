@@ -277,7 +277,7 @@ func insertModels[T any](ctx context.Context, q Querier, meta *Meta[T], ms []T) 
 func insertModelsLastID[T any](ctx context.Context, q Querier, meta *Meta[T], ms []T) error {
 	bulk := InsertQuery[T]{q: q, meta: meta}
 	id := meta.Identity
-	if id < 0 || id >= len(meta.Columns) || meta.Columns[id].Flags&FlagIdentity == 0 || bulk.isIDGenColumn(id) {
+	if id < 0 || id >= len(meta.Columns) || meta.Columns[id].Flags&FlagIdentity == 0 || bulk.ref().isIDGenColumn(id) {
 		_, err := bulk.Models(ms).Exec(ctx)
 		return err
 	}
@@ -316,11 +316,11 @@ func runInsert[T any](ctx context.Context, q Querier, iq InsertQuery[T], m *T) (
 		if iq.meta.Identity >= 0 && (!d.OnDuplicateKey || iq.i.upsert || iq.i.conflict != conflictNone) {
 			return false, newError(ErrUnsupported, "insert", iq.meta.Table, errors.New("identity read-back needs RETURNING; MySQL reads it only for a plain insert (LAST_INSERT_ID), not for one with a conflict clause"))
 		}
-		if iq.meta.Identity >= 0 && iq.leavesKeyToServer() && !identityIsInteger(iq.meta) {
+		if iq.meta.Identity >= 0 && iq.ref().leavesKeyToServer() && !identityIsInteger(iq.meta) {
 			return false, newError(ErrUnsupported, "insert", iq.meta.Table, errors.New("the generated identity key is not an integer field, and MySQL reads it only as an integer (LAST_INSERT_ID)"))
 		}
 		res, err := iq.Exec(ctx)
-		if err == nil && iq.meta.Identity >= 0 && iq.leavesKeyToServer() && res.InsertID == 0 {
+		if err == nil && iq.meta.Identity >= 0 && iq.ref().leavesKeyToServer() && res.InsertID == 0 {
 			return false, newError(ErrUnsupported, "insert", iq.meta.Table, errors.New("the driver did not report the generated key (it must implement InsertIDExecer)"))
 		}
 		return res.RowsAffected > 0, err
