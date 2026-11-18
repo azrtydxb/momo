@@ -75,6 +75,30 @@ func TestAccessFor(t *testing.T) {
 	}
 }
 
+// TestVectorDescriptorTypeReadOnlyNullable pins that a nullable read-only
+// vector keeps its null surface, as DescriptorType does for plain columns.
+func TestVectorDescriptorTypeReadOnlyNullable(t *testing.T) {
+	cases := []struct {
+		name    string
+		a       Access
+		pointer bool
+		typ     string
+	}{
+		{"read_only", ReadOnly, false, "ReadOnlyVectorColumn"},
+		{"read_only pointer", ReadOnly, true, "NullReadOnlyVectorColumn"},
+		{"create_only", CreateOnly, false, "CreateOnlyVectorColumn"},
+		{"immutable", Immutable, false, "ImmutableVectorColumn"},
+		{"plain", Writable, false, "VectorColumn"},
+		{"plain pointer", Writable, true, "NullVectorColumn"},
+	}
+	for _, c := range cases {
+		typ, ctor := VectorDescriptorType(c.a, c.pointer)
+		if typ != c.typ || ctor != "New"+c.typ {
+			t.Errorf("%s: got %s/%s want %s", c.name, typ, ctor, c.typ)
+		}
+	}
+}
+
 func TestFieldPermissionsDiscovery(t *testing.T) {
 	dir, err := filepath.Abs("testdata/permissions")
 	if err != nil {

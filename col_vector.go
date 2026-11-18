@@ -11,7 +11,7 @@ type VectorValue interface {
 
 // VectorSource is any vector column descriptor a distance builder accepts:
 // VectorColumn and its nullable and permission variants (ReadOnlyVectorColumn,
-// CreateOnlyVectorColumn, ImmutableVectorColumn). A write restriction does
+// NullReadOnlyVectorColumn, CreateOnlyVectorColumn, ImmutableVectorColumn). A write restriction does
 // not stop a column from being searched.
 type VectorSource[V VectorValue] interface {
 	vectorColumn() VectorColumn[V]
@@ -136,11 +136,14 @@ func (c NullVectorColumn[V]) SetNull() Assignment {
 // ReadOnlyVectorColumn is a read-only vector column (database generated or
 // computed). It can be searched and filtered but has no write method, so a
 // Set on it does not compile. Nullability comes from the flags.
-type ReadOnlyVectorColumn[V VectorValue] struct{ vectorBase[V] }
+type ReadOnlyVectorColumn[V VectorValue] struct {
+	vectorBase[V]
+	_ readOnlyMark
+}
 
 // NewReadOnlyVectorColumn is used by generated code.
 func NewReadOnlyVectorColumn[V VectorValue](table, name string, dim int, flags uint16) ReadOnlyVectorColumn[V] {
-	return ReadOnlyVectorColumn[V]{newVectorBase[V](table, name, dim, flags)}
+	return ReadOnlyVectorColumn[V]{vectorBase: newVectorBase[V](table, name, dim, flags)}
 }
 
 // As returns the same column qualified by a table alias.
@@ -149,13 +152,34 @@ func (c ReadOnlyVectorColumn[V]) As(alias string) ReadOnlyVectorColumn[V] {
 	return c
 }
 
+// NullReadOnlyVectorColumn is the descriptor of a nullable read-only vector
+// column. It offers the searchable, filterable surface of ReadOnlyVectorColumn
+// (IsNull and IsNotNull come from the shared base) and has no write method.
+// It has no EqPtr, as no vector column does, and no Excluded, which
+// ReadOnlyVectorColumn omits because a read-only column is never upserted.
+type NullReadOnlyVectorColumn[V VectorValue] struct{ ReadOnlyVectorColumn[V] }
+
+// NewNullReadOnlyVectorColumn is used by generated code.
+func NewNullReadOnlyVectorColumn[V VectorValue](table, name string, dim int, flags uint16) NullReadOnlyVectorColumn[V] {
+	return NullReadOnlyVectorColumn[V]{NewReadOnlyVectorColumn[V](table, name, dim, flags|FlagNullable)}
+}
+
+// As returns the same column qualified by a table alias.
+func (c NullReadOnlyVectorColumn[V]) As(alias string) NullReadOnlyVectorColumn[V] {
+	c.ReadOnlyVectorColumn = c.ReadOnlyVectorColumn.As(alias)
+	return c
+}
+
 // CreateOnlyVectorColumn is a vector column writable in INSERT only. Its Set
 // returns an InsertAssignment, which Update.Set does not accept.
-type CreateOnlyVectorColumn[V VectorValue] struct{ vectorBase[V] }
+type CreateOnlyVectorColumn[V VectorValue] struct {
+	vectorBase[V]
+	_ createOnlyMark
+}
 
 // NewCreateOnlyVectorColumn is used by generated code.
 func NewCreateOnlyVectorColumn[V VectorValue](table, name string, dim int, flags uint16) CreateOnlyVectorColumn[V] {
-	return CreateOnlyVectorColumn[V]{newVectorBase[V](table, name, dim, flags)}
+	return CreateOnlyVectorColumn[V]{vectorBase: newVectorBase[V](table, name, dim, flags)}
 }
 
 // As returns the same column qualified by a table alias.
@@ -169,11 +193,14 @@ func (c CreateOnlyVectorColumn[V]) Set(v V) InsertAssignment { return InsertAssi
 
 // ImmutableVectorColumn is a vector column set on insert and never changed.
 // Its Set returns an InsertAssignment, which Update.Set does not accept.
-type ImmutableVectorColumn[V VectorValue] struct{ vectorBase[V] }
+type ImmutableVectorColumn[V VectorValue] struct {
+	vectorBase[V]
+	_ immutableMark
+}
 
 // NewImmutableVectorColumn is used by generated code.
 func NewImmutableVectorColumn[V VectorValue](table, name string, dim int, flags uint16) ImmutableVectorColumn[V] {
-	return ImmutableVectorColumn[V]{newVectorBase[V](table, name, dim, flags)}
+	return ImmutableVectorColumn[V]{vectorBase: newVectorBase[V](table, name, dim, flags)}
 }
 
 // As returns the same column qualified by a table alias.

@@ -61,6 +61,9 @@ func DescriptorType(a Access, pointer bool) (typeName, ctor string) {
 func VectorDescriptorType(a Access, pointer bool) (typeName, ctor string) {
 	switch a {
 	case ReadOnly:
+		if pointer {
+			return "NullReadOnlyVectorColumn", "NewNullReadOnlyVectorColumn"
+		}
 		return "ReadOnlyVectorColumn", "NewReadOnlyVectorColumn"
 	case CreateOnly:
 		return "CreateOnlyVectorColumn", "NewCreateOnlyVectorColumn"

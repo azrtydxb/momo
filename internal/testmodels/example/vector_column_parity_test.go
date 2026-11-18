@@ -111,15 +111,25 @@ func TestVectorPermissionColumnsSearchable(t *testing.T) {
 	ro := momo.NewReadOnlyVectorColumn[vector.Vector]("t", "ro", 3, momo.FlagReadOnly)
 	co := momo.NewCreateOnlyVectorColumn[vector.Vector]("t", "co", 3, momo.FlagCreateOnly)
 	im := momo.NewImmutableVectorColumn[vector.Vector]("t", "im", 3, momo.FlagImmutable)
-	for name, d := range map[string]vecop.Expr{
-		"read_only":   vecop.Cosine(ro, v),
-		"create_only": vecop.L2(co.As("a"), v),
-		"immutable":   vecop.InnerProduct(im, v),
+	nro := momo.NewNullReadOnlyVectorColumn[vector.Vector]("t", "nro", 3, momo.FlagReadOnly)
+	if nro.Flags()&momo.FlagNullable == 0 {
+		t.Error("NullReadOnlyVectorColumn lacks FlagNullable")
+	}
+	for _, c := range []struct {
+		name string
+		d    vecop.Expr
+		want string
+	}{
+		{"read_only", vecop.Cosine(ro, v), `("t"."ro" <=> $1)`},
+		{"null read_only", vecop.Cosine(nro, v), `("t"."nro" <=> $1)`},
+		{"null read_only aliased", vecop.Cosine(nro.As("a"), v), `("a"."nro" <=> $1)`},
+		{"create_only", vecop.L2(co.As("a"), v), `("a"."co" <-> $1)`},
+		{"immutable", vecop.InnerProduct(im, v), `("t"."im" <#> $1)`},
 	} {
 		b := momo.NewBuilder(vecDB().Dialect())
-		d.AppendSQL(b)
-		if b.Err() != nil || !strings.Contains(b.String(), `"`) {
-			t.Errorf("%s: %q err %v", name, b.String(), b.Err())
+		c.d.AppendSQL(b)
+		if b.Err() != nil || b.String() != c.want {
+			t.Errorf("%s: SQL %q (err %v), want %q", c.name, b.String(), b.Err(), c.want)
 		}
 	}
 	// Create-only and immutable writes are insert-only values; read-only has

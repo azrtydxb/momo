@@ -17,7 +17,7 @@ var Table = momo.TableRef{Name: "chunks"}
 type Columns struct {
 	ID         momo.Column[int64]
 	Generated  momo.ReadOnlyVectorColumn[vector.Vector]
-	GenNull    momo.ReadOnlyVectorColumn[vector.Vector]
+	GenNull    momo.NullReadOnlyVectorColumn[vector.Vector]
 	Once       momo.CreateOnlyVectorColumn[vector.Vector]
 	Frozen     momo.ImmutableVectorColumn[vector.Vector]
 	Plain      momo.VectorColumn[vector.Vector]
@@ -38,7 +38,7 @@ func As(alias string) Columns {
 	return Columns{
 		ID:         momo.NewColumn[int64](q, "id", momo.FlagPK|momo.FlagIdentity),
 		Generated:  momo.NewReadOnlyVectorColumn[vector.Vector](q, "generated", 3, momo.FlagReadOnly),
-		GenNull:    momo.NewReadOnlyVectorColumn[vector.Vector](q, "gen_null", 3, momo.FlagNullable|momo.FlagReadOnly),
+		GenNull:    momo.NewNullReadOnlyVectorColumn[vector.Vector](q, "gen_null", 3, momo.FlagNullable|momo.FlagReadOnly),
 		Once:       momo.NewCreateOnlyVectorColumn[vector.Vector](q, "once", 3, momo.FlagCreateOnly),
 		Frozen:     momo.NewImmutableVectorColumn[vector.Vector](q, "frozen", 3, momo.FlagImmutable),
 		Plain:      momo.NewVectorColumn[vector.Vector](q, "plain", 3, 0),
