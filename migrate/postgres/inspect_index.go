@@ -61,6 +61,17 @@ func (d Dialect) inspectIndexes(ctx context.Context, c momo.PinnedConn, relOID u
 	return ixs[relOID], invalid[relOID], nil
 }
 
+// relIndexError is an index-reading error that remembers which relation's
+// index failed, so a caller that read several relations at once can name it.
+// Its text is the wrapped error's.
+type relIndexError struct {
+	rel uint32
+	err error
+}
+
+func (e *relIndexError) Error() string { return e.err.Error() }
+func (e *relIndexError) Unwrap() error { return e.err }
+
 // inspectIndexesOf reads the standalone indexes of several relations with one
 // catalog query, keyed by relation oid. Each relation's indexes and invalid
 // names come in the same order inspectIndexes gives them.
@@ -86,7 +97,7 @@ func (Dialect) inspectIndexesOf(ctx context.Context, c momo.PinnedConn, relOIDs 
 	for _, x := range raws {
 		ix, err := buildIndex(ctx, c, x)
 		if err != nil {
-			return nil, nil, fmt.Errorf("index %s: %w", x.name, err)
+			return nil, nil, &relIndexError{rel: x.rel, err: fmt.Errorf("index %s: %w", x.name, err)}
 		}
 		out[x.rel] = append(out[x.rel], ix)
 		if !x.valid {

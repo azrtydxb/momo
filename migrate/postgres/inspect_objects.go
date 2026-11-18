@@ -4,6 +4,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -182,7 +183,9 @@ func (in *inspector) views(ctx context.Context, s *schema.Schema) error {
 	// One query for the dependencies of every view and one for the indexes of
 	// every materialized view, instead of two per view.
 	var all, mats []uint32
+	names := make(map[uint32]string, len(raws))
 	for _, x := range raws {
+		names[x.oid] = x.ns + "." + x.name
 		all = append(all, x.oid)
 		if x.materialized {
 			mats = append(mats, x.oid)
@@ -199,6 +202,9 @@ func (in *inspector) views(ctx context.Context, s *schema.Schema) error {
 		if err := r.Scan(&oid, &ns, &name); err != nil {
 			return err
 		}
+		if _, ok := names[oid]; !ok {
+			return fmt.Errorf("dependency %s.%s belongs to view oid %d, which was not requested", ns, name, oid)
+		}
 		deps[oid] = append(deps[oid], in.qualify(ns, name))
 		return nil
 	})
@@ -209,6 +215,10 @@ func (in *inspector) views(ctx context.Context, s *schema.Schema) error {
 	if len(mats) > 0 {
 		indexes, _, err = Dialect{}.inspectIndexesOf(ctx, in.c, mats)
 		if err != nil {
+			var re *relIndexError
+			if errors.As(err, &re) {
+				return fmt.Errorf("indexes of %s: %w", names[re.rel], err)
+			}
 			return fmt.Errorf("indexes of materialized views: %w", err)
 		}
 	}
