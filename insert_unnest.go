@@ -55,10 +55,6 @@ func (r insertRef) unnestCheck(d *dialect.Dialect, mode insertMode) error {
 // writeUnnest writes the column list and the unnest row source of a plan: one
 // array parameter per written column, cast to the column's array type.
 func (r insertRef) writeUnnest(b *Builder, d *dialect.Dialect, p insertPlan, a insAccess) {
-	types := make(map[string]string, len(r.m.TableSchema.Columns))
-	for _, c := range r.m.TableSchema.Columns {
-		types[c.Name] = c.Type
-	}
 	b.WriteString(" (")
 	for i, ci := range p.cols {
 		if i > 0 {
@@ -73,7 +69,7 @@ func (r insertRef) writeUnnest(b *Builder, d *dialect.Dialect, p insertPlan, a i
 	b.WriteString(" SELECT * FROM unnest(")
 	for i, ci := range p.cols {
 		name := r.m.Columns[ci].Name
-		typ := types[name]
+		typ := r.schemaColumnType(name)
 		if typ == "" {
 			b.SetErr(r.verr(name, "Unnest: column %q has no type in the table schema", name))
 			return
@@ -95,6 +91,19 @@ func (r insertRef) writeUnnest(b *Builder, d *dialect.Dialect, p insertPlan, a i
 		b.WriteString("[]")
 	}
 	b.writeByte(')')
+}
+
+// schemaColumnType returns the type the table schema records for the column
+// name, or "" when it has none. It scans the schema columns instead of
+// building a map, so a render allocates nothing for the lookup.
+func (r insertRef) schemaColumnType(name string) string {
+	cols := r.m.TableSchema.Columns
+	for i := range cols {
+		if cols[i].Name == name {
+			return cols[i].Type
+		}
+	}
+	return ""
 }
 
 // typedColumn turns the values of one column into a typed slice that pgx can
