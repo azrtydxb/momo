@@ -1721,16 +1721,21 @@ of the type, a `Start` outside the bounds, or an `Increment` of 0.
   it (a column default, generated expression, check, index expression or
   predicate, trigger or policy that calls `nextval` on it, or a function or view
   that is written and does), or on the first model when `introspect.only` names
-  the sequence itself. When a call's argument is not a plain literal, the
-  sequence is kept. A sequence that only an unlisted table uses is left out of
-  the models and the snapshot, but it still exists in the database, so `drift`
-  reports it as `unmanaged: sequence <name>` and `baseline` refuses on it. The
-  run prints a hint naming each omitted sequence: add those names to
-  `migrate.exclude` in `momo.yaml`. An `introspect.only` entry that names a
-  sequence counts as a match for the check that every entry matched something.
-  When `introspect.only` is not set, `introspect.skip` does not hide a sequence
-  of a skipped table: it is still declared unless you list it under
-  `introspect.skip` as well.
+  the sequence itself. A `'name'::regclass` literal or a `FROM` or `JOIN` on the
+  sequence counts as a use too, and when a call's argument is not a plain
+  literal, the sequence is kept. A sequence that only an unlisted table uses is
+  left out of the models and the snapshot, but it still exists in the database,
+  so `drift` reports it as `unmanaged: sequence <name>` and `baseline` refuses
+  on it. The run prints a hint naming each omitted sequence: add those names to
+  `migrate.exclude` in `momo.yaml`. A project that already sets
+  `introspect.only` and has such sequences declared on its first model loses
+  them from the models and the snapshot when it regenerates: add the printed
+  `migrate.exclude` entries before running `migrate diff`, or the diff emits
+  `DROP SEQUENCE`. An `introspect.only` entry that names a sequence does not
+  warn when at least one table matched, but the run still fails when no table
+  matched, because a sequence alone cannot be modeled. When `introspect.only` is
+  not set, skipping a table does not skip its sequences: a sequence is hidden
+  only when `introspect.skip` itself names it.
 - SQLite, MySQL and MariaDB have no sequence in the schema model: generating
   for them refuses a `c.Sequence` call, and rendering a sequence change for them
   fails with `momo.ErrUnsupported`.

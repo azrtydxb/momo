@@ -37,21 +37,39 @@ func bareSeqName(s string) string {
 	return cur.String()
 }
 
-// refsSequence reports whether text may call nextval on the sequence: a literal
-// that names it, or a call whose argument is not a plain literal and so cannot
-// be read reliably (which counts as a use, to fail safe). The schema of a
-// qualified literal is ignored, which keeps a sequence when two schemas share
-// a name.
+// regclassLiteral matches a single-quoted literal cast to regclass, with or
+// without the pg_catalog qualifier. relationRef matches the relation after a
+// FROM or JOIN, a bare or double-quoted name with an optional schema.
+var (
+	regclassLiteral = regexp.MustCompile(`(?is)'((?:[^']|'')*)'\s*::\s*(?:pg_catalog\s*\.\s*)?regclass\b`)
+	relationRef     = regexp.MustCompile(`(?i)\b(?:from|join)\s+((?:"(?:[^"]|"")*"|[A-Za-z_][A-Za-z0-9_$]*)(?:\.(?:"(?:[^"]|"")*"|[A-Za-z_][A-Za-z0-9_$]*))*)`)
+)
+
+// refsSequence reports whether text may use the sequence: a nextval, currval or
+// setval call on a literal that names it, such a call whose argument is not a
+// plain literal and so cannot be read reliably (which counts as a use, to fail
+// safe), a regclass literal that names it anywhere (as in
+// pg_sequence_last_value('s'::regclass)), or a FROM or JOIN on it (SELECT
+// last_value FROM s). The schema of a qualified name is ignored, which keeps a
+// sequence when two schemas share a name.
 func refsSequence(text, bare string) bool {
-	calls := len(nextvalCall.FindAllStringIndex(text, -1))
-	if calls == 0 {
-		return false
+	if calls := len(nextvalCall.FindAllStringIndex(text, -1)); calls > 0 {
+		lits := nextvalLiteral.FindAllStringSubmatch(text, -1)
+		if len(lits) != calls {
+			return true
+		}
+		for _, m := range lits {
+			if strings.EqualFold(bareSeqName(m[1]), bare) {
+				return true
+			}
+		}
 	}
-	lits := nextvalLiteral.FindAllStringSubmatch(text, -1)
-	if len(lits) != calls {
-		return true
+	for _, m := range regclassLiteral.FindAllStringSubmatch(text, -1) {
+		if strings.EqualFold(bareSeqName(m[1]), bare) {
+			return true
+		}
 	}
-	for _, m := range lits {
+	for _, m := range relationRef.FindAllStringSubmatch(text, -1) {
 		if strings.EqualFold(bareSeqName(m[1]), bare) {
 			return true
 		}

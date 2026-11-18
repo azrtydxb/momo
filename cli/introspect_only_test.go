@@ -81,8 +81,14 @@ func TestCheckOnlyMatchedCountsSequences(t *testing.T) {
 	if err := checkOnlyMatched([]string{"users", "jobs_*"}, []schema.Table{users}, []schema.Sequence{jobs}, say); err != nil || len(said) != 0 {
 		t.Fatalf("table and sequence entry: err=%v said=%v", err, said)
 	}
-	if err := checkOnlyMatched([]string{"jobs_seq"}, nil, []schema.Sequence{jobs}, say); err != nil || len(said) != 0 {
-		t.Fatalf("only a sequence entry: err=%v said=%v", err, said)
+	// A sequence alone cannot be modeled: with no table matched the run is still
+	// the usage error, even when every entry names a sequence.
+	err := checkOnlyMatched([]string{"jobs_seq"}, nil, []schema.Sequence{jobs}, say)
+	if err == nil || !strings.Contains(err.Error(), "introspect.only matched no table") {
+		t.Fatalf("only a sequence entry, no table: err = %v, want the matched-no-table error", err)
+	}
+	if len(said) != 0 {
+		t.Fatalf("said = %v, want no warning before the error", said)
 	}
 	if err := checkOnlyMatched([]string{"users", "nope_seq"}, []schema.Table{users}, []schema.Sequence{jobs}, say); err != nil {
 		t.Fatal(err)

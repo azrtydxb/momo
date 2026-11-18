@@ -231,6 +231,56 @@ func TestOnlyKeepsASequenceAFunctionOrViewUses(t *testing.T) {
 	})
 }
 
+// TestRefsSequence pins which texts count as a use of the sequence jobs_seq.
+//
+// Catches: a sequence read without nextval (a regclass literal handed to a
+// function, a FROM or JOIN on the sequence relation) being judged unused and
+// dropped from the models.
+func TestRefsSequence(t *testing.T) {
+	cases := []struct {
+		text string
+		want bool
+	}{
+		{"nextval('jobs_seq'::regclass)", true},
+		{"nextval('other_seq'::regclass)", false},
+		{"pg_sequence_last_value('jobs_seq'::regclass)", true},
+		{"pg_sequence_last_value('app.\"jobs_seq\"'::pg_catalog.regclass)", true},
+		{"pg_sequence_last_value('other_seq'::regclass)", false},
+		{"SELECT last_value FROM jobs_seq", true},
+		{"SELECT last_value FROM public.jobs_seq AS s", true},
+		{"select last_value from \"jobs_seq\"", true},
+		{"SELECT 1 FROM t JOIN app.jobs_seq ON true", true},
+		{"SELECT last_value FROM jobs_seq_archive", false},
+		{"SELECT last_value FROM other_seq", false},
+		{"SELECT jobs_seq FROM t", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := refsSequence(c.text, "jobs_seq"); got != c.want {
+			t.Errorf("refsSequence(%q) = %v, want %v", c.text, got, c.want)
+		}
+	}
+}
+
+// TestOnlyKeepsASequenceReadWithoutNextval is the same through Generate: a view
+// that reads the sequence relation, and a function body that hands a regclass
+// literal to pg_sequence_last_value.
+func TestOnlyKeepsASequenceReadWithoutNextval(t *testing.T) {
+	t.Run("view reads the sequence", func(t *testing.T) {
+		files, _, _ := onlyListed(t, func(s *schema.Schema) {
+			s.Views = []schema.View{{Name: "v", Query: "SELECT last_value FROM y_outside_seq"}}
+		})
+		mustContain(t, "a_first", files["a_first"], `c.Sequence("y_outside_seq")`)
+	})
+	t.Run("function body names it as regclass", func(t *testing.T) {
+		files, _, _ := onlyListed(t, func(s *schema.Schema) {
+			s.Functions = []schema.Function{{Name: "last_code", Returns: "bigint", Language: "sql", Volatility: "VOLATILE", Body: "SELECT pg_sequence_last_value('y_outside_seq'::regclass)"}}
+			tableNamed(s, "z_listed").Columns[0].Default = "last_code()"
+		})
+		mustContain(t, "z_listed", files["z_listed"], `c.Sequence("y_outside_seq")`)
+	})
+}
+
 // TestOnlyNotesTheExcludeForAnOmittedSequence: a sequence left out still exists
 // in the database, so drift and baseline see it as unmanaged; the finding says
 // to add it to migrate.exclude.

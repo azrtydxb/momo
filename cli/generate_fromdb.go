@@ -167,13 +167,14 @@ func runGenerateFromDB(a fromDBArgs, cfgPath string, stdout, stderr io.Writer) i
 // table. Inspection already left out every table that matches none, so tables
 // holds only the matches: with no match at all it is an error (a typo would
 // otherwise read as an empty database), and a glob that matched none while
-// others did is named in a warning.
+// others did is named in a warning. A glob that names a standalone sequence
+// does not warn, but a sequence alone cannot be modeled, so with no table
+// matched it is still the error.
 func checkOnlyMatched(only []string, tables []schema.Table, seqs []schema.Sequence, say func(format string, args ...any)) error {
 	if len(only) == 0 {
 		return nil
 	}
 	var unmatched []string
-	matchedSeq := false
 	for _, g := range only {
 		onTable := slices.ContainsFunc(tables, func(t schema.Table) bool {
 			return schema.MatchObject([]string{g}, t.Schema, t.Name)
@@ -182,12 +183,11 @@ func checkOnlyMatched(only []string, tables []schema.Table, seqs []schema.Sequen
 		onSeq := slices.ContainsFunc(seqs, func(q schema.Sequence) bool {
 			return schema.MatchObject([]string{g}, q.Schema, q.Name)
 		})
-		matchedSeq = matchedSeq || onSeq
 		if !onTable && !onSeq {
 			unmatched = append(unmatched, g)
 		}
 	}
-	if len(tables) == 0 && !matchedSeq {
+	if len(tables) == 0 {
 		return fmt.Errorf("introspect.only matched no table (%s): a table in the current schema is matched by its bare name, not public.name; a table outside it by schema.name", strings.Join(only, ", "))
 	}
 	if len(unmatched) > 0 {
