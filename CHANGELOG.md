@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/azrtydxb/momo/compare/v0.18.0...v0.19.0) (2026-11-18)
+
+
+### Features
+
+* **schema:** model deferrable constraints ([#246](https://github.com/azrtydxb/momo/issues/246)) ([e2f1117](https://github.com/azrtydxb/momo/commit/e2f1117532d07403eee5034820a8a7768ab4ffd6)), closes [#237](https://github.com/azrtydxb/momo/issues/237)
+
 ## [0.18.0](https://github.com/azrtydxb/momo/compare/v0.17.0...v0.18.0) (2026-11-18)
 
 _A package with 100 models and 500 typed queries now compiles in about 4.5 GB of compiler memory instead of 6 GB, `schema.Equal` agrees with `Diff` on value-list checks, and `--from-db` with `introspect.only` declares only the sequences the listed tables use. Upgrading needs a code change only where a helper takes `momo.ReadOnlyVectorColumn` for a nullable read-only vector field; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.18.0/docs/upgrading.md). A project that sets `introspect.only` should add the `migrate.exclude` entries that `generate --from-db` prints before its next `migrate diff`, as [docs/migrations.md](https://github.com/azrtydxb/momo/blob/v0.18.0/docs/migrations.md) describes. [Changes since 0.17.0](https://github.com/azrtydxb/momo/compare/v0.17.0...v0.18.0)._
