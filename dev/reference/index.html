@@ -2107,6 +2107,16 @@
 <td>PrimaryKey orders the columns of a composite primary key, for a key whose column order differs from the field order (the order is the btree order that lookups rely on).</td>
 </tr>
 <tr>
+<td><code>momo.Config.PrimaryKeyDeferrable</code></td>
+<td>method</td>
+<td>PrimaryKeyDeferrable makes the primary key DEFERRABLE (PostgreSQL): a transaction can defer its check to commit with SET CONSTRAINTS.</td>
+</tr>
+<tr>
+<td><code>momo.Config.PrimaryKeyInitiallyDeferred</code></td>
+<td>method</td>
+<td>PrimaryKeyInitiallyDeferred makes the primary key DEFERRABLE INITIALLY DEFERRED: the check runs at commit unless a transaction asks for it sooner.</td>
+</tr>
+<tr>
 <td><code>momo.Config.RLS</code></td>
 <td>method</td>
 <td>RLS declares the table's row-level security flags.</td>
@@ -2787,6 +2797,16 @@
 <td>ForeignKeyOpts carries the optional referential actions of a foreign key declaration.</td>
 </tr>
 <tr>
+<td><code>momo.ForeignKeyOpts.Deferrable</code></td>
+<td>method</td>
+<td>Deferrable makes the foreign key DEFERRABLE (PostgreSQL): a transaction can defer its check to commit with SET CONSTRAINTS.</td>
+</tr>
+<tr>
+<td><code>momo.ForeignKeyOpts.InitiallyDeferred</code></td>
+<td>method</td>
+<td>InitiallyDeferred makes the foreign key DEFERRABLE INITIALLY DEFERRED: the check runs at commit unless a transaction asks for it sooner.</td>
+</tr>
+<tr>
 <td><code>momo.ForeignKeyOpts.OnDelete</code></td>
 <td>method</td>
 <td>OnDelete sets the ON DELETE action of a foreign key ("CASCADE", "RESTRICT", "SET NULL", "SET DEFAULT" or "NO ACTION").</td>
@@ -2992,9 +3012,19 @@
 <td>Concurrently marks the index to be built concurrently.</td>
 </tr>
 <tr>
+<td><code>momo.IndexOpts.Deferrable</code></td>
+<td>method</td>
+<td>Deferrable makes the unique constraint DEFERRABLE (PostgreSQL): a transaction can defer its check to commit with SET CONSTRAINTS, so it can reorder rows through a state that would collide.</td>
+</tr>
+<tr>
 <td><code>momo.IndexOpts.Desc</code></td>
 <td>method</td>
 <td>Desc marks one indexed field descending.</td>
+</tr>
+<tr>
+<td><code>momo.IndexOpts.InitiallyDeferred</code></td>
+<td>method</td>
+<td>InitiallyDeferred makes the unique constraint DEFERRABLE INITIALLY DEFERRED: the check runs at commit unless a transaction asks for it sooner.</td>
 </tr>
 <tr>
 <td><code>momo.IndexOpts.Method</code></td>

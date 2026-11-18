@@ -1099,6 +1099,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0190" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.19.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.19.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#deferrable-constraints-are-part-of-the-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deferrable constraints are part of the schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0180" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2391,6 +2419,34 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0190" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.19.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.19.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#deferrable-constraints-are-part-of-the-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deferrable constraints are part of the schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0180" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3582,6 +3638,29 @@
 <a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
+<h2 id="upgrading-to-0190">Upgrading to 0.19.0<a class="headerlink" href="#upgrading-to-0190" title="Permanent link">&para;</a></h2>
+<p><code>momo migrate drift</code>, the refusal of <code>momo migrate baseline</code> and
+<code>momo generate --from-db</code> now see <code>DEFERRABLE</code> constraints on PostgreSQL; no
+edit is needed in your code, but a database that holds a deferrable constraint
+your snapshot does not describe now reports a difference.</p>
+<h3 id="deferrable-constraints-are-part-of-the-schema">Deferrable constraints are part of the schema<a class="headerlink" href="#deferrable-constraints-are-part-of-the-schema" title="Permanent link">&para;</a></h3>
+<p>Before, momo ignored <code>DEFERRABLE</code> and <code>INITIALLY DEFERRED</code> on unique, primary
+key and foreign key constraints: inspection did not read them, <code>generate
+--from-db</code> wrote a plain constraint and the init migration it produced built
+one, so a transaction that relied on a deferred check failed on a fresh install
+with a unique violation. Inspection now reads <code>pg_constraint.condeferrable</code>
+and <code>condeferred</code>, and <code>momo generate --from-db</code> writes them as
+<code>IndexOpts.Deferrable</code>, <code>IndexOpts.InitiallyDeferred</code>,
+<code>ForeignKeyOpts.Deferrable</code>, <code>ForeignKeyOpts.InitiallyDeferred</code>,
+<code>Config.PrimaryKeyDeferrable</code> and <code>Config.PrimaryKeyInitiallyDeferred</code>
+declarations. A snapshot you already have loads as not deferrable, so the
+snapshot format version is unchanged and no snapshot needs rewriting.</p>
+<p>If your database has such a constraint, <code>drift</code> and <code>baseline</code> now report it as
+changed until the snapshot says so. Run <code>momo generate --from-db</code> again, or
+declare the constraint in <code>MomoConfig</code> and run <code>momo migrate diff</code>, which drops
+and adds the constraint again; see
+<a href="../migrations/#deferrable-constraints">migrations</a> for the declaration, the
+migration it renders and the dialects that refuse it.</p>
 <h2 id="upgrading-to-0180">Upgrading to 0.18.0<a class="headerlink" href="#upgrading-to-0180" title="Permanent link">&para;</a></h2>
 <p>A <code>*vector.Vector</code> field tagged <code>read_only</code> now generates a
 <code>momo.NullReadOnlyVectorColumn</code> instead of a <code>momo.ReadOnlyVectorColumn</code>, so

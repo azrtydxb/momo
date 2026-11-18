@@ -1923,6 +1923,13 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>every <code>timeop.ExtractField</code>, <code>timeop.TruncUnit</code>, interval and <code>timeop.Now</code> run on both SQLite drivers; month arithmetic overflows into the next month (Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); <code>timeop.Now</code> is millisecond text; <code>timeop.AtTimeZone</code> is PostgreSQL only; <code>timeop.IntervalMillisecond</code> and <code>timeop.IntervalMicrosecond</code> keep milliseconds; <code>timeop.EpochSeconds</code> of <code>timeop.Sub</code> runs through <code>julianday</code> (about 0.1 ms), <code>timeop.Age</code> is PostgreSQL only; <code>timeop.AddDays</code>, <code>timeop.AddDaysExpr</code> and <code>timeop.DaysBetween</code> read a <code>types.Date</code> stored as <code>YYYY-MM-DD</code> text (<code>date()</code> and <code>julianday</code>), and a bound infinite date fails the build with <code>ErrValidation</code></td>
 <td>every <code>timeop.ExtractField</code>, <code>timeop.TruncUnit</code>, interval (including milliseconds and microseconds), <code>timeop.Now</code>, <code>timeop.EpochSeconds</code> of <code>timeop.Sub</code>, <code>timeop.AddDays</code>, <code>timeop.AddDaysExpr</code> and <code>timeop.DaysBetween</code> run on MySQL 8.4, MySQL 9.7 and MariaDB 11.8; month arithmetic clamps to the last day of the month; <code>timeop.AtTimeZone</code> is PostgreSQL only; <code>timeop.Age</code> and <code>timeop.StatementTimestamp</code> are <code>ErrUnsupported</code> (golden-tested); a bound infinite <code>types.Date</code> fails the build with <code>ErrValidation</code></td>
 </tr>
+<tr>
+<td>Deferrable constraints</td>
+<td><code>schema.Unique</code>, <code>schema.ForeignKey</code>, <code>schema.Table</code></td>
+<td>yes: <code>DEFERRABLE</code> and <code>DEFERRABLE INITIALLY DEFERRED</code> on a unique constraint, a primary key and a foreign key are declared, read from <code>pg_constraint</code>, written by <code>generate --from-db</code>, rendered, compared by <code>diff</code>, <code>Baseline</code> and <code>drift</code>, and kept by a snapshot; a change of deferrability drops and adds the constraint again</td>
+<td><code>ErrUnsupported</code>: a declaration is a generator error and the renderer refuses it, because <code>PRAGMA foreign_key_list</code> does not report the deferrability of a foreign key and a primary key or unique constraint cannot be deferred</td>
+<td><code>ErrUnsupported</code>: MySQL and MariaDB check each constraint at the end of the statement and have no <code>DEFERRABLE</code>; a declaration is a generator error and the renderer refuses it</td>
+</tr>
 </tbody>
 </table>
 <!-- /generated:features -->

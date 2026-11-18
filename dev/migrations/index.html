@@ -704,6 +704,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#deferrable-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deferrable constraints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#checksums" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1822,6 +1833,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#deferrable-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deferrable constraints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#checksums" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2514,6 +2536,74 @@ is a declared check, and only an unnamed CHECK over a TEXT column is read as an
 enum column. A list needs a text column: an enum column, a column of another
 type, an empty list, and a value that holds a backslash or a control character
 are refused.</p>
+<h3 id="deferrable-constraints">Deferrable constraints<a class="headerlink" href="#deferrable-constraints" title="Permanent link">&para;</a></h3>
+<p>A unique constraint, a primary key and a foreign key can be <code>DEFERRABLE</code> or
+<code>DEFERRABLE INITIALLY DEFERRED</code> on PostgreSQL: the transaction checks the
+constraint at commit, so it can move rows through a state that would collide
+(reordering the rows of a list under <code>UNIQUE (route_id, position)</code> is the usual
+case). The model keeps two flags per constraint: <code>schema.Unique.Deferrable</code> and
+<code>schema.Unique.InitiallyDeferred</code>, the same pair on <code>schema.ForeignKey</code>, and
+<code>schema.Table.PrimaryKeyDeferrable</code> and <code>schema.Table.PrimaryKeyInitiallyDeferred</code>
+for the primary key. <code>INITIALLY DEFERRED</code> implies <code>DEFERRABLE</code>, so the two
+spellings of an initially deferred constraint compare equal. A snapshot written
+before the flags existed loads with none of them set, which is <code>NOT DEFERRABLE</code>,
+so the snapshot format version stays 1 and no snapshot needs rewriting.</p>
+<p>The declaration is read from <code>MomoConfig</code>:</p>
+<ul>
+<li><code>Config.Unique</code> takes <code>IndexOpts.Deferrable</code> or <code>IndexOpts.InitiallyDeferred</code>.
+  A deferrable unique stays a constraint, so it takes no other option:
+  <code>IndexOpts.Where</code>, <code>IndexOpts.Method</code>, <code>IndexOpts.With</code>, <code>IndexOpts.Opclass</code>,
+  <code>IndexOpts.Desc</code>, <code>IndexOpts.Nulls</code>, <code>IndexOpts.Concurrently</code> or
+  <code>IndexOpts.Unique</code> makes it an index, which PostgreSQL cannot defer, and the
+  generator refuses the combination. <code>Config.Index</code> and <code>Config.IndexExpr</code> refuse
+  both options.</li>
+<li><code>Config.ForeignKey</code> takes <code>ForeignKeyOpts.Deferrable</code> or
+  <code>ForeignKeyOpts.InitiallyDeferred</code>. A <code>belongs_to</code> tag has no such option, so
+  declare a deferrable key with <code>Config.ForeignKey</code>.</li>
+<li><code>Config.PrimaryKeyDeferrable</code> and <code>Config.PrimaryKeyInitiallyDeferred</code> mark
+  the primary key; the model must have one.</li>
+</ul>
+<p>SQLite, MySQL and MariaDB cannot model them. MySQL and MariaDB check every
+constraint at the end of the statement and have no <code>DEFERRABLE</code>. SQLite defers
+a foreign key only, and <code>PRAGMA foreign_key_list</code> does not report that, so momo
+could not read a declared flag back and every inspection would differ from the
+model. The generator reports a diagnostic for a deferrable constraint when the
+target dialect is not PostgreSQL, and the SQLite and MySQL renderers return an
+error that wraps <code>momo.ErrUnsupported</code>.</p>
+<p>A foreign key cannot reference a deferrable primary key or a deferrable unique
+constraint. PostgreSQL refuses to create it (<code>cannot use a deferrable unique
+constraint for referenced table</code>), so a table that other tables reference, with
+<code>belongs_to</code> or <code>Config.ForeignKey</code>, keeps an immediate key. The generator
+reports a diagnostic that names the foreign key and the deferrable key it
+references, and <code>migrate.Diff</code> returns an error with the same names before it plans a
+change, so the migration never fails half way through. A column set that a
+non-deferrable key also covers is accepted: PostgreSQL uses that key. Make the
+referenced key immediate, or have the foreign key reference a column set that
+an immediate unique constraint or unique index covers. The deferrable foreign
+key itself, and a deferrable key that nothing references, are fine.</p>
+<p>What the tools do on PostgreSQL:</p>
+<ul>
+<li><code>momo generate --from-db</code> reads <code>pg_constraint.condeferrable</code> and
+  <code>condeferred</code> and writes the declarations above; a deferrable foreign key is
+  written as <code>Config.ForeignKey</code>, because the tag form cannot say it. A database
+  built from the generated init migration recreates the constraints deferrable.</li>
+<li><code>diff</code> renders <code>DEFERRABLE</code> or <code>DEFERRABLE INITIALLY DEFERRED</code> after the
+  constraint in <code>CREATE TABLE</code> and <code>ADD CONSTRAINT</code> (a unique added to an
+  existing table keeps the concurrent index build, and the flags go on the
+  <code>ADD CONSTRAINT ... UNIQUE USING INDEX</code> statement).</li>
+<li>A change of deferrability is a change of the constraint: <code>diff</code> drops it and
+  adds it again, like any other change of a constraint, in one transaction.
+  PostgreSQL has <code>ALTER TABLE ... ALTER CONSTRAINT</code> for a foreign key, but
+  not for a unique constraint or a primary key, so one rule covers all three.
+  Re-adding a foreign key validates the table again. A primary key or unique
+  constraint that a foreign key references is never deferrable (see the limit
+  below), so <code>diff</code> never has to drop one to change its deferrability: the
+  desired schema is refused before any statement is planned.</li>
+<li><code>Baseline</code>, <code>drift</code> and <code>drift --fix-sql</code> compare the flags with the other
+  attributes. A difference reads <code>deferrable=false</code> on one side and
+  <code>deferrable=true</code> on the other, and the repair is the drop and add above. As
+  every drop, it is withheld unless <code>--allow-destructive</code> is given.</li>
+</ul>
 <h3 id="checksums">Checksums<a class="headerlink" href="#checksums" title="Permanent link">&para;</a></h3>
 <p>Two independent checks, both SHA-256 of the file bytes:</p>
 <ol>

@@ -2167,7 +2167,7 @@ string literals only.</p>
 <code>&lt;table&gt;_&lt;col&gt;_idx</code> produced by an <code>index</code> tag (the <code>Plan</code> field above already
 yields <code>accounts_plan_idx</code>); the generator refuses the duplicate.</p>
 <p>Config methods: <code>Config.Index</code>, <code>Config.IndexExpr</code>, <code>Config.Unique</code>, <code>Config.ForeignKey</code>, <code>Config.Check</code>, <code>Config.CheckIn</code>, <code>Config.Enum</code>, <code>Config.Default</code>, <code>Config.Generated</code>,
-<code>Config.Comment</code>, <code>Config.Collate</code>, <code>Config.IDGen</code>, <code>Config.FKName</code>, <code>Config.PrimaryKey</code>, <code>Config.View</code>, <code>Config.Function</code>, <code>Config.Trigger</code>, <code>Config.Policy</code>, <code>Config.RLS</code>, <code>Config.Partition</code>,
+<code>Config.Comment</code>, <code>Config.Collate</code>, <code>Config.IDGen</code>, <code>Config.FKName</code>, <code>Config.PrimaryKey</code>, <code>Config.PrimaryKeyDeferrable</code>, <code>Config.PrimaryKeyInitiallyDeferred</code>, <code>Config.View</code>, <code>Config.Function</code>, <code>Config.Trigger</code>, <code>Config.Policy</code>, <code>Config.RLS</code>, <code>Config.Partition</code>,
 <code>Config.PartitionOf</code>. Index chain: <code>IndexOpts.Unique()</code> (on <code>Config.Index</code> or <code>Config.IndexExpr</code>), <code>Where(pred)</code>, <code>Method(m)</code>, <code>IndexOpts.With(k, v)</code>,
 <code>Opclass(field, op)</code>, <code>Desc(field)</code>, <code>Nulls(field, "first"|"last")</code>,
 <code>Concurrently()</code> (<code>diff</code> writes the index as <code>CREATE INDEX CONCURRENTLY</code> in its own no-transaction migration).</p>
@@ -2222,6 +2222,16 @@ columns; otherwise the generator reports a diagnostic. The key is a plain
 constraint: <code>diff</code> adds, replaces and drops it like a single-column key, and
 <code>generate --from-db</code> writes it back. There is no <code>belongs_to</code> form for a
 composite key; the relation still needs a single-column key.</p>
+<p>A unique constraint, a foreign key and a primary key can be <code>DEFERRABLE</code> on
+PostgreSQL: <code>c.Unique(...).Deferrable()</code> or <code>.InitiallyDeferred()</code> (a unique
+with any other option is an index, which cannot be deferred),
+<code>c.ForeignKey(...).Deferrable()</code> or <code>.InitiallyDeferred()</code>, and
+<code>c.PrimaryKeyDeferrable()</code> or <code>c.PrimaryKeyInitiallyDeferred()</code> (call one of
+them once). The other dialects refuse them. A foreign key cannot reference a
+deferrable primary key or unique constraint, because PostgreSQL refuses it:
+the generator and <code>migrate.Diff</code> report an error that names the foreign key and the
+key, so keep a key that other tables reference immediate. See
+<a href="../migrations/#deferrable-constraints">migrations</a>.</p>
 <p>Many-to-many needs <code>join:</code> with the same table on both models you declare it on
 (the reverse side is optional, but if declared it must carry <code>join:</code> too):</p>
 <!-- docscheck:fragment -->
