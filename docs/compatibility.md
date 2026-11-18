@@ -1,13 +1,13 @@
 # Compatibility and deprecation policy
 
-This page says what Momo promises to keep working once it is at version 1.0.0,
+This page says what Momo promises to keep working once it is at version 1,
 what it does not promise, how a deprecated API is retired, and how that
 differs from the pre-v1 releases you can install today. The promise only
-starts at v1.0.0; until then read [how pre-v1 differs](#how-pre-v1-differs-today).
+starts at v1; until then read [how pre-v1 differs](#how-pre-v1-differs-today).
 
 ## What the promise covers
 
-From v1.0.0, a minor or patch release does not break a program or a
+From v1, a minor or patch release does not break a program or a
 repository that worked with an earlier `1.x` release. The promise covers these
 surfaces:
 
@@ -50,7 +50,7 @@ These are outside the promise. They can change in any release.
 | `internal/...`                                                                   | not importable; includes `internal/testdb`, `internal/suite` and the other test support                                    |
 | `momotest`, `momotest/sqlitetest`, `migrate/migratetest`                         | test helpers: their assertions, fixtures and defaults may change to catch more mistakes                                    |
 | `bench` and `examples/...`                                                       | separate benchmark module and runnable examples                                                                            |
-| the `otelmomo` module                                                            | versioned and tagged on its own (`otelmomo/vX.Y.Z`), so it carries its own promise from its own 1.0.0                      |
+| the `otelmomo` module                                                            | versioned and tagged on its own (`otelmomo/vX.Y.Z`), so it carries its own promise from its own v1                         |
 | the exact SQL text, the wording of errors and diagnostics, the layout of reports | the sentinel errors and error types are covered; the SQL Momo writes and the messages it prints are not                    |
 | anything marked experimental in its doc comment                                  | a package or identifier whose documentation starts with "Experimental:" is excluded even when it sits in a covered package |
 
@@ -88,10 +88,10 @@ The `apidiff-docs` job runs `make apidiff-gate` on every pull request
 non-internal package in the root module between the base branch and the pull
 request.
 
-- Before v1.0.0 the gate only demands a docs change for an exported change, as
+- Before v1 the gate only demands a docs change for an exported change, as
   [contributing](contributing.md) describes. It never fails an incompatible
   change on its own.
-- From v1.0.0 it also fails an incompatible change in a covered package unless
+- From v1 it also fails an incompatible change in a covered package unless
   the pull request is declared breaking: the title has a `!` after the type
   (`feat!: remove X`), or the pull request body has a line that starts in
   column 0 with `BREAKING CHANGE: ` and a description. A declared breaking
@@ -126,5 +126,5 @@ install now, and this is what holds instead:
   keeps the stability table.
 
 Which packages are excluded and the deprecation rules are written down now so
-that a review of the exported API before v1.0.0 can change what needs to
+that a review of the exported API before v1 can change what needs to
 change; they take effect when the version tag does.
