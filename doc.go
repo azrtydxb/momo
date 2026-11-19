@@ -6,10 +6,11 @@
 // subqueries and CTEs, relations with eager loading, transactions with
 // savepoints, and vector search.
 //
-// Momo supports PostgreSQL 16 and 17 with pgvector, through the pgx driver in
-// the driver/pgxdriver package. The SQLite and MySQL dialect descriptors exist
-// but have no driver yet. The module is pre-v1, with no compatibility promise
-// between releases.
+// Momo supports PostgreSQL 16 and 17 with pgvector through driver/pgxdriver,
+// SQLite through driver/sqlitedriver and driver/sqlitepure, and MySQL and
+// MariaDB through driver/mysqldriver. The module is pre-v1, with no
+// compatibility promise between releases; docs/compatibility.md says what the
+// v1 promise will cover.
 //
 // A program opens a database with New and a driver, then runs queries against
 // the DB or a Tx, both of which implement Querier:
