@@ -21,6 +21,11 @@ type InspectOptions struct {
 }
 
 // Dialect is the per-database migration backend.
+//
+// Dialect and the optional interfaces a dialect may implement are
+// implemented only by Momo's own migrate/postgres, migrate/sqlite and
+// migrate/mysql packages. A release may add a method to them, so code outside
+// Momo should call a dialect, not implement one.
 type Dialect interface {
 	Dialect() *dialect.Dialect
 	Inspect(ctx context.Context, c momo.PinnedConn, opts InspectOptions) (*schema.Schema, error)

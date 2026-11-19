@@ -26,14 +26,14 @@ import (
 // decimal int64 key, or "s:" plus the first 32 hex digits of the sha256 of a
 // text key. The longest name is 14 + 8 + 1 + 34 = 57 characters. The mapping is
 // fixed, so every process that uses this package agrees on it. The text hash is
-// not the one PostgreSQL uses and Hash64 has no effect on MySQL.
+// not the one PostgreSQL uses and WithHash64 has no effect on MySQL.
 
 const (
 	// mysqlName is the SQL that builds the lock name from the bound key part.
 	mysqlName = "CONCAT('momo:advisory:', IFNULL(LEFT(SHA2(DATABASE(), 256), 8), 'nodb'), ':', ?)"
 	// mysqlSlice is the timeout in seconds of one GET_LOCK call inside the
-	// blocking Lock. A negative timeout waits forever on MySQL and returns NULL
-	// on MariaDB, so Lock repeats a short wait until the lock is granted or
+	// blocking Acquire. A negative timeout waits forever on MySQL and returns NULL
+	// on MariaDB, so Acquire repeats a short wait until the lock is granted or
 	// the context ends.
 	mysqlSlice = 1
 )

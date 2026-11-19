@@ -184,7 +184,7 @@ func TestListenReconnectsAfterBackendTermination(t *testing.T) {
 	ch := uniqueChannel()
 	reconnected := make(chan struct{}, 4)
 	_, results, ctx := newListener(t, []string{ch},
-		OnReconnect(func() { reconnected <- struct{}{} }),
+		WithOnReconnect(func() { reconnected <- struct{}{} }),
 		WithBackoff(10*time.Millisecond, 200*time.Millisecond))
 	pool := openPool(t)
 	db := momo.New(New(pool))
@@ -240,7 +240,7 @@ func TestListenWaitDeadlineThenResume(t *testing.T) {
 	reconnected := make(chan struct{}, 4)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*listenWait)
 	defer cancel()
-	l, err := Listen(ctx, connCfg(t), []string{ch}, OnReconnect(func() { reconnected <- struct{}{} }))
+	l, err := Listen(ctx, connCfg(t), []string{ch}, WithOnReconnect(func() { reconnected <- struct{}{} }))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +319,7 @@ func TestListenCloseDuringOnReconnectClosesConnection(t *testing.T) {
 	entered := make(chan struct{}, 1)
 	release := make(chan struct{})
 	l, results, ctx := newListener(t, []string{ch},
-		OnReconnect(func() {
+		WithOnReconnect(func() {
 			entered <- struct{}{}
 			<-release
 		}),

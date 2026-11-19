@@ -1364,3 +1364,11 @@ Decision (2026-11-18, the user, via AskUserQuestion): keep deciding staleness in
 Decision (2026-11-18, the user, via AskUserQuestion): change the write path so the read and the write-back apply the model's interceptors; keep the raw write without hooks, `updated_at` or version.
 
 Decision (2026-11-18, the user, via AskUserQuestion): keep the fixed `<column>_hash` name; no change.
+
+## Compatibility policy (#254)
+
+Question: which packages are excluded from the v1 compatibility promise, and what happens to the API-review findings?
+
+Decision (2026-11-19, the user, via AskUserQuestion): accept the proposed experimental list: `gen/graphql`, `gen/grpc`, `gen/openapi`, `gen/apiquery`, `importer`.
+
+Decision (2026-11-19, the user): carry out all seven API-review cleanup groups as breaking changes before v1, tracked as separate issues.

@@ -50,11 +50,11 @@ Servers the integration jobs run against: PostgreSQL 16 and 17 with pgvector (se
 | `github.com/asg017/sqlite-vec-go-bindings` | v0.1.6   | sqlite-vec for `driver/sqlitedriver` (cgo).                                                                                               |
 | `github.com/go-sql-driver/mysql`           | v1.10.1  | used by `driver/mysqldriver` and by test harness code (`internal/testdb`).                                                                |
 | `github.com/google/uuid`                   | v1.6.0   | tests only (root, `arrayop`); the generator and `arrayop` match its UUID type by import path, so momo's own code imports nothing from it. |
-| `github.com/jackc/pgx/v5`                  | v5.12.0  | PostgreSQL driver for `driver/pgxdriver`.                                                                                                 |
+| `github.com/jackc/pgx/v5`                  | v5.13.0  | PostgreSQL driver for `driver/pgxdriver`.                                                                                                 |
 | `github.com/mattn/go-sqlite3`              | v1.14.53 | used by `driver/sqlitedriver` (cgo).                                                                                                      |
 | `go.yaml.in/yaml/v3`                       | v3.0.6   | `momo.yaml`.                                                                                                                              |
 | `golang.org/x/tools`                       | v0.52.0  | generator.                                                                                                                                |
-| `modernc.org/sqlite`                       | v1.61.1  | pure-Go SQLite for `driver/sqlitepure` (no cgo, no vectors).                                                                              |
+| `modernc.org/sqlite`                       | v1.62.0  | pure-Go SQLite for `driver/sqlitepure` (no cgo, no vectors).                                                                              |
 
 <!-- /generated:dependencies -->
 
@@ -124,7 +124,7 @@ and the allocation gate (`make bench-gate`).
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Pre-1.0             | the README states: "v0.19.0, pre-v1, with no compatibility promise between releases" <!-- x-release-please-version -->                                                                                                        |
 | Versioning          | release-please with `bump-minor-pre-major: true` and Conventional Commits; breaking changes are marked `feat!:` or a `BREAKING CHANGE:` footer (CONTRIBUTING)                                                                 |
-| Deprecation process | none documented                                                                                                                                                                                                               |
+| Deprecation process | none before v1; see [compatibility](compatibility.md)                                                                                                                                                                         |
 | Security fixes      | latest minor only (`SECURITY.md`)                                                                                                                                                                                             |
 | Pin your dependency | use an exact version in `go.mod` and read `CHANGELOG.md` before each upgrade                                                                                                                                                  |
 | Generated code      | regenerate with `momo generate` after every upgrade; generated files carry only a format number in their header, so an upgrade rewrites them only when the generated code changes; `momo generate --check` reports stale ones |

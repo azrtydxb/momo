@@ -32,7 +32,17 @@ The `apidiff-docs` CI job (`make apidiff-gate`, `scripts/apidiff-docs-gate.sh`) 
 - the diff touches `README.md`, `llms.txt`, a Markdown page under `docs/` (`docs/**/*.md`) or an `examples/**/README.md` (other files under `docs/` and `examples/` do not count); or
 - the pull request body, or a commit message in the range, has a line that starts in column 0 with `Docs: no reader-visible change: ` followed by a real reason, for example `Docs: no reader-visible change: internal helper exposed for tests`. A blank reason, a `<placeholder>` such as `<reason>`, and an indented or quoted line are rejected.
 
+Once the module is at version 1 (read from `.release-please-manifest.json` on the merge base), the same job also fails an incompatible change in a covered package unless the PR title has a `!` after the type (`feat!: ...`, any case) or the PR body or a commit message has a `BREAKING CHANGE: <what>` or `BREAKING-CHANGE: <what>` line in column 0; packages listed in `scripts/apidiff-experimental.txt` on the merge base are exempt. Before version 1 it never fails an incompatible change on its own. A major version above 1 also needs a `/v2` module path, which release-please does not change. See the compatibility policy in `docs/compatibility.md`.
+
 A change to a Go comment or an unexported identifier produces an empty report and needs neither. The job lives in its own workflow, `.github/workflows/apidiff-docs.yml`, so it also runs when the PR body is edited: add the escape line to the body and the check re-evaluates without a new commit. The job reads the live body, not the stale event payload. It keeps one comment (marked `<!-- apidiff-docs -->`) with the apidiff report, and posts none when the API did not change. Run it locally with `make apidiff-gate`.
+
+## Naming functional options and `With` functions
+
+A functional option is named `With` followed by what it sets, in every package: `momo.WithHook`, `migrate.WithClock`, `momolog.WithLevel`, `momolog.WithSlowThreshold`, `momolog.WithValues`, `advisory.WithHash64`, `pgxdriver.WithOnReconnect`. A bare noun such as Level or Values is not an option name. A feature switch with no value (`advisory.Shared`, `advisory.Try`, `advisory.Xact`) is the one exception: it names the behavior it turns on and reads as an adjective, so it does not collide with a function of the same package.
+
+`With` is not used for anything else, with one accepted shape: a context wrapper keeps the shape of `context.WithValue` and `context.WithCancel`, so it takes a `context.Context` and returns one (`momo.WithTenant`, `momo.WithQueryScope`, `obs.WithScope`). A function that decorates an error, a value or a query is named for what it does: `momo.Annotate` replaced `momo.WithDetail` for this reason. The package comment of `momo` states the rule.
+
+Renaming a public identifier keeps the old name as a deprecated forwarder for one release (the deprecation policy is in `docs/compatibility.md`): the doc comment gets a `// Deprecated: use X.` paragraph, the body calls the new name, and a test proves both produce the same result. A test that exercises a deprecated name carries a `//lint:file-ignore SA1019` line with the reason, so `make staticcheck` still passes. Add a section to `docs/upgrading.md` and mark the pull request breaking.
 
 ## Root package file names
 
