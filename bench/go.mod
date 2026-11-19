@@ -5,7 +5,7 @@ go 1.26.10
 require (
 	entgo.io/ent v0.14.6
 	github.com/azrtydxb/momo v0.0.0
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/uptrace/bun v1.3.0
 	github.com/uptrace/bun/dialect/pgdialect v1.3.0
 	go.yaml.in/yaml/v3 v3.0.6
@@ -61,10 +61,10 @@ require (
 	golang.org/x/tools v0.52.0 // indirect
 	golang.org/x/tools/go/packages/packagestest v0.1.1-deprecated // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	modernc.org/libc v1.79.0 // indirect
+	modernc.org/libc v1.80.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	modernc.org/sqlite v1.61.1 // indirect
+	modernc.org/sqlite v1.62.0 // indirect
 )
 
 replace github.com/azrtydxb/momo => ../

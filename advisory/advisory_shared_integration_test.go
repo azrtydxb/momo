@@ -2,6 +2,8 @@
 
 //go:build integration
 
+//lint:file-ignore SA1019 these tests keep the deprecated functions covered
+
 package advisory_test
 
 import (

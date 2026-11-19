@@ -39,14 +39,20 @@ type listenConfig struct {
 	backoffAdded bool
 }
 
-// OnReconnect sets fn to run each time the listener has re-established its
+// WithOnReconnect sets fn to run each time the listener has re-established its
 // connection and re-issued LISTEN after losing it. Notifications sent while
 // it was disconnected are lost, so treat every call as "something may have
 // been missed" and resynchronize. fn runs on the goroutine that called Wait,
 // before Wait delivers anything from the new connection.
-func OnReconnect(fn func()) ListenOption {
+func WithOnReconnect(fn func()) ListenOption {
 	return func(c *listenConfig) { c.onReconnect = fn }
 }
+
+// OnReconnect sets fn to run each time the listener has re-established its
+// connection.
+//
+// Deprecated: use WithOnReconnect.
+func OnReconnect(fn func()) ListenOption { return WithOnReconnect(fn) }
 
 // WithBackoff sets the delay between failed reconnect attempts. The delay
 // starts at lo and doubles up to hi. The first attempt after a lost
@@ -128,12 +134,12 @@ func Listen(ctx context.Context, connConfig *pgx.ConnConfig, channels []string, 
 
 // Wait blocks until a notification arrives and returns it. When the
 // connection is lost, Wait reconnects with backoff, re-issues LISTEN, calls
-// the OnReconnect function, and keeps waiting. It returns the context's error
+// the WithOnReconnect function, and keeps waiting. It returns the context's error
 // when ctx ends and ErrListenerClosed after Close.
 //
 // Ending ctx does not disturb a healthy connection: the next Wait reads from
 // the same connection, notifications that arrived in between are delivered,
-// and OnReconnect does not run, so a short poll timeout is fine. Only a lost
+// and WithOnReconnect does not run, so a short poll timeout is fine. Only a lost
 // connection triggers a reconnect. When ctx ends while Wait is still trying
 // to reconnect, the returned error also wraps the last connect error, so a
 // permanent failure such as a bad password is visible.
@@ -236,7 +242,7 @@ func (l *Listener) stopErr(ctx context.Context) error {
 // Close stops the listener, interrupts a blocked Wait (which returns
 // ErrListenerClosed) and closes the connection. It is safe to call more than
 // once. ctx bounds the wait for the connection to close. If Wait is busy in
-// the OnReconnect function when ctx expires, Close returns ctx's error; the
+// the WithOnReconnect function when ctx expires, Close returns ctx's error; the
 // listener is still closed, and Wait closes the connection when the function
 // returns.
 func (l *Listener) Close(ctx context.Context) error {
