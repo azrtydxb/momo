@@ -1347,3 +1347,11 @@ Issue #225: the adopt refusal gave only counts, `drift` on a database without hi
 - A missing NOT NULL column is added nullable with a hint (the differ's staging), since the table may hold rows; an existing column's SET NOT NULL is emitted (EnforceNotNull), because the repair is what makes the database match.
 - Not done: no `repair` command that applies the statements. A caller reviews and runs the script.
 - Review round: a create that replaces a withheld drop (same kind, schema, table, name: a changed view, trigger, policy, index or constraint) is withheld with it, so the script never prints an "already exists" create. `drift --version N` and `DriftOptions.Version` / `RepairOptions.Version` compare with the snapshot of exactly version N (the one `baseline --version N` checks), and `DriftReport.SnapshotVersion` names the one compared. A repair is complete only when nothing is withheld, unsupported or uncovered (a report entry no change touches: invalid index, unmanaged extension or schema) and no NOT NULL column was staged nullable; `Unverified` entries do not count, as in `drift`. `--fix-sql` keeps standard output SQL only (`no drift`, notes and reasons go to stderr) and notes that MySQL and MariaDB do not roll DDL back.
+
+## Compatibility policy (#254)
+
+Question: which packages are excluded from the v1 compatibility promise, and what happens to the API-review findings?
+
+Decision (2026-11-19, the user, via AskUserQuestion): accept the proposed experimental list: `gen/graphql`, `gen/grpc`, `gen/openapi`, `gen/apiquery`, `importer`.
+
+Decision (2026-11-19, the user): carry out all seven API-review cleanup groups as breaking changes before v1, tracked as separate issues.

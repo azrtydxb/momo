@@ -1,5 +1,7 @@
 # The docs gate for pull requests: an exported API change needs a docs change or
-# a "Docs: no reader-visible change: <reason>" line (CONTRIBUTING.md).
+# a "Docs: no reader-visible change: <reason>" line (CONTRIBUTING.md). From
+# module version 1.0.0 on it is also the compatibility gate: an incompatible
+# change fails unless the pull request is marked breaking (docs/compatibility.md).
 #
 # This is its own workflow so it can also run when the pull request body is
 # edited (an author adds the escape line to unblock the check) without
@@ -33,16 +35,19 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.26"
-      # The event payload is stale on a re-run, so read the body live.
-      - name: Read the live pull request body
+      # The event payload is stale on a re-run, so read the title and body live.
+      - name: Read the live pull request title and body
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body -q .body > "$RUNNER_TEMP/pr-body.txt"
+        run: |
+          gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body -q .body > "$RUNNER_TEMP/pr-body.txt"
+          gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json title -q .title > "$RUNNER_TEMP/pr-title.txt"
       - name: apidiff docs gate
         env:
           BASE_REF: origin/${{ github.base_ref }}
           PR_BODY_FILE: ${{ runner.temp }}/pr-body.txt
+          PR_TITLE_FILE: ${{ runner.temp }}/pr-title.txt
         run: make apidiff-gate
       - name: Comment the apidiff report
         if: always() && github.event.pull_request.head.repo.full_name == github.repository
