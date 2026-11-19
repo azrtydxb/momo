@@ -41,6 +41,11 @@ by either serves the detectors of both. The finding type is a separate type with
 the same fields, so a `report` function that takes `momo.NPlusOneFinding` takes
 `obs.StatementFinding` after the move.
 
+Two behaviors changed with the shared scope. A context made by `obs.WithScope`
+now also drives the deprecated `momo.NewNPlusOneHook`. Nesting `obs.WithScope`
+inside `momo.WithQueryScope`, or the reverse, now replaces the outer scope and
+restarts the counts, so wrap the context once per unit of work.
+
 ### Hook constructors return their concrete types
 
 Before, `obs.NewNPlusOne` returned `*obs.NPlusOne` while `obs.NewSlowQuery` and
