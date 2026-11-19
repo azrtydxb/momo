@@ -279,18 +279,19 @@ func cliRunStdin(t *testing.T, dsn string, args ...string) (code int, out, errOu
 func holdSQLiteWriteLock(t *testing.T, path string) (release func()) {
 	t.Helper()
 	ctx := context.Background()
-	db, drv, err := sqlitepure.Open(path, sqlitepure.Config{})
+	drv, err := sqlitepure.Open(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	closer := drv.(interface{ Close() error })
 	pc, err := drv.(momo.Pinner).Pin(ctx)
 	if err != nil {
-		_ = db.Close()
+		_ = closer.Close()
 		t.Fatal(err)
 	}
 	if _, err := pc.Exec(ctx, "BEGIN IMMEDIATE", nil); err != nil {
 		_ = pc.Release()
-		_ = db.Close()
+		_ = closer.Close()
 		t.Fatal(err)
 	}
 	var once sync.Once
@@ -298,7 +299,7 @@ func holdSQLiteWriteLock(t *testing.T, path string) (release func()) {
 		once.Do(func() {
 			_, _ = pc.Exec(ctx, "COMMIT", nil)
 			_ = pc.Release()
-			_ = db.Close()
+			_ = closer.Close()
 		})
 	}
 	t.Cleanup(release)

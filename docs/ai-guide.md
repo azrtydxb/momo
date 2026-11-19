@@ -171,15 +171,27 @@ Details: README "Configure and generate". Example: [quickstart](../examples/quic
 
 ```go
 func openDB(ctx context.Context, url string) (*momo.DB, func(), error) {
-	pool, err := pgxdriver.NewPool(ctx, url) // (ctx, string) (*pgxpool.Pool, error)
+	drv, err := pgxdriver.Open(ctx, url) // (ctx, string, ...Option) (momo.Driver, error)
 	if err != nil {
 		return nil, nil, err
 	}
-	return momo.New(pgxdriver.New(pool)), pool.Close, nil // New(pool, opts ...Option) momo.Driver
+	db := momo.New(drv)
+	return db, func() { _ = db.Close() }, nil
 }
 ```
 
-- The caller owns and closes the pool. `momo.DB` has no `Close`.
+- One constructor shape for every driver package. `Open(ctx, dsn, opts...)`
+  opens the database and returns a `momo.Driver` that owns it: `db.Close()`
+  closes it. `New(handle, opts...)` wraps a pool or `*sql.DB` you opened
+  (`pgxdriver.New(pool)`, `pgxdriver.NewSQL(db)`, `sqlitedriver.New(db)`,
+  `sqlitepure.New(db)`, `mysqldriver.New(db)`), does not own it and never
+  closes it: `db.Close()` returns nil and leaves it open. `New` refuses an
+  option that tries to configure the open pool, with `ErrValidation`.
+- SQLite settings are options: `sqlitedriver.WithConfig(cfg)`,
+  `sqlitedriver.WithBusyTimeout`, `sqlitedriver.WithSynchronous`,
+  `sqlitedriver.WithTxLock` and `sqlitedriver.WithMaxOpenConns`, and
+  `sqlitepure.WithReadOnly`. The MySQL flavor is `mysqldriver.WithFlavor`
+  (`dialect.FlavorMariaDB` for MariaDB; the default is MySQL).
 - `*momo.DB` is safe for concurrent use; create one at startup and share it.
 - DSN: `postgres://user:password@host:5432/dbname?sslmode=verify-full`. Use
   `sslmode=disable` for local development only. Momo adds no TLS options; pgx
@@ -195,8 +207,8 @@ Other constructors:
 <!-- docscheck:fragment -->
 
 ```go
-sqlDB, drv := pgxdriver.FromConnConfig(cfg, opts...) // cfg *pgx.ConnConfig; returns (*sql.DB, momo.Driver)
-drv = pgxdriver.FromSQLDB(sqlDB)                     // sqlDB must be backed by pgx stdlib; for an existing *sql.Tx see SQLTx, AdoptTx and UnwrapSQLTx in section Transactions
+drv, err := pgxdriver.OpenSQL(ctx, url) // database/sql on the pgx stdlib driver; drv owns the *sql.DB
+drv = pgxdriver.NewSQL(sqlDB)           // sqlDB must be backed by pgx stdlib; you own it; for an existing *sql.Tx see SQLTx, AdoptTx and UnwrapSQLTx in section Transactions
 ```
 
 `database/sql` paths have no Batch or COPY path (relation loading falls back to
@@ -217,9 +229,10 @@ PgBouncer (transaction pooling):
   `pgx.QueryExecModeCacheDescribe`, `pgx.QueryExecModeDescribeExec` (import
   `github.com/jackc/pgx/v5`; not tested through PgBouncer). The simple protocol is rejected
   with `ErrUnsupported` on every query. DON'T select it.
-- With `FromConnConfig` set `cfg.DefaultQueryExecMode = pgx.QueryExecModeExec`
-  first; pgx defaults to `CacheStatement`, which is NOT PgBouncer-safe. Its
-  `opts` have no effect.
+- With `pgxdriver.OpenSQL` add `default_query_exec_mode=exec` to the DSN, and
+  with `pgxdriver.NewSQL` set `cfg.DefaultQueryExecMode = pgx.QueryExecModeExec`
+  before `stdlib.OpenDB`; pgx defaults to `CacheStatement`, which is NOT
+  PgBouncer-safe. The options of `OpenSQL` and `NewSQL` have no effect.
 - DON'T run `momo migrate` through a transaction pooler (section 5).
 - Set `search_path` per role or per transaction, not at connection startup.
 
@@ -1645,7 +1658,7 @@ Joined and CTE-prefixed writes:
 
 Bulk and set-based writes:
 
-- `InsertQuery[T].Copy` streams models through the driver COPY path. It returns `ErrUnsupported` on SQLite and MySQL and through `FromSQLDB` (the driver must offer a COPY path). It runs the insert interceptors (deny only, a predicate they add is ignored) and the `BeforeInsert` hook over a copy of the models, validates fields like `Models`, and counts as a write for `NewUnitOfWork`. It skips `OnConflict`, `Returning` and chunking, and it cannot be combined with `Model`, `Models`, `InsertQuery.Values`, `FromSelect`, `OnConflict` or `Upsert` (`ErrValidation`). On a `*DB` with `WithImplicitTx` it runs in its own transaction, so `WithTxSetup` applies; on a pinned `OnConn` handle with `WithTxSetup` it fails closed with `ErrUnsupported`.
+- `InsertQuery[T].Copy` streams models through the driver COPY path. It returns `ErrUnsupported` on SQLite and MySQL and through `pgxdriver.NewSQL` (the driver must offer a COPY path). It runs the insert interceptors (deny only, a predicate they add is ignored) and the `BeforeInsert` hook over a copy of the models, validates fields like `Models`, and counts as a write for `NewUnitOfWork`. It skips `OnConflict`, `Returning` and chunking, and it cannot be combined with `Model`, `Models`, `InsertQuery.Values`, `FromSelect`, `OnConflict` or `Upsert` (`ErrValidation`). On a `*DB` with `WithImplicitTx` it runs in its own transaction, so `WithTxSetup` applies; on a pinned `OnConn` handle with `WithTxSetup` it fails closed with `ErrUnsupported`.
 - `InsertQuery[T].Unnest()` (the method, not the package-level FROM source `momo.Unnest`) renders a `Model` or `Models` insert as `INSERT ... SELECT * FROM unnest($1::bigint[], $2::text[])`: one array parameter per written column, one statement. The bind count does not depend on the row count, so it bypasses `MaxParams` and `WithMaxParams` and never chunks (and is not split into a transaction of several statements). Other dialects return `ErrUnsupported`. `InsertQuery.Values`, `InsertQuery.ValuesRows` and `FromSelect` return `ErrValidation`, and so does a model without a table schema in its generated metadata (the array types come from it). Int, float, bool, string, `time.Time` and `[]byte` columns bind as typed slices (`[]*T` when a value is NULL); any other element type (uuid, json, decimal, named enums) falls back to `[]any`, which pgx may reject for an array type, so use plain `Models` for such a model. `OnConflict`, `Upsert` and `Returning` work as for `Models`; interceptors, `BeforeInsert`, field validators, automatic timestamps and id generators run as for `Models`. A `FlagSensitive` column's array shows as `RedactedArg` in `QueryEvent.Args`.
 - `Merge` is PostgreSQL 15 or later; `.Returning` needs 17 or later. An older server or a driver without `ServerVersioner` returns `ErrUnsupported` before the statement runs. SQLite, MySQL and MariaDB have no MERGE: `Exec` runs the clauses as temporary-table copies of the source and of the matched pairs, an `UPDATE` and an `INSERT` in one transaction (a savepoint inside a `Tx`), which gives PostgreSQL's final table and affected-row count without concurrent writers (it takes no lock against a matching row committed between its steps); a target row that two source rows match is `ErrTooManyRows` (on PostgreSQL too), `Returning`, `SET col = DEFAULT` and a matched update on a model without a primary key are `ErrUnsupported`, and `MergeQuery.Statements` lists the statements because `SQL` has no single text there. It needs `On` and at least one WHEN clause (`ErrValidation`). An interceptor that adds predicates makes it fail with `ErrValidation`, because they cannot be applied to a MERGE; deny the kind instead. Field validators do not run on the values inserted from the source.
 - `BulkUpdate` and `BulkUpdateKeys` (a composite key) update only the keys in their row list, bind one parameter per value, and keep the version and updated-at columns current. They run on PostgreSQL, SQLite, MySQL and MariaDB (`UPDATE ... FROM` on the first two, `UPDATE ... JOIN` on the MySQL family). `Exec` splits a list over the parameter limit into chunks that run atomically (a transaction on a `DB`, a savepoint on a `Tx`); `SQL` and `Rows` render one statement and return `ErrLimitExceeded` over the limit. `Returning` needs a dialect with `UPDATE ... RETURNING`, so MySQL and MariaDB return `ErrUnsupported`. `RowsAffected` counts the rows that match a listed key on every dialect, changed or not.
@@ -1893,7 +1906,7 @@ err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
   `tx.Rollback(ctx)`; a finished `*Tx` returns `ErrTxDone`. Prefer `db.Tx`.
 - Incremental adoption in a `database/sql` or pgx codebase, both directions:
   - Adopt a transaction the caller began: `mtx := db.AdoptTx(pgxdriver.SQLTx(sqlTx))`
-    for a `*sql.Tx` (database must be pgx-stdlib backed, `FromSQLDB`), or
+    for a `*sql.Tx` (database must be pgx-stdlib backed, `pgxdriver.NewSQL`), or
     `db.AdoptTx(pgxdriver.PgxTx(pgxTx, opts...))` for a `pgx.Tx` (pgxpool driver; `opts` are the options of `New`, such as `WithExecMode`; an unsupported exec mode returns `ErrUnsupported` on use, as with `New`). An adopted `pgx.Tx` keeps Batch and `COPY`; an adopted `*sql.Tx` has neither. Statements,
     hooks, error classification and savepoints (`mtx.Tx`) work as usual. `Commit`
     and `Rollback` on `mtx` return `ErrAdoptedTx` and do nothing: the caller

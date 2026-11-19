@@ -21,7 +21,7 @@ func TestFromSQLDBPinsAndCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	d := FromSQLDB(db)
+	d := NewSQL(db)
 	ctx := context.Background()
 	p, err := d.(momo.Pinner).Pin(ctx)
 	if err != nil {
@@ -76,7 +76,7 @@ func openSQLDriver(t *testing.T) (*sql.DB, momo.Driver) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return db, FromSQLDB(db)
+	return db, NewSQL(db)
 }
 
 func TestFromSQLDBTxOptionsAndDone(t *testing.T) {

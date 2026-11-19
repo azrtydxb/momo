@@ -9,6 +9,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/driver/mysqldriver"
+	"github.com/azrtydxb/momo/internal/sqlshared"
 	"github.com/azrtydxb/momo/internal/testdb"
 )
 
@@ -41,10 +42,11 @@ func MariaDB(t *testing.T, opts ...momo.Option) *momo.DB {
 // closes.
 func openMySQL(t *testing.T, dsn string, flavor dialect.Flavor, opts ...momo.Option) *momo.DB {
 	t.Helper()
-	sdb, drv, err := mysqldriver.Open(dsn, flavor)
+	drv, err := mysqldriver.Open(t.Context(), dsn, mysqldriver.WithFlavor(flavor))
 	if err != nil {
 		t.Fatalf("testopen: open %s: %v", flavor, err)
 	}
+	sdb := sqlshared.DB(drv)
 	sdb.SetMaxOpenConns(maxMySQLConns)
 	t.Cleanup(func() { closeSQL(t, sdb) })
 	return momo.New(drv, opts...)

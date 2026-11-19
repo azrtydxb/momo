@@ -7,7 +7,11 @@ import (
 	"github.com/azrtydxb/momo/driver/sqlitepure"
 )
 
-// sqlitepure.Config is sqlitedriver.Config, so a program can switch between
-// the two drivers without converting its settings. This fails to compile if
-// the types ever diverge.
-var _ sqlitedriver.Config = sqlitepure.Config{}
+// sqlitepure.Config and sqlitedriver.Config are separate types with the same
+// fields, so a program that switches between the two drivers converts its
+// settings in one expression. This fails to compile if the fields ever
+// diverge.
+var (
+	_ = sqlitedriver.Config(sqlitepure.Config{})
+	_ = sqlitepure.Config(sqlitedriver.Config{})
+)

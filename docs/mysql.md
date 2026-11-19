@@ -75,9 +75,12 @@ have their own tests in `driver/mysqldriver` and `rel_mysql_integration_test.go`
 
 ## Connecting
 
-Open the pool with `mysqldriver.Open(dsn, flavor)`, or build the DSN with
-`mysqldriver.ConfigureDSN` and pass the `*sql.DB` to `mysqldriver.New`. The
-configured DSN always has:
+Open the pool with `mysqldriver.Open(ctx, dsn, opts...)`, which returns a driver
+that owns the pool (`db.Close()` closes it), or build
+the DSN with `mysqldriver.ConfigureDSN` and pass the `*sql.DB` you opened to
+`mysqldriver.New(db, opts...)`, which never closes it. The flavor is the option
+`mysqldriver.WithFlavor`: `dialect.FlavorMySQL` (the default) or
+`dialect.FlavorMariaDB`. The configured DSN always has:
 
 - `parseTime=true` and `loc=UTC`, and the session `time_zone` set to `+00:00`;
 - `clientFoundRows=true`, so an UPDATE reports the rows it matched;
@@ -91,7 +94,9 @@ connection or bad credentials fail at `Open` and not on the first statement.
 An unknown flavor makes `Open` return `ErrUnsupported`; on any error the pool
 is closed and nothing is returned. (`New`, which takes an already opened
 `*sql.DB`, still returns a driver whose every call is `ErrUnsupported` for an
-unknown flavor, because it has no error to return.)
+unknown flavor, because it has no error to return.) The `Open` of an earlier
+release took the flavor as an argument and returned the `*sql.DB` too; see
+[upgrading](upgrading.md).
 
 `ConfigureDSN` (and so `Open`) refuses two DSN settings with `ErrValidation`:
 

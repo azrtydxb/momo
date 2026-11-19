@@ -1355,3 +1355,19 @@ Question: which packages are excluded from the v1 compatibility promise, and wha
 Decision (2026-11-19, the user, via AskUserQuestion): accept the proposed experimental list: `gen/graphql`, `gen/grpc`, `gen/openapi`, `gen/apiquery`, `importer`.
 
 Decision (2026-11-19, the user): carry out all seven API-review cleanup groups as breaking changes before v1, tracked as separate issues.
+
+## Driver constructors (#268)
+
+Question A: who closes the pool behind a driver made by an `Open` function, and how does an application do it?
+
+- `momo.DB.Close` closes the driver when it implements `io.Closer` (the driver an `Open` returns) and returns nil otherwise; a pool wrapped by a `New` is never closed by momo.
+- A bare `io.Closer` assertion on the driver in every example.
+
+Decision (2026-11-19, the user, via AskUserQuestion): add `func (db *DB) Close() error` to `momo.DB`, with the first behavior. Docs, README and examples use `defer db.Close()`.
+
+Question B: does `pgxdriver.Open` ping?
+
+- Ping on `ctx` like the SQLite and MySQL `Open`; on failure close the pool and return the error.
+- Stay lazy like `pgxpool` and `NewPool`.
+
+Decision (2026-11-19, the user, via AskUserQuestion): `pgxdriver.Open` and `OpenSQL` ping by default; `NewPool` stays lazy.
