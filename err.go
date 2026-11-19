@@ -105,9 +105,16 @@ func (e *Error) Error() string {
 }
 
 // WithDetail returns a copy of err with the raw driver detail set, so Detail
+// can return it while Error keeps hiding it.
+//
+// Deprecated: use Annotate.
+func WithDetail(err error, detail string) error { return Annotate(err, detail) }
+
+// Annotate returns a copy of err with the raw driver detail set, so Detail
 // can return it while Error keeps hiding it. Drivers call it from their
-// classifier. An err that is not a *Error is returned unchanged.
-func WithDetail(err error, detail string) error {
+// classifier. An err that is not a *Error is returned unchanged. It is not a
+// momo.Option: the With prefix is reserved for options.
+func Annotate(err error, detail string) error {
 	var me *Error
 	if !errors.As(err, &me) {
 		return err

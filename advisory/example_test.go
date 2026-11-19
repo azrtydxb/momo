@@ -13,15 +13,17 @@ import (
 	"github.com/azrtydxb/momo/internal/fakedriver"
 )
 
-// XactLock serializes writers that share a key. The lock belongs to the
-// transaction and is released at commit or rollback, so there is no unlock.
-func ExampleXactLock() {
+// Acquire with Xact serializes writers that share a key. The lock belongs to
+// the transaction and is released at commit or rollback, so there is no
+// release.
+func ExampleAcquire() {
 	ctx := context.Background()
 	drv := fakedriver.New(dialect.Postgres)
 	db := momo.New(drv)
 
 	err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
-		return advisory.XactLockString(ctx, tx, "catalog:7")
+		_, err := advisory.Acquire(ctx, tx, "catalog:7", advisory.Xact())
+		return err
 	})
 	fmt.Println(err)
 	fmt.Println(drv.Calls()[0].SQL)
@@ -31,14 +33,14 @@ func ExampleXactLock() {
 }
 
 // Only PostgreSQL has transaction-scoped advisory locks; other dialects fail
-// with ErrUnsupported. The functions take a *momo.Tx, so a *momo.DB does not
-// compile.
-func ExampleTryXactLock() {
+// with ErrUnsupported. With Xact the handle must be a *momo.Tx; a *momo.DB is
+// ErrValidation.
+func ExampleAcquire_try() {
 	ctx := context.Background()
 	db := momo.New(fakedriver.New(dialect.SQLite))
 
 	err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
-		_, err := advisory.TryXactLock(ctx, tx, 9001)
+		_, err := advisory.Acquire(ctx, tx, 9001, advisory.Xact(), advisory.Try())
 		return err
 	})
 	fmt.Println(errors.Is(err, momo.ErrUnsupported))

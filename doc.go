@@ -19,6 +19,15 @@
 //		Where(document.Published.Eq(true)).
 //		All(ctx)
 //
+// Names that start with With follow one rule. A functional option is named
+// With followed by what it sets, in every package (momo.WithHook,
+// migrate.WithClock, momolog.WithLevel, advisory.WithHash64,
+// pgxdriver.WithOnReconnect). The one other accepted shape is a context
+// wrapper such as WithTenant and WithQueryScope, which keeps the shape of
+// context.WithValue and context.WithCancel: it takes a context.Context and
+// returns one. Anything else is named for what it does, so an error decorator
+// is Annotate, not With.
+//
 // The descriptors (document.Published above) come from the momo command,
 // which reads the model structs and writes a momo_gen.go file next to them.
 // The same command manages versioned SQL migrations.

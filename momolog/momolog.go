@@ -21,16 +21,31 @@ type hook struct {
 // Option configures New.
 type Option func(*hook)
 
+// WithLevel sets the level for ordinary statements (default Debug).
+func WithLevel(l slog.Level) Option { return func(h *hook) { h.level = l } }
+
 // Level sets the level for ordinary statements (default Debug).
-func Level(l slog.Level) Option { return func(h *hook) { h.level = l } }
+//
+// Deprecated: use WithLevel.
+func Level(l slog.Level) Option { return WithLevel(l) }
+
+// WithSlowThreshold logs statements slower than d at Warn.
+func WithSlowThreshold(d time.Duration) Option { return func(h *hook) { h.slow = d } }
 
 // SlowOver logs statements slower than d at Warn.
-func SlowOver(d time.Duration) Option { return func(h *hook) { h.slow = d } }
+//
+// Deprecated: use WithSlowThreshold.
+func SlowOver(d time.Duration) Option { return WithSlowThreshold(d) }
 
-// Values includes bound argument values in the record. It has an effect only
-// when the DB was also opened with momo.WithArgLogging; otherwise the event
-// carries no values to log.
-func Values(on bool) Option { return func(h *hook) { h.values = on } }
+// WithValues includes bound argument values in the record. It has an effect
+// only when the DB was also opened with momo.WithArgLogging; otherwise the
+// event carries no values to log.
+func WithValues(on bool) Option { return func(h *hook) { h.values = on } }
+
+// Values includes bound argument values in the record.
+//
+// Deprecated: use WithValues.
+func Values(on bool) Option { return WithValues(on) }
 
 // New returns a hook that logs one "momo.query" record per finished statement
 // with the attributes op, table, relation (when set), sql, duration, rows and
@@ -38,7 +53,7 @@ func Values(on bool) Option { return func(h *hook) { h.values = on } }
 // additionally logs one "momo.relation" record per finished relation load with
 // parent, name, kind, parents, children, queries, duration and err (when set).
 // Errors are logged through Error() only. Argument values are logged only with
-// Values(true) and momo.WithArgLogging together, and a value bound from a
+// WithValues(true) and momo.WithArgLogging together, and a value bound from a
 // sensitive column is momo.RedactedArg in them.
 func New(l *slog.Logger, opts ...Option) momo.Hook {
 	h := &hook{l: l, level: slog.LevelDebug}

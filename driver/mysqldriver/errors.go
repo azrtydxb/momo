@@ -124,7 +124,7 @@ func classify(err error, stmt string) error {
 		out.Table = tableOf(stmt)
 	}
 	out.Op = opOf(stmt)
-	return momo.WithDetail(out, se.Message)
+	return momo.Annotate(out, se.Message)
 }
 
 // tableOf returns the table a statement writes to, or "" when it cannot tell.
