@@ -129,7 +129,7 @@ because the history is an audit log. Tenant scope does: pass a predicate after
 the key values, the way a `Where` takes one, and the read adds it on the history
 table's column of the same name:
 
-```go
+```text
 ctx = momo.WithTenant(ctx, int64(5))
 versions, err := momo.HistoryOf[Note](ctx, db, int64(1), momo.TenantFilter(ctx, NoteTenantID))
 ```
