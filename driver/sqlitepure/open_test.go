@@ -18,7 +18,7 @@ import (
 
 func openPure(t *testing.T, cfg Config) (*sql.DB, momo.Driver) {
 	t.Helper()
-	db, d, err := Open(testdb.SQLitePath(t), cfg)
+	db, d, err := openWith(testdb.SQLitePath(t), cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,12 +103,12 @@ func TestPureSQLiteRecommendedConfig(t *testing.T) {
 func TestPureSQLiteBusyIsStructuredError(t *testing.T) {
 	path := testdb.SQLitePath(t)
 	cfg := Config{BusyTimeout: 50 * time.Millisecond}
-	db1, d1, err := Open(path, cfg)
+	db1, d1, err := openWith(path, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db1.Close() })
-	db2, d2, err := Open(path, cfg)
+	db2, d2, err := openWith(path, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,17 +275,17 @@ func TestPureSQLiteScanErrorHidesValue(t *testing.T) {
 }
 
 func TestPureSQLiteInMemoryAndDSNRefusals(t *testing.T) {
-	db, _, err := Open(":memory:", Config{})
+	db, _, err := openWith(":memory:", Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := Open(":memory:", Config{MaxOpenConns: 2}); err == nil {
+	if _, _, err := openWith(":memory:", Config{MaxOpenConns: 2}); err == nil {
 		t.Fatal("two connections to a private in-memory database accepted")
 	}
-	if _, _, err := Open(testdb.SQLitePath(t)+"?_pragma=foreign_keys(0)", Config{}); err == nil {
+	if _, _, err := openWith(testdb.SQLitePath(t)+"?_pragma=foreign_keys(0)", Config{}); err == nil {
 		t.Fatal("a _pragma DSN parameter was accepted")
 	}
 }

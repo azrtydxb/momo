@@ -32,7 +32,7 @@ func TestPostgresSQLDBAdapter(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = sqldb.Close() })
 
-	viaSQL := momo.New(pgxdriver.FromSQLDB(sqldb))
+	viaSQL := momo.New(pgxdriver.NewSQL(sqldb))
 	native := testopen.Postgres(t)
 
 	suite.RunAll(t, viaSQL, suite.CapsOf(viaSQL))

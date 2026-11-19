@@ -42,7 +42,6 @@ internal-leaf internal/deferkey
 internal-leaf internal/redact
 internal-leaf internal/snake
 internal-leaf internal/sqlscan
-internal-leaf internal/sqliteconf
 internal-leaf internal/sqlstub
 
 internal-fixture internal/compat/...

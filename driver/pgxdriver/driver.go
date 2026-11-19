@@ -52,13 +52,44 @@ type driver struct {
 	vecFormat VectorFormat
 }
 
-// New wraps a pgxpool. The caller owns the pool and closes it.
-func New(pool *pgxpool.Pool, opts ...Option) momo.Driver {
+// New wraps a pgxpool. The caller owns the pool and closes it; the driver
+// never does. Use Open to have the driver open and own the pool.
+func New(pool *pgxpool.Pool, opts ...Option) momo.Driver { return newDriver(pool, opts) }
+
+func newDriver(pool *pgxpool.Pool, opts []Option) *driver {
 	d := &driver{pool: pool, mode: pgx.QueryExecModeExec}
 	for _, o := range opts {
 		o(d)
 	}
 	return d
+}
+
+// Open parses dsn, installs the pool acquire tracer (see InstrumentPool),
+// opens a pgxpool and returns a driver that owns it: close it through the
+// io.Closer the returned driver implements, which closes the pool. Like
+// pgxpool, Open does not dial unless the DSN sets a minimum pool size, so an
+// unreachable server shows on the first statement; run a statement such as
+// SELECT 1 to check at startup. A dsn that does not parse is returned as an
+// error and nothing is left open.
+//
+// Use NewPool and New instead when the program needs the *pgxpool.Pool
+// itself.
+func Open(ctx context.Context, dsn string, opts ...Option) (momo.Driver, error) {
+	pool, err := NewPool(ctx, dsn)
+	if err != nil {
+		return nil, err
+	}
+	return &ownedDriver{newDriver(pool, opts)}, nil
+}
+
+// ownedDriver is the driver Open returns: it owns the pool and closes it.
+type ownedDriver struct{ *driver }
+
+// Close closes the pool the driver opened. It waits for acquired connections
+// to be released, as pgxpool.Pool.Close does.
+func (o *ownedDriver) Close() error {
+	o.pool.Close()
+	return nil
 }
 
 func (d *driver) Dialect() *dialect.Dialect { return dialect.For(dialect.Postgres) }

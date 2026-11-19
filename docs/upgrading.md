@@ -5,6 +5,56 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.20.0
+
+Every driver package now has the same two constructors, so code that opens a
+SQLite or MySQL database must change: `sqlitedriver.Open`, `sqlitepure.Open`,
+`mysqldriver.Open` and `mysqldriver.New` take different arguments and no longer
+return a `*sql.DB`. The `pgxdriver` names are kept as deprecated forwarders for
+one release.
+
+### One constructor shape for every driver
+
+`New(handle, opts...)` wraps a pool or `*sql.DB` you opened, does not own it and
+never closes it. `Open(ctx, dsn, opts...)` opens the database, owns it and
+returns `(momo.Driver, error)`; the returned driver implements `io.Closer`, and
+`Close` closes the pool it opened. Before, nothing said who closed what: the
+SQLite and MySQL `Open` returned the `*sql.DB` for you to close, and
+`pgxdriver.NewPool` returned a pool.
+
+| Before                                                               | After                                                                                                                        |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `db, drv, err := sqlitedriver.Open(dsn, cfg)`                        | `drv, err := sqlitedriver.Open(ctx, dsn, sqlitedriver.WithConfig(cfg))`                                                      |
+| `db, drv, err := sqlitepure.Open(dsn, cfg)`                          | `drv, err := sqlitepure.Open(ctx, dsn, sqlitepure.WithConfig(cfg))`                                                          |
+| `sqlitepure.Config{ReadOnly: true}`                                  | `sqlitepure.WithReadOnly()`                                                                                                  |
+| `db, drv, err := mysqldriver.Open(dsn, dialect.FlavorMariaDB)`       | `drv, err := mysqldriver.Open(ctx, dsn, mysqldriver.WithFlavor(dialect.FlavorMariaDB))`                                      |
+| `mysqldriver.New(db, dialect.FlavorMariaDB)`                         | `mysqldriver.New(db, mysqldriver.WithFlavor(dialect.FlavorMariaDB))`                                                         |
+| `pool, err := pgxdriver.NewPool(ctx, url)` and `pgxdriver.New(pool)` | `drv, err := pgxdriver.Open(ctx, url)`; `NewPool` and `New` stay for a program that needs the pool                           |
+| `pgxdriver.FromSQLDB(db)`                                            | `pgxdriver.NewSQL(db)` (`FromSQLDB` is deprecated)                                                                           |
+| `db, drv := pgxdriver.FromConnConfig(cfg)`                           | `drv, err := pgxdriver.OpenSQL(ctx, dsn)`, or `stdlib.OpenDB(*cfg)` with `pgxdriver.NewSQL` (`FromConnConfig` is deprecated) |
+| `sqlitedriver.SQLiteVecVersion`                                      | `sqlitedriver.VecVersion` (`SQLiteVecVersion` is deprecated)                                                                 |
+
+Close an opened driver through the interface it implements: after
+`drv, err := sqlitepure.Open(ctx, "app.db")`, call `drv.(io.Closer).Close()`,
+for example in a `defer`, once you are done with `momo.New(drv)`.
+
+If you need the `*sql.DB` itself, for your own queries or to share it, open it
+yourself and wrap it: `sqlitepure.New(sqlDB)` does not own it, so you close it.
+A MariaDB server needs `mysqldriver.WithFlavor(dialect.FlavorMariaDB)`; the
+default flavor is MySQL.
+
+### Settings are options and the types are public
+
+`sqlitedriver.Config` and `sqlitepure.Config` are now declared in their own
+packages instead of aliasing one internal type. They have the same fields, so
+`sqlitepure.Config(cfg)` converts one to the other; they are no longer
+identical types. `gen/config.MigrateConfig` is declared in `gen/config` too.
+`sqlitedriver.SQLiteVecVersion` is renamed `VecVersion`, with the same value in
+the cgo and the no-cgo build. A build without cgo, or for Windows, has the same
+`Open`, `New` and option names as the cgo build, so code compiles either way;
+`Open` returns `ErrUnsupported` there and `New` returns a driver whose every
+call does.
+
 ## Upgrading to 0.19.0
 
 `momo migrate drift`, the refusal of `momo migrate baseline` and

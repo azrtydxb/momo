@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 
@@ -46,11 +47,11 @@ func start(ctx context.Context) error {
 }
 
 func openDB(ctx context.Context, url string) (*momo.DB, func(), error) {
-	pool, err := pgxdriver.NewPool(ctx, url)
+	drv, err := pgxdriver.Open(ctx, url)
 	if err != nil {
 		return nil, nil, err
 	}
-	return momo.New(pgxdriver.New(pool)), pool.Close, nil
+	return momo.New(drv), func() { _ = drv.(io.Closer).Close() }, nil
 }
 
 func run(ctx context.Context, db *momo.DB) error {

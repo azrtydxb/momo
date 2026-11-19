@@ -14,12 +14,12 @@ import (
 )
 
 func TestRoundTripSQLite(t *testing.T) {
-	db, d, err := sqlitedriver.Open(testdb.SQLitePath(t), sqlitedriver.Config{})
+	ctx := context.Background()
+	d, err := sqlitedriver.Open(ctx, testdb.SQLitePath(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
-	ctx := context.Background()
+	t.Cleanup(func() { _ = d.(interface{ Close() error }).Close() })
 	if _, err := d.Exec(ctx, "CREATE TABLE r (id integer primary key, v text)", nil); err != nil {
 		t.Fatal(err)
 	}

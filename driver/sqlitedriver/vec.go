@@ -12,7 +12,7 @@ import (
 	"github.com/azrtydxb/momo"
 )
 
-// SQLiteVecVersion is the sqlite-vec release this module is built and tested
+// VecVersion is the sqlite-vec release this module is built and tested
 // against, as vec_version() reports it. Open accepts that release and any later
 // patch release of the same minor version (v0.1.x at or above this), so a go.mod
 // that resolves the bindings to a newer patch release keeps working; another
@@ -20,8 +20,14 @@ import (
 // may differ. The test TestSQLiteVecLoaded compares vec_version() with this
 // constant exactly, so a change of the bindings version in go.mod is noticed.
 // Vector columns are BLOB columns with a length CHECK; see momo.SQLiteVectorType
-// and momo.SQLiteBitsType.
-const SQLiteVecVersion = "v0.1.6"
+// and momo.SQLiteBitsType. A build without cgo declares the constant too, as
+// the empty string.
+const VecVersion = "v0.1.6"
+
+// SQLiteVecVersion is the old name of VecVersion.
+//
+// Deprecated: use VecVersion. It is removed in the next release.
+const SQLiteVecVersion = VecVersion
 
 // parseVecVersion reads "vMAJOR.MINOR.PATCH". A pre-release or build suffix is
 // not a release and does not parse.
@@ -42,13 +48,13 @@ func parseVecVersion(v string) (major, minor, patch int, ok bool) {
 }
 
 // checkVecVersion returns an error unless got, the result of SELECT
-// vec_version(), is SQLiteVecVersion or a later patch release of its minor
+// vec_version(), is VecVersion or a later patch release of its minor
 // version.
 func checkVecVersion(got string) error {
-	wantMajor, wantMinor, wantPatch, _ := parseVecVersion(SQLiteVecVersion)
+	wantMajor, wantMinor, wantPatch, _ := parseVecVersion(VecVersion)
 	major, minor, patch, ok := parseVecVersion(got)
 	if ok && major == wantMajor && minor == wantMinor && patch >= wantPatch {
 		return nil
 	}
-	return &momo.Error{Kind: momo.ErrUnsupported, Op: "open", Err: fmt.Errorf("sqlitedriver: vec_version() is %q, this module needs sqlite-vec %s or a later patch release of v%d.%d", got, SQLiteVecVersion, wantMajor, wantMinor)}
+	return &momo.Error{Kind: momo.ErrUnsupported, Op: "open", Err: fmt.Errorf("sqlitedriver: vec_version() is %q, this module needs sqlite-vec %s or a later patch release of v%d.%d", got, VecVersion, wantMajor, wantMinor)}
 }

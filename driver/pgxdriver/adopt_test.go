@@ -31,7 +31,7 @@ func adoptSQLDB(t *testing.T) (*sql.DB, *momo.DB) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sdb.Close() })
-	mdb := momo.New(FromSQLDB(sdb))
+	mdb := momo.New(NewSQL(sdb))
 	adoptTable(t, mdb)
 	return sdb, mdb
 }

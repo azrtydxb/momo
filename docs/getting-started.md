@@ -32,8 +32,12 @@ listed in [supported versions](supported-versions.md).
 
 ## Connect and run SQL
 
-`pgxdriver.NewPool` opens a pgx pool, `pgxdriver.New` wraps it as a Momo driver
-and `momo.New` returns the `*momo.DB`. `db.Tx` runs a function in a
+`pgxdriver.Open` opens a pgx pool and returns a Momo driver that owns it, and
+`momo.New` returns the `*momo.DB`. Closing the driver closes the pool: the
+driver implements `io.Closer`. Every driver package has the same two
+constructors. `Open(ctx, dsn, opts...)` opens the database and owns it. `New(handle,
+opts...)` wraps a pool or `*sql.DB` you opened, and never closes it: you do.
+`db.Tx` runs a function in a
 transaction and commits when it returns nil. Inside it, use the `tx` handle for
 every statement. `momo.Exec` and `momo.Scalars` are the raw SQL path: `?`
 binds the next argument, so values never become part of the SQL text.
@@ -50,6 +54,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 
@@ -64,12 +69,12 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	pool, err := pgxdriver.NewPool(ctx, os.Getenv("MOMO_EXAMPLE_DSN"))
+	drv, err := pgxdriver.Open(ctx, os.Getenv("MOMO_EXAMPLE_DSN"))
 	if err != nil {
 		return err
 	}
-	defer pool.Close()
-	db := momo.New(pgxdriver.New(pool))
+	defer drv.(io.Closer).Close()
+	db := momo.New(drv)
 
 	return db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
 		if _, err := momo.Exec(ctx, tx, "CREATE TEMP TABLE notes (id bigint PRIMARY KEY, body text NOT NULL)"); err != nil {
@@ -104,6 +109,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 
@@ -113,12 +119,12 @@ import (
 
 func main() {
 	ctx := context.Background()
-	pool, err := pgxdriver.NewPool(ctx, os.Getenv("MOMO_EXAMPLE_DSN"))
+	drv, err := pgxdriver.Open(ctx, os.Getenv("MOMO_EXAMPLE_DSN"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer pool.Close()
-	db := momo.New(pgxdriver.New(pool))
+	defer drv.(io.Closer).Close()
+	db := momo.New(drv)
 
 	err = db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
 		if _, err := momo.Exec(ctx, tx, "CREATE TEMP TABLE tags (name text PRIMARY KEY)"); err != nil {

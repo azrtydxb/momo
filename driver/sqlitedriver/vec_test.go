@@ -20,7 +20,7 @@ import (
 // t.Cleanup. The database is private to the test and never touches disk.
 func openVecForTest(t *testing.T) *sql.DB {
 	t.Helper()
-	db, _, err := Open(":memory:", Config{})
+	db, _, err := openWith(":memory:", Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,8 +38,8 @@ func TestSQLiteVecLoaded(t *testing.T) {
 	if err := db.QueryRow("SELECT vec_version()").Scan(&v); err != nil {
 		t.Fatal(err)
 	}
-	if v != SQLiteVecVersion {
-		t.Fatalf("vec_version() = %q, want %q (embedded by bindings v0.1.6)", v, SQLiteVecVersion)
+	if v != VecVersion {
+		t.Fatalf("vec_version() = %q, want %q (embedded by bindings v0.1.6)", v, VecVersion)
 	}
 }
 
@@ -47,7 +47,7 @@ func TestSQLiteVecLoaded(t *testing.T) {
 // of its minor version, and refuses everything else with a momo error that
 // names both versions.
 func TestCheckVecVersion(t *testing.T) {
-	for _, got := range []string{SQLiteVecVersion, "v0.1.7", "v0.1.10"} {
+	for _, got := range []string{VecVersion, "v0.1.7", "v0.1.10"} {
 		if err := checkVecVersion(got); err != nil {
 			t.Fatalf("checkVecVersion(%q) = %v, want it accepted", got, err)
 		}
@@ -57,8 +57,8 @@ func TestCheckVecVersion(t *testing.T) {
 		if !errors.Is(err, momo.ErrUnsupported) {
 			t.Fatalf("checkVecVersion(%q) = %v, want ErrUnsupported", got, err)
 		}
-		if !strings.Contains(err.Error(), SQLiteVecVersion) || !strings.Contains(err.Error(), `"`+got+`"`) {
-			t.Fatalf("diagnostic %q names neither %q nor the pinned %s", err, got, SQLiteVecVersion)
+		if !strings.Contains(err.Error(), VecVersion) || !strings.Contains(err.Error(), `"`+got+`"`) {
+			t.Fatalf("diagnostic %q names neither %q nor the pinned %s", err, got, VecVersion)
 		}
 	}
 }

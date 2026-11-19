@@ -464,7 +464,7 @@ db := momo.New(pgxdriver.New(pool, pgxdriver.WithVectorFormat(pgxdriver.VectorBi
 ## SQLite and sqlite-vec
 
 `driver/sqlitedriver` links sqlite-vec v0.1.6 (the version `vec_version()`
-reports; `sqlitedriver.SQLiteVecVersion` is the release it is tested with, and
+reports; `sqlitedriver.VecVersion` is the release it is tested with, and
 `Open` fails with `ErrUnsupported` on another minor or major version but accepts
 a later patch release of the same minor). The same typed builders that serve pgvector
 render sqlite-vec's scalar functions, and the integration tests run them

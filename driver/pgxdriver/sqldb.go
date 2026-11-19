@@ -18,8 +18,18 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 )
 
-// FromSQLDB adopts an existing *sql.DB opened with the pgx stdlib driver. The execution mode is the one
-// set in that connection's pgx config; FromSQLDB cannot change it. The caller owns db and closes it.
+// FromSQLDB is the old name of NewSQL.
+//
+// Deprecated: use NewSQL. FromSQLDB is removed in the next release.
+func FromSQLDB(db *sql.DB) momo.Driver { return NewSQL(db) }
+
+// NewSQL adopts an existing *sql.DB opened with the pgx stdlib driver. The execution mode is the one
+// set in that connection's pgx config; NewSQL cannot change it. The caller owns db and closes it; the
+// driver never does. Use OpenSQL to have the driver open and own the pool.
+//
+// opts is accepted so that every constructor has one shape and an option can be added without changing
+// the signature; the database/sql path uses only error classification, so the options of the native
+// driver, such as WithExecMode, have no effect here.
 //
 // The returned driver supports pinning, pool statistics and error classification. It implements neither
 // momo.Copier nor momo.Batcher.
@@ -41,7 +51,9 @@ import (
 //     database/sql with pgx does not send READ WRITE for TxOptions{ReadOnly: false}, so such a
 //     transaction takes the session's default_transaction_read_only (the native driver sends it explicitly).
 //   - A transaction still open on a pinned connection when it is released or discarded is rolled back.
-func FromSQLDB(db *sql.DB) momo.Driver {
+func NewSQL(db *sql.DB, _ ...Option) momo.Driver { return newSQLDriver(db) }
+
+func newSQLDriver(db *sql.DB) *sqlDriver {
 	if db == nil {
 		return &sqlDriver{err: unsupportedDB("nil *sql.DB")}
 	}
@@ -50,6 +62,33 @@ func FromSQLDB(db *sql.DB) momo.Driver {
 	}
 	return &sqlDriver{db: db}
 }
+
+// OpenSQL parses dsn, opens a *sql.DB on it with the pgx stdlib driver and returns a driver that owns
+// it: close it through the io.Closer the returned driver implements, which closes the database. The
+// execution mode is the one the DSN selects: pgx.ParseConfig defaults it to pgx.QueryExecModeCacheStatement,
+// which is not PgBouncer transaction-mode safe, so a program behind PgBouncer adds
+// default_query_exec_mode=exec to the DSN. A DSN that selects simple protocol (default_query_exec_mode=
+// simple_protocol or prefer_simple_protocol) is refused: the driver then fails every Query, Exec, Begin
+// and Pin with momo.ErrUnsupported, and Close still closes the database. A dsn that does not parse is
+// returned as an error. Like Open, OpenSQL does not dial. See NewSQL for what the database/sql path
+// supports. opts is accepted for the shape of Open and has no effect.
+func OpenSQL(_ context.Context, dsn string, _ ...Option) (momo.Driver, error) {
+	cfg, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	db, d := openConnConfig(cfg)
+	return &ownedSQLDriver{sqlDriver: d, db: db}, nil
+}
+
+// ownedSQLDriver is the driver OpenSQL returns: it owns the database and closes it.
+type ownedSQLDriver struct {
+	*sqlDriver
+	db *sql.DB
+}
+
+// Close closes the database the driver opened.
+func (o *ownedSQLDriver) Close() error { return o.db.Close() }
 
 func unsupportedDB(why string) error {
 	return &momo.Error{Kind: momo.ErrUnsupported, Op: "build", Err: errors.New("pgxdriver: " + why)}
@@ -66,10 +105,20 @@ func unsupportedDB(why string) error {
 // arguments client-side, which breaks the rule that values are always bound. A cfg that selects it is
 // refused: the returned driver then fails every Query, Exec, Begin and Pin with momo.ErrUnsupported,
 // and the returned *sql.DB is still returned so the caller can close it.
+//
+// Deprecated: use OpenSQL, which takes a DSN and returns a driver that owns the pool, or
+// stdlib.OpenDB(*cfg) with NewSQL for a *pgx.ConnConfig you built. FromConnConfig is removed in the
+// next release.
 func FromConnConfig(cfg *pgx.ConnConfig, opts ...Option) (*sql.DB, momo.Driver) {
 	_ = opts
+	db, d := openConnConfig(cfg)
+	return db, d
+}
+
+// openConnConfig opens the *sql.DB of cfg and adopts it, refusing simple protocol.
+func openConnConfig(cfg *pgx.ConnConfig) (*sql.DB, *sqlDriver) {
 	db := stdlib.OpenDB(*cfg)
-	d := FromSQLDB(db).(*sqlDriver)
+	d := newSQLDriver(db)
 	if d.err == nil {
 		if cfg.DefaultQueryExecMode == pgx.QueryExecModeSimpleProtocol {
 			d.err = errSimpleProtocol
@@ -88,7 +137,7 @@ var errSimpleProtocol = &momo.Error{
 }
 
 // ready reports the construction error, then, once, checks the execution mode of the pgx connections
-// behind an adopted *sql.DB. database/sql hides the pgx config, so FromSQLDB can only look at it through
+// behind an adopted *sql.DB. database/sql hides the pgx config, so NewSQL can only look at it through
 // a connection: the first statement checks one out, reads its DefaultQueryExecMode and refuses simple
 // protocol for good. A failure to get a connection is returned and the check repeats on the next call.
 func (d *sqlDriver) ready(ctx context.Context) error {

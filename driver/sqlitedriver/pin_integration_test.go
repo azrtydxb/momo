@@ -16,12 +16,12 @@ import (
 
 func TestBusyIsStructuredError(t *testing.T) {
 	dsn := testdb.SQLitePath(t)
-	db1, d1, err := Open(dsn, Config{BusyTimeout: 50 * time.Millisecond, MaxOpenConns: 1})
+	db1, d1, err := openWith(dsn, Config{BusyTimeout: 50 * time.Millisecond, MaxOpenConns: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db1.Close() })
-	db2, d2, err := Open(dsn, Config{BusyTimeout: 50 * time.Millisecond, MaxOpenConns: 1})
+	db2, d2, err := openWith(dsn, Config{BusyTimeout: 50 * time.Millisecond, MaxOpenConns: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestBusyIsStructuredError(t *testing.T) {
 }
 
 func TestSQLitePinnedAndStats(t *testing.T) {
-	db, d, err := Open(testdb.SQLitePath(t), Config{})
+	db, d, err := openWith(testdb.SQLitePath(t), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -40,7 +40,7 @@ func TestServerVersionSQLDB(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	ctx := context.Background()
-	got, err := FromSQLDB(db).(momo.ServerVersioner).ServerVersion(ctx)
+	got, err := NewSQL(db).(momo.ServerVersioner).ServerVersion(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

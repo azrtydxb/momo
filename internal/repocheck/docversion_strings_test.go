@@ -19,7 +19,7 @@ import (
 // docs. Every other occurrence is a stale or hand-copied version.
 const versionAllowed = "a line with the " + versionMarker + " marker, a line inside a " +
 	blockStart + " block, a line under an Upgrading, Since, Changelog or History heading, " +
-	"the go.mod Go floor, the sqlite-vec pin (SQLiteVecVersion in driver/sqlitedriver), " +
+	"the go.mod Go floor, the sqlite-vec pin (VecVersion in driver/sqlitedriver), " +
 	"the go.mod version of a module the line names, or an entry in internal/repocheck/testdata/version_allow.txt"
 
 var (
@@ -28,7 +28,7 @@ var (
 	historicalRe  = regexp.MustCompile(`(?i)\b(upgrading|since|changelog|history)\b`)
 	goModDepRe    = regexp.MustCompile(`^\s*(?:require\s+)?(\S+\.\S+/\S+)\s+(v\d+\.\d+\.\d+\S*)\s*(?://.*)?$`)
 	goModGoRe     = regexp.MustCompile(`(?m)^go (\d+\.\d+\.\d+)\s*$`)
-	sqliteVecRe   = regexp.MustCompile(`(?m)^const SQLiteVecVersion = "v?(\d+\.\d+\.\d+)"`)
+	sqliteVecRe   = regexp.MustCompile(`(?m)^const VecVersion ="v?(\d+\.\d+\.\d+)"`)
 	allowEntryRe  = regexp.MustCompile(`^v?(\d+\.\d+\.\d+)\s*\|\s*(\S.*)$`)
 	fenceMarkerRe = regexp.MustCompile("^\\s*(```|~~~)")
 )
@@ -153,7 +153,7 @@ func loadDocVersionEnv(t *testing.T, root string) docVersionEnv {
 	}
 	sv := sqliteVecRe.FindStringSubmatch(read("driver/sqlitedriver/vec.go"))
 	if sv == nil {
-		t.Fatal("driver/sqlitedriver/vec.go has no SQLiteVecVersion constant")
+		t.Fatal("driver/sqlitedriver/vec.go has no VecVersion constant")
 	}
 	env.sqlVec = sv[1]
 	for i, line := range strings.Split(read("internal/repocheck/testdata/version_allow.txt"), "\n") {
