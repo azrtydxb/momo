@@ -7,4 +7,6 @@ docs/mysql.md types the window notes name the Range frame, a window frame mode a
 docs/upgrading.md types an older section names the Range frame of a window, a frame mode and not the types.Range type
 docs/upgrading.md schema an older section names the Exclude glob list of the migrate configuration and not the schema.Exclude type
 docs/migrations.md schema the section on the exclude rule names the Exclude glob list of the migrate configuration and not the schema.Exclude type
+docs/upgrading.md advisory the 0.4.0 section is history and must stay as written; it names the advisory Try forms bare
+>>>>>>> origin/main
 docs/capabilities.md schema the generated capabilities table has one row per dialect.Dialect field, and the FullText row shares its name with the schema.FullText type

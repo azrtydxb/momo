@@ -23,7 +23,7 @@ func Example() {
 	var buf bytes.Buffer
 	l := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	db := momo.New(fakedriver.New(dialect.Postgres),
-		momo.WithHook(momolog.New(l, momolog.Values(true))), momo.WithArgLogging())
+		momo.WithHook(momolog.New(l, momolog.WithValues(true))), momo.WithArgLogging())
 
 	doc := suite.Document{TenantID: 1, Title: "t", Secret: "hunter2-sensitive"}
 	if _, err := momo.Insert[suite.Document](db).Models([]suite.Document{doc}).Exec(context.Background()); err != nil {

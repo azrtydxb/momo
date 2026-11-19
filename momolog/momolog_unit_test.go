@@ -86,7 +86,7 @@ func TestHookIsARelationHook(t *testing.T) {
 
 func TestNeverLogsSensitiveValue(t *testing.T) {
 	var buf bytes.Buffer
-	db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(momolog.New(logger(&buf), momolog.Values(true))), momo.WithArgLogging())
+	db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(momolog.New(logger(&buf), momolog.WithValues(true))), momo.WithArgLogging())
 	insertSecret(t, db)
 	out := buf.String()
 	if strings.Contains(out, secret) {
@@ -114,7 +114,7 @@ func TestValuesAreOptIn(t *testing.T) {
 	})
 	t.Run("Values without WithArgLogging logs no args", func(t *testing.T) {
 		var buf bytes.Buffer
-		db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(momolog.New(logger(&buf), momolog.Values(true))))
+		db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(momolog.New(logger(&buf), momolog.WithValues(true))))
 		insertSecret(t, db)
 		out := buf.String()
 		if strings.Contains(out, "args=") || strings.Contains(out, secret) {
@@ -165,7 +165,7 @@ func TestLogsErrors(t *testing.T) {
 
 func TestLevels(t *testing.T) {
 	var buf bytes.Buffer
-	h := momolog.New(logger(&buf), momolog.Level(slog.LevelInfo), momolog.SlowOver(time.Second))
+	h := momolog.New(logger(&buf), momolog.WithLevel(slog.LevelInfo), momolog.WithSlowThreshold(time.Second))
 	h.AfterQuery(context.Background(), &momo.QueryEvent{Op: "select", SQL: "select 1", Duration: time.Millisecond})
 	h.AfterQuery(context.Background(), &momo.QueryEvent{Op: "select", SQL: "select 2", Duration: 2 * time.Second})
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")

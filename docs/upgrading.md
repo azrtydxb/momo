@@ -7,11 +7,16 @@ later releases can break more.
 
 ## Upgrading to 0.20.0
 
-`momo migrate drift`, the refusal of `momo migrate baseline` and
-`momo generate --from-db` now see exclusion constraints on PostgreSQL, and
-`generate --from-db` writes range columns as `types.Range` fields; no edit is
-needed in your code, but inspection of a database that holds an exclusion
-constraint momo cannot model now stops with an error.
+Six option and helper names changed so that every functional option is spelled
+With plus what it sets, and the 20 advisory lock functions became two
+functions with options. The old names stay as deprecated forwarders for this
+release and run the same statements, so your code keeps compiling and behaving
+as before; move to the new names before the forwarders go. Separately,
+`momo migrate drift`, `momo migrate baseline` and `momo generate --from-db` now
+see exclusion constraints on PostgreSQL and write range columns as `types.Range`
+fields (the first two sections below); no edit is needed in your code for that,
+but inspection of a database that holds an exclusion constraint momo cannot
+model now stops with an error.
 
 ### Exclusion constraints are part of the schema
 
@@ -41,6 +46,68 @@ named a Go type for it. The six built-in range types now map to
 `types.Range[types.Date]`, `tsrange` to `types.Range[types.Timestamp]` and
 `tstzrange` to `types.Range[time.Time]`. A rule you wrote for such a column still
 wins. See [type mapping](TYPE_MAPPING.md#range-types).
+
+### Functional options are named `With*`
+
+| Old name                     | New name                    |
+| ---------------------------- | --------------------------- |
+| `momolog.Level`              | `momolog.WithLevel`         |
+| `momolog.SlowOver`           | `momolog.WithSlowThreshold` |
+| `momolog.Values`             | `momolog.WithValues`        |
+| `advisory.Hash64`            | `advisory.WithHash64`       |
+| `pgxdriver.OnReconnect`      | `pgxdriver.WithOnReconnect` |
+| `momo.WithDetail` (an error) | `momo.Annotate`             |
+
+`momo.WithDetail` is not an option: it copies an error with its raw driver
+detail set, so it is now `momo.Annotate`. The With prefix is kept for options
+and for context wrappers such as `momo.WithTenant`, which keep the shape of
+`context.WithValue`; the rule is in the package comment of `momo` and in the
+contributor guide. The arguments and the behavior of every renamed function are
+unchanged, so `gofmt -r` renames a call site:
+
+```sh
+gofmt -r 'momolog.Level -> momolog.WithLevel' -w .
+gofmt -r 'momolog.SlowOver -> momolog.WithSlowThreshold' -w .
+gofmt -r 'momolog.Values -> momolog.WithValues' -w .
+gofmt -r 'advisory.Hash64 -> advisory.WithHash64' -w .
+gofmt -r 'pgxdriver.OnReconnect -> pgxdriver.WithOnReconnect' -w .
+gofmt -r 'momo.WithDetail -> momo.Annotate' -w .
+```
+
+### Advisory locks are `advisory.Acquire` and `advisory.Release`
+
+`advisory.Acquire(ctx, q, key, opts...)` takes a lock and returns whether it is
+held; `advisory.Release(ctx, q, key, opts...)` releases a session lock. The key
+is an `int64` (or `int`) or a string, so the `...String` forms are gone, and
+three options choose the lock: `advisory.Xact` (transaction-scoped, `q` is the
+`*momo.Tx`), `advisory.Shared` and `advisory.Try` (return `false` instead of
+waiting). `advisory.Acquire` without `advisory.Try` blocks and returns `true`.
+A session lock still needs the pinned `*momo.DB` of `db.OnConn(pc)`. The old
+functions map like this, with `K` an `int64` or a string key:
+
+| Old call                                 | New call                                                                           |
+| ---------------------------------------- | ---------------------------------------------------------------------------------- |
+| `advisory.XactLock(ctx, tx, K)`          | `advisory.Acquire(ctx, tx, K, advisory.Xact())`                                    |
+| `advisory.TryXactLock(ctx, tx, K)`       | `advisory.Acquire(ctx, tx, K, advisory.Xact(), advisory.Try())`                    |
+| `advisory.XactLockShared(ctx, tx, K)`    | `advisory.Acquire(ctx, tx, K, advisory.Xact(), advisory.Shared())`                 |
+| `advisory.TryXactLockShared(ctx, tx, K)` | `advisory.Acquire(ctx, tx, K, advisory.Xact(), advisory.Shared(), advisory.Try())` |
+| `advisory.Lock(ctx, db, K)`              | `advisory.Acquire(ctx, db, K)`                                                     |
+| `advisory.TryLock(ctx, db, K)`           | `advisory.Acquire(ctx, db, K, advisory.Try())`                                     |
+| `advisory.Unlock(ctx, db, K)`            | `advisory.Release(ctx, db, K)`                                                     |
+| `advisory.LockShared(ctx, db, K)`        | `advisory.Acquire(ctx, db, K, advisory.Shared())`                                  |
+| `advisory.TryLockShared(ctx, db, K)`     | `advisory.Acquire(ctx, db, K, advisory.Shared(), advisory.Try())`                  |
+| `advisory.UnlockShared(ctx, db, K)`      | `advisory.Release(ctx, db, K, advisory.Shared())`                                  |
+
+The `...String` forms (`advisory.XactLockString`, `advisory.LockString`,
+`advisory.UnlockSharedString` and the other seven) map the same way with a
+string key, and keep taking the hash option, now `advisory.WithHash64`; they
+refuse any other option with `ErrValidation`. Two differences to know:
+
+- `advisory.Acquire` and `advisory.Release` take a `momo.Querier`, so a
+  `*momo.DB` with `advisory.Xact` and a `*momo.Tx` without it fail at run time
+  with `ErrValidation` where the old transaction functions failed to compile.
+- `advisory.Acquire` returns `(bool, error)` for the blocking form too, so
+  assign or discard the boolean.
 
 ## Upgrading to 0.19.0
 

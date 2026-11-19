@@ -1361,3 +1361,11 @@ Items 1 and 2 of issue #253 (PR #258). Decided, not asked:
 - Bare-name allow-list: the docs already name the `Range` window frame and the `Exclude` glob list, which now share a name with `types.Range` and `schema.Exclude`, so `internal/docscheck/testdata/bare_allow.txt` allows them on the pages that use them instead of rewriting those pages.
 - MySQL and MariaDB get no integration coverage: they refuse a range field and an exclusion constraint with `momo.ErrUnsupported`, which the render and generator tests cover.
 - An exclusion constraint is backed by an index of its own name, so `splitNoTx` treats `add_exclude` and `drop_exclude` like the other index-name changes and moves them into the no-transaction tail after a concurrent drop of the same name.
+
+## Compatibility policy (#254)
+
+Question: which packages are excluded from the v1 compatibility promise, and what happens to the API-review findings?
+
+Decision (2026-11-19, the user, via AskUserQuestion): accept the proposed experimental list: `gen/graphql`, `gen/grpc`, `gen/openapi`, `gen/apiquery`, `importer`.
+
+Decision (2026-11-19, the user): carry out all seven API-review cleanup groups as breaking changes before v1, tracked as separate issues.

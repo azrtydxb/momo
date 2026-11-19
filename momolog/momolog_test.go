@@ -40,7 +40,7 @@ func capture(t *testing.T, hookOpts []momolog.Option, dbOpts []momo.Option, veri
 
 func TestSlogHook(t *testing.T) {
 	t.Run("record has op table sql duration and rows, no values", func(t *testing.T) {
-		capture(t, []momolog.Option{momolog.Level(slog.LevelDebug)}, nil, func(t *testing.T, out string) {
+		capture(t, []momolog.Option{momolog.WithLevel(slog.LevelDebug)}, nil, func(t *testing.T, out string) {
 			for _, want := range []string{"level=DEBUG", "op=select", "table=authors", "sql=", "FROM", "duration=", "rows=0"} {
 				if !strings.Contains(out, want) {
 					t.Fatalf("log lacks %q:\n%s", want, out)
@@ -61,7 +61,7 @@ func TestSlogHook(t *testing.T) {
 	})
 
 	t.Run("Values alone is not enough, it also needs WithArgLogging", func(t *testing.T) {
-		capture(t, []momolog.Option{momolog.Values(true)}, nil, func(t *testing.T, out string) {
+		capture(t, []momolog.Option{momolog.WithValues(true)}, nil, func(t *testing.T, out string) {
 			if strings.Contains(out, "s3cr3t-needle") {
 				t.Fatalf("value logged without WithArgLogging:\n%s", out)
 			}
@@ -69,7 +69,7 @@ func TestSlogHook(t *testing.T) {
 	})
 
 	t.Run("Values plus WithArgLogging logs the value", func(t *testing.T) {
-		capture(t, []momolog.Option{momolog.Values(true)}, []momo.Option{momo.WithArgLogging()}, func(t *testing.T, out string) {
+		capture(t, []momolog.Option{momolog.WithValues(true)}, []momo.Option{momo.WithArgLogging()}, func(t *testing.T, out string) {
 			if !strings.Contains(out, "s3cr3t-needle") {
 				t.Fatalf("value missing with Values(true) and WithArgLogging:\n%s", out)
 			}
@@ -93,16 +93,16 @@ func TestSlogHook(t *testing.T) {
 			if !strings.Contains(out, momo.RedactedArg) {
 				t.Fatalf("log lacks %q:\n%s", momo.RedactedArg, out)
 			}
-		}, momo.WithHook(momolog.New(l, momolog.Values(true))), momo.WithArgLogging())
+		}, momo.WithHook(momolog.New(l, momolog.WithValues(true))), momo.WithArgLogging())
 	})
 
 	t.Run("slow statements log at WARN, fast ones at DEBUG", func(t *testing.T) {
-		capture(t, []momolog.Option{momolog.SlowOver(time.Nanosecond)}, nil, func(t *testing.T, out string) {
+		capture(t, []momolog.Option{momolog.WithSlowThreshold(time.Nanosecond)}, nil, func(t *testing.T, out string) {
 			if !strings.Contains(out, "level=WARN") {
 				t.Fatalf("slow statement not at WARN:\n%s", out)
 			}
 		})
-		capture(t, []momolog.Option{momolog.SlowOver(time.Hour)}, nil, func(t *testing.T, out string) {
+		capture(t, []momolog.Option{momolog.WithSlowThreshold(time.Hour)}, nil, func(t *testing.T, out string) {
 			if !strings.Contains(out, "level=DEBUG") {
 				t.Fatalf("fast statement not at DEBUG:\n%s", out)
 			}
