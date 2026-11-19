@@ -1368,6 +1368,37 @@ Integrator notes, decided and not asked:
 - `Event.Attempt` is the number of the attempt that is starting, 1 for the first, on every database. PostgreSQL and SQLite return the row from the claiming UPDATE; the MySQL claim selects before it leases, so the relay adds the counted attempt to the selected value.
 - The MySQL and MariaDB `payload` column stays `blob` (65,535 bytes): momo maps `[]byte` to `blob` there and the model's `type:` tag is one string for every database, so `longblob` would break PostgreSQL and SQLite. docs/outbox.md states the limit and gives the `ALTER TABLE ... MODIFY payload longblob` migration for larger events. Changing the global `[]byte` mapping on MySQL was not done: it is outside this PR.
 
+## Embedding sync design (#250)
+
+PR #257 keeps embeddings in sync with their source columns (`embed_from`). Four design points were put to the maintainer.
+
+- Concurrency: compare-and-set on the source columns and stored hash, not `FOR UPDATE SKIP LOCKED`, so no transaction is held during the Embedder call; the cost is duplicate provider calls between runners.
+- Staleness: decided in Go from `vector.SourceHash`, not in SQL, because a portable SQL hash is not possible across dialects; the cost is reading every live row's source text per run.
+- Write path: a raw write of the vector and hash only (no `updated_at`, version bump or hooks), but the stale read and the write-back both run the handle's interceptors, so tenant scoping applies.
+- Hash column name: fixed `<column>_hash`, not configurable.
+
+Decision (2026-11-18, the user, via AskUserQuestion): keep compare-and-set; no change.
+
+Decision (2026-11-18, the user, via AskUserQuestion): keep deciding staleness in Go; no change.
+
+Decision (2026-11-18, the user, via AskUserQuestion): change the write path so the read and the write-back apply the model's interceptors; keep the raw write without hooks, `updated_at` or version.
+
+Decision (2026-11-18, the user, via AskUserQuestion): keep the fixed `<column>_hash` name; no change.
+
+## Range types and exclusion constraints (#253)
+
+Items 1 and 2 of issue #253 (PR #258). Decided, not asked:
+
+- Text codec only: `types.Range[T]` writes and reads the PostgreSQL range text through `Value` and `Scan`. There is no pgx binary codec, because pgx already turns the binary form into text for an `sql.Scanner` and sends a string as text, so the pgx driver and `database/sql` both work without registering anything.
+- No multiranges: they would need a second generic type and more predicates. `--from-db` reports a multirange column as unmapped, as before.
+- Exclusion constraints model plain columns only (column, operator, access method, deferral flags). The PostgreSQL inspector refuses a constraint with a `WHERE` predicate, an expression, an operator class, an ordering, `INCLUDE` or storage parameters, with an error naming it and its table, instead of skipping it; `migrate.exclude` hides the table. Partial exclusion constraints are the likely follow-up and need the canonicalization round trip.
+- `types.Timestamp` is the element of a `tsrange`, so the Go type says whether a column has a time zone and `rangeop` can cast an operand correctly. It has `Infinity` and `NegInfinity` flags like `types.Date`; `time.Time` cannot hold infinity, so a `tstzrange` infinity bound does not scan.
+- The zero `types.Range[T]{}` is the empty range: it is written as `empty` and reads back with `Empty` set. Compare with `IsEmpty`, not `==`.
+- Range predicates live in a new feature package `rangeop` (listed in `internal/repocheck/testdata/packages.txt` and in the docscheck API list), not in the root package.
+- Bare-name allow-list: the docs already name the `Range` window frame and the `Exclude` glob list, which now share a name with `types.Range` and `schema.Exclude`, so `internal/docscheck/testdata/bare_allow.txt` allows them on the pages that use them instead of rewriting those pages.
+- MySQL and MariaDB get no integration coverage: they refuse a range field and an exclusion constraint with `momo.ErrUnsupported`, which the render and generator tests cover.
+- An exclusion constraint is backed by an index of its own name, so `splitNoTx` treats `add_exclude` and `drop_exclude` like the other index-name changes and moves them into the no-transaction tail after a concurrent drop of the same name.
+
 ## Compatibility policy (#254)
 
 Question: which packages are excluded from the v1 compatibility promise, and what happens to the API-review findings?
@@ -1375,3 +1406,19 @@ Question: which packages are excluded from the v1 compatibility promise, and wha
 Decision (2026-11-19, the user, via AskUserQuestion): accept the proposed experimental list: `gen/graphql`, `gen/grpc`, `gen/openapi`, `gen/apiquery`, `importer`.
 
 Decision (2026-11-19, the user): carry out all seven API-review cleanup groups as breaking changes before v1, tracked as separate issues.
+
+## Driver constructors (#268)
+
+Question A: who closes the pool behind a driver made by an `Open` function, and how does an application do it?
+
+- `momo.DB.Close` closes the driver when it implements `io.Closer` (the driver an `Open` returns) and returns nil otherwise; a pool wrapped by a `New` is never closed by momo.
+- A bare `io.Closer` assertion on the driver in every example.
+
+Decision (2026-11-19, the user, via AskUserQuestion): add `func (db *DB) Close() error` to `momo.DB`, with the first behavior. Docs, README and examples use `defer db.Close()`.
+
+Question B: does `pgxdriver.Open` ping?
+
+- Ping on `ctx` like the SQLite and MySQL `Open`; on failure close the pool and return the error.
+- Stay lazy like `pgxpool` and `NewPool`.
+
+Decision (2026-11-19, the user, via AskUserQuestion): `pgxdriver.Open` and `OpenSQL` ping by default; `NewPool` stays lazy.

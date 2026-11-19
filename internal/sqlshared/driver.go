@@ -54,6 +54,20 @@ type Driver struct {
 // New returns a Driver over db.
 func New(db *sql.DB, h Hooks) *Driver { return &Driver{db: db, h: &h} }
 
+// DB returns the pool the driver runs on.
+func (d *Driver) DB() *sql.DB { return d.db }
+
+// DB returns the *sql.DB behind a driver made by driver/sqlitedriver,
+// driver/sqlitepure or driver/mysqldriver, and nil for any other driver. It is
+// for this module's tests and tools, which need the pool next to the driver;
+// an application that wants the pool opens it itself and wraps it with New.
+func DB(d momo.Driver) *sql.DB {
+	if p, ok := d.(interface{ DB() *sql.DB }); ok {
+		return p.DB()
+	}
+	return nil
+}
+
 // ClassifyError implements momo.ErrorClassifier.
 func (d *Driver) ClassifyError(err error) error { return d.h.Classify("", err) }
 

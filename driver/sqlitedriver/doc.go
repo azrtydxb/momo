@@ -34,10 +34,20 @@
 // -tags sqlite_omit_load_extension, which removes extension loading from the
 // SQLite library altogether.
 //
+// # Constructors
+//
+// Open(ctx, dsn, opts...) opens the database and returns a momo.Driver that
+// owns it: momo.DB.Close closes the driver, and the database with it. New(db,
+// opts...) wraps a *sql.DB you opened, does not own it, and never closes it;
+// it refuses options, because the pool is already open. Every momo driver
+// package has these two.
+//
 // # Defaults
 //
-// Config is optional. Its zero values select a 5s busy timeout, synchronous
-// NORMAL, immediate transactions and one open connection (the single-writer
-// guidance for SQLite). The adapter also sets WAL journalling and foreign keys
-// on every connection; a DSN cannot switch those off.
+// The options are optional. WithConfig takes a Config, and WithBusyTimeout,
+// WithSynchronous, WithTxLock and WithMaxOpenConns set one field. The zero
+// values select a 5s busy timeout, synchronous NORMAL, immediate transactions
+// and one open connection (the single-writer guidance for SQLite). The adapter
+// also sets WAL journalling and foreign keys on every connection; a DSN cannot
+// switch those off.
 package sqlitedriver

@@ -107,6 +107,10 @@ type Table struct {
 	Indexes     []Index      `json:"indexes,omitempty"`
 	ForeignKeys []ForeignKey `json:"foreign_keys,omitempty"`
 	Checks      []Check      `json:"checks,omitempty"`
+	// Excludes are the exclusion constraints (PostgreSQL only). A snapshot
+	// written before they existed loads with none, so the snapshot format
+	// version stays 1.
+	Excludes []Exclude `json:"excludes,omitempty"`
 	// PrimaryKeyDeferrable marks the primary key DEFERRABLE and
 	// PrimaryKeyInitiallyDeferred INITIALLY DEFERRED (PostgreSQL only). An
 	// initially deferred key is deferrable: the two compare as one spelling.
@@ -256,6 +260,36 @@ type Unique struct {
 	InitiallyDeferred bool `json:"initially_deferred,omitempty"`
 }
 
+// Exclude is an exclusion constraint (PostgreSQL only): no two rows of the
+// table may satisfy every element's operator at once, as in
+// EXCLUDE USING gist (room_id WITH =, during WITH &&), which forbids two
+// bookings of one room from overlapping. The constraint is backed by an index
+// of its own name. Only plain columns with their default operator class are
+// modelled: an expression, a WHERE predicate, an INCLUDE list or a storage
+// parameter are not, and the PostgreSQL inspector refuses a constraint that
+// has one. A snapshot written before exclusion constraints existed has none,
+// so the snapshot format version stays 1.
+type Exclude struct {
+	Name string `json:"name"`
+	// Method is the index access method: gist, spgist, btree or hash. Empty
+	// means gist, which is what a normalized schema holds.
+	Method   string           `json:"method,omitempty"`
+	Elements []ExcludeElement `json:"elements"`
+	// Deferrable marks the constraint DEFERRABLE and InitiallyDeferred
+	// INITIALLY DEFERRED, with the same meaning and spelling rules as on
+	// Unique.
+	Deferrable        bool `json:"deferrable,omitempty"`
+	InitiallyDeferred bool `json:"initially_deferred,omitempty"`
+}
+
+// ExcludeElement is one column of an exclusion constraint and the operator two
+// rows are compared with on it, such as "=" or "&&". A GiST index on a scalar
+// column needs the btree_gist extension.
+type ExcludeElement struct {
+	Column   string `json:"column"`
+	Operator string `json:"operator"`
+}
+
 // Index is a (possibly unique, partial or expression) index.
 type Index struct {
 	Name   string `json:"name"`
@@ -380,6 +414,7 @@ func (s *Schema) Sort() {
 		slices.SortFunc(t.Indexes, func(a, b Index) int { return byName(a.Name, b.Name) })
 		slices.SortFunc(t.ForeignKeys, func(a, b ForeignKey) int { return byName(a.Name, b.Name) })
 		slices.SortFunc(t.Checks, func(a, b Check) int { return byName(a.Name, b.Name) })
+		slices.SortFunc(t.Excludes, func(a, b Exclude) int { return byName(a.Name, b.Name) })
 		for j := range t.Checks {
 			if in := t.Checks[j].In; in != nil {
 				in.Values = sortedSet(in.Values)

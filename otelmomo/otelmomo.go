@@ -33,19 +33,21 @@ type Option func(*config)
 // measurement.
 func WithNamespace(ns string) Option { return func(c *config) { c.namespace = ns } }
 
-type hook struct {
+// Hook is the OpenTelemetry hook New returns. It implements momo.Hook; the zero
+// value is not usable.
+type Hook struct {
 	tracer trace.Tracer
 	ns     string
 	dur    dbconv.ClientOperationDuration
 }
 
-var _ momo.Hook = (*hook)(nil)
+var _ momo.Hook = (*Hook)(nil)
 
-// New returns a momo.Hook that records one client span and one
-// db.client.operation.duration measurement per statement. The providers are
+// New returns a *Hook, which is a momo.Hook, that records one client span and
+// one db.client.operation.duration measurement per statement. The providers are
 // passed in; the package uses no global provider, and a nil provider is an
 // error. SQL text is recorded as db.query.text; argument values never are.
-func New(tp trace.TracerProvider, mp metric.MeterProvider, opts ...Option) (momo.Hook, error) {
+func New(tp trace.TracerProvider, mp metric.MeterProvider, opts ...Option) (*Hook, error) {
 	if tp == nil {
 		return nil, errors.New("otelmomo: nil TracerProvider")
 	}
@@ -60,7 +62,7 @@ func New(tp trace.TracerProvider, mp metric.MeterProvider, opts ...Option) (momo
 	if err != nil {
 		return nil, fmt.Errorf("otelmomo: create db.client.operation.duration: %w", err)
 	}
-	return &hook{tracer: tp.Tracer(scope), ns: c.namespace, dur: dur}, nil
+	return &Hook{tracer: tp.Tracer(scope), ns: c.namespace, dur: dur}, nil
 }
 
 // operationName returns the first keyword of sql, upper-cased.
@@ -73,7 +75,7 @@ func operationName(sql string) string {
 }
 
 // BeforeQuery starts the span and returns the context that carries it.
-func (h *hook) BeforeQuery(ctx context.Context, e *momo.QueryEvent) context.Context {
+func (h *Hook) BeforeQuery(ctx context.Context, e *momo.QueryEvent) context.Context {
 	op := operationName(e.SQL)
 	name := op
 	attrs := []attribute.KeyValue{
@@ -102,7 +104,7 @@ func errorType(err error) string {
 }
 
 // AfterQuery ends the span and records the duration.
-func (h *hook) AfterQuery(ctx context.Context, e *momo.QueryEvent) {
+func (h *Hook) AfterQuery(ctx context.Context, e *momo.QueryEvent) {
 	span := trace.SpanFromContext(ctx)
 	attrs := []attribute.KeyValue{semconv.DBOperationName(operationName(e.SQL))}
 	if e.Table != "" {

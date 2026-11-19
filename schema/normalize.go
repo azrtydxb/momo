@@ -824,6 +824,16 @@ func normalizeDeferral(t *Table) {
 		fk := &t.ForeignKeys[j]
 		fk.Deferrable = fk.Deferrable || fk.InitiallyDeferred
 	}
+	for j := range t.Excludes {
+		ex := &t.Excludes[j]
+		ex.Deferrable = ex.Deferrable || ex.InitiallyDeferred
+		// An empty method is gist, the one momo writes; PostgreSQL reports
+		// the method it was created with, in lower case.
+		ex.Method = strings.ToLower(strings.TrimSpace(ex.Method))
+		if ex.Method == "" {
+			ex.Method = "gist"
+		}
+	}
 }
 
 // describeLegacyFullText gives a FULLTEXT index that was declared before the

@@ -15,7 +15,7 @@ import (
 func TestFromSQLDBRejectsNilAndForeignDB(t *testing.T) {
 	ctx := context.Background()
 	for name, db := range map[string]*sql.DB{"nil": nil, "foreign": sql.OpenDB(fakeConnector{})} {
-		d := FromSQLDB(db)
+		d := NewSQL(db)
 		if _, err := d.Query(ctx, "SELECT 1", nil); !errors.Is(err, momo.ErrUnsupported) {
 			t.Errorf("%s: Query = %v, want ErrUnsupported", name, err)
 		}

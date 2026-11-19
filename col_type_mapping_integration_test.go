@@ -137,6 +137,26 @@ func liveCases(t *testing.T) map[string]liveCase {
 		"types.JSON[T]": roundTripAll[types.JSON[tmDoc]](nil,
 			types.JSON[tmDoc]{V: tmDoc{Name: `q"uote\`, Tags: []string{"a", "b"}}},
 			types.JSON[tmDoc]{V: tmDoc{Name: "", Tags: []string{}}}),
+		"types.Range[int32]": roundTripAll[types.Range[int32]](nil,
+			types.ClosedOpen[int32](math.MinInt32, math.MaxInt32), types.EmptyRange[int32](),
+			types.NewRange(types.NoBound[int32](), types.Excl[int32](5)), types.NewRange(types.Incl[int32](5), types.NoBound[int32]())),
+		"types.Range[int64]": roundTripAll[types.Range[int64]](nil,
+			types.ClosedOpen[int64](math.MinInt64, math.MaxInt64), types.EmptyRange[int64](),
+			types.NewRange(types.NoBound[int64](), types.NoBound[int64]())),
+		"types.Range[types.Numeric]": roundTripAll[types.Range[types.Numeric]](nil,
+			types.NewRange(types.Incl(types.Numeric{Decimal: "-0.000000000000000001"}), types.Excl(types.Numeric{Decimal: "12345678901234567890.123456789"})),
+			types.EmptyRange[types.Numeric](), types.NewRange(types.NoBound[types.Numeric](), types.Incl(types.Numeric{Decimal: "0"}))),
+		"types.Range[types.Date]": roundTripAll[types.Range[types.Date]](nil,
+			types.ClosedOpen(types.Date{Time: time.Date(1969, 12, 31, 0, 0, 0, 0, time.UTC)}, types.Date{Time: time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)}),
+			types.EmptyRange[types.Date](), types.NewRange(types.Incl(types.Date{Time: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}), types.NoBound[types.Date]())),
+		"types.Range[types.Timestamp]": roundTripAll[types.Range[types.Timestamp]](nil,
+			types.ClosedOpen(types.Timestamp{Time: pre1970}, types.Timestamp{Time: time.Date(2026, 1, 1, 12, 0, 0, 123456000, time.UTC)}),
+			types.EmptyRange[types.Timestamp](), types.NewRange(types.NoBound[types.Timestamp](), types.Excl(types.Timestamp{Time: pre1970}))),
+		"types.Range[time.Time]": roundTripAll(func(a, b types.Range[time.Time]) bool {
+			return a.Empty == b.Empty && a.Lower.Infinite == b.Lower.Infinite && a.Upper.Infinite == b.Upper.Infinite &&
+				a.Lower.Inclusive == b.Lower.Inclusive && a.Upper.Inclusive == b.Upper.Inclusive &&
+				a.Lower.Value.Equal(b.Lower.Value) && a.Upper.Value.Equal(b.Upper.Value)
+		}, types.ClosedOpen(pre1970, ist), types.EmptyRange[time.Time](), types.NewRange(types.Incl(ist), types.NoBound[time.Time]())),
 		"vector.Vector":              roundTripAll[vector.Vector](nil, vector.Vector{1, -2.5, 3}, vector.Vector{math.MaxFloat32, 0, math.SmallestNonzeroFloat32}),
 		"vector.HalfVector":          roundTripAll[vector.HalfVector](nil, vector.HalfVector{1, -2.5, 0.5}, vector.HalfVector{65504, 0, -65504}),
 		"vector.SparseVector":        roundTripAll[vector.SparseVector](nil, vector.SparseVector{Dim: 3, Indices: []int32{0, 2}, Values: []float32{1.5, -2}}),

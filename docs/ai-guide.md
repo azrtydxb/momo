@@ -171,15 +171,27 @@ Details: README "Configure and generate". Example: [quickstart](../examples/quic
 
 ```go
 func openDB(ctx context.Context, url string) (*momo.DB, func(), error) {
-	pool, err := pgxdriver.NewPool(ctx, url) // (ctx, string) (*pgxpool.Pool, error)
+	drv, err := pgxdriver.Open(ctx, url) // (ctx, string, ...Option) (momo.Driver, error)
 	if err != nil {
 		return nil, nil, err
 	}
-	return momo.New(pgxdriver.New(pool)), pool.Close, nil // New(pool, opts ...Option) momo.Driver
+	db := momo.New(drv)
+	return db, func() { _ = db.Close() }, nil
 }
 ```
 
-- The caller owns and closes the pool. `momo.DB` has no `Close`.
+- One constructor shape for every driver package. `Open(ctx, dsn, opts...)`
+  opens the database and returns a `momo.Driver` that owns it: `db.Close()`
+  closes it. `New(handle, opts...)` wraps a pool or `*sql.DB` you opened
+  (`pgxdriver.New(pool)`, `pgxdriver.NewSQL(db)`, `sqlitedriver.New(db)`,
+  `sqlitepure.New(db)`, `mysqldriver.New(db)`), does not own it and never
+  closes it: `db.Close()` returns nil and leaves it open. `New` refuses an
+  option that tries to configure the open pool, with `ErrValidation`.
+- SQLite settings are options: `sqlitedriver.WithConfig(cfg)`,
+  `sqlitedriver.WithBusyTimeout`, `sqlitedriver.WithSynchronous`,
+  `sqlitedriver.WithTxLock` and `sqlitedriver.WithMaxOpenConns`, and
+  `sqlitepure.WithReadOnly`. The MySQL flavor is `mysqldriver.WithFlavor`
+  (`dialect.FlavorMariaDB` for MariaDB; the default is MySQL).
 - `*momo.DB` is safe for concurrent use; create one at startup and share it.
 - DSN: `postgres://user:password@host:5432/dbname?sslmode=verify-full`. Use
   `sslmode=disable` for local development only. Momo adds no TLS options; pgx
@@ -195,8 +207,8 @@ Other constructors:
 <!-- docscheck:fragment -->
 
 ```go
-sqlDB, drv := pgxdriver.FromConnConfig(cfg, opts...) // cfg *pgx.ConnConfig; returns (*sql.DB, momo.Driver)
-drv = pgxdriver.FromSQLDB(sqlDB)                     // sqlDB must be backed by pgx stdlib; for an existing *sql.Tx see SQLTx, AdoptTx and UnwrapSQLTx in section Transactions
+drv, err := pgxdriver.OpenSQL(ctx, url) // database/sql on the pgx stdlib driver; drv owns the *sql.DB
+drv = pgxdriver.NewSQL(sqlDB)           // sqlDB must be backed by pgx stdlib; you own it; for an existing *sql.Tx see SQLTx, AdoptTx and UnwrapSQLTx in section Transactions
 ```
 
 `database/sql` paths have no Batch or COPY path (relation loading falls back to
@@ -217,9 +229,10 @@ PgBouncer (transaction pooling):
   `pgx.QueryExecModeCacheDescribe`, `pgx.QueryExecModeDescribeExec` (import
   `github.com/jackc/pgx/v5`; not tested through PgBouncer). The simple protocol is rejected
   with `ErrUnsupported` on every query. DON'T select it.
-- With `FromConnConfig` set `cfg.DefaultQueryExecMode = pgx.QueryExecModeExec`
-  first; pgx defaults to `CacheStatement`, which is NOT PgBouncer-safe. Its
-  `opts` have no effect.
+- With `pgxdriver.OpenSQL` add `default_query_exec_mode=exec` to the DSN, and
+  with `pgxdriver.NewSQL` set `cfg.DefaultQueryExecMode = pgx.QueryExecModeExec`
+  before `stdlib.OpenDB`; pgx defaults to `CacheStatement`, which is NOT
+  PgBouncer-safe. The options of `OpenSQL` and `NewSQL` have no effect.
 - DON'T run `momo migrate` through a transaction pooler (section 5).
 - Set `search_path` per role or per transaction, not at connection startup.
 
@@ -328,6 +341,7 @@ Tag reference (all lower case):
 | `size:<n>`                                                                | `varchar(n)`; strings only                                                                                                                                                                                                                                                                                                                                    |
 | `precision:<p>`, `scale:<s>`                                              | numeric precision (float, decimal, or a string without `size` that carries a numeric); `scale` needs `precision`                                                                                                                                                                                                                                              |
 | `dim:<n>`                                                                 | vector dimension; optional on vector and halfvec (none: dimensionless column), required on sparsevec and bit, invalid elsewhere                                                                                                                                                                                                                               |
+| `embed_from:<a>\|<b>`                                                     | names the string source columns or fields (separated by `\|`) of the embedding of a `*vector.Vector` field. The generator adds a nullable `varchar(64)` hash column `<column>_hash` beside it, and `momo.StaleEmbeddings` and `momo.SyncEmbeddings` keep the embedding current (see Keeping embeddings in sync). Refused on MySQL                             |
 | `default:<sql>`                                                           | column default, raw SQL (`default:now()`, `default:'free'`, `default:0`)                                                                                                                                                                                                                                                                                      |
 | `unique` / `unique:<name>`                                                | unique index (single column)                                                                                                                                                                                                                                                                                                                                  |
 | `index` / `index:<name>`                                                  | index; modifiers `sort:asc\|desc`, `nulls:first\|last`, `method:<m>` need `index` or `unique`                                                                                                                                                                                                                                                                 |
@@ -368,7 +382,7 @@ An index name declared in `MomoConfig` must not collide with an auto-named
 yields `accounts_plan_idx`); the generator refuses the duplicate.
 
 Config methods: `Config.Index`, `Config.IndexExpr`, `Config.Unique`, `Config.ForeignKey`, `Config.Check`, `Config.CheckIn`, `Config.Enum`, `Config.Default`, `Config.Generated`,
-`Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.PrimaryKey`, `Config.PrimaryKeyDeferrable`, `Config.PrimaryKeyInitiallyDeferred`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
+`Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.Exclude`, `Config.PrimaryKey`, `Config.PrimaryKeyDeferrable`, `Config.PrimaryKeyInitiallyDeferred`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
 `Config.PartitionOf`. Index chain: `IndexOpts.Unique()` (on `Config.Index` or `Config.IndexExpr`), `Where(pred)`, `Method(m)`, `IndexOpts.With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
 `Concurrently()` (`diff` writes the index as `CREATE INDEX CONCURRENTLY` in its own no-transaction migration).
@@ -429,6 +443,15 @@ columns; otherwise the generator reports a diagnostic. The key is a plain
 constraint: `diff` adds, replaces and drops it like a single-column key, and
 `generate --from-db` writes it back. There is no `belongs_to` form for a
 composite key; the relation still needs a single-column key.
+
+An exclusion constraint (PostgreSQL) is declared with `c.Exclude(name, &m.A,
+"=", &m.B, "&&")`: pairs of a field and an operator, so `&m.RoomID, "=", &m.During,
+"&&"` forbids two rows of one room with overlapping `During` ranges. Chain
+`.Using("gist")` (the default; `spgist`, `btree` and `hash` also work),
+`.Deferrable()` or `.InitiallyDeferred()`. A GiST constraint over a scalar column
+makes the generator add the `btree_gist` extension. It models plain columns only
+(no `WHERE`, expression or operator class); the other dialects refuse it. See
+[migrations](migrations.md#exclusion-constraints).
 
 A unique constraint, a foreign key and a primary key can be `DEFERRABLE` on
 PostgreSQL: `c.Unique(...).Deferrable()` or `.InitiallyDeferred()` (a unique
@@ -1024,6 +1047,25 @@ column, call or `momo.Value` elements (an empty list is `ErrValidation`), and
 `momo.ArraySubquery[T]` renders `ARRAY(subquery)` for a one-column
 `SelectQuery` or `momo.Union`. Both are `Expression[[]T]`, so they scan into
 a `[]T` field and feed `arrayop` predicates; PostgreSQL only.
+
+Range columns (a PostgreSQL type). A `types.Range[T]` field is generated as the
+range type of its element: `int32` is `int4range`, `int64` is `int8range`,
+`types.Numeric` is `numrange`, `types.Date` is `daterange`, `time.Time` is
+`tstzrange` and `types.Timestamp` (a timestamp without a zone) is `tsrange`.
+Build a value with `types.ClosedOpen(lower, upper)` (`[lower,upper)`),
+`types.NewRange(types.Incl(a), types.NoBound[T]())` for any other shape, or
+`types.EmptyRange[T]()`; a bound is a `types.Bound` with `Value`, `Inclusive` and
+`Infinite`. The predicates are generic functions over the typed column, in the
+package `github.com/azrtydxb/momo/rangeop`: `rangeop.Contains(col, element)`
+(`@>`), `rangeop.ContainsRange`, `rangeop.ContainedBy` (`<@`),
+`rangeop.Overlaps` (`&&`), `rangeop.Adjacent` (`-|-`), `rangeop.StrictlyLeft`
+(`<<`), `rangeop.StrictlyRight` (`>>`), `rangeop.IsEmpty`,
+`rangeop.LowerInfinite`, `rangeop.UpperInfinite`, and `rangeop.Lower` and
+`rangeop.Upper`, which are scalar expressions (`rangeop.Lower(during).Ge(start)`).
+Each binds its operand with a cast to the range or element type. PostgreSQL
+stores the discrete ranges as `[lower,upper)`, so `(0,9]` reads back as
+`[1,10)`. On other dialects the generator refuses the field and the builders fail
+the build with `ErrUnsupported`. Multiranges are not mapped.
 
 Searching with user input safely. `Like` and `ILike` always render
 `ESCAPE '!'` on every dialect, matching `EscapeLike`. Wildcards (`%`, `_`) in
@@ -1645,7 +1687,7 @@ Joined and CTE-prefixed writes:
 
 Bulk and set-based writes:
 
-- `InsertQuery[T].Copy` streams models through the driver COPY path. It returns `ErrUnsupported` on SQLite and MySQL and through `FromSQLDB` (the driver must offer a COPY path). It runs the insert interceptors (deny only, a predicate they add is ignored) and the `BeforeInsert` hook over a copy of the models, validates fields like `Models`, and counts as a write for `NewUnitOfWork`. It skips `OnConflict`, `Returning` and chunking, and it cannot be combined with `Model`, `Models`, `InsertQuery.Values`, `FromSelect`, `OnConflict` or `Upsert` (`ErrValidation`). On a `*DB` with `WithImplicitTx` it runs in its own transaction, so `WithTxSetup` applies; on a pinned `OnConn` handle with `WithTxSetup` it fails closed with `ErrUnsupported`.
+- `InsertQuery[T].Copy` streams models through the driver COPY path. It returns `ErrUnsupported` on SQLite and MySQL and through `pgxdriver.NewSQL` (the driver must offer a COPY path). It runs the insert interceptors (deny only, a predicate they add is ignored) and the `BeforeInsert` hook over a copy of the models, validates fields like `Models`, and counts as a write for `NewUnitOfWork`. It skips `OnConflict`, `Returning` and chunking, and it cannot be combined with `Model`, `Models`, `InsertQuery.Values`, `FromSelect`, `OnConflict` or `Upsert` (`ErrValidation`). On a `*DB` with `WithImplicitTx` it runs in its own transaction, so `WithTxSetup` applies; on a pinned `OnConn` handle with `WithTxSetup` it fails closed with `ErrUnsupported`.
 - `InsertQuery[T].Unnest()` (the method, not the package-level FROM source `momo.Unnest`) renders a `Model` or `Models` insert as `INSERT ... SELECT * FROM unnest($1::bigint[], $2::text[])`: one array parameter per written column, one statement. The bind count does not depend on the row count, so it bypasses `MaxParams` and `WithMaxParams` and never chunks (and is not split into a transaction of several statements). Other dialects return `ErrUnsupported`. `InsertQuery.Values`, `InsertQuery.ValuesRows` and `FromSelect` return `ErrValidation`, and so does a model without a table schema in its generated metadata (the array types come from it). Int, float, bool, string, `time.Time` and `[]byte` columns bind as typed slices (`[]*T` when a value is NULL); any other element type (uuid, json, decimal, named enums) falls back to `[]any`, which pgx may reject for an array type, so use plain `Models` for such a model. `OnConflict`, `Upsert` and `Returning` work as for `Models`; interceptors, `BeforeInsert`, field validators, automatic timestamps and id generators run as for `Models`. A `FlagSensitive` column's array shows as `RedactedArg` in `QueryEvent.Args`.
 - `Merge` is PostgreSQL 15 or later; `.Returning` needs 17 or later. An older server or a driver without `ServerVersioner` returns `ErrUnsupported` before the statement runs. SQLite, MySQL and MariaDB have no MERGE: `Exec` runs the clauses as temporary-table copies of the source and of the matched pairs, an `UPDATE` and an `INSERT` in one transaction (a savepoint inside a `Tx`), which gives PostgreSQL's final table and affected-row count without concurrent writers (it takes no lock against a matching row committed between its steps); a target row that two source rows match is `ErrTooManyRows` (on PostgreSQL too), `Returning`, `SET col = DEFAULT` and a matched update on a model without a primary key are `ErrUnsupported`, and `MergeQuery.Statements` lists the statements because `SQL` has no single text there. It needs `On` and at least one WHEN clause (`ErrValidation`). An interceptor that adds predicates makes it fail with `ErrValidation`, because they cannot be applied to a MERGE; deny the kind instead. Field validators do not run on the values inserted from the source.
 - `BulkUpdate` and `BulkUpdateKeys` (a composite key) update only the keys in their row list, bind one parameter per value, and keep the version and updated-at columns current. They run on PostgreSQL, SQLite, MySQL and MariaDB (`UPDATE ... FROM` on the first two, `UPDATE ... JOIN` on the MySQL family). `Exec` splits a list over the parameter limit into chunks that run atomically (a transaction on a `DB`, a savepoint on a `Tx`); `SQL` and `Rows` render one statement and return `ErrLimitExceeded` over the limit. `Returning` needs a dialect with `UPDATE ... RETURNING`, so MySQL and MariaDB return `ErrUnsupported`. `RowsAffected` counts the rows that match a listed key on every dialect, changed or not.
@@ -1893,7 +1935,7 @@ err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
   `tx.Rollback(ctx)`; a finished `*Tx` returns `ErrTxDone`. Prefer `db.Tx`.
 - Incremental adoption in a `database/sql` or pgx codebase, both directions:
   - Adopt a transaction the caller began: `mtx := db.AdoptTx(pgxdriver.SQLTx(sqlTx))`
-    for a `*sql.Tx` (database must be pgx-stdlib backed, `FromSQLDB`), or
+    for a `*sql.Tx` (database must be pgx-stdlib backed, `pgxdriver.NewSQL`), or
     `db.AdoptTx(pgxdriver.PgxTx(pgxTx, opts...))` for a `pgx.Tx` (pgxpool driver; `opts` are the options of `New`, such as `WithExecMode`; an unsupported exec mode returns `ErrUnsupported` on use, as with `New`). An adopted `pgx.Tx` keeps Batch and `COPY`; an adopted `*sql.Tx` has neither. Statements,
     hooks, error classification and savepoints (`mtx.Tx`) work as usual. `Commit`
     and `Rollback` on `mtx` return `ErrAdoptedTx` and do nothing: the caller
@@ -2224,6 +2266,37 @@ sequential, so keep it short and dedicated), `HNSWEfSearch`,
 `ErrValidation`. Iterative/max-scan/scan-mem/max-probes fields on pgvector older than 0.8.0
 or a missing extension: `ErrUnsupported`.
 
+Keeping embeddings in sync with their source text:
+
+- Tag the field `*vector.Vector` with `embed_from:title|body` (column or Go
+  names of string fields, in the order that is hashed). `momo generate` adds a
+  nullable `varchar(64)` column `<column>_hash` after the vector; it is not a
+  field of the model, so do not declare it yourself and do not name a column
+  that. `momo migrate diff` adds it; on a table that already holds embeddings
+  every row then counts as stale.
+- Implement `vector.Embedder` for your provider: its one method returns one
+  `vector.Vector` per text. Momo ships none and makes no network call. Call
+  `momo.SyncEmbeddings[T]` from a worker or job with the `*momo.DB`, the
+  embedder and a `momo.EmbedOptions`, not with a `*momo.Tx`: no transaction or
+  statement is open while the embedder runs. `momo.StaleEmbeddings[T]` lists the
+  stale rows without embedding them.
+- Concurrent runners are safe. Each row is written by one compare-and-set
+  `UPDATE` on its source columns and stored hash, so a row edited while the
+  provider worked stays stale (`EmbedResult.Conflicts`) and is picked up by the
+  next run. Runners do not split the work, so two of them embed the same stale
+  rows twice. Rerun after an error: a run keeps no state.
+- The hash is `vector.SourceHash` (SHA-256 over a length-prefixed encoding of the
+  sources, hex). To force a re-embed after changing the model, set the hash
+  column to NULL with raw SQL.
+- A row with no source text gets a NULL vector, never a call to the provider.
+  Tag the vector field `read_only` so ordinary inserts and updates cannot write
+  an old embedding over a fresh one.
+- The handle's interceptors apply to both the stale read (kind `select`) and the
+  write-back (kind `update`), so a tenant-scoped handle only sees and writes its
+  own rows; the write still skips hooks, `updated_at` and version columns.
+- PostgreSQL and SQLite only: the generator refuses `embed_from` for MySQL or
+  MariaDB and both functions return `ErrUnsupported` there.
+
 Pitfalls:
 
 - JSON extraction in GROUP BY: a key that is not plain letters, digits and
@@ -2412,22 +2485,29 @@ Examples: every `examples/*/example_test.go`, harness
   `momolog.WithSlowThreshold` (statements slower than the duration log at WARN) and `momolog.WithValues`.
   Argument values are logged only with `momolog.WithValues(true)` and `momo.WithArgLogging`
   together; a sensitive column's value is `momo.RedactedArg`.
-- `momo.WithQueryScope(ctx)` groups statements for `momo.NewNPlusOneHook(threshold,
-report)`, a development hook that reports once per statement shape per scope
-  when the shape runs more than the threshold. Contexts without a scope are not
-  tracked; a scope tracks at most 1024 shapes; a panic in the report function is
-  recovered. A single batched relation load runs one statement per relation and does not trigger it.
+- `obs.WithScope(ctx)` groups statements and relation loads for the two N+1
+  detectors. `obs.NewStatementNPlusOne(threshold, report)` is a development hook
+  that reports once per statement shape per scope when the shape runs more than
+  the threshold. Contexts without a scope are not tracked; a scope tracks at most
+  1024 shapes; a panic in the report function is recovered. A single batched
+  relation load runs one statement per relation and does not trigger it. The
+  root forms `momo.WithQueryScope` and `momo.NewNPlusOneHook` are deprecated
+  forwarders for one release; write the `obs` ones in new code.
 - Hooks, package `github.com/azrtydxb/momo/obs` (see
-  [observability](observability.md)): both implement `momo.Hook` and
+  [observability](observability.md)): every constructor returns its concrete
+  type, and each implements `momo.Hook`, so `momo.WithHook` takes the value as it
+  is. `obs.Recorder`, `obs.NPlusOne` and `momolog.Hook` also implement
   `momo.RelationHook`, so `momo.WithHook` registers them for statements and for
   relation loads. `&obs.Recorder{}` keeps events for test assertions (`Events`,
-  `SQLs`, `Relations`, `Reset`). `obs.NewNPlusOne(threshold, report)` with
-  `obs.WithScope(ctx)` reports a relation loaded more than the threshold times
-  in one scope (a `Load` inside a loop; one batched `Load` stays silent). It is
-  separate from `momo.NewNPlusOneHook`, which counts repeated statement shapes in
-  a `momo.WithQueryScope` scope; each needs its own scope on the context. A value
-  bound from a sensitive column is always `momo.RedactedArg` in what these hooks
-  see. They are safe for concurrent use. For slog use `momolog.New`.
+  `SQLs`, `Relations`, `Reset`). `obs.NewNPlusOne(threshold, report)` reports a
+  relation loaded more than the threshold times in one scope (a `Load` inside a
+  loop; one batched `Load` stays silent). It is separate from
+  `obs.NewStatementNPlusOne`, which counts repeated statement shapes, but both
+  read the one scope `obs.WithScope` makes, so one scope on the context serves
+  both. A value bound from a sensitive column is always `momo.RedactedArg` in
+  what these hooks see. They are safe for concurrent use. For slog use
+  `momolog.New`, which returns `*momolog.Hook`; `otelmomo.New` returns
+  `(*otelmomo.Hook, error)`.
   `obs.NewSlowQuery(threshold, report, obs.WithPlainExplain(plainDB))` reports
   each statement slower than the threshold and, only with `obs.WithPlainExplain`,
   adds a plain `EXPLAIN` plan (never `ANALYZE`; inside a transaction through a

@@ -55,7 +55,7 @@ func PgxTx(tx pgx.Tx, opts ...Option) momo.DriverTx {
 
 // UnwrapSQLTx returns the *sql.Tx behind tx, so legacy database/sql code can
 // run statements in the same transaction. It works for a Tx begun on a
-// FromSQLDB driver, for a Tx from AdoptTx with SQLTx, and for a savepoint
+// NewSQL driver, for a Tx from AdoptTx with SQLTx, and for a savepoint
 // scope (which returns the outer transaction). The boolean is false when tx
 // is nil or belongs to another driver kind, such as the pgxpool driver.
 //
@@ -78,7 +78,7 @@ func UnwrapSQLTx(tx *momo.Tx) (*sql.Tx, bool) {
 // run statements in the same transaction. It works for a Tx begun on a New
 // driver, for a Tx from AdoptTx with PgxTx, and for a savepoint scope. The
 // boolean is false when tx is nil or belongs to another driver kind, such as
-// FromSQLDB.
+// NewSQL.
 //
 // Do not call Commit or Rollback on the handle of a momo-begun Tx: momo still
 // owns that transaction (its done flag and hooks), so finish it through momo.

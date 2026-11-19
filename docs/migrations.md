@@ -228,6 +228,59 @@ What the tools do on PostgreSQL:
   `deferrable=true` on the other, and the repair is the drop and add above. As
   every drop, it is withheld unless `--allow-destructive` is given.
 
+### Exclusion constraints
+
+An exclusion constraint on PostgreSQL forbids two rows from satisfying every
+operator of the constraint at once: `EXCLUDE USING gist (room_id WITH =, during
+WITH &&)` stops two bookings of one room from overlapping, which a unique
+constraint cannot say. The model keeps them in `schema.Table.Excludes`, each a
+`schema.Exclude` with a name, an access method (`gist` when empty, and a
+normalized schema always says it), a list of `schema.ExcludeElement` (a column
+and an operator) and the same `Deferrable` and `InitiallyDeferred` flags as a
+unique constraint. A snapshot written before they existed loads with none, so
+the snapshot format version stays 1.
+
+The declaration is `Config.Exclude` in `MomoConfig`: a name, then pairs of a
+field reference and the operator, with `ExcludeOpts.Using`,
+`ExcludeOpts.Deferrable` and `ExcludeOpts.InitiallyDeferred` to chain. For
+the bookings above it is `c.Exclude("bookings_no_overlap", &b.RoomID, "=", &b.During,
+"&&")`. The operator is a string literal of operator characters and is checked before
+it reaches a statement. The constraint is backed by an index of its own name, so
+it shares the index namespace and the generator refuses a name that an index or
+a unique constraint already has. A GiST index over a scalar column such as
+`room_id` needs the `btree_gist` extension; the generator adds it to the schema
+when a constraint compares a scalar, so a migration creates it before the table.
+A constraint over range columns alone needs none. SQLite, MySQL and MariaDB
+have no exclusion constraints: the generator reports a diagnostic for a
+declaration when the target dialect is not PostgreSQL, and the SQLite and MySQL
+renderers return an error that wraps `momo.ErrUnsupported`.
+
+Only plain columns with their default operator class and ordering are modelled:
+an expression, a `WHERE` predicate, an `INCLUDE` list, an operator class, an
+ordering and storage parameters are not. The PostgreSQL inspector reads each
+constraint from `pg_get_constraintdef`, and refuses one it cannot model with an
+error that names the constraint and its table, because skipping it would let
+`Baseline` and `drift` call a database clean that does not match its model.
+Hide the table with `migrate.exclude` to proceed, and keep that constraint in a
+migration written by hand.
+
+What the tools do on PostgreSQL:
+
+- `momo generate --from-db` writes `Config.Exclude` for each inspected
+  constraint, with `Using` for a method other than `gist` and the deferral
+  calls. A range column comes out as a `types.Range` field.
+- `diff` renders the constraint after the unique constraints in `CREATE TABLE`,
+  and as an `ADD CONSTRAINT` and a `DROP CONSTRAINT` statement on an existing
+  table. Any change of the elements, the method or the deferrability is a drop
+  and an add of the constraint in one transaction, because PostgreSQL cannot
+  alter one. Adding one to a table that holds rows
+  builds a GiST index and checks every row under an `ACCESS EXCLUSIVE` lock, and
+  fails if existing rows already conflict; `diff` reports it as a risky change.
+- `Baseline`, `drift` and `drift --fix-sql` compare each constraint as an object
+  of its table. A constraint that is missing, extra or different is reported,
+  and the repair is the drop and add above, withheld without
+  `--allow-destructive` like every drop. `AutoMigrate` never drops one.
+
 ### Checksums
 
 Two independent checks, both SHA-256 of the file bytes:

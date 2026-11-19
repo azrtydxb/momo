@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package obs holds ready-made observability hooks for Momo: a Recorder that
-// keeps every statement and relation load, an NPlusOne detector that reports a
-// relation loaded once per row, and a slow-query hook (NewSlowQuery) that can
-// capture a plain EXPLAIN plan. For log/slog use package momolog, whose hook
-// also logs relation loads.
+// keeps every statement and relation load, two N+1 detectors, and a slow-query
+// hook (NewSlowQuery) that can capture a plain EXPLAIN plan. NPlusOne reports a
+// relation loaded once per row; StatementNPlusOne reports any statement that
+// repeats. Both read the one scope that WithScope makes. For log/slog use
+// package momolog, whose hook also logs relation loads.
 //
 // The Recorder and NPlusOne implement momo.Hook and momo.RelationHook, so one
 // momo.WithHook call registers them for statement events and relation load
-// events. All three are safe for concurrent use, as the hook contract
-// requires.
+// events. Every hook here is safe for concurrent use, as the hook contract
+// requires, and every constructor returns its concrete type, which can be
+// passed to momo.WithHook as it is.
 //
 // The hooks see the argument values the DB hands to every hook: nil unless the
 // DB was opened with momo.WithArgLogging, and with the value bound from a

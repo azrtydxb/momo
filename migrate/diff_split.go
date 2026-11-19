@@ -24,7 +24,8 @@ const noTxSuffix = "_no_tx"
 //
 // A statement moves to the tail when it is NoTx. Changes that would break if
 // they ran before the moved ones follow it:
-//   - a later index, unique or foreign-key change on the same name, so a
+//   - a later index, unique, exclusion or foreign-key change on the same name
+//     (an exclusion constraint is backed by an index of its own name), so a
 //     drop and re-create of an index never straddles the two files;
 //   - a later foreign key that references a table whose unique index or
 //     constraint was moved, which needs that index to exist.
@@ -59,7 +60,7 @@ func (e *Engine) splitNoTx(version, name, parent string, ordered []Change, to *s
 		}
 		follow := false
 		switch c.Kind {
-		case CreateIndex, DropIndex, AddUnique, DropUnique, AddFK, DropFK:
+		case CreateIndex, DropIndex, AddUnique, DropUnique, AddExclude, DropExclude, AddFK, DropFK:
 			follow = movedNames[nameKey(c)]
 		}
 		if c.Kind == AddFK {
@@ -72,7 +73,7 @@ func (e *Engine) splitNoTx(version, name, parent string, ordered []Change, to *s
 		p.whole = len(p.tail) > 0 && len(p.head) == 0
 		if p.whole {
 			switch c.Kind {
-			case CreateIndex, DropIndex, AddUnique, DropUnique, AddFK, DropFK:
+			case CreateIndex, DropIndex, AddUnique, DropUnique, AddExclude, DropExclude, AddFK, DropFK:
 				movedNames[nameKey(c)] = true
 			}
 			if c.Kind == AddUnique {
@@ -179,6 +180,12 @@ func undoInTail(s *schema.Schema, c Change, whole bool) {
 		t.Indexes = slices.DeleteFunc(t.Indexes, func(ix schema.Index) bool { return ix.Name == c.Name })
 	case AddUnique:
 		t.Uniques = slices.DeleteFunc(t.Uniques, func(u schema.Unique) bool { return u.Name == c.Name })
+	case AddExclude:
+		t.Excludes = slices.DeleteFunc(t.Excludes, func(x schema.Exclude) bool { return x.Name == c.Name })
+	case DropExclude:
+		if x, ok := c.Before.(*schema.Exclude); ok && x != nil && !slices.ContainsFunc(t.Excludes, func(o schema.Exclude) bool { return o.Name == x.Name }) {
+			t.Excludes = append(t.Excludes, *x)
+		}
 	case AddFK:
 		t.ForeignKeys = slices.DeleteFunc(t.ForeignKeys, func(f schema.ForeignKey) bool { return f.Name == c.Name })
 	case DropIndex:

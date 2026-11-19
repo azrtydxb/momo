@@ -27,7 +27,13 @@ type opener struct {
 
 // openers lists the drivers built on sqlshared; cgo_integration_test.go adds
 // the cgo one. Every test here runs against each.
-var openers = []opener{{"sqlitepure", sqlitepure.Open}}
+var openers = []opener{{"sqlitepure", func(dsn string, cfg sqlitepure.Config) (*sql.DB, momo.Driver, error) {
+	d, err := sqlitepure.Open(context.Background(), dsn, sqlitepure.WithConfig(cfg))
+	if err != nil {
+		return nil, nil, err
+	}
+	return sqlshared.DB(d), d, nil
+}}}
 
 func eachDriver(t *testing.T, f func(t *testing.T, o opener)) {
 	t.Helper()

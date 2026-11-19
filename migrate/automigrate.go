@@ -197,7 +197,7 @@ func autoSkipReason(ch Change, desired *schema.Schema, created map[string]bool) 
 		return "column removed in models; AutoMigrate never drops"
 	case DropTable:
 		return "table removed in models; AutoMigrate never drops"
-	case DropEnum, DropSequence, DropIndex, DropUnique, DropCheck, DropFK, DropPrimaryKey, DropView, DropFunction, DropTrigger, DropPolicy:
+	case DropEnum, DropSequence, DropIndex, DropUnique, DropExclude, DropCheck, DropFK, DropPrimaryKey, DropView, DropFunction, DropTrigger, DropPolicy:
 		return "object removed in models; AutoMigrate never drops"
 	case RenameTable, RenameColumn:
 		return "rename requires a migration"

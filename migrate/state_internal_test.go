@@ -84,7 +84,9 @@ func TestStateFingerprintV1CoversEveryField(t *testing.T) {
 	// Updated for the deferrability fields (issue 237): they are omitted from the
 	// JSON of every schema that does not set them, which TestStateFingerprintV1IsPinned
 	// still proves, so the markers already written still verify.
-	const want = "8ff8164a68a8b7465932750140626caea2d2f93c8388b2285bc49c3d263294c8"
+	// Updated again for the exclusion constraint fields (issue 253), omitted the
+	// same way, so the pinned test above still holds for ordinary schemas.
+	const want = "7fcf6dcfeb64483631a67be9a05d5f0fba80c1a9901badcba31c667fd9fd2f87"
 	if got := stateFingerprint(&s); got != want {
 		t.Fatalf("fingerprint v1 of the full fixture: got %s, want %s", got, want)
 	}

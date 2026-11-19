@@ -83,7 +83,7 @@ func (r *Relay) pump(ctx context.Context, l *pgxdriver.Listener) {
 func (r *Relay) listen(ctx context.Context) {
 	wait := listenRetryMin
 	for {
-		l, err := pgxdriver.Listen(ctx, r.cfg.listen, []string{r.o.table}, pgxdriver.OnReconnect(r.Wake))
+		l, err := pgxdriver.Listen(ctx, r.cfg.listen, []string{r.o.table}, pgxdriver.WithOnReconnect(r.Wake))
 		if err == nil {
 			r.pump(ctx, l)
 			return

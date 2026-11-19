@@ -189,8 +189,8 @@ func flatten(s *schema.Schema, exact bool) map[string]object {
 		}
 	}
 	for _, t := range n.Tables {
-		cols, uqs, ixs, fks, chs := t.Columns, t.Uniques, t.Indexes, t.ForeignKeys, t.Checks
-		t.Columns, t.Uniques, t.Indexes, t.ForeignKeys, t.Checks = nil, nil, nil, nil, nil
+		cols, uqs, ixs, fks, chs, exs := t.Columns, t.Uniques, t.Indexes, t.ForeignKeys, t.Checks, t.Excludes
+		t.Columns, t.Uniques, t.Indexes, t.ForeignKeys, t.Checks, t.Excludes = nil, nil, nil, nil, nil, nil
 		// The storage engine is what the inspector found, never a declaration:
 		// a snapshot has none, so a live MyISAM table is not a change.
 		t.Engine = ""
@@ -201,6 +201,9 @@ func flatten(s *schema.Schema, exact bool) map[string]object {
 		}
 		for _, u := range uqs {
 			add(object{ref: ObjectRef{Kind: "unique", Schema: t.Schema, Name: t.Name + "." + u.Name}, body: mustJSON(u), parent: tbl.key(), child: true})
+		}
+		for _, x := range exs {
+			add(object{ref: ObjectRef{Kind: "exclude", Schema: t.Schema, Name: t.Name + "." + x.Name}, body: mustJSON(x), parent: tbl.key(), child: true})
 		}
 		indexes(tbl, t.Schema, t.Name, ixs)
 		for _, f := range fks {

@@ -17,6 +17,7 @@ import (
 	"testing/fstest"
 
 	"github.com/azrtydxb/momo/driver/sqlitepure"
+	"github.com/azrtydxb/momo/internal/sqlshared"
 	"github.com/azrtydxb/momo/migrate"
 	msqlite "github.com/azrtydxb/momo/migrate/sqlite"
 	"github.com/azrtydxb/momo/schema"
@@ -68,11 +69,12 @@ var sqliteLegacyDDL = []string{
 // sqliteExec runs statements on the SQLite database file at path.
 func sqliteExec(t *testing.T, path string, stmts []string) {
 	t.Helper()
-	db, _, err := sqlitepure.Open(path, sqlitepure.Config{})
+	drv, err := sqlitepure.Open(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	defer func() { _ = drv.(interface{ Close() error }).Close() }()
+	db := sqlshared.DB(drv)
 	for _, s := range stmts {
 		if _, err := db.ExecContext(context.Background(), s); err != nil {
 			t.Fatalf("%v\n%s", err, s)
@@ -84,11 +86,11 @@ func sqliteExec(t *testing.T, path string, stmts []string) {
 // the CLI does.
 func inspectSQLite(t *testing.T, path string) *schema.Schema {
 	t.Helper()
-	db, drv, err := sqlitepure.Open(path, sqlitepure.Config{})
+	drv, err := sqlitepure.Open(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = db.Close() }()
+	defer func() { _ = drv.(interface{ Close() error }).Close() }()
 	e, err := migrate.NewEngine(drv, fstest.MapFS{}, migrate.WithDialect(msqlite.New()))
 	if err != nil {
 		t.Fatal(err)

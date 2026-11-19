@@ -96,7 +96,10 @@ schemas without being fooled by spelling differences.
 The pgvector value types `vector.Vector`, `vector.HalfVector`, `vector.SparseVector` and `vector.Bits`,
 each a `sql.Scanner` and `driver.Valuer` with a `Validate` method, and
 `ErrInvalidVector`. A vector field declares its dimension with the tag
-`dim:<n>`; the Go type selects the SQL type. See [vectors](vectors.md).
+`dim:<n>`; the Go type selects the SQL type. It also holds the `vector.Embedder`
+interface an application implements for its embedding provider and
+`vector.SourceHash`, the hash that tells whether a stored embedding is still
+current (`momo.SyncEmbeddings` uses both). See [vectors](vectors.md).
 
 ### `types`
 
@@ -158,9 +161,10 @@ carries the format number and no release version.
   migrations applied; `momotest/sqlitetest` is the SQLite variant, kept apart
   so PostgreSQL tests do not link cgo. See [testing](testing.md).
 - `momolog`: a `log/slog` hook for statements and relation loads.
-- `obs`: ready-made `Hook` and `RelationHook` implementations (a recorder and
-  an N+1 relation-load detector); imports only `momo`. See
-  [observability](observability.md).
+- `obs`: ready-made `Hook` and `RelationHook` implementations (a recorder, an
+  N+1 relation-load detector and an N+1 statement detector that share one
+  scope, and a slow-query hook); imports only `momo` and the internal package
+  the two detectors share. See [observability](observability.md).
 - `outbox`: the transactional outbox, `outbox.Outbox.Add` in the caller's
   transaction and `outbox.Relay` with a publisher the application supplies. It
   imports `momo` and `driver/pgxdriver` for `LISTEN`; see [outbox](outbox.md).
