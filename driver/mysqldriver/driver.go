@@ -69,35 +69,46 @@ func dsnRefused(why string) error {
 	return &momo.Error{Kind: momo.ErrValidation, Op: "open", Err: errors.New("mysqldriver: " + why + "; momo refuses it")}
 }
 
-// Open opens a *sql.DB for dsn with ConfigureDSN applied and adopts it. Open
-// pings the server, as the SQLite drivers do, so a bad DSN, a refused
-// connection or bad credentials are reported here and not on the first
-// statement. An unknown flavor, a nil result of New, is momo.ErrUnsupported.
-// On any error the pool is closed and nothing is returned; on success the
-// caller closes the returned *sql.DB.
+// Option configures a driver created by New or Open.
+type Option func(*options)
+
+type options struct{ flavor dialect.Flavor }
+
+// WithFlavor selects the server flavor: dialect.FlavorMySQL (the default) or
+// dialect.FlavorMariaDB. An unknown flavor makes New return a driver whose
+// every call returns momo.ErrUnsupported, and Open return that error.
+func WithFlavor(f dialect.Flavor) Option { return func(o *options) { o.flavor = f } }
+
+// Open opens a *sql.DB for dsn with ConfigureDSN applied and returns a driver
+// that owns it: close it through the io.Closer the returned driver implements,
+// which closes the pool. Open pings the server on ctx, as the SQLite drivers
+// do, so a bad DSN, a refused connection or bad credentials are reported here
+// and not on the first statement. An unknown flavor, a nil result of New, is
+// momo.ErrUnsupported. On any error the pool is closed and nothing is
+// returned.
 //
 // ConfigureDSN refuses allowAllFiles=true and allowCleartextPasswords=true
 // with momo.ErrValidation.
-func Open(dsn string, flavor dialect.Flavor) (*sql.DB, momo.Driver, error) {
+func Open(ctx context.Context, dsn string, opts ...Option) (momo.Driver, error) {
 	cfg, err := ConfigureDSN(dsn)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	conn, err := mysql.NewConnector(cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	db := sql.OpenDB(conn)
-	d := New(db, flavor)
-	if bad, ok := d.(*driver); ok && bad.err != nil {
+	d := newDriver(db, opts)
+	if d.err != nil {
 		_ = db.Close()
-		return nil, nil, bad.err
+		return nil, d.err
 	}
-	if err := db.PingContext(context.Background()); err != nil {
+	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
-		return nil, nil, classify(err, "")
+		return nil, classify(err, "")
 	}
-	return db, d, nil
+	return &ownedDriver{d}, nil
 }
 
 // New wraps an opened *sql.DB. The DSN must come from ConfigureDSN (or set
@@ -106,13 +117,21 @@ func Open(dsn string, flavor dialect.Flavor) (*sql.DB, momo.Driver, error) {
 // is given, and a DSN with interpolateParams=true makes the driver write bound
 // values into the SQL text on the client, which defeats parameter binding and
 // the redaction of sensitive arguments. The adapter never opens
-// connections itself and the caller closes db. An unknown flavor yields a
-// driver whose every call returns momo.ErrUnsupported.
-func New(db *sql.DB, flavor dialect.Flavor) momo.Driver {
-	d := dialect.MySQLFlavor(flavor)
+// connections itself: the caller owns db and closes it, and the driver never
+// does. The flavor is MySQL unless WithFlavor says otherwise. An unknown
+// flavor or a nil db yields a driver whose every call returns
+// momo.ErrUnsupported.
+func New(db *sql.DB, opts ...Option) momo.Driver { return newDriver(db, opts) }
+
+func newDriver(db *sql.DB, opts []Option) *driver {
+	o := options{flavor: dialect.FlavorMySQL}
+	for _, f := range opts {
+		f(&o)
+	}
+	d := dialect.MySQLFlavor(o.flavor)
 	if d == nil || db == nil {
 		return &driver{err: &momo.Error{Kind: momo.ErrUnsupported, Op: "build",
-			Err: errors.New("mysqldriver: nil *sql.DB or unknown flavor " + string(flavor))}}
+			Err: errors.New("mysqldriver: nil *sql.DB or unknown flavor " + string(o.flavor))}}
 	}
 	return &driver{db: db, d: d}
 }
@@ -122,6 +141,15 @@ type driver struct {
 	d   *dialect.Dialect
 	err error
 }
+
+// DB returns the pool the driver runs on.
+func (d *driver) DB() *sql.DB { return d.db }
+
+// ownedDriver is the driver Open returns: it owns the pool and closes it.
+type ownedDriver struct{ *driver }
+
+// Close closes the database the driver opened.
+func (o *ownedDriver) Close() error { return o.db.Close() }
 
 func (d *driver) Dialect() *dialect.Dialect {
 	if d.d == nil {

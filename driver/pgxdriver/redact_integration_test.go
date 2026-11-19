@@ -25,7 +25,7 @@ func TestFromSQLDBRefusesSimpleProtocolOnFirstUse(t *testing.T) {
 	cfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 	db := stdlib.OpenDB(*cfg)
 	t.Cleanup(func() { _ = db.Close() })
-	drv := FromSQLDB(db)
+	drv := NewSQL(db)
 	if _, err := drv.Query(context.Background(), "SELECT $1::int", []any{1}); !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("Query on a simple-protocol *sql.DB: %v, want ErrUnsupported", err)
 	}
@@ -40,7 +40,7 @@ func TestFromSQLDBAcceptsExtendedProtocol(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	rows, err := FromSQLDB(db).Query(context.Background(), "SELECT $1::int", []any{1})
+	rows, err := NewSQL(db).Query(context.Background(), "SELECT $1::int", []any{1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestQueryAndExecEncodeErrorsAreRedacted(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	drivers["sqldb"] = FromSQLDB(db)
+	drivers["sqldb"] = NewSQL(db)
 	for name, d := range drivers {
 		t.Run(name, func(t *testing.T) {
 			if _, err := d.Exec(ctx, "SELECT $1::int4", []any{encodeBomb{S: encodeSecret}}); err == nil || strings.Contains(err.Error(), encodeSecret) {

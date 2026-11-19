@@ -377,7 +377,7 @@ func (l *cli) engineOptions(d migrate.Dialect, extra ...migrate.Option) ([]migra
 	if err := l.file.Introspect.Validate(); err != nil {
 		return nil, err
 	}
-	r, err := migratecfg.Resolve(l.file.Migrate, l.file.Introspect.Only)
+	r, err := migratecfg.Resolve(migratecfg.Migrate(l.file.Migrate), l.file.Introspect.Only)
 	if err != nil {
 		return nil, err
 	}

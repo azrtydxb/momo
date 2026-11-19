@@ -60,12 +60,12 @@ func TestSQLiteVectorParity(t *testing.T) {
 	vecs := vectorparity.Vectors()
 	query := vecs[0]
 
-	sqldb, drv, err := sqlitedriver.Open(testdb.SQLitePath(t), sqlitedriver.Config{})
+	drv, err := sqlitedriver.Open(ctx, testdb.SQLitePath(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := sqldb.Close(); err != nil {
+		if err := drv.(interface{ Close() error }).Close(); err != nil {
 			t.Error(err)
 		}
 	})

@@ -104,7 +104,7 @@ func openPostgres(t *testing.T, url string, opts ...momo.Option) *momo.DB {
 // *sql.DB is closed by t.Cleanup.
 func SQLite(t *testing.T, opts ...momo.Option) *momo.DB {
 	t.Helper()
-	sqldb, drv, err := sqlitedriver.Open(testdb.SQLitePath(t), sqlitedriver.Config{})
+	drv, err := sqlitedriver.Open(t.Context(), testdb.SQLitePath(t))
 	if errors.Is(err, momo.ErrUnsupported) {
 		// A build without cgo, or for Windows, has only the stub driver.
 		t.Skipf("testopen: SQLite needs cgo and a non-Windows build: %v", err)
@@ -113,7 +113,7 @@ func SQLite(t *testing.T, opts ...momo.Option) *momo.DB {
 		t.Fatalf("testopen: open sqlite: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := sqldb.Close(); err != nil {
+		if err := drv.(interface{ Close() error }).Close(); err != nil {
 			t.Errorf("testopen: close sqlite: %v", err)
 		}
 	})

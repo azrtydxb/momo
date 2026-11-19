@@ -14,13 +14,14 @@ import (
 	"github.com/azrtydxb/momo/internal/relfixture/document"
 	"github.com/azrtydxb/momo/internal/relfixture/models"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/obs"
 )
 
 // nPlusOne runs fn on every dialect with a DB carrying the detector hook.
-func nPlusOne(t *testing.T, threshold int, fn func(t *testing.T, db *momo.DB, found *[]momo.NPlusOneFinding)) {
+func nPlusOne(t *testing.T, threshold int, fn func(t *testing.T, db *momo.DB, found *[]obs.StatementFinding)) {
 	t.Helper()
-	var found []momo.NPlusOneFinding
-	hook := momo.NewNPlusOneHook(threshold, func(f momo.NPlusOneFinding) { found = append(found, f) })
+	var found []obs.StatementFinding
+	hook := obs.NewStatementNPlusOne(threshold, func(f obs.StatementFinding) { found = append(found, f) })
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		obsSeed(t, db)
 		found = nil
@@ -39,8 +40,8 @@ func nPlusOneLoop(t *testing.T, ctx context.Context, db *momo.DB, n int) {
 
 func TestNPlusOneHook(t *testing.T) {
 	t.Run("a loop of single-row selects is reported once", func(t *testing.T) {
-		nPlusOne(t, 3, func(t *testing.T, db *momo.DB, found *[]momo.NPlusOneFinding) {
-			nPlusOneLoop(t, momo.WithQueryScope(context.Background()), db, 5)
+		nPlusOne(t, 3, func(t *testing.T, db *momo.DB, found *[]obs.StatementFinding) {
+			nPlusOneLoop(t, obs.WithScope(context.Background()), db, 5)
 			if len(*found) != 1 {
 				t.Fatalf("want exactly one finding for 5 repeats at threshold 3, got %d", len(*found))
 			}
@@ -52,7 +53,7 @@ func TestNPlusOneHook(t *testing.T) {
 	})
 
 	t.Run("without a scope nothing is tracked", func(t *testing.T) {
-		nPlusOne(t, 3, func(t *testing.T, db *momo.DB, found *[]momo.NPlusOneFinding) {
+		nPlusOne(t, 3, func(t *testing.T, db *momo.DB, found *[]obs.StatementFinding) {
 			nPlusOneLoop(t, context.Background(), db, 5)
 			if len(*found) != 0 {
 				t.Fatalf("unscoped context reported %d findings", len(*found))
@@ -61,9 +62,9 @@ func TestNPlusOneHook(t *testing.T) {
 	})
 
 	t.Run("scopes are independent", func(t *testing.T) {
-		nPlusOne(t, 3, func(t *testing.T, db *momo.DB, found *[]momo.NPlusOneFinding) {
-			nPlusOneLoop(t, momo.WithQueryScope(context.Background()), db, 3)
-			nPlusOneLoop(t, momo.WithQueryScope(context.Background()), db, 3)
+		nPlusOne(t, 3, func(t *testing.T, db *momo.DB, found *[]obs.StatementFinding) {
+			nPlusOneLoop(t, obs.WithScope(context.Background()), db, 3)
+			nPlusOneLoop(t, obs.WithScope(context.Background()), db, 3)
 			if len(*found) != 0 {
 				t.Fatalf("3 repeats per scope at threshold 3 reported %d findings", len(*found))
 			}
@@ -71,8 +72,8 @@ func TestNPlusOneHook(t *testing.T) {
 	})
 
 	t.Run("one batched relation load stays silent", func(t *testing.T) {
-		nPlusOne(t, 1, func(t *testing.T, db *momo.DB, found *[]momo.NPlusOneFinding) {
-			ctx := momo.WithQueryScope(context.Background())
+		nPlusOne(t, 1, func(t *testing.T, db *momo.DB, found *[]obs.StatementFinding) {
+			ctx := obs.WithScope(context.Background())
 			docs, err := momo.Select[models.Document](db).OrderBy(document.ID.Asc()).All(ctx)
 			if err != nil {
 				t.Fatal(err)

@@ -7,8 +7,14 @@
 // momo.ErrUnsupported. Use driver/sqlitedriver for vectors.
 //
 // The package does not import driver/sqlitedriver, so a build that uses it
-// never links mattn/go-sqlite3 or sqlite-vec. Config is the same type as
-// sqlitedriver.Config.
+// never links mattn/go-sqlite3 or sqlite-vec. Config has the same fields as
+// sqlitedriver.Config and converts to it.
+//
+// Open(ctx, dsn, opts...) opens the database and returns a momo.Driver that
+// owns it: momo.DB.Close closes the driver, and the database with it. New(db,
+// opts...) wraps a *sql.DB you opened, does not own it, and never closes it;
+// it refuses options, because the pool is already open. Every momo driver
+// package has these two.
 //
 // Open uses the database/sql driver name "sqlite", which modernc registers
 // when it is imported, and so does not register anything of its own. The
@@ -26,38 +32,65 @@ import (
 	"time"
 
 	"github.com/azrtydxb/momo"
-	"github.com/azrtydxb/momo/internal/sqliteconf"
 )
-
-// Config holds the recommended SQLite settings. It is the same type as
-// sqlitedriver.Config; see that type for the defaults.
-type Config = sqliteconf.Config
 
 const driverName = "sqlite"
 
-// Open opens a SQLite database with modernc.org/sqlite. The caller owns the
-// returned *sql.DB. Open pings the database and checks that the bundled SQLite
-// is at least 3.35.0, so a refused connection is reported here.
+// Open opens a SQLite database with modernc.org/sqlite and returns a driver
+// that owns the pool: close it through the io.Closer the returned driver
+// implements, which closes the database. Open pings the database on ctx and
+// checks that the bundled SQLite is at least 3.35.0, so a refused connection
+// is reported here. On an error nothing is left open.
 //
 // dsn is a file path or a "file:" URI. The query string may carry only
-// _txlock, mode and cache; the transaction lock in it overrides cfg. This
-// allowlist is narrower than the one of sqlitedriver (mattn): _busy_timeout,
-// _timeout, _loc and _cache_size are refused here, and the busy timeout comes
-// from cfg.BusyTimeout alone. The busy
-// timeout, journal mode, synchronous and foreign keys always come from cfg and
-// the adapter, so a DSN cannot switch them off, and a "_pragma" parameter is
-// refused for the same reason. The mode and cache parameters are SQLite URI
-// parameters, which SQLite sees only for a "file:" DSN, so any other DSN
-// carrying them is refused. mode=ro in a DSN cannot open a database that is
-// not in WAL mode yet, because the adapter sets journal_mode=WAL on every
-// connection: create the database read-write first, or set cfg.ReadOnly,
+// _txlock, mode and cache; the transaction lock in it overrides the options.
+// This allowlist is narrower than the one of sqlitedriver (mattn):
+// _busy_timeout, _timeout, _loc and _cache_size are refused here, and the busy
+// timeout comes from Config.BusyTimeout alone. The busy
+// timeout, journal mode, synchronous and foreign keys always come from the
+// options and the adapter, so a DSN cannot switch them off, and a "_pragma"
+// parameter is refused for the same reason. The mode and cache parameters are
+// SQLite URI parameters, which SQLite sees only for a "file:" DSN, so any
+// other DSN carrying them is refused. mode=ro in a DSN cannot open a database
+// that is not in WAL mode yet, because the adapter sets journal_mode=WAL on
+// every connection: create the database read-write first, or use WithReadOnly,
 // which skips the WAL pragma, opens the file with mode=ro and sets
 // PRAGMA query_only, so the file keeps its journal mode and is never written.
 // A database that is already in WAL mode still needs its -shm and -wal files
 // or a directory SQLite can create them in. An in-memory database with
 // MaxOpenConns above 1 needs cache=shared, and then a statement can fail with
 // SQLITE_LOCKED, which ClassifyError reports as momo.ErrBusy.
-func Open(dsn string, cfg Config) (*sql.DB, momo.Driver, error) {
+func Open(ctx context.Context, dsn string, opts ...Option) (momo.Driver, error) {
+	_, d, err := openPool(ctx, dsn, config(opts))
+	if err != nil {
+		return nil, err
+	}
+	return &ownedDriver{d}, nil
+}
+
+// New wraps an open *sql.DB, which must not be nil. The caller owns db and
+// closes it; the driver never does. The pool should come from the "sqlite"
+// driver of modernc.org/sqlite with the settings Open applies (see Config), or
+// the adapter's assumptions about busy timeout, journal mode and foreign keys
+// do not hold. The options configure how Open builds a pool, and this pool is
+// already built, so an option that sets anything makes every call of the
+// returned driver fail with momo.ErrValidation, naming the option: set the
+// pragmas on your own *sql.DB instead.
+func New(db *sql.DB, opts ...Option) momo.Driver {
+	if err := refusedOptions(config(opts)); err != nil {
+		return errDriver{err}
+	}
+	return newDriver(db)
+}
+
+// ownedDriver is the driver Open returns: it owns the pool and closes it.
+type ownedDriver struct{ *sqlDriver }
+
+// Close closes the database the driver opened.
+func (o *ownedDriver) Close() error { return o.DB().Close() }
+
+// openPool opens and checks the pool for Open.
+func openPool(ctx context.Context, dsn string, cfg Config) (*sql.DB, *sqlDriver, error) {
 	full, err := buildDSN(dsn, cfg)
 	if err != nil {
 		return nil, nil, err
@@ -71,7 +104,6 @@ func Open(dsn string, cfg Config) (*sql.DB, momo.Driver, error) {
 		n = 1
 	}
 	db.SetMaxOpenConns(n)
-	ctx := context.Background()
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, nil, ClassifyError(err)

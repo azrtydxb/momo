@@ -83,7 +83,7 @@ and the allocation gate (`make bench-gate`).
 | Other majors            | untested; no minimum is enforced in code and none is documented                                                                                                        |
 | `MERGE`                 | the `momo.Merge` builder; it reads `server_version_num` (`ServerVersioner`) and returns `ErrUnsupported` below PostgreSQL 15, and for `.Returning` below PostgreSQL 17 |
 | Authentication in tests | password (`postgres` and `momo_app` roles); TLS is off in CI (`sslmode=disable`)                                                                                       |
-| Driver                  | pgx v5 pool through `pgxdriver.NewPool` or `pgxdriver.New`; `database/sql` through `pgxdriver.FromSQLDB`                                                               |
+| Driver                  | pgx v5 pool through `pgxdriver.NewPool` or `pgxdriver.New`; `database/sql` through `pgxdriver.NewSQL`                                                                  |
 
 ## pgvector
 

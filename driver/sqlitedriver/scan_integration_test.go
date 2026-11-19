@@ -20,7 +20,7 @@ import (
 // use: the text column holds a time, and none of them may need a declared
 // TIMESTAMP type.
 func TestScanTimeDestinations(t *testing.T) {
-	_, drv, err := Open(testdb.SQLitePath(t), Config{})
+	_, drv, err := openWith(testdb.SQLitePath(t), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestScanTimeDestinations(t *testing.T) {
 // TestRowsReportColumns: MapRows and other helpers need momo.ColumnNamer, on
 // pooled, transaction and pinned rows alike.
 func TestRowsReportColumns(t *testing.T) {
-	db, drv, err := Open(testdb.SQLitePath(t), Config{})
+	db, drv, err := openWith(testdb.SQLitePath(t), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestRowsReportColumns(t *testing.T) {
 // TestScanErrorHidesValue: a conversion failure must not render the stored
 // text, which may be user data; the cause stays reachable.
 func TestScanErrorHidesValue(t *testing.T) {
-	_, drv, err := Open(testdb.SQLitePath(t), Config{})
+	_, drv, err := openWith(testdb.SQLitePath(t), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestScanErrorHidesValue(t *testing.T) {
 // TestSQLiteVecRoundTrip: Capabilities.Vectors is true, so sqlite-vec must
 // work through the driver on every connection.
 func TestSQLiteVecRoundTrip(t *testing.T) {
-	db, drv, err := Open(testdb.SQLitePath(t), Config{})
+	db, drv, err := openWith(testdb.SQLitePath(t), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestSQLiteVecRoundTrip(t *testing.T) {
 // TestSQLiteConfigOnEveryConnection checks the PRAGMAs on two physical
 // connections, not only the first one the pool opens.
 func TestSQLiteConfigOnEveryConnection(t *testing.T) {
-	db, _, err := Open(testdb.SQLitePath(t), Config{MaxOpenConns: 2})
+	db, _, err := openWith(testdb.SQLitePath(t), Config{MaxOpenConns: 2})
 	if err != nil {
 		t.Fatal(err)
 	}

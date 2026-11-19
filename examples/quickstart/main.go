@@ -46,11 +46,12 @@ func start(ctx context.Context) error {
 }
 
 func openDB(ctx context.Context, url string) (*momo.DB, func(), error) {
-	pool, err := pgxdriver.NewPool(ctx, url)
+	drv, err := pgxdriver.Open(ctx, url)
 	if err != nil {
 		return nil, nil, err
 	}
-	return momo.New(pgxdriver.New(pool)), pool.Close, nil
+	db := momo.New(drv)
+	return db, func() { _ = db.Close() }, nil
 }
 
 func run(ctx context.Context, db *momo.DB) error {

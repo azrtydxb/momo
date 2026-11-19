@@ -32,27 +32,60 @@ func register() {
 	})
 }
 
-// Open opens a SQLite database with mattn/go-sqlite3 and sqlite-vec. The
-// caller owns the returned *sql.DB. Every new connection verifies
-// sqlite_version() >= 3.35.0 and that load_extension is disabled; Open pings
-// the database so a refused connection is reported here.
+// Open opens a SQLite database with mattn/go-sqlite3 and sqlite-vec and
+// returns a driver that owns the pool: close it through the io.Closer the
+// returned driver implements, which closes the database. Every new connection
+// verifies sqlite_version() >= 3.35.0 and that load_extension is disabled;
+// Open pings the database on ctx so a refused connection is reported here. On
+// an error nothing is left open.
 //
 // dsn is a file path or a "file:" URI. The query string may carry only the
-// parameters on allowedDSNKeys, each given once; a repeated parameter, a
+// parameters on allowedDSNKeys, each given once. A repeated parameter, a
 // _txlock other than immediate, deferred or exclusive, a _busy_timeout or
 // _timeout that is not a non-negative integer, a _cache_size that is not an
 // integer (a negative one is a size in KiB) and a _loc that is neither "auto"
-// nor a time zone name are refused with momo.ErrValidation. The busy timeout and the transaction lock in
-// it override cfg; foreign keys, WAL and synchronous always come from cfg and
-// the adapter. The mode and cache parameters are SQLite URI parameters, which
-// SQLite sees only for a "file:" DSN, so any other DSN carrying them is
-// refused. mode=ro cannot open a database that is not in WAL mode yet, because
-// the adapter sets journal_mode=WAL on every connection and a read-only
-// connection cannot change it: create the database read-write first. An
-// in-memory database with MaxOpenConns above 1 needs cache=shared, and then a
-// statement can fail with SQLITE_LOCKED, which ClassifyError reports as
-// momo.ErrBusy.
-func Open(dsn string, cfg Config) (*sql.DB, momo.Driver, error) {
+// nor a time zone name are refused with momo.ErrValidation. The busy timeout
+// and the transaction lock in the DSN override the options; foreign keys, WAL
+// and synchronous always come from the options and the adapter.
+//
+// The mode and cache parameters are SQLite URI parameters, which SQLite sees
+// only for a "file:" DSN, so any other DSN carrying them is refused. mode=ro
+// cannot open a database that is not in WAL mode yet, because the adapter sets
+// journal_mode=WAL on every connection and a read-only connection cannot
+// change it: create the database read-write first. An in-memory database with
+// MaxOpenConns above 1 needs cache=shared, and then a statement can fail with
+// SQLITE_LOCKED, which ClassifyError reports as momo.ErrBusy.
+func Open(ctx context.Context, dsn string, opts ...Option) (momo.Driver, error) {
+	_, d, err := openPool(ctx, dsn, config(opts))
+	if err != nil {
+		return nil, err
+	}
+	return &ownedDriver{d}, nil
+}
+
+// New wraps an open *sql.DB, which must not be nil. The caller owns db and
+// closes it; the driver never does. The pool should come from the
+// "momo-sqlite3" driver that Open registers, or the connection checks Open
+// makes (SQLite version, extension loading, sqlite-vec) are not made. The
+// options configure how Open builds a pool, and this pool is already built, so
+// an option that sets anything makes every call of the returned driver fail
+// with momo.ErrValidation, naming the option: set the pragmas on your own
+// *sql.DB instead.
+func New(db *sql.DB, opts ...Option) momo.Driver {
+	if err := refusedOptions(config(opts)); err != nil {
+		return errDriver{err}
+	}
+	return newDriver(db)
+}
+
+// ownedDriver is the driver Open returns: it owns the pool and closes it.
+type ownedDriver struct{ *sqlDriver }
+
+// Close closes the database the driver opened.
+func (o *ownedDriver) Close() error { return o.DB().Close() }
+
+// openPool opens and checks the pool for Open.
+func openPool(ctx context.Context, dsn string, cfg Config) (*sql.DB, *sqlDriver, error) {
 	register()
 	full, err := buildDSN(dsn, cfg)
 	if err != nil {
@@ -67,12 +100,12 @@ func Open(dsn string, cfg Config) (*sql.DB, momo.Driver, error) {
 		n = 1
 	}
 	db.SetMaxOpenConns(n)
-	if err := db.PingContext(context.Background()); err != nil {
+	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, nil, ClassifyError(err)
 	}
 	var vecVersion string
-	if err := db.QueryRowContext(context.Background(), "SELECT vec_version()").Scan(&vecVersion); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT vec_version()").Scan(&vecVersion); err != nil {
 		_ = db.Close()
 		return nil, nil, ClassifyError(err)
 	}

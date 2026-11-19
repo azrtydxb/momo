@@ -10,7 +10,7 @@ import (
 )
 
 func TestServerVersionSQLDBRejectedArgument(t *testing.T) {
-	_, err := FromSQLDB(nil).(momo.ServerVersioner).ServerVersion(context.Background())
+	_, err := NewSQL(nil).(momo.ServerVersioner).ServerVersion(context.Background())
 	if err == nil {
 		t.Fatal("ServerVersion on a rejected *sql.DB returned nil error")
 	}

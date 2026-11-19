@@ -18,7 +18,7 @@ import (
 func TestScanMasksConversionError(t *testing.T) {
 	db := sqlstub.Open("secret-value")
 	defer db.Close()
-	rows, err := New(db, dialect.FlavorMySQL).Query(context.Background(), "SELECT 1", nil)
+	rows, err := New(db).Query(context.Background(), "SELECT 1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestScanMasksConversionError(t *testing.T) {
 func TestScanStillWorks(t *testing.T) {
 	db := sqlstub.Open("hello")
 	defer db.Close()
-	rows, err := New(db, dialect.FlavorMySQL).Query(context.Background(), "SELECT 1", nil)
+	rows, err := New(db).Query(context.Background(), "SELECT 1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,23 +79,23 @@ func TestConfigureDSNRefusesWeakeningSettings(t *testing.T) {
 // An unknown flavor must fail Open, not hand back a driver whose every call
 // fails. Open returns before it dials, so no server is needed.
 func TestOpenUnknownFlavor(t *testing.T) {
-	db, drv, err := Open("u:pw@tcp(127.0.0.1:1)/db", dialect.Flavor("bogus"))
+	drv, err := Open(t.Context(), "u:pw@tcp(127.0.0.1:1)/db", WithFlavor(dialect.Flavor("bogus")))
 	if !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("Open err = %v, want ErrUnsupported", err)
 	}
-	if db != nil || drv != nil {
-		t.Fatalf("Open returned db=%v driver=%v with an error", db, drv)
+	if drv != nil {
+		t.Fatalf("Open returned driver=%v with an error", drv)
 	}
 }
 
 // Open pings, so an unreachable server fails here. Port 1 refuses at once.
 func TestOpenPingsServer(t *testing.T) {
-	db, drv, err := Open("u:pw@tcp(127.0.0.1:1)/db", dialect.FlavorMySQL)
+	drv, err := Open(t.Context(), "u:pw@tcp(127.0.0.1:1)/db", WithFlavor(dialect.FlavorMySQL))
 	if err == nil {
-		_ = db.Close()
+		_ = drv.(interface{ Close() error }).Close()
 		t.Fatal("Open succeeded without a server")
 	}
-	if db != nil || drv != nil {
-		t.Fatalf("Open returned db=%v driver=%v with an error", db, drv)
+	if drv != nil {
+		t.Fatalf("Open returned driver=%v with an error", drv)
 	}
 }

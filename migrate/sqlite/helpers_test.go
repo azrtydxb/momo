@@ -56,7 +56,7 @@ func release(t *testing.T, c momo.PinnedConn) {
 // that need two sessions at once (testopen.SQLite opens one).
 func openSQLite(t *testing.T, conns int) *momo.DB {
 	t.Helper()
-	sqldb, drv, err := sqlitedriver.Open(testdb.SQLitePath(t), sqlitedriver.Config{MaxOpenConns: conns})
+	drv, err := sqlitedriver.Open(t.Context(), testdb.SQLitePath(t), sqlitedriver.WithMaxOpenConns(conns))
 	if errors.Is(err, momo.ErrUnsupported) {
 		t.Skipf("SQLite needs cgo and a non-Windows build: %v", err)
 	}
@@ -64,7 +64,7 @@ func openSQLite(t *testing.T, conns int) *momo.DB {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := sqldb.Close(); err != nil {
+		if err := drv.(interface{ Close() error }).Close(); err != nil {
 			t.Errorf("close sqlite: %v", err)
 		}
 	})

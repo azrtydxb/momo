@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"regexp"
@@ -20,6 +21,7 @@ import (
 	"github.com/azrtydxb/momo/driver/mysqldriver"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
 	"github.com/azrtydxb/momo/driver/sqlitepure"
+	"github.com/azrtydxb/momo/internal/sqlshared"
 	"github.com/azrtydxb/momo/migrate"
 )
 
@@ -38,21 +40,21 @@ const maxMySQLConns = 4
 func (l *cli) openDriver(ctx context.Context, dsn string) (momo.Driver, func(), int) {
 	switch dialect.Name(l.dialectName) {
 	case dialect.Postgres:
-		pool, err := pgxdriver.NewPool(ctx, dsn)
+		drv, err := pgxdriver.Open(ctx, dsn)
 		if err != nil {
 			return nil, nil, l.errf(exitDatabase, "connect: %v", err)
 		}
-		return pgxdriver.New(pool), pool.Close, -1
+		return drv, func() { closeDriver(drv) }, -1
 	case dialect.SQLite:
 		target, err := sqliteTarget(dsn)
 		if err != nil {
 			return nil, nil, l.errf(exitUsage, "%v", err)
 		}
-		db, drv, err := sqlitepure.Open(target, sqlitepure.Config{})
+		drv, err := sqlitepure.Open(ctx, target)
 		if err != nil {
 			return nil, nil, l.errf(exitDatabase, "connect: %v", err)
 		}
-		return drv, func() { _ = db.Close() }, -1
+		return drv, func() { closeDriver(drv) }, -1
 	case dialect.MySQL:
 		return l.openMySQL(ctx, dsn)
 	}
@@ -61,7 +63,7 @@ func (l *cli) openDriver(ctx context.Context, dsn string) (momo.Driver, func(), 
 
 // openMySQL opens a MySQL or MariaDB server. The server, not the URL, decides
 // the flavor: mysqldriver.Open takes one, so it opens as MySQL and the driver is
-// rebuilt as MariaDB when VERSION() says so.
+// rebuilt as MariaDB over the same pool when VERSION() says so.
 func (l *cli) openMySQL(ctx context.Context, raw string) (momo.Driver, func(), int) {
 	cfg, err := mysqlConfig(raw)
 	if err != nil {
@@ -72,20 +74,31 @@ func (l *cli) openMySQL(ctx context.Context, raw string) (momo.Driver, func(), i
 	}
 	dsn := cfg.FormatDSN()
 	l.secrets = append(l.secrets, dsn)
-	db, drv, err := mysqldriver.Open(dsn, dialect.FlavorMySQL)
+	drv, err := mysqldriver.Open(ctx, dsn)
 	if err != nil {
 		return nil, nil, l.errf(exitDatabase, "connect: %v", err)
 	}
+	db := sqlshared.DB(drv)
 	db.SetMaxOpenConns(maxMySQLConns)
 	maria, err := isMariaDB(ctx, db)
 	if err != nil {
-		_ = db.Close()
+		closeDriver(drv)
 		return nil, nil, l.errf(exitDatabase, "connect: read the server version: %v", err)
 	}
 	if maria {
-		drv = mysqldriver.New(db, dialect.FlavorMariaDB)
+		// The new driver wraps the pool the first one owns, so closing the
+		// pool through either closes it once.
+		drv = mysqldriver.New(db, mysqldriver.WithFlavor(dialect.FlavorMariaDB))
 	}
 	return drv, func() { _ = db.Close() }, -1
+}
+
+// closeDriver closes the pool of a driver that an Open of a driver package
+// returned, which owns it. A driver that does not own its pool is left alone.
+func closeDriver(d momo.Driver) {
+	if c, ok := d.(io.Closer); ok {
+		_ = c.Close()
+	}
 }
 
 // isMariaDB reports whether the server behind db is MariaDB.

@@ -15,7 +15,7 @@ import (
 )
 
 func TestErrorClassificationSQLite(t *testing.T) {
-	db, d, err := Open(testdb.SQLitePath(t), Config{})
+	db, d, err := openWith(testdb.SQLitePath(t), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
