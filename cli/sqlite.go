@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -27,16 +28,16 @@ func (l *cli) openSQLiteFromDB(target string) (*migrate.Engine, func(), int) {
 	if err != nil {
 		return nil, nil, l.errf(exitUsage, "%v", err)
 	}
-	db, drv, err := sqlitepure.Open(target, sqlitepure.Config{ReadOnly: true})
+	drv, err := sqlitepure.Open(context.Background(), target, sqlitepure.WithReadOnly())
 	if err != nil {
 		return nil, nil, l.errf(exitDatabase, "connect: %v", err)
 	}
 	e, err := migrate.NewEngine(drv, dirFS(l.migrationDir()), opts...)
 	if err != nil {
-		_ = db.Close()
+		closeDriver(drv)
 		return nil, nil, l.errf(exitUsage, "%v", err)
 	}
-	return e, func() { _ = db.Close() }, -1
+	return e, func() { closeDriver(drv) }, -1
 }
 
 // looksLikeSQLiteSource reports whether the --from-db value names a SQLite

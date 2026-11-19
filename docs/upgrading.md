@@ -7,11 +7,127 @@ later releases can break more.
 
 ## Upgrading to 0.20.0
 
-Six option and helper names changed so that every functional option is spelled
-With plus what it sets, and the 20 advisory lock functions became two
-functions with options. The old names stay as deprecated forwarders for this
-release and run the same statements, so your code keeps compiling and behaving
-as before; move to the new names before the forwarders go.
+Every driver package now has the same two constructors, so code that opens a
+SQLite or MySQL database must change: `sqlitedriver.Open`, `sqlitepure.Open`,
+`mysqldriver.Open` and `mysqldriver.New` take different arguments and no longer
+return a `*sql.DB`. Six option and helper names also changed so that every
+functional option is spelled With plus what it sets, the 20 advisory lock
+functions became two functions with options, the statement N+1 detector moved
+into `obs` and now shares one scope with the relation-load detector, and the
+hook constructors return their concrete types. The old `pgxdriver` names, the
+renamed options, the advisory functions and the old N+1 names stay as deprecated
+forwarders for this release and run the same statements, so that code keeps
+compiling and behaving as before; move to the new names before the forwarders
+go. Beyond the driver constructors, the one change that can stop code compiling
+is a hook constructor result that you assert to an interface or assign to a
+variable of another type.
+
+### One constructor shape for every driver
+
+`New(handle, opts...)` wraps a pool or `*sql.DB` you opened, does not own it and
+never closes it. `Open(ctx, dsn, opts...)` opens the database, owns it and
+returns `(momo.Driver, error)`; the new `momo.DB.Close` closes the pool it
+opened, and does nothing to a pool you passed to `New`. Before, nothing said
+who closed what: the
+SQLite and MySQL `Open` returned the `*sql.DB` for you to close, and
+`pgxdriver.NewPool` returned a pool.
+
+| Before                                                               | After                                                                                                                        |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `db, drv, err := sqlitedriver.Open(dsn, cfg)`                        | `drv, err := sqlitedriver.Open(ctx, dsn, sqlitedriver.WithConfig(cfg))`                                                      |
+| `db, drv, err := sqlitepure.Open(dsn, cfg)`                          | `drv, err := sqlitepure.Open(ctx, dsn, sqlitepure.WithConfig(cfg))`                                                          |
+| `sqlitepure.Config{ReadOnly: true}`                                  | `sqlitepure.WithReadOnly()`                                                                                                  |
+| `db, drv, err := mysqldriver.Open(dsn, dialect.FlavorMariaDB)`       | `drv, err := mysqldriver.Open(ctx, dsn, mysqldriver.WithFlavor(dialect.FlavorMariaDB))`                                      |
+| `mysqldriver.New(db, dialect.FlavorMariaDB)`                         | `mysqldriver.New(db, mysqldriver.WithFlavor(dialect.FlavorMariaDB))`                                                         |
+| `pool, err := pgxdriver.NewPool(ctx, url)` and `pgxdriver.New(pool)` | `drv, err := pgxdriver.Open(ctx, url)`; `NewPool` and `New` stay for a program that needs the pool                           |
+| `pgxdriver.FromSQLDB(db)`                                            | `pgxdriver.NewSQL(db)` (`FromSQLDB` is deprecated)                                                                           |
+| `db, drv := pgxdriver.FromConnConfig(cfg)`                           | `drv, err := pgxdriver.OpenSQL(ctx, dsn)`, or `stdlib.OpenDB(*cfg)` with `pgxdriver.NewSQL` (`FromConnConfig` is deprecated) |
+| `sqlitedriver.SQLiteVecVersion`                                      | `sqlitedriver.VecVersion` (`SQLiteVecVersion` is deprecated)                                                                 |
+
+Close an opened driver with `db.Close()`: after
+`drv, err := sqlitepure.Open(ctx, "app.db")` and `db := momo.New(drv)`, call it
+once, for example in a `defer`, when you are done with `db` and with every
+transaction begun from it. A second call is safe.
+
+`pgxdriver.Open` and `pgxdriver.OpenSQL` now ping the server on `ctx`, so an
+unreachable server or a bad password is an error at `Open`, as it already was
+for SQLite and MySQL; `pgxdriver.NewPool` still does not dial. `New` refuses an
+option that tries to configure a pool that is already open: the SQLite `New`
+with `WithBusyTimeout` or another setting, and `pgxdriver.NewSQL` with
+`WithExecMode` or `WithVectorFormat`, return a driver whose every call fails
+with `ErrValidation` naming the option. Set those on your own `*sql.DB` or
+`*pgx.ConnConfig` instead; `pgxdriver.OpenSQL` takes `WithExecMode` itself.
+
+If you need the `*sql.DB` itself, for your own queries or to share it, open it
+yourself and wrap it: `sqlitepure.New(sqlDB)` does not own it, so you close it.
+A MariaDB server needs `mysqldriver.WithFlavor(dialect.FlavorMariaDB)`; the
+default flavor is MySQL.
+
+### Settings are options and the types are public
+
+`sqlitedriver.Config` and `sqlitepure.Config` are now declared in their own
+packages instead of aliasing one internal type. They have the same fields, so
+`sqlitepure.Config(cfg)` converts one to the other; they are no longer
+identical types. `gen/config.MigrateConfig` is declared in `gen/config` too.
+`sqlitedriver.SQLiteVecVersion` is renamed `VecVersion`: one name in both
+builds, a constant that is `"v0.1.6"` with cgo and `""` without, because
+sqlite-vec is not linked then. A build without cgo, or for Windows, has the same
+`Open`, `New` and option names as the cgo build, so code compiles either way;
+`Open` returns `ErrUnsupported` there and `New` returns a driver whose every
+call does.
+
+### One N+1 detector family and one scope
+
+Before, `momo.NewNPlusOneHook` counted statement shapes in a scope made with
+`momo.WithQueryScope`, and `obs.NewNPlusOne` counted relation loads in a scope
+made with `obs.WithScope`. A request that wanted both detectors had to be
+wrapped twice, and the two names did not say which counted what. Both detectors
+now live in `obs` and read the one scope that `obs.WithScope` makes, so you wrap
+the context once and register one or both. They keep separate counts inside it.
+
+| Before                                               | After                                                       |
+| ---------------------------------------------------- | ----------------------------------------------------------- |
+| `momo.NewNPlusOneHook(n, report)`                    | `obs.NewStatementNPlusOne(n, report)`                       |
+| `momo.NPlusOneFinding` (`Shape`, `Example`, `Count`) | `obs.StatementFinding` (the same three fields)              |
+| `momo.WithQueryScope(ctx)`                           | `obs.WithScope(ctx)`                                        |
+| `obs.NewNPlusOne(n, report)` with `obs.WithScope`    | unchanged; the scope now also serves the statement detector |
+
+Replace the three `momo` names with the `obs` ones. The `momo` names are marked
+`Deprecated:` and are removed in the release after this one. They count exactly
+as the `obs` detector does, and `momo.WithQueryScope` returns the scope
+`obs.WithScope` makes, so you can move one call site at a time: a context made
+by either serves the detectors of both. The finding type is a separate type with
+the same fields, so a `report` function that takes `momo.NPlusOneFinding` takes
+`obs.StatementFinding` after the move.
+
+Two behaviors changed with the shared scope. A context made by `obs.WithScope`
+now also drives the deprecated `momo.NewNPlusOneHook`. Nesting `obs.WithScope`
+inside `momo.WithQueryScope`, or the reverse, now replaces the outer scope and
+restarts the counts, so wrap the context once per unit of work.
+
+### Hook constructors return their concrete types
+
+Before, `obs.NewNPlusOne` returned `*obs.NPlusOne` while `obs.NewSlowQuery` and
+`momolog.New` returned `momo.Hook` and `otelmomo.New` returned
+`(momo.Hook, error)`. Each constructor now returns the type it builds, which
+still implements `momo.Hook`, so `momo.WithHook(h)` is unchanged.
+
+| Constructor                | Before               | After                     |
+| -------------------------- | -------------------- | ------------------------- |
+| `obs.NewSlowQuery`         | `momo.Hook`          | `*obs.SlowQueryHook`      |
+| `momolog.New`              | `momo.Hook`          | `*momolog.Hook`           |
+| `otelmomo.New`             | `(momo.Hook, error)` | `(*otelmomo.Hook, error)` |
+| `obs.NewStatementNPlusOne` | new                  | `*obs.StatementNPlusOne`  |
+
+Code that passes the result to `momo.WithHook` needs no edit. Code that stores
+it in a variable of type `momo.Hook` still compiles. Code that type-asserts the
+result, as in `momolog.New(l).(momo.RelationHook)`, no longer compiles because
+the result is not an interface; assign it to a `momo.Hook` first, or call the
+methods on the concrete type. A variable that you declared with `:=` and later
+assigned a different hook to now has a concrete type and rejects that
+assignment; declare it as `momo.Hook`. `otelmomo` is a separate module with its
+own release, so this change reaches it in its own next release; `momo.NewNPlusOneHook`
+keeps returning `momo.Hook` because it is a deprecated forwarder.
 
 ### Functional options are named `With*`
 

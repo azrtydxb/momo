@@ -97,12 +97,12 @@ func (tp *Template) load() {
 		return
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
-	sqldb, drv, err := sqlitedriver.Open(filepath.Join(dir, "build.db"), sqlitedriver.Config{})
+	drv, err := sqlitedriver.Open(context.Background(), filepath.Join(dir, "build.db"))
 	if err != nil {
 		tp.err = err
 		return
 	}
-	defer func() { _ = sqldb.Close() }()
+	defer func() { _ = drv.(interface{ Close() error }).Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	db := momo.New(drv)
@@ -121,7 +121,7 @@ func (tp *Template) load() {
 // open opens the database file at path for tb and closes it when tb ends.
 func open(tb testing.TB, path string, opts []momo.Option) *momo.DB {
 	tb.Helper()
-	sqldb, drv, err := sqlitedriver.Open(path, sqlitedriver.Config{})
+	drv, err := sqlitedriver.Open(context.Background(), path)
 	if errors.Is(err, momo.ErrUnsupported) {
 		// A build without cgo, or for Windows, has only the stub driver.
 		tb.Skipf("sqlitetest: SQLite needs cgo and a non-Windows build: %v", err)
@@ -134,7 +134,7 @@ func open(tb testing.TB, path string, opts []momo.Option) *momo.DB {
 	// Registered after the TempDir cleanup, so it runs first: the file is
 	// closed before its directory is removed.
 	tb.Cleanup(func() {
-		if err := sqldb.Close(); err != nil {
+		if err := drv.(interface{ Close() error }).Close(); err != nil {
 			tb.Errorf("sqlitetest: close: %v", err)
 		}
 	})

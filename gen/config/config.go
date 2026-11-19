@@ -32,10 +32,27 @@ type File struct {
 	Introspect fromdb.Config `yaml:"introspect"`
 }
 
-// MigrateConfig is the single schema of the migrate: section. It lives in
-// internal/migratecfg, which migrate.ConfigFromFile reads too, so the command
-// and the library accept and reject the same files.
-type MigrateConfig = migratecfg.Migrate
+// MigrateConfig is the migrate: section of momo.yaml. migrate.ConfigFromFile
+// reads the same section through internal/migratecfg, whose type has exactly
+// these fields: Validate converts to it, and the compiler rejects the
+// conversion if the two ever drift apart, so the command and the library
+// accept and reject the same files.
+type MigrateConfig struct {
+	Dir                map[string]string `yaml:"dir"`                 // dialect -> directory
+	URLEnv             map[string]string `yaml:"url_env"`             // dialect -> environment variable name
+	Schemas            []string          `yaml:"schemas"`             // default: the connection's current_schema()
+	LockTimeout        string            `yaml:"lock_timeout"`        // Go duration string, default "5s"
+	StatementTimeout   string            `yaml:"statement_timeout"`   // Go duration string, default unset
+	Exclude            []string          `yaml:"exclude"`             // glob patterns for unmanaged objects
+	ExternalExtensions []string          `yaml:"external_extensions"` // extensions created outside momo: never emitted, never reported
+}
+
+// Validate checks the section: the external extension names (shape and
+// duplicates), the durations, and the dialect names of dir and url_env.
+func (m MigrateConfig) Validate() error {
+	c := migratecfg.Migrate(m)
+	return c.Validate()
+}
 
 // Load reads and validates the momo.yaml at path.
 func Load(path string) (*File, error) {

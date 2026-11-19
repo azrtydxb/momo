@@ -37,12 +37,12 @@ internal-leaf internal/ftsquery
 internal-leaf internal/golden
 internal-leaf internal/keyenc
 internal-leaf internal/migratecfg
+internal-leaf internal/nplusone
 internal-leaf internal/dbdefault
 internal-leaf internal/deferkey
 internal-leaf internal/redact
 internal-leaf internal/snake
 internal-leaf internal/sqlscan
-internal-leaf internal/sqliteconf
 internal-leaf internal/sqlstub
 
 internal-fixture internal/compat/...

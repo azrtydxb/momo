@@ -28,7 +28,7 @@ type SlowQuery struct {
 }
 
 // SlowOption configures NewSlowQuery.
-type SlowOption func(*slowHook)
+type SlowOption func(*SlowQueryHook)
 
 // WithPlainExplain turns on plan capture, running plain EXPLAIN, never EXPLAIN
 // ANALYZE. A statement outside a transaction is explained through q. Pass a
@@ -36,20 +36,22 @@ type SlowOption func(*slowHook)
 // momo.New on the same driver without it; the hook ignores the statements it
 // issues itself either way. A statement inside a transaction is explained on
 // that transaction.
-func WithPlainExplain(q momo.Querier) SlowOption { return func(h *slowHook) { h.explain = q } }
+func WithPlainExplain(q momo.Querier) SlowOption { return func(h *SlowQueryHook) { h.explain = q } }
 
 type slowGuardKey struct{}
 
 // slowExplainTimeout bounds one plan capture outside a transaction.
 const slowExplainTimeout = 2 * time.Second
 
-type slowHook struct {
+// SlowQueryHook is the hook NewSlowQuery returns. It implements momo.Hook; the
+// zero value is not usable.
+type SlowQueryHook struct {
 	threshold time.Duration
 	report    func(SlowQuery)
 	explain   momo.Querier
 }
 
-var _ momo.Hook = (*slowHook)(nil)
+var _ momo.Hook = (*SlowQueryHook)(nil)
 
 // NewSlowQuery returns a hook that calls report for each statement that took
 // longer than threshold. It is safe for concurrent use.
@@ -71,8 +73,8 @@ var _ momo.Hook = (*slowHook)(nil)
 //
 // report runs synchronously on the goroutine that ran the statement and must
 // not query the database.
-func NewSlowQuery(threshold time.Duration, report func(SlowQuery), opts ...SlowOption) momo.Hook {
-	h := &slowHook{threshold: threshold, report: report}
+func NewSlowQuery(threshold time.Duration, report func(SlowQuery), opts ...SlowOption) *SlowQueryHook {
+	h := &SlowQueryHook{threshold: threshold, report: report}
 	for _, o := range opts {
 		o(h)
 	}
@@ -80,10 +82,12 @@ func NewSlowQuery(threshold time.Duration, report func(SlowQuery), opts ...SlowO
 }
 
 // BeforeQuery implements momo.Hook.
-func (h *slowHook) BeforeQuery(ctx context.Context, _ *momo.QueryEvent) context.Context { return ctx }
+func (h *SlowQueryHook) BeforeQuery(ctx context.Context, _ *momo.QueryEvent) context.Context {
+	return ctx
+}
 
 // AfterQuery implements momo.Hook.
-func (h *slowHook) AfterQuery(ctx context.Context, e *momo.QueryEvent) {
+func (h *SlowQueryHook) AfterQuery(ctx context.Context, e *momo.QueryEvent) {
 	if e.Duration <= h.threshold || ctx.Value(slowGuardKey{}) != nil {
 		return
 	}
@@ -111,7 +115,7 @@ var errSlowRollback = errors.New("obs: slow query plan capture rollback")
 // deadline. Inside a transaction it runs on the caller's own connection, where
 // a deadline that fires mid-statement can close the connection and kill the
 // caller's transaction, so there it runs without one.
-func (h *slowHook) capture(ctx context.Context, e *momo.QueryEvent) ([]string, string) {
+func (h *SlowQueryHook) capture(ctx context.Context, e *momo.QueryEvent) ([]string, string) {
 	c := momo.Compiled{SQL: e.SQL, Args: e.Args}
 	if !e.InTx {
 		ctx, cancel := context.WithTimeout(ctx, slowExplainTimeout)

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -149,6 +150,19 @@ func (db *DB) conn() *execer             { return &db.ex }
 
 // Driver returns the underlying driver, e.g. to reach native features.
 func (db *DB) Driver() Driver { return db.drv }
+
+// Close closes the driver when the driver owns its connections, that is when
+// it implements io.Closer, as the driver an Open function of a driver package
+// returns does. It returns nil for a driver made by a New function, which
+// wraps a pool the caller owns and closes, and it never closes that pool. It
+// is safe to call more than once. A handle derived from db, such as a
+// transaction, shares the driver, so close db only when all of them are done.
+func (db *DB) Close() error {
+	if c, ok := db.drv.(io.Closer); ok {
+		return c.Close()
+	}
+	return nil
+}
 
 type queryExecer interface {
 	Query(ctx context.Context, sql string, args []any) (Rows, error)

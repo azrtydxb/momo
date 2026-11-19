@@ -14,6 +14,7 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/driver/mysqldriver"
 	"github.com/azrtydxb/momo/gen/fromdb"
+	"github.com/azrtydxb/momo/internal/sqlshared"
 	"github.com/azrtydxb/momo/migrate"
 	mmysql "github.com/azrtydxb/momo/migrate/mysql"
 	"github.com/azrtydxb/momo/schema"
@@ -156,10 +157,11 @@ func (l *cli) openFromDBEngine(ctx context.Context, dsn string) (*migrate.Engine
 	if err != nil {
 		return nil, nil, l.errf(exitUsage, "%v", err)
 	}
-	sdb, drv, err := mysqldriver.Open(conn, dialect.FlavorMySQL)
+	drv, err := mysqldriver.Open(ctx, conn)
 	if err != nil {
 		return nil, nil, l.errf(exitDatabase, "connect: %v", err)
 	}
+	sdb := sqlshared.DB(drv)
 	var version string
 	if err := sdb.QueryRowContext(ctx, "SELECT VERSION()").Scan(&version); err != nil {
 		_ = sdb.Close()
@@ -168,7 +170,7 @@ func (l *cli) openFromDBEngine(ctx context.Context, dsn string) (*migrate.Engine
 	flavor := dialect.FlavorMySQL
 	if strings.Contains(strings.ToLower(version), "mariadb") {
 		flavor = dialect.FlavorMariaDB
-		drv = mysqldriver.New(sdb, flavor)
+		drv = mysqldriver.New(sdb, mysqldriver.WithFlavor(flavor))
 	}
 	e, err := migrate.NewEngine(drv, dirFS(l.migrationDir()), opts...)
 	if err != nil {
