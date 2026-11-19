@@ -10598,6 +10598,22 @@ must be declared breaking, or the package must be listed first. Adding a
 package to the covered set later is a compatible change; moving a covered
 package to the excluded set is not allowed within `1.x`.
 
+## Interfaces and dependencies with their own rules
+
+- `migrate.Dialect` and the optional interfaces a migration dialect may
+  implement are implemented only by Momo's `migrate/postgres`,
+  `migrate/sqlite` and `migrate/mysql`. A `1.x` release may add a method to
+  them; code outside Momo calls a dialect but does not implement one.
+- `driver/pgxdriver` is the pgx v5 adapter, and pgx types appear in its
+  signatures (`pgxdriver.New` takes a `*pgxpool.Pool`). It follows pgx v5 for
+  the whole `1.x` line; a later pgx major version gets a new driver package
+  instead of a change to this one. `pgxdriver.PgxTx` and
+  `pgxdriver.UnwrapPgxTx` are the supported way to move between a pgx
+  transaction and a `momo.Tx`.
+- The gate runs `apidiff` under one build configuration, so identifiers that
+  exist only in a cgo build, such as those of `driver/sqlitedriver`, are not
+  compared by it. A change to them is reviewed by hand.
+
 ## Deprecation
 
 An API leaves in two steps: it is deprecated, and much later it is removed.

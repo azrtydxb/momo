@@ -1121,6 +1121,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#interfaces-and-dependencies-with-their-own-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interfaces and dependencies with their own rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#deprecation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1329,6 +1340,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#interfaces-and-dependencies-with-their-own-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interfaces and dependencies with their own rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#deprecation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1500,6 +1522,22 @@ request that changes an identifier marked experimental in a covered package
 must be declared breaking, or the package must be listed first. Adding a
 package to the covered set later is a compatible change; moving a covered
 package to the excluded set is not allowed within <code>1.x</code>.</p>
+<h2 id="interfaces-and-dependencies-with-their-own-rules">Interfaces and dependencies with their own rules<a class="headerlink" href="#interfaces-and-dependencies-with-their-own-rules" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>migrate.Dialect</code> and the optional interfaces a migration dialect may
+  implement are implemented only by Momo's <code>migrate/postgres</code>,
+  <code>migrate/sqlite</code> and <code>migrate/mysql</code>. A <code>1.x</code> release may add a method to
+  them; code outside Momo calls a dialect but does not implement one.</li>
+<li><code>driver/pgxdriver</code> is the pgx v5 adapter, and pgx types appear in its
+  signatures (<code>pgxdriver.New</code> takes a <code>*pgxpool.Pool</code>). It follows pgx v5 for
+  the whole <code>1.x</code> line; a later pgx major version gets a new driver package
+  instead of a change to this one. <code>pgxdriver.PgxTx</code> and
+  <code>pgxdriver.UnwrapPgxTx</code> are the supported way to move between a pgx
+  transaction and a <code>momo.Tx</code>.</li>
+<li>The gate runs <code>apidiff</code> under one build configuration, so identifiers that
+  exist only in a cgo build, such as those of <code>driver/sqlitedriver</code>, are not
+  compared by it. A change to them is reviewed by hand.</li>
+</ul>
 <h2 id="deprecation">Deprecation<a class="headerlink" href="#deprecation" title="Permanent link">&para;</a></h2>
 <p>An API leaves in two steps: it is deprecated, and much later it is removed.</p>
 <ol>
