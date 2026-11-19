@@ -27,6 +27,11 @@ type CheckInOpts struct{}
 // no-ops at runtime.
 type ForeignKeyOpts struct{}
 
+// ExcludeOpts carries the optional parts of an exclusion constraint
+// declaration. Its methods are read statically by the generator and are no-ops
+// at runtime.
+type ExcludeOpts struct{}
+
 // SequenceOpts carries the optional parts of a standalone sequence
 // declaration. Its methods are read statically by the generator and are no-ops
 // at runtime.
@@ -70,6 +75,21 @@ func (c *Config) Unique(name string, cols ...any) *IndexOpts { return &IndexOpts
 func (c *Config) ForeignKey(name string, cols []any, refTable string, refColumns []string) *ForeignKeyOpts {
 	return &ForeignKeyOpts{}
 }
+
+// Exclude declares a named exclusion constraint (PostgreSQL): no two rows may
+// satisfy every operator at once. After the name come pairs of a field
+// reference and the operator, a string literal, that two rows are compared
+// with on that field:
+//
+//	c.Exclude("bookings_no_overlap", &m.RoomID, "=", &m.During, "&&")
+//
+// forbids two bookings of one room from overlapping. The constraint is backed
+// by a GiST index unless Using says another method. GiST on a scalar column
+// such as RoomID needs the btree_gist extension, which the generator adds to
+// the schema. Chain Using, Deferrable or InitiallyDeferred for the options.
+// SQLite, MySQL and MariaDB refuse it. Read statically by the generator; never
+// executed for its effect.
+func (c *Config) Exclude(name string, elements ...any) *ExcludeOpts { return &ExcludeOpts{} }
 
 // Check declares a named check constraint. Read statically by the generator;
 // never executed for its effect.
@@ -283,6 +303,19 @@ func (o *CheckInOpts) Name(name string) *CheckInOpts { return o }
 // OnDelete sets the ON DELETE action of a foreign key ("CASCADE", "RESTRICT",
 // "SET NULL", "SET DEFAULT" or "NO ACTION"). Read statically; no-op at runtime.
 func (o *ForeignKeyOpts) OnDelete(action string) *ForeignKeyOpts { return o }
+
+// Using sets the index access method of an exclusion constraint: gist (the
+// default), spgist, btree or hash. Read statically; no-op at runtime.
+func (o *ExcludeOpts) Using(method string) *ExcludeOpts { return o }
+
+// Deferrable makes the exclusion constraint DEFERRABLE: a transaction can defer
+// its check to commit with SET CONSTRAINTS. Read statically; no-op at runtime.
+func (o *ExcludeOpts) Deferrable() *ExcludeOpts { return o }
+
+// InitiallyDeferred makes the exclusion constraint DEFERRABLE INITIALLY
+// DEFERRED: the check runs at commit unless a transaction asks for it sooner.
+// It implies Deferrable. Read statically; no-op at runtime.
+func (o *ExcludeOpts) InitiallyDeferred() *ExcludeOpts { return o }
 
 // OnUpdate sets the ON UPDATE action of a foreign key, with the same values as
 // OnDelete. Read statically; no-op at runtime.

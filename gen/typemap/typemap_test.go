@@ -69,6 +69,13 @@ func TestGeneratorTypeMapFullTable(t *testing.T) {
 		{"types.JSON[map[string]any]", tags.Tags{}, "jsonb", "TEXT"},
 		{"types.UUID", tags.Tags{}, "uuid", "TEXT"},
 		{"types.Date", tags.Tags{}, "date", "TEXT"},
+		{"types.Range[int32]", tags.Tags{}, "int4range", ""},
+		{"types.Range[int64]", tags.Tags{}, "int8range", ""},
+		{"types.Range[types.Numeric]", tags.Tags{}, "numrange", ""},
+		{"types.Range[types.Date]", tags.Tags{}, "daterange", ""},
+		{"types.Range[types.Timestamp]", tags.Tags{}, "tsrange", ""},
+		{"types.Range[time.Time]", tags.Tags{}, "tstzrange", ""},
+		{"*types.Range[time.Time]", tags.Tags{}, "tstzrange", ""},
 		{"vector.Vector", d3, "vector(3)", ""},
 		{"vector.Vector", tags.Tags{}, "vector", ""},
 		{"vector.HalfVector", tags.Tags{}, "halfvec", ""},
@@ -137,6 +144,11 @@ func TestGeneratorTypeMapUnsupported(t *testing.T) {
 		{"[][]string", dialect.Postgres, tags.Tags{}},
 		{"[]uint32", dialect.Postgres, tags.Tags{}},
 		{"[]mypkg.Custom", dialect.Postgres, tags.Tags{}},
+		// A range exists on PostgreSQL only, and only for the six element types.
+		{"types.Range[int32]", dialect.MySQL, tags.Tags{}},
+		{"types.Range[time.Time]", dialect.SQLite, tags.Tags{}},
+		{"types.Range[string]", dialect.Postgres, tags.Tags{}},
+		{"types.Range[]", dialect.Postgres, tags.Tags{}},
 	}
 	for _, c := range bad {
 		got, err := Map(c.goType, c.d, c.tg)

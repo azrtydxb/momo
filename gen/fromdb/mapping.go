@@ -67,6 +67,15 @@ var postgresTypes = map[string]GoType{
 	"tsvector":         {Expr: "types.TSVector", Import: importTypes},
 	"numeric":          {Expr: "types.Numeric", Import: importTypes},
 
+	// The six built-in range types. A multirange is not mapped, so a column of
+	// one needs an introspect rule.
+	"int4range": {Expr: "types.Range[int32]", Import: importTypes},
+	"int8range": {Expr: "types.Range[int64]", Import: importTypes},
+	"numrange":  {Expr: "types.Range[types.Numeric]", Import: importTypes},
+	"daterange": {Expr: "types.Range[types.Date]", Import: importTypes},
+	"tsrange":   {Expr: "types.Range[types.Timestamp]", Import: importTypes},
+	"tstzrange": {Expr: "types.Range[time.Time]", Import: importTypes},
+
 	"timestamp without time zone": {Expr: "time.Time", Import: "time"},
 	"timestamp with time zone":    {Expr: "time.Time", Import: "time"},
 	"time without time zone":      {Expr: "types.TimeOfDay", Import: importTypes},
