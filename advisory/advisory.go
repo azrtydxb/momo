@@ -64,9 +64,12 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 )
 
-// Key is the type of a lock key: an integer, or a string that the server
-// hashes. A string and an int64 share one bigint key space, so a string
-// collides with the int64 key equal to its hash value.
+// Key is the type of a lock key. It accepts int, int32, int64 and string, and
+// any named type whose underlying type is one of them; other integer types
+// (uint, int16, uint32 and so on) do not compile, so convert them first. An
+// integer is bound as an int64. A string is hashed on the server, and a string
+// and an int64 share one bigint key space, so a string collides with the int64
+// key equal to its hash value.
 type Key interface {
 	~int | ~int32 | ~int64 | ~string
 }

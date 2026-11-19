@@ -1,4 +1,5 @@
 # Pages whose bare backticked names are not root (momo) names.
 # Format: path package reason (see TestBareNamesAreRootNames).
 docs/migrations.md migrate the page documents the migrate package; its sections name it and write Engine.Apply, Engine.Rollback
-docs/capabilities.md schema the generated capabilities table has one row per dialect.Dialect field, and the FullText row shares its name with the schema.FullText type
+docs/upgrading.md advisory the 0.4.0 section is history and must stay as written; it names the advisory Try forms bare
+docs/capabilities.md schemathe generated capabilities table has one row per dialect.Dialect field, and the FullText row shares its name with the schema.FullText type

@@ -47,9 +47,9 @@ held; `advisory.Release(ctx, q, key, opts...)` releases a session lock. The key
 is an `int64` (or `int`) or a string, so the `...String` forms are gone, and
 three options choose the lock: `advisory.Xact` (transaction-scoped, `q` is the
 `*momo.Tx`), `advisory.Shared` and `advisory.Try` (return `false` instead of
-waiting). `advisory.Acquire` without `advisory.Try` blocks and returns `true`. A session
-lock still needs the pinned `*momo.DB` of `db.OnConn(pc)`. The old functions
-map like this, with `K` an `int64` or a string key:
+waiting). `advisory.Acquire` without `advisory.Try` blocks and returns `true`.
+A session lock still needs the pinned `*momo.DB` of `db.OnConn(pc)`. The old
+functions map like this, with `K` an `int64` or a string key:
 
 | Old call                                 | New call                                                                           |
 | ---------------------------------------- | ---------------------------------------------------------------------------------- |
@@ -66,12 +66,14 @@ map like this, with `K` an `int64` or a string key:
 
 The `...String` forms (`advisory.XactLockString`, `advisory.LockString`,
 `advisory.UnlockSharedString` and the other seven) map the same way with a
-string key, and keep taking the hash option, now `advisory.WithHash64`. Two
-differences to know: `advisory.Acquire` and `advisory.Release` take a `momo.Querier`, so a
-`*momo.DB` with `advisory.Xact` and a `*momo.Tx` without it fail at run time
-with `ErrValidation` where the old transaction functions failed to compile; and
-`advisory.Acquire` returns `(bool, error)` for the blocking form too, so assign or
-discard the boolean.
+string key, and keep taking the hash option, now `advisory.WithHash64`; they
+refuse any other option with `ErrValidation`. Two differences to know:
+
+- `advisory.Acquire` and `advisory.Release` take a `momo.Querier`, so a
+  `*momo.DB` with `advisory.Xact` and a `*momo.Tx` without it fail at run time
+  with `ErrValidation` where the old transaction functions failed to compile.
+- `advisory.Acquire` returns `(bool, error)` for the blocking form too, so
+  assign or discard the boolean.
 
 ## Upgrading to 0.19.0
 
@@ -2286,7 +2288,7 @@ result had no such method.
 
 The advisory lock methods became functions: `tx.AdvisoryXactLock(ctx, 42)`
 is now `advisory.XactLock(ctx, tx, 42)`, and the same for `advisory.XactLockString` and the
-`advisory.TryXactLock` forms. The transaction is the second argument and its type is
+`Try` forms. The transaction is the second argument and its type is
 `*momo.Tx`. The `DB` methods always returned `momo.ErrValidation`, because a
 transaction-scoped lock outside a transaction is released at once; the
 functions turn that into a compile error, so a caller that used the `DB` form
