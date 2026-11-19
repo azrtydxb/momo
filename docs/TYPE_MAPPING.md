@@ -152,7 +152,8 @@ type:
 - `time.Time` is `tstzrange`, a range of timestamps with a time zone;
 - `types.Timestamp` is `tsrange`, a range of timestamps without a zone. It is a
   struct around a `time.Time` whose wall clock is written without a zone and
-  read back as a UTC time, the way the column stores it.
+  read back as a UTC time, the way the column stores it. It has `Infinity` and
+  `NegInfinity` flags for the special timestamps, as `types.Date` has.
 
 A `types.Range` holds a lower and an upper `types.Bound`, each with a `Value`, an
 `Inclusive` flag and an `Infinite` flag (no limit on that side), and an `Empty`
@@ -160,6 +161,16 @@ flag. Build one with `types.ClosedOpen(lower, upper)` (`[lower,upper)`, the usua
 form for a period), `types.NewRange` with `types.Incl`, `types.Excl` and
 `types.NoBound` for any other shape, or `types.EmptyRange`. A nullable column is
 a `*types.Range[T]` field.
+
+The zero value `types.Range[T]{}` is the empty range: it is written as `empty`,
+not as `(0,0)`, so a field you never set does not change on a round trip. It
+reads back with `Empty` set, which is the same range but not the same Go value,
+so ask the range whether it is empty (the `types.Range` method of that name)
+rather than comparing with `==` when either may be the zero value. A bound may also be the special value infinity, which is not an
+unbounded side: a `daterange` and a `tsrange` hold it in the element's
+`Infinity` and `NegInfinity` flags, while a `time.Time` cannot, so a `tstzrange`
+whose bound is infinity fails to scan into `types.Range[time.Time]`. Use
+`types.NoBound` for a `tstzrange` with no limit.
 
 A range travels as the text PostgreSQL prints, such as `[1,10)`, `(,5]` or
 `empty`: `Value` writes it and `Scan` reads it, so it needs no driver codec and

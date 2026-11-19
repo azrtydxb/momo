@@ -270,8 +270,91 @@ func FuzzRangeScan(f *testing.F) {
 			t.Fatalf("Value after Scan(%q): %v", s, err)
 		}
 		var back Range[int32]
-		if err := back.Scan(v); err != nil || !reflect.DeepEqual(back, r) {
+		// A range with no bound set reads back as the empty range, which is
+		// the same range under another Go value: compare the text.
+		if err := back.Scan(v); err != nil || back.String() != r.String() {
 			t.Fatalf("round trip of %q through %v: %+v, %v", s, v, back, err)
 		}
 	})
+}
+
+// Catches: an unset Range field stored as the range (0,0), which then reads
+// back as an empty range, so a field the caller never set would change on a
+// round trip. The zero value is the empty range: Value writes "empty", and a
+// range read back from it is empty, equal by IsEmpty and by its text, though
+// not by reflect.DeepEqual.
+func TestZeroRangeIsEmpty(t *testing.T) {
+	check := func(name string, v driver.Value, err error, empty bool) {
+		t.Helper()
+		if err != nil || v != "empty" || !empty {
+			t.Errorf("%s: Value = %v, %v, IsEmpty = %v; want \"empty\" and true", name, v, err, empty)
+		}
+	}
+	var i4 Range[int32]
+	v, err := i4.Value()
+	check("int4", v, err, i4.IsEmpty())
+	var i8 Range[int64]
+	v, err = i8.Value()
+	check("int8", v, err, i8.IsEmpty())
+	var n Range[Numeric]
+	v, err = n.Value()
+	check("numeric", v, err, n.IsEmpty())
+	var d Range[Date]
+	v, err = d.Value()
+	check("date", v, err, d.IsEmpty())
+	var ts Range[Timestamp]
+	v, err = ts.Value()
+	check("timestamp", v, err, ts.IsEmpty())
+	var tz Range[time.Time]
+	v, err = tz.Value()
+	check("timestamptz", v, err, tz.IsEmpty())
+
+	var back Range[int32]
+	if err := back.Scan("empty"); err != nil || !back.IsEmpty() || back.String() != i4.String() {
+		t.Fatalf("the zero value scanned back as %+v, %v", back, err)
+	}
+	if !back.Empty {
+		t.Errorf("a range read as empty does not have Empty set: %+v", back)
+	}
+	// A range with a bound set is not the zero value, even when it holds no
+	// point: ClosedOpen(0, 0) keeps its bounds in Go.
+	if ClosedOpen[int32](0, 0).IsEmpty() {
+		t.Error("ClosedOpen(0, 0) was taken for the zero value")
+	}
+	if v, err := ClosedOpen[int32](0, 0).Value(); err != nil || v != "[0,0)" {
+		t.Errorf("ClosedOpen(0, 0).Value = %v, %v", v, err)
+	}
+	// PostgreSQL reads (0,0) as empty too, and so does the text form.
+	if err := back.Scan("(0,0)"); err != nil || back.String() != "empty" {
+		t.Errorf("Scan((0,0)) = %+v, %v", back, err)
+	}
+}
+
+// Catches: a tsrange with an infinity bound failing to scan, or a Timestamp
+// infinity written as a wall clock.
+func TestTimestampInfinity(t *testing.T) {
+	var r Range[Timestamp]
+	if err := r.Scan(`["2026-01-01 10:00:00",infinity)`); err != nil {
+		t.Fatal(err)
+	}
+	if !r.Upper.Value.Infinity || r.Upper.Infinite || r.Upper.Inclusive || r.Lower.Value.Time.IsZero() {
+		t.Errorf("tsrange with an infinity bound = %+v", r)
+	}
+	if err := r.Scan(`(-infinity,"2026-01-01 10:00:00"]`); err != nil || !r.Lower.Value.NegInfinity {
+		t.Errorf("tsrange from -infinity = %+v, %v", r, err)
+	}
+	v, err := NewRange(Incl(Timestamp{Time: utc(2026, 1, 1, 10, 0, 0, 0)}), Excl(Timestamp{Infinity: true})).Value()
+	if err != nil || v != `["2026-01-01 10:00:00",infinity)` {
+		t.Errorf("Value = %v, %v", v, err)
+	}
+	if v, err := (Timestamp{NegInfinity: true}).Value(); err != nil || v != "-infinity" {
+		t.Errorf("-infinity Value = %v, %v", v, err)
+	}
+	if _, err := (Timestamp{Infinity: true, NegInfinity: true}).Value(); err == nil {
+		t.Error("a timestamp with both infinities was accepted")
+	}
+	var tstz Range[time.Time]
+	if err := tstz.Scan(`["2026-01-01 10:00:00+00",infinity)`); err == nil {
+		t.Error("a tstzrange infinity bound scanned into a time.Time")
+	}
 }

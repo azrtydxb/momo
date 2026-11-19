@@ -208,6 +208,43 @@ func TestRangePredicatesLive(t *testing.T) {
 	}
 }
 
+// Catches: an unset range field stored as the range (0,0) instead of the empty
+// range: the zero Range[T] must be written as empty for every element type, so
+// the database holds an empty range, IsEmpty finds it, and it reads back empty.
+func TestZeroRangeStoresAsEmptyLive(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	if _, err := momo.Exec(ctx, db, createRng); err != nil {
+		t.Fatal(err)
+	}
+	var zero rangeRow
+	zero.ID = 1
+	if _, err := momo.Exec(ctx, db, "INSERT INTO rng (id, qty, big, price, day, local, during) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		zero.ID, zero.Qty, zero.Big, zero.Price, zero.Day, zero.Local, zero.During); err != nil {
+		t.Fatal(err)
+	}
+	for name, p := range map[string]momo.Predicate{
+		"int4": rangeop.IsEmpty(rQty), "int8": rangeop.IsEmpty(rBig), "numeric": rangeop.IsEmpty(rPrice),
+		"date": rangeop.IsEmpty(rDay), "timestamp": rangeop.IsEmpty(rLocal), "timestamptz": rangeop.IsEmpty(rDuring),
+	} {
+		if got := ids(t, db, p); !reflect.DeepEqual(got, []int64{1}) {
+			t.Errorf("%s: a zero range is not stored as the empty range: ids = %v", name, got)
+		}
+	}
+	rows, err := momo.Select[rangeRow](db).From(momo.TableRef{Name: "rng"}).
+		Columns(rID, rQty, rBig, rPrice, rDay, rLocal, rDuring).All(ctx)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("select: %v (%d rows)", err, len(rows))
+	}
+	r := rows[0]
+	if !r.Qty.IsEmpty() || !r.Big.IsEmpty() || !r.Price.IsEmpty() || !r.Day.IsEmpty() || !r.Local.IsEmpty() || !r.During.IsEmpty() {
+		t.Errorf("a zero range did not read back empty: %+v", r)
+	}
+	if !r.Qty.Empty {
+		t.Errorf("a range read from the database as empty has no Empty flag: %+v", r.Qty)
+	}
+}
+
 // Catches: an element cast that names the wrong type (a timestamp bound against
 // a timestamptz range), so a predicate on one of the six range types fails at
 // the server with "operator does not exist".

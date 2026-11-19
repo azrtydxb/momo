@@ -33,9 +33,19 @@ type RangeElem interface {
 // 10:00:00"), without a zone, which is what the database stores. Scan reads the
 // wall clock back as a UTC time of the same fields, since the database keeps no
 // zone: two Timestamps are equal when their wall clocks are, and a reader that
-// wants an instant must apply its zone itself. Timestamp has no infinity or
-// -infinity.
-type Timestamp struct{ Time time.Time }
+// wants an instant must apply its zone itself.
+//
+// PostgreSQL also has the special timestamps 'infinity' and '-infinity', as a
+// column value and as the bound of a tsrange. Set Infinity or NegInfinity to
+// write one; Scan sets the flag and leaves Time zero when it reads one. Time is
+// ignored while a flag is set. A time.Time has no such value, so a tstzrange
+// whose bound is infinity does not scan into a Range[time.Time]: use an
+// infinite Bound (types.NoBound) for a range with no limit.
+type Timestamp struct {
+	Time        time.Time
+	Infinity    bool
+	NegInfinity bool
+}
 
 // timestampLayout is the text of a timestamp without a time zone, with an
 // optional fraction of up to six digits (PostgreSQL's precision).
@@ -58,8 +68,17 @@ func (Timestamp) SQLType(d dialect.Name) string {
 	return "TEXT"
 }
 
-// Value encodes the wall clock of t as "YYYY-MM-DD HH:MM:SS[.ffffff]".
+// Value encodes the wall clock of t as "YYYY-MM-DD HH:MM:SS[.ffffff]", or as
+// 'infinity' or '-infinity'. Setting both Infinity and NegInfinity is an error.
 func (t Timestamp) Value() (driver.Value, error) {
+	switch {
+	case t.Infinity && t.NegInfinity:
+		return nil, errors.New("types: Timestamp has both Infinity and NegInfinity set")
+	case t.Infinity:
+		return "infinity", nil
+	case t.NegInfinity:
+		return "-infinity", nil
+	}
 	return t.Time.Format(timestampLayout), nil
 }
 
@@ -75,6 +94,14 @@ func (t *Timestamp) Scan(src any) error {
 	s, err := text("Timestamp", src)
 	if err != nil {
 		return err
+	}
+	switch strings.TrimSpace(s) {
+	case "infinity":
+		*t = Timestamp{Infinity: true}
+		return nil
+	case "-infinity":
+		*t = Timestamp{NegInfinity: true}
+		return nil
 	}
 	v, err := time.Parse("2006-01-02 15:04:05", strings.TrimSpace(s))
 	if err != nil {
@@ -118,6 +145,15 @@ func NoBound[T RangeElem]() Bound[T] { return Bound[T]{Infinite: true} }
 // a range written (0,9] reads back as [1,10), so compare ranges of those types
 // in that form. The other types keep the bounds as written.
 //
+// The zero value Range[T]{} is the empty range: Value writes it as "empty", so
+// an unset field is not stored as (0,0). See IsEmpty for how to compare it.
+//
+// A bound may be the special value infinity, which is not the same as an
+// unbounded side. A daterange and a tsrange hold it in the element (Date and
+// Timestamp have Infinity and NegInfinity flags); a time.Time cannot, so a
+// tstzrange whose bound is infinity fails to scan into a Range[time.Time]. Use
+// NoBound for a tstzrange with no limit.
+//
 // Range types exist on PostgreSQL alone. The generator refuses a Range field
 // when the target dialect is SQLite, MySQL or MariaDB, and the rangeop
 // predicates fail the build with momo.ErrUnsupported there.
@@ -140,8 +176,21 @@ func ClosedOpen[T RangeElem](lower, upper T) Range[T] {
 // EmptyRange returns the empty range.
 func EmptyRange[T RangeElem]() Range[T] { return Range[T]{Empty: true} }
 
-// IsEmpty reports whether r is the empty range.
-func (r Range[T]) IsEmpty() bool { return r.Empty }
+// IsEmpty reports whether r is the empty range: Empty is set, or r is the zero
+// value Range[T]{}.
+//
+// The zero value is the empty range. A Range[T]{} that was never set must not
+// become the range (0,0) in the database, so Value writes it as "empty", and a
+// Range read back as empty has Empty set. The two are the same range but not
+// the same Go value: compare ranges with IsEmpty (or by their Value text), not
+// with == or reflect.DeepEqual, when either may be the zero value. A range
+// built with a bound, such as ClosedOpen(0, 0), is not the zero value.
+func (r Range[T]) IsEmpty() bool { return r.Empty || r.isZero() }
+
+// isZero reports whether r is the zero value: no flag and no bound set.
+func (r Range[T]) isZero() bool {
+	return !r.Empty && any(r.Lower) == any(Bound[T]{}) && any(r.Upper) == any(Bound[T]{})
+}
 
 // rangeTypeName is the PostgreSQL range type of T.
 func rangeTypeName[T RangeElem]() string {
@@ -175,7 +224,7 @@ func (Range[T]) SQLType(d dialect.Name) string {
 // not valid for its type (a Numeric with a flag and digits, a Date with both
 // infinities) is an error.
 func (r Range[T]) Value() (driver.Value, error) {
-	if r.Empty {
+	if r.IsEmpty() {
 		return "empty", nil
 	}
 	var sb strings.Builder
