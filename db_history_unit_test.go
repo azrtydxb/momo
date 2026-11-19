@@ -52,7 +52,7 @@ var unitNoteViewMeta = momo.Meta[unitNoteView]{
 
 func (*unitNoteView) MomoMeta() *momo.Meta[unitNoteView] { return &unitNoteViewMeta }
 
-const historyColumns = `SELECT "id", "title", "body", "history_id", "history_operation", "history_changed_at", "history_changed_by" FROM "notes_history" WHERE "id" = $1`
+const historyColumns = `SELECT "id", "title", "body", "history_id", "history_operation", "history_changed_at", "history_changed_by" FROM "notes_history" AS "notes" WHERE "id" = $1`
 
 // Catches: a history query that reads the model table instead of the history
 // table, orders the versions the wrong way, or binds the key as text.
@@ -66,7 +66,7 @@ func TestHistoryOfSQL(t *testing.T) {
 	if len(calls) != 1 {
 		t.Fatalf("calls = %+v, want one statement", calls)
 	}
-	want := historyColumns + ` ORDER BY "history_changed_at", "history_id"`
+	want := historyColumns + ` ORDER BY "history_id"`
 	if calls[0].SQL != want {
 		t.Errorf("SQL\n got %s\nwant %s", calls[0].SQL, want)
 	}
@@ -95,6 +95,51 @@ func TestHistoryAsOfSQL(t *testing.T) {
 	}
 	if len(calls[0].Args) != 2 || calls[0].Args[0] != int64(7) || calls[0].Args[1] != at {
 		t.Errorf("args = %v, want [7 %v]", calls[0].Args, at)
+	}
+}
+
+// Catches: a history read that ignores the tenant of the context (it would
+// return another tenant's audit rows), or that widens when the tenant is
+// missing or has the wrong type instead of failing before any statement runs.
+func TestHistoryReadsApplyTheTenantFilter(t *testing.T) {
+	tenant := momo.NewColumn[int64]("notes", "tenant_id", 0)
+	drv := fakedriver.New(dialect.Postgres)
+	db := momo.New(drv)
+	ctx := momo.WithTenant(context.Background(), int64(5))
+	if _, err := momo.HistoryOf[unitNote](ctx, db, int64(7), momo.TenantFilter(ctx, tenant)); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	if _, err := momo.HistoryAsOf[unitNote](ctx, db, at, int64(7), momo.TenantFilter(ctx, tenant)); !errors.Is(err, momo.ErrNotFound) {
+		t.Fatal(err)
+	}
+	calls := drv.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("calls = %+v, want two statements", calls)
+	}
+	wantOf := historyColumns + ` AND "notes"."tenant_id" = $2 ORDER BY "history_id"`
+	if calls[0].SQL != wantOf || len(calls[0].Args) != 2 || calls[0].Args[1] != int64(5) {
+		t.Errorf("HistoryOf: SQL %s args %v, want %s with the tenant bound", calls[0].SQL, calls[0].Args, wantOf)
+	}
+	wantAt := historyColumns + ` AND "notes"."tenant_id" = $2 AND "history_changed_at" <= $3 ORDER BY "history_changed_at" DESC, "history_id" DESC LIMIT 1`
+	if calls[1].SQL != wantAt {
+		t.Errorf("HistoryAsOf: SQL %s, want %s", calls[1].SQL, wantAt)
+	}
+
+	for name, bad := range map[string]context.Context{
+		"no tenant":         context.Background(),
+		"a mistyped tenant": momo.WithTenant(context.Background(), "five"),
+	} {
+		before := len(drv.Calls())
+		if _, err := momo.HistoryOf[unitNote](bad, db, int64(7), momo.TenantFilter(bad, tenant)); !errors.Is(err, momo.ErrValidation) {
+			t.Errorf("HistoryOf with %s: %v, want ErrValidation", name, err)
+		}
+		if _, err := momo.HistoryAsOf[unitNote](bad, db, at, int64(7), momo.TenantFilter(bad, tenant)); !errors.Is(err, momo.ErrValidation) {
+			t.Errorf("HistoryAsOf with %s: %v, want ErrValidation", name, err)
+		}
+		if n := len(drv.Calls()); n != before {
+			t.Errorf("%s: %d statements ran for a refused read", name, n-before)
+		}
 	}
 }
 

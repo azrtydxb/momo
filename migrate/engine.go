@@ -871,6 +871,10 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 	if err := e.checkGoSnapshots(); err != nil {
 		return nil, err
 	}
+	// The snapshot records the history columns the model dropped and the plan
+	// keeps, so drift sees them as expected.
+	adapted, opts := adaptHistory(from, &to, opts)
+	to = *adapted
 	changes, hints, err := Diff(from, &to, opts)
 	if err != nil {
 		return nil, err

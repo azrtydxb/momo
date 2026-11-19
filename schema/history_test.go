@@ -113,6 +113,11 @@ func TestHistoryForTriggerAndFunction(t *testing.T) {
 		`VALUES (NEW."id", NEW."status", NEW."total", NEW."slug", NEW."we""ird", TG_OP,`,
 		`RETURN OLD;`,
 		`RETURN NEW;`,
+		// A no-op UPDATE records nothing; a primary key change closes the old
+		// key with a DELETE row.
+		`IF to_jsonb(OLD) = to_jsonb(NEW) THEN`,
+		`IF ROW(OLD."id") IS DISTINCT FROM ROW(NEW."id") THEN`,
+		`OLD."we""ird", 'DELETE', clock_timestamp()`,
 	} {
 		if !strings.Contains(fn.Body, want) {
 			t.Errorf("the function body lacks %s:\n%s", want, fn.Body)

@@ -112,21 +112,39 @@ func HistoryFor(t *Table) (History, error) {
 	parts = append(parts, IndexPart{Column: HistoryChangedAtColumn}, IndexPart{Column: HistoryIDColumn})
 	h.Indexes = []Index{{Name: HistoryIndexName(t.Name), Parts: parts}}
 
-	insert := func(row string) string {
+	insert := func(row, op string) string {
 		var vals []string
 		for _, c := range t.Columns {
 			vals = append(vals, row+"."+historyIdent(c.Name))
 		}
-		vals = append(vals, "TG_OP", "clock_timestamp()", "nullif(current_setting('"+HistoryActorSetting+"', true), '')")
+		vals = append(vals, op, "clock_timestamp()", "nullif(current_setting('"+HistoryActorSetting+"', true), '')")
 		cols := append(slices.Clone(names), historyIdent(HistoryOperationColumn), historyIdent(HistoryChangedAtColumn), historyIdent(HistoryChangedByColumn))
 		return "INSERT INTO " + historyIdent(h.Name) + " (" + strings.Join(cols, ", ") + ") VALUES (" + strings.Join(vals, ", ") + ");"
 	}
+	var oldKey, newKey []string
+	for _, c := range t.PrimaryKey {
+		oldKey = append(oldKey, "OLD."+historyIdent(c))
+		newKey = append(newKey, "NEW."+historyIdent(c))
+	}
+	// An UPDATE that changes nothing records nothing. The rows are compared as
+	// jsonb, because a record comparison fails on a column type without an
+	// equality operator (json, xml, point). An UPDATE that changes the primary
+	// key also records the old row as a DELETE, so the timeline of the old key
+	// ends and the new key starts with the new row.
 	body := "BEGIN\n" +
 		"  IF TG_OP = 'DELETE' THEN\n" +
-		"    " + insert("OLD") + "\n" +
+		"    " + insert("OLD", "TG_OP") + "\n" +
 		"    RETURN OLD;\n" +
 		"  END IF;\n" +
-		"  " + insert("NEW") + "\n" +
+		"  IF TG_OP = 'UPDATE' THEN\n" +
+		"    IF to_jsonb(OLD) = to_jsonb(NEW) THEN\n" +
+		"      RETURN NEW;\n" +
+		"    END IF;\n" +
+		"    IF ROW(" + strings.Join(oldKey, ", ") + ") IS DISTINCT FROM ROW(" + strings.Join(newKey, ", ") + ") THEN\n" +
+		"      " + insert("OLD", "'DELETE'") + "\n" +
+		"    END IF;\n" +
+		"  END IF;\n" +
+		"  " + insert("NEW", "TG_OP") + "\n" +
 		"  RETURN NEW;\n" +
 		"END"
 	fn := Function{Name: HistoryFunctionName(t.Name), Returns: "trigger", Language: "plpgsql", Volatility: "VOLATILE", Body: body}

@@ -49,23 +49,32 @@ func SetActor(ctx context.Context, tx *Tx, actor string) error {
 }
 
 // HistoryOf returns every recorded version of the row of model T with the given
-// primary key, oldest first. key holds one value per primary key column, in
-// the key's column order. A row with no recorded version gives an empty
-// result. A model that never declared Config.History has no history table, and
-// the call fails with the database's error for the missing table.
+// primary key, in the order of the changes (the history id). key holds one
+// value per primary key column, in the key's column order. A row with no
+// recorded version gives an empty result. A model that never declared
+// Config.History has no history table, and the call fails with the database's
+// error for the missing table.
+//
+// A Predicate among the key values narrows the read like a Where does: pass
+// TenantFilter(ctx, col) to scope it to the tenant in ctx, and a missing or
+// mistyped tenant fails with ErrValidation. The history table is aliased as the
+// model's table, so a predicate built from the model's column descriptors reads
+// the history column of the same name.
 //
 // The versions are read from <table>_history. They are not filtered by
-// soft-delete, tenant or interceptors, because the history is an audit log. It
+// soft-delete or interceptors, because the history is an audit log. It
 // returns ErrUnsupported on SQLite, MySQL and MariaDB.
 func HistoryOf[T any, PT Modeler[T]](ctx context.Context, q Querier, key ...any) ([]HistoryEntry[T], error) {
 	return readHistory[T, PT](ctx, q, key, nil)
 }
 
 // HistoryAsOf returns the state of the row of model T with the given primary
-// key at the time at: the latest version recorded at or before at. It returns
-// an error matching ErrNotFound when the row did not exist then, either
-// because its first version is later or because the latest version is a
-// DELETE. See HistoryOf for key and the rest of the rules.
+// key at the time at: the latest version recorded at or before at. The time of
+// a version is the moment its trigger fired (clock_timestamp()), not the moment
+// its transaction committed. It returns an error matching ErrNotFound when the
+// row did not exist then, either because its first version is later or because
+// the latest version is a DELETE (a soft delete is an UPDATE, so the row still
+// exists). See HistoryOf for key, tenant scoping and the rest of the rules.
 func HistoryAsOf[T any, PT Modeler[T]](ctx context.Context, q Querier, at time.Time, key ...any) (HistoryEntry[T], error) {
 	rows, err := readHistory[T, PT](ctx, q, key, &at)
 	if err != nil {
@@ -86,6 +95,19 @@ func readHistory[T any, PT Modeler[T]](ctx context.Context, q Querier, key []any
 	if q.Dialect().Name != dialect.Postgres {
 		return nil, &Error{Kind: ErrUnsupported, Op: "history", Err: errors.New("audit history needs PostgreSQL")}
 	}
+	// A Predicate among the key values narrows the read, as it does a Where of
+	// Select: TenantFilter(ctx, col) scopes the history to one tenant, and a
+	// context without a tenant of the column's type fails with ErrValidation.
+	var preds []Predicate
+	var vals []any
+	for _, k := range key {
+		if p, ok := k.(Predicate); ok {
+			preds = append(preds, p)
+			continue
+		}
+		vals = append(vals, k)
+	}
+	key = vals
 	meta := metaOf[T, PT]()
 	switch {
 	case meta == nil || meta.Table == "":
@@ -110,8 +132,13 @@ func readHistory[T any, PT Modeler[T]](ctx context.Context, q Querier, key []any
 			b.WriteString(", ")
 			b.Ident(name)
 		}
+		// The history table is aliased as the model's table, so a predicate
+		// built on the model's columns (TenantFilter) reads the history column
+		// of the same name.
 		b.WriteString(" FROM ")
 		b.QualifiedIdent(meta.Schema, table)
+		b.WriteString(" AS ")
+		b.Ident(meta.Table)
 		b.WriteString(" WHERE ")
 		for i, pk := range meta.PK {
 			if i > 0 {
@@ -121,10 +148,13 @@ func readHistory[T any, PT Modeler[T]](ctx context.Context, q Querier, key []any
 			b.WriteString(" = ")
 			b.Arg(key[i])
 		}
+		for _, p := range preds {
+			b.WriteString(" AND ")
+			p.AppendSQL(b)
+		}
 		if at == nil {
+			// The history id is the sequence of the changes, so it orders them.
 			b.WriteString(" ORDER BY ")
-			b.Ident(schema.HistoryChangedAtColumn)
-			b.WriteString(", ")
 			b.Ident(schema.HistoryIDColumn)
 			return
 		}

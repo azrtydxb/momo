@@ -10,7 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/internal/testdb"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/migrate/migratetest"
@@ -166,6 +170,149 @@ func TestHistoryRecordsEveryChangeWithItsActor(t *testing.T) {
 	}
 	if _, err := momo.HistoryOf[auditNote](ctx, db, int64(1), int64(2)); !errors.Is(err, momo.ErrValidation) {
 		t.Errorf("two key values for a one-column key: %v, want ErrValidation", err)
+	}
+}
+
+// applyAuditNotes creates the audit_notes table and its history objects.
+func applyAuditNotes(ctx context.Context, t *testing.T, db *momo.DB) {
+	t.Helper()
+	m := migratetest.NewEngine(t, mpg.New(), db.Driver(), migratetest.EmptyFS())
+	mig, err := m.Diff(ctx, auditNoteSchema(t), "init", migrate.DiffOptions{})
+	if err != nil || mig == nil {
+		t.Fatalf("diff: %v %v", mig, err)
+	}
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), migratetest.FS(mig.Files))
+	if _, err := e.Apply(ctx, migrate.ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func execAll(ctx context.Context, t *testing.T, db *momo.DB, stmts ...string) {
+	t.Helper()
+	for _, s := range stmts {
+		if _, err := momo.Exec(ctx, db, s); err != nil {
+			t.Fatalf("%s: %v", s, err)
+		}
+	}
+}
+
+// Catches: an UPDATE of the primary key that leaves the old key's timeline
+// open (the old key would still read as existing after the row moved away), or
+// a new key whose history does not start with its first row.
+func TestPrimaryKeyChangeClosesTheOldKeysTimeline(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	applyAuditNotes(ctx, t, db)
+	execAll(ctx, t,
+		db, "INSERT INTO audit_notes (id, title) VALUES (1, 'moving')",
+		"UPDATE audit_notes SET id = 2 WHERE id = 1")
+	after, err := momo.Scalars[time.Time](ctx, db, "SELECT clock_timestamp()")
+	if err != nil || len(after) != 1 {
+		t.Fatal(err)
+	}
+
+	if _, err := momo.HistoryAsOf[auditNote](ctx, db, after[0], int64(1)); !errors.Is(err, momo.ErrNotFound) {
+		t.Errorf("the old key after the move: %v, want ErrNotFound", err)
+	}
+	old, err := momo.HistoryOf[auditNote](ctx, db, int64(1))
+	if err != nil || len(old) != 2 || old[0].Operation != momo.HistoryInsert || old[1].Operation != momo.HistoryDelete {
+		t.Fatalf("history of the old key = %+v (%v), want an INSERT then a DELETE", old, err)
+	}
+	moved, err := momo.HistoryOf[auditNote](ctx, db, int64(2))
+	if err != nil || len(moved) != 1 || moved[0].Operation != momo.HistoryUpdate || moved[0].Row.ID != 2 || moved[0].Row.Title != "moving" {
+		t.Fatalf("history of the new key = %+v (%v), want one row, the new version", moved, err)
+	}
+	if now, err := momo.HistoryAsOf[auditNote](ctx, db, after[0], int64(2)); err != nil || now.Row.ID != 2 {
+		t.Errorf("the new key after the move: %+v, %v, want the row", now, err)
+	}
+}
+
+// Catches: an UPDATE that changes nothing writing a history row, which would
+// bury the real changes in noise, and a real change after it being skipped.
+func TestNoOpUpdateRecordsNothing(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	applyAuditNotes(ctx, t, db)
+	execAll(ctx, t, db,
+		"INSERT INTO audit_notes (id, title) VALUES (1, 'same')",
+		"UPDATE audit_notes SET title = 'same' WHERE id = 1",
+		"UPDATE audit_notes SET title = title, body = NULL WHERE id = 1")
+	got, err := momo.HistoryOf[auditNote](ctx, db, int64(1))
+	if err != nil || len(got) != 1 {
+		t.Fatalf("history after two no-op updates = %+v (%v), want only the insert", got, err)
+	}
+	execAll(ctx, t, db, "UPDATE audit_notes SET title = 'changed' WHERE id = 1")
+	if got, err = momo.HistoryOf[auditNote](ctx, db, int64(1)); err != nil || len(got) != 2 || got[1].Row.Title != "changed" {
+		t.Fatalf("history after a real change = %+v (%v), want two versions", got, err)
+	}
+}
+
+// Catches: the actor of one transaction surviving on the connection into the
+// next write, where it would be recorded as that writer's name. The pool has
+// one connection, so the next statement runs on the connection the first
+// transaction used.
+func TestActorDoesNotOutliveItsTransaction(t *testing.T) {
+	ctx := context.Background()
+	setup := testopen.Postgres(t)
+	applyAuditNotes(ctx, t, setup)
+
+	cfg, err := pgxpool.ParseConfig(testdb.PostgresURL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.MaxConns = 1
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	db := momo.New(pgxdriver.New(pool))
+
+	err = db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
+		if err := momo.SetActor(ctx, tx, "alice"); err != nil {
+			return err
+		}
+		_, err := momo.Exec(ctx, tx, "INSERT INTO audit_notes (id, title) VALUES (1, 'by alice')")
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	left, err := momo.Scalars[string](ctx, db, "SELECT coalesce(current_setting('momo.actor', true), '')")
+	if err != nil || len(left) != 1 || left[0] != "" {
+		t.Fatalf("momo.actor after the commit = %q (%v), want empty", left, err)
+	}
+	execAll(ctx, t, db, "INSERT INTO audit_notes (id, title) VALUES (2, 'by nobody')")
+	if n := pool.Stat().TotalConns(); n != 1 {
+		t.Fatalf("the pool holds %d connections, want the one every statement shared", n)
+	}
+	got, err := momo.HistoryOf[auditNote](ctx, db, int64(2))
+	if err != nil || len(got) != 1 || got[0].ChangedBy != nil {
+		t.Fatalf("the later write recorded %+v (%v), want a NULL actor", got, err)
+	}
+}
+
+// Catches: a soft delete read as a removal of the row. It is an UPDATE that sets
+// the deleted marker, so the history records an UPDATE and the row still exists
+// as of that time; only a hard DELETE ends it. The body column stands in for
+// the model's deleted_at marker: any UPDATE is recorded the same way.
+func TestSoftDeleteIsRecordedAsAnUpdate(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	applyAuditNotes(ctx, t, db)
+	execAll(ctx, t, db,
+		"INSERT INTO audit_notes (id, title) VALUES (1, 'live')",
+		"UPDATE audit_notes SET body = 'deleted_at set' WHERE id = 1")
+	got, err := momo.HistoryOf[auditNote](ctx, db, int64(1))
+	if err != nil || len(got) != 2 || got[1].Operation != momo.HistoryUpdate {
+		t.Fatalf("history = %+v (%v), want an INSERT then an UPDATE", got, err)
+	}
+	now, err := momo.Scalars[time.Time](ctx, db, "SELECT clock_timestamp()")
+	if err != nil || len(now) != 1 {
+		t.Fatal(err)
+	}
+	if at, err := momo.HistoryAsOf[auditNote](ctx, db, now[0], int64(1)); err != nil || at.Operation != momo.HistoryUpdate {
+		t.Fatalf("state after the soft delete = %+v, %v, want the row as an UPDATE", at, err)
 	}
 }
 
