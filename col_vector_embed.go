@@ -127,6 +127,7 @@ type staleRow[T any] struct {
 	stored sql.NullString // the stored hash; not Valid when the row was never embedded
 	hash   string         // the hash of srcs
 	text   string
+	noVec  bool // the vector was NULL when the row was read
 }
 
 // embedCursor walks a table in key order and collects the stale rows.
@@ -319,7 +320,7 @@ func (c *embedCursor[T]) classify(m *T, stored sql.NullString, noVec bool) (*sta
 	if stored.Valid && stored.String == hash && (!noVec || text == "") {
 		return nil, nil
 	}
-	return &staleRow[T]{model: m, srcs: srcs, stored: stored, hash: hash, text: text}, nil
+	return &staleRow[T]{model: m, srcs: srcs, stored: stored, hash: hash, text: text, noVec: noVec}, nil
 }
 
 // renderPage writes the page statement: the key, the sources, the stored hash
@@ -404,6 +405,12 @@ func (c *embedCursor[T]) update(ctx context.Context, r staleRow[T], vec vector.V
 	if err != nil {
 		return false, err
 	}
+	// The hash and the vector are derived from the source values, so they are
+	// bound as sensitive when any source column is.
+	var derived uint16
+	for _, ci := range c.spec.Sources {
+		derived |= m.Columns[ci].Flags & FlagSensitive
+	}
 	comp, err := compile(c.d, func(b *Builder) {
 		b.WriteString("UPDATE ")
 		c.table.appendFrom(b)
@@ -413,12 +420,12 @@ func (c *embedCursor[T]) update(ctx context.Context, r staleRow[T], vec vector.V
 		if drop {
 			b.WriteString("NULL")
 		} else {
-			b.Arg(vec)
+			b.ArgFor(m.Columns[c.spec.Vector].Flags|derived, vec)
 		}
 		b.WriteString(", ")
 		b.Ident(c.spec.HashColumn)
 		b.WriteString(" = ")
-		b.Arg(r.hash)
+		b.ArgFor(derived, r.hash)
 		b.WriteString(" WHERE ")
 		for i, ci := range m.PK {
 			if i > 0 {
@@ -429,10 +436,21 @@ func (c *embedCursor[T]) update(ctx context.Context, r staleRow[T], vec vector.V
 		}
 		for k, ci := range c.spec.Sources {
 			b.WriteString(" AND ")
-			NewColumn[sql.NullString](q, m.Columns[ci].Name, 0).IsNotDistinctFrom(r.srcs[k]).AppendSQL(b)
+			NewColumn[sql.NullString](q, m.Columns[ci].Name, m.Columns[ci].Flags).IsNotDistinctFrom(r.srcs[k]).AppendSQL(b)
 		}
 		b.WriteString(" AND ")
-		NewColumn[sql.NullString](q, c.spec.HashColumn, 0).IsNotDistinctFrom(r.stored).AppendSQL(b)
+		NewColumn[sql.NullString](q, c.spec.HashColumn, derived).IsNotDistinctFrom(r.stored).AppendSQL(b)
+		if r.noVec {
+			// The row was stale only because it had no embedding: another runner
+			// that wrote it first must not be written over and counted again.
+			b.WriteString(" AND ")
+			b.Ident(m.Columns[c.spec.Vector].Name)
+			b.WriteString(" IS NULL")
+		}
+		if m.SoftDelete >= 0 && m.SoftDelete < len(m.Columns) {
+			b.WriteString(" AND ")
+			softDeletePred(m, q, false).AppendSQL(b)
+		}
 		for _, p := range extra {
 			b.WriteString(" AND ")
 			p.AppendSQL(b)
@@ -576,7 +594,11 @@ func syncBatch[T any](ctx context.Context, c *embedCursor[T], e vector.Embedder,
 		var err error
 		vecs, err = e.Embed(ctx, texts)
 		if err != nil {
-			return fmt.Errorf("momo: embedder: %w", err)
+			wrapped := fmt.Errorf("momo: embedder: %w", err)
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+				return newError(ErrCanceled, "embed", c.meta.Table, wrapped)
+			}
+			return wrapped
 		}
 		if len(vecs) != len(texts) {
 			return validation("embed", c.meta.Table, "the Embedder returned %d vectors for %d texts", len(vecs), len(texts))

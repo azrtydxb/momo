@@ -444,7 +444,8 @@ network call. Pass a `*momo.DB`, not a `*momo.Tx`:
 
 - It reads stale rows, passes `EmbedOptions.BatchSize` texts (default 100) to
   `Embed`, checks the count and the dimension of what comes back, and writes
-  each vector together with the hash of the text it was computed from.
+  each vector together with the hash of the source values it was computed
+  from.
 - No transaction is held and no statement is open during the `Embed` call.
 - Each row is written by one compare-and-set `UPDATE` that matches the row only
   while its source columns and its stored hash are what was read. A row edited
@@ -460,7 +461,11 @@ network call. Pass a `*momo.DB`, not a `*momo.Tx`:
 - The default text of a row joins its sources that are not NULL and not empty
   with a blank line. `EmbedOptions.Text` replaces that. A row whose text is
   empty has no embedding: its vector is set to NULL and its hash is written
-  (`EmbedResult.Cleared`), so it is not stale again.
+  (`EmbedResult.Cleared`), so it is not stale again. The hash covers the source
+  values, not the text that `EmbedOptions.Text` builds from them. After you
+  change `EmbedOptions.Text` or the provider, clear the hash column
+  (`UPDATE <table> SET <column>_hash = NULL`) so every row counts as stale and
+  is embedded again.
 - `EmbedOptions.Limit` stops after that many stale rows, and
   `EmbedOptions.Vector` picks the embedding when a model has more than one.
 
