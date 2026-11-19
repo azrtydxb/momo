@@ -5,16 +5,21 @@ Momo calls the hooks you register with `momo.WithHook` around every statement
 that also implements it). The interfaces live in the root package because `DB`
 calls them. Ready-made implementations:
 
-| Hook           | Constructor                                  | What it does                                                                                      |
-| -------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `obs.Recorder` | `&obs.Recorder{}` (package `obs`)            | Keeps every finished statement and relation load for assertions in tests.                         |
-| `obs.NPlusOne` | `obs.NewNPlusOne(n, report)` (`obs`)         | Reports a relation that was loaded more than `n` times inside one `obs.WithScope`.                |
-| slow query     | `obs.NewSlowQuery(d, report, opts...)`       | Reports each statement slower than `d`, with an opt-in plain `EXPLAIN` plan.                      |
-| slog hook      | `momolog.New(logger, opts...)` (`momolog`)   | Logs one `log/slog` record per statement and one per relation load (see [slog](#slog)).           |
-| OTel hook      | `otelmomo.New(tp, mp, opts...)` (`otelmomo`) | Emits a client span and a duration histogram per statement (see [OpenTelemetry](#opentelemetry)). |
+| Hook                    | Constructor and return type                                            | What it does                                                                                      |
+| ----------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `obs.Recorder`          | `&obs.Recorder{}` (package `obs`)                                      | Keeps every finished statement and relation load for assertions in tests.                         |
+| `obs.NPlusOne`          | `obs.NewNPlusOne(n, report)` returns `*obs.NPlusOne`                   | Reports a relation that was loaded more than `n` times inside one `obs.WithScope`.                |
+| `obs.StatementNPlusOne` | `obs.NewStatementNPlusOne(n, report)` returns `*obs.StatementNPlusOne` | Reports a statement shape that ran more than `n` times inside one `obs.WithScope`.                |
+| `obs.SlowQueryHook`     | `obs.NewSlowQuery(d, report, opts...)` returns `*obs.SlowQueryHook`    | Reports each statement slower than `d`, with an opt-in plain `EXPLAIN` plan.                      |
+| `momolog.Hook`          | `momolog.New(logger, opts...)` returns `*momolog.Hook`                 | Logs one `log/slog` record per statement and one per relation load (see [slog](#slog)).           |
+| `otelmomo.Hook`         | `otelmomo.New(tp, mp, opts...)` returns `(*otelmomo.Hook, error)`      | Emits a client span and a duration histogram per statement (see [OpenTelemetry](#opentelemetry)). |
 
-`obs` imports only `momo` and the standard library. All of these hooks are safe
-for concurrent use.
+Every constructor returns its concrete type, and each type implements
+`momo.Hook`, so you pass the value to `momo.WithHook` as it is. Methods added to
+a hook type later do not break your code, which a change of an interface return
+type would. `obs` imports only `momo`, the standard library and one internal
+package that both N+1 detectors share. All of these hooks are safe for
+concurrent use.
 
 ## Arguments and sensitive columns
 
@@ -45,23 +50,34 @@ check that the hook chain passes the context through.
 
 Two detectors exist, and they count different things:
 
-| Detector               | Counts                                        | Scope                      | Use it for                                           |
-| ---------------------- | --------------------------------------------- | -------------------------- | ---------------------------------------------------- |
-| `obs.NewNPlusOne`      | relation loads (`Load`, `LoadAll`, `Preload`) | `obs.WithScope(ctx)`       | a relation `Load` inside a loop over the parents     |
-| `momo.NewNPlusOneHook` | repeated statement shapes                     | `momo.WithQueryScope(ctx)` | any repeated statement, such as a `Select` in a loop |
+| Detector                   | Counts                                        | Scope                | Use it for                                           |
+| -------------------------- | --------------------------------------------- | -------------------- | ---------------------------------------------------- |
+| `obs.NewNPlusOne`          | relation loads (`Load`, `LoadAll`, `Preload`) | `obs.WithScope(ctx)` | a relation `Load` inside a loop over the parents     |
+| `obs.NewStatementNPlusOne` | repeated statement shapes                     | `obs.WithScope(ctx)` | any repeated statement, such as a `Select` in a loop |
 
-Use either or both. Each reads only its own scope, so a context needs
-`obs.WithScope` for the first and `momo.WithQueryScope` for the second; a
-context with only one of them is not tracked by the other detector.
+Use either or both. They read the same scope, so one `obs.WithScope` serves
+both: wrap the context once and register one or both detectors. Each keeps its
+own counts in that scope, so a relation load never counts as a statement shape
+or the other way round. `obs.StatementFinding` reports a statement
+(`Shape`, `Example`, `Count`) and `obs.Finding` reports a relation.
 
 ```text
-det := obs.NewNPlusOne(3, func(f obs.Finding) {
+rel := obs.NewNPlusOne(3, func(f obs.Finding) {
     log.Printf("N+1: %s loaded %d times", f.Relation, f.Count)
 })
-db := momo.New(drv, momo.WithHook(det))
+stmt := obs.NewStatementNPlusOne(3, func(f obs.StatementFinding) {
+    log.Printf("N+1: %s ran %d times", f.Shape, f.Count)
+})
+db := momo.New(drv, momo.WithHook(rel), momo.WithHook(stmt))
 
-ctx := obs.WithScope(r.Context()) // one request, one job
+ctx := obs.WithScope(r.Context()) // one request, one job, both detectors
 ```
+
+`obs.StatementNPlusOne` collapses placeholders and `IN` lists to one shape, so
+a batched load of any size is one shape while a statement per row repeats it.
+It ignores transaction control and `EXPLAIN` statements, tracks at most 1024
+shapes per scope, recovers a panic in `report` and drops it, and reports once
+per shape and scope, when the count first exceeds the threshold.
 
 `obs.NPlusOne` counts relation loads per relation within a scope. It reports
 once per relation and scope, when the count first exceeds the threshold. One
@@ -71,7 +87,14 @@ the parent count of the load that crossed the threshold; 1 is the usual sign of
 a loop. A context without a scope is not tracked, a scope tracks at most 1024
 relations, and a panic in `report` is recovered and dropped. `report` runs on
 the loading goroutine and must not query the database. Create the detector with
-`obs.NewNPlusOne`; its zero value must not be used.
+`obs.NewNPlusOne`; its zero value must not be used. The same holds for
+`obs.NewStatementNPlusOne`.
+
+The root package keeps `momo.NewNPlusOneHook`, `momo.WithQueryScope` and
+`momo.NPlusOneFinding` as deprecated forwarders for one release. They count
+exactly as `obs.NewStatementNPlusOne` does, and `momo.WithQueryScope` returns
+the scope `obs.WithScope` makes, so a context made by one serves the detectors
+of the other. See [upgrading](upgrading.md) for the move.
 
 ## Slow queries
 
@@ -153,8 +176,13 @@ h, err := otelmomo.New(tracerProvider, meterProvider, otelmomo.WithNamespace("ap
 if err != nil {
     return err // a nil provider is an error; there is no global fallback
 }
-db := momo.New(drv, momo.WithHook(h))
+db := momo.New(drv, momo.WithHook(h)) // h is an *otelmomo.Hook
 ```
+
+`otelmomo.New` returns `*otelmomo.Hook`, like the other constructors. The module
+is versioned on its own and is still before its first stable release, so
+release-please bumps its minor version for this change; it has no `momo` release to wait for, because the
+type is its own and it compiles against the `momo` version in its `go.mod`.
 
 The providers are passed in; the package reads no global provider. Each
 statement becomes a client span named `<OPERATION> <table>` (`SELECT authors`),

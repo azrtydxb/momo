@@ -46,3 +46,25 @@ func ExampleNPlusOne() {
 	// Output:
 	// obs_parents.Kids loaded 3 times, 1 parent each
 }
+
+// ExampleStatementNPlusOne registers both detectors and wraps the context once.
+// The same loop is a relation loaded once per parent and a statement that ran
+// again and again; each detector reports it in its own terms.
+func ExampleStatementNPlusOne() {
+	var statementCount, relationCount int
+	stmt := obs.NewStatementNPlusOne(2, func(f obs.StatementFinding) { statementCount = f.Count })
+	rel := obs.NewNPlusOne(2, func(f obs.Finding) { relationCount = f.Count })
+	db := momo.New(fakedriver.New(dialect.Postgres), momo.WithHook(stmt), momo.WithHook(rel))
+
+	ctx := obs.WithScope(context.Background()) // one scope serves both detectors
+	for _, p := range parents(5) {
+		if err := momo.Load(ctx, db, []parent{p}, kids); err != nil {
+			fmt.Println(err)
+		}
+	}
+	fmt.Println("statement repeated", statementCount, "times")
+	fmt.Println("relation loaded", relationCount, "times")
+	// Output:
+	// statement repeated 3 times
+	// relation loaded 3 times
+}
