@@ -128,12 +128,11 @@ func TestColumnChangesReachTheHistoryTableInOnePlan(t *testing.T) {
 	if _, err := e2.Apply(ctx, migrate.ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	inspected, err := e2.Inspect(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !schema.Equal(inspected, v2) {
-		t.Fatalf("after the column change\n%s", migratetest.Diff(inspected, v2))
+	// ADD COLUMN appends, so the inspected history table keeps the model
+	// columns after its history_ columns; schema.Equal counts column order, so
+	// the check is a diff that finds nothing to do.
+	if again, err := e2.Diff(ctx, v2, "noop", migrate.DiffOptions{}); err != nil || again != nil {
+		t.Fatalf("after the column change the diff must write nothing: %v %v", again, err)
 	}
 
 	// The trigger keeps recording after the change, with the new column.
