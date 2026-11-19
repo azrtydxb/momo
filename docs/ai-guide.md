@@ -1153,8 +1153,8 @@ none runs while another holds the exclusive lock of that key, and the exclusive
 lock waits for every shared holder. `advisory.Acquire(ctx, tx, k,
 advisory.Xact(), advisory.Shared(), advisory.WithHash64(52))` takes the lock
 `pg_advisory_xact_lock_shared(hashtextextended(k, 52))` takes. A release without
-`advisory.Shared()` does not release a shared lock; pass the same `Shared` and
-`WithHash64` options to `advisory.Release` that the acquire used.
+`advisory.Shared()` does not release a shared lock; pass the same `advisory.Shared` and
+`advisory.WithHash64` options to `advisory.Release` that the acquire used.
 
 The 20 functions of the earlier API (`advisory.Lock`, `advisory.TryLock`,
 `advisory.Unlock`, `advisory.XactLock`, `advisory.LockShared` and the other
@@ -2286,7 +2286,7 @@ reports a column only for NOT NULL). Use `Constraint` for those three.
 | `ErrAdoptedTx`           | `Commit` or `Rollback` on a `*Tx` from `AdoptTx`; the caller owns that transaction                                                                                                                                                                                                                        | finish the transaction with the caller's own handle |
 | `ErrTxDone`              | `*Tx` already committed or rolled back                                                                                                                                                                                                                                                                    | do not reuse a finished `Tx`                        |
 | `ErrLimitExceeded`       | configured limit exceeded (for example one row has more columns than the bind limit)                                                                                                                                                                                                                      | split or raise the limit                            |
-| `ErrPinnedBusy`          | `Release` on a pinned connection that is still executing                                                                                                                                                                                                                                                  | wait and release again                              |
+| `ErrPinnedBusy`          | `PinnedConn.Release` on a pinned connection that is still executing                                                                                                                                                                                                                                       | wait and release again                              |
 | `ErrInvalidVector`       | a vector value failed validation (same value as `vector.ErrInvalidVector`)                                                                                                                                                                                                                                | fix the vector                                      |
 
 Driver errors Momo does not classify keep their original type: reach them with

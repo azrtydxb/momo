@@ -8,7 +8,7 @@ later releases can break more.
 ## Upgrading to 0.20.0
 
 Six option and helper names changed so that every functional option is spelled
-`With` plus what it sets, and the 20 advisory lock functions became two
+With plus what it sets, and the 20 advisory lock functions became two
 functions with options. The old names stay as deprecated forwarders for this
 release and run the same statements, so your code keeps compiling and behaving
 as before; move to the new names before the forwarders go.
@@ -25,7 +25,7 @@ as before; move to the new names before the forwarders go.
 | `momo.WithDetail` (an error) | `momo.Annotate`             |
 
 `momo.WithDetail` is not an option: it copies an error with its raw driver
-detail set, so it is now `momo.Annotate`. The `With` prefix is kept for options
+detail set, so it is now `momo.Annotate`. The With prefix is kept for options
 and for context wrappers such as `momo.WithTenant`, which keep the shape of
 `context.WithValue`; the rule is in the package comment of `momo` and in the
 contributor guide. The arguments and the behavior of every renamed function are
@@ -40,14 +40,14 @@ gofmt -r 'pgxdriver.OnReconnect -> pgxdriver.WithOnReconnect' -w .
 gofmt -r 'momo.WithDetail -> momo.Annotate' -w .
 ```
 
-### Advisory locks are `Acquire` and `Release`
+### Advisory locks are `advisory.Acquire` and `advisory.Release`
 
 `advisory.Acquire(ctx, q, key, opts...)` takes a lock and returns whether it is
 held; `advisory.Release(ctx, q, key, opts...)` releases a session lock. The key
 is an `int64` (or `int`) or a string, so the `...String` forms are gone, and
 three options choose the lock: `advisory.Xact` (transaction-scoped, `q` is the
 `*momo.Tx`), `advisory.Shared` and `advisory.Try` (return `false` instead of
-waiting). `Acquire` without `advisory.Try` blocks and returns `true`. A session
+waiting). `advisory.Acquire` without `advisory.Try` blocks and returns `true`. A session
 lock still needs the pinned `*momo.DB` of `db.OnConn(pc)`. The old functions
 map like this, with `K` an `int64` or a string key:
 
@@ -67,10 +67,10 @@ map like this, with `K` an `int64` or a string key:
 The `...String` forms (`advisory.XactLockString`, `advisory.LockString`,
 `advisory.UnlockSharedString` and the other seven) map the same way with a
 string key, and keep taking the hash option, now `advisory.WithHash64`. Two
-differences to know: `Acquire` and `Release` take a `momo.Querier`, so a
+differences to know: `advisory.Acquire` and `advisory.Release` take a `momo.Querier`, so a
 `*momo.DB` with `advisory.Xact` and a `*momo.Tx` without it fail at run time
 with `ErrValidation` where the old transaction functions failed to compile; and
-`Acquire` returns `(bool, error)` for the blocking form too, so assign or
+`advisory.Acquire` returns `(bool, error)` for the blocking form too, so assign or
 discard the boolean.
 
 ## Upgrading to 0.19.0
@@ -2286,7 +2286,7 @@ result had no such method.
 
 The advisory lock methods became functions: `tx.AdvisoryXactLock(ctx, 42)`
 is now `advisory.XactLock(ctx, tx, 42)`, and the same for `advisory.XactLockString` and the
-`Try` forms. The transaction is the second argument and its type is
+`advisory.TryXactLock` forms. The transaction is the second argument and its type is
 `*momo.Tx`. The `DB` methods always returned `momo.ErrValidation`, because a
 transaction-scoped lock outside a transaction is released at once; the
 functions turn that into a compile error, so a caller that used the `DB` form
