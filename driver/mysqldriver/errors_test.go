@@ -102,7 +102,7 @@ func TestUnmappedServerErrorsAreRedacted(t *testing.T) {
 }
 
 func TestNewRejectsUnknownFlavor(t *testing.T) {
-	d := New(nil, "oracle")
+	d := New(nil, WithFlavor("oracle"))
 	if _, err := d.Exec(t.Context(), "SELECT 1", nil); !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("err = %v, want ErrUnsupported", err)
 	}

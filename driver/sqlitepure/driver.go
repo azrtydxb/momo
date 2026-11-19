@@ -15,7 +15,7 @@ import (
 // sqlDriver is the shared SQLite driver plus the two things that differ here.
 type sqlDriver struct{ *sqlshared.Driver }
 
-func newDriver(db *sql.DB) momo.Driver {
+func newDriver(db *sql.DB) *sqlDriver {
 	return &sqlDriver{sqlshared.New(db, sqlshared.Hooks{
 		Classify: classifyOp,
 		IsDriverErr: func(err error) bool {

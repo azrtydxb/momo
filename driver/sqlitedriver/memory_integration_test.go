@@ -14,7 +14,7 @@ import (
 // parallel packages cannot meet in it.
 func TestSharedCacheMemoryAcrossConnections(t *testing.T) {
 	dsn := "file:" + t.Name() + "?mode=memory&cache=shared"
-	db, _, err := Open(dsn, Config{MaxOpenConns: 2})
+	db, _, err := openWith(dsn, Config{MaxOpenConns: 2})
 	if err != nil {
 		t.Fatal(err)
 	}

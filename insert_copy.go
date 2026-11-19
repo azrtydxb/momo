@@ -19,7 +19,7 @@ import (
 // parameter limit and no chunking: one COPY is one atomic statement.
 //
 // Copy returns ErrUnsupported when the driver has no COPY path (SQLite, and
-// PostgreSQL through FromSQLDB). Model, Models, Values, ValuesRows,
+// PostgreSQL through pgxdriver.NewSQL). Model, Models, Values, ValuesRows,
 // FromSelect, Returning, OnConflict and Upsert cannot be combined with it
 // (ErrValidation): COPY has no conflict handling and returns no rows.
 //

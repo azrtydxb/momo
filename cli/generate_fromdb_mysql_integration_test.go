@@ -19,6 +19,7 @@ import (
 	"github.com/azrtydxb/momo/driver/mysqldriver"
 	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/gen/config"
+	"github.com/azrtydxb/momo/internal/sqlshared"
 	"github.com/azrtydxb/momo/internal/testdb"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/migrate/migratetest"
@@ -153,11 +154,11 @@ func emptyMySQLDatabase(t *testing.T, dsn string) string {
 // is dir.
 func mysqlEngine(t *testing.T, dsn string, flavor dialect.Flavor, dir string) *migrate.Engine {
 	t.Helper()
-	sdb, drv, err := mysqldriver.Open(dsn, flavor)
+	drv, err := mysqldriver.Open(t.Context(), dsn, mysqldriver.WithFlavor(flavor))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = sdb.Close() })
+	t.Cleanup(func() { _ = drv.(interface{ Close() error }).Close() })
 	return migratetest.NewEngine(t, mmysql.New(), drv, os.DirFS(dir))
 }
 
@@ -167,11 +168,12 @@ func mysqlEngine(t *testing.T, dsn string, flavor dialect.Flavor, dir string) *m
 func mysqlProject(t *testing.T, tg mysqlTarget, ddl []string) (root, dsn string, sdb *sql.DB) {
 	t.Helper()
 	dsn = tg.url(t)
-	sdb, _, err := mysqldriver.Open(dsn, tg.flavor)
+	drv, err := mysqldriver.Open(t.Context(), dsn, mysqldriver.WithFlavor(tg.flavor))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = sdb.Close() })
+	t.Cleanup(func() { _ = drv.(interface{ Close() error }).Close() })
+	sdb = sqlshared.DB(drv)
 	for _, s := range ddl {
 		if _, err := sdb.ExecContext(context.Background(), s); err != nil {
 			t.Fatalf("%v\n%s", err, s)

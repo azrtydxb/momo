@@ -72,7 +72,10 @@ func InstrumentPool(cfg *pgxpool.Config) {
 	cfg.ConnConfig.Tracer = &poolTracer{next: cfg.ConnConfig.Tracer}
 }
 
-// NewPool parses url, installs the tracer with InstrumentPool and opens the pool.
+// NewPool parses url, installs the tracer with InstrumentPool and opens the
+// pool. It is the pool half of Open for a program that needs the
+// *pgxpool.Pool itself: pass the pool to New, which does not own it, and close
+// it yourself. A program that does not need the pool uses Open.
 func NewPool(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {

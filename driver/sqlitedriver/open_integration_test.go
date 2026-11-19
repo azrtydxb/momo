@@ -18,7 +18,7 @@ import (
 // TestSQLiteRecommendedConfig is S-57: the adapter's connections run WAL, the
 // busy timeout, NORMAL synchronous and foreign keys.
 func TestSQLiteRecommendedConfig(t *testing.T) {
-	db, _, err := Open(testdb.SQLitePath(t), Config{})
+	db, _, err := openWith(testdb.SQLitePath(t), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestSQLiteConcurrentWritersAreClassified(t *testing.T) {
 	ctx := context.Background()
 	var drivers []momo.Driver
 	for range 2 {
-		db, d, err := Open(path, Config{BusyTimeout: 20 * time.Millisecond})
+		db, d, err := openWith(path, Config{BusyTimeout: 20 * time.Millisecond})
 		if err != nil {
 			t.Fatal(err)
 		}

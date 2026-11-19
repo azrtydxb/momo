@@ -16,7 +16,7 @@ import (
 )
 
 func TestSQLiteIsolationRules(t *testing.T) {
-	db, drv, err := Open(testdb.SQLitePath(t), Config{})
+	db, drv, err := openWith(testdb.SQLitePath(t), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func TestSQLiteIsolationRules(t *testing.T) {
 }
 
 func TestSQLiteReadOnlyTransaction(t *testing.T) {
-	db, drv, err := Open(testdb.SQLitePath(t), Config{})
+	db, drv, err := openWith(testdb.SQLitePath(t), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestSQLiteReadOnlyTransaction(t *testing.T) {
 }
 
 func TestSQLitePinnedReadOnlyTransaction(t *testing.T) {
-	db, drv, err := Open(testdb.SQLitePath(t), Config{})
+	db, drv, err := openWith(testdb.SQLitePath(t), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}

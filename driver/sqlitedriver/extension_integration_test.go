@@ -16,7 +16,7 @@ import (
 // TestSQLiteNoLoadExtension is S-45: extension loading is refused on every
 // connection, while sqlite-vec, registered at build time, still works.
 func TestSQLiteNoLoadExtension(t *testing.T) {
-	db, _, err := Open(testdb.SQLitePath(t), Config{MaxOpenConns: 2})
+	db, _, err := openWith(testdb.SQLitePath(t), Config{MaxOpenConns: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
