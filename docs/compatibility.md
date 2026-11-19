@@ -42,25 +42,28 @@ and [upgrading](upgrading.md) say how to adapt.
 
 These are outside the promise. They can change in any release.
 
-| Excluded                                                                         | Why                                                                                                                        |
-| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `gen/graphql`, `gen/grpc`, `gen/openapi`                                         | ecosystem generators and their runtime helpers follow gqlgen, protobuf and OpenAPI tooling that Momo does not control      |
-| `gen/apiquery`                                                                   | the helper surface of the generated API handlers, tied to the generators above                                             |
-| `importer` and `importer/...`                                                    | readers of other ORMs' models and migration history; they track those tools' formats                                       |
-| `internal/...`                                                                   | not importable; includes `internal/testdb`, `internal/suite` and the other test support                                    |
-| `momotest`, `momotest/sqlitetest`, `migrate/migratetest`                         | test helpers: their assertions, fixtures and defaults may change to catch more mistakes                                    |
-| `bench` and `examples/...`                                                       | separate benchmark module and runnable examples                                                                            |
-| the `otelmomo` module                                                            | versioned and tagged on its own (`otelmomo/vX.Y.Z`), so it carries its own promise from its own v1                         |
-| the exact SQL text, the wording of errors and diagnostics, the layout of reports | the sentinel errors and error types are covered; the SQL Momo writes and the messages it prints are not                    |
-| anything marked experimental in its doc comment                                  | a package or identifier whose documentation starts with "Experimental:" is excluded even when it sits in a covered package |
+| Excluded                                                                         | Why                                                                                                                   |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `gen/graphql`, `gen/grpc`, `gen/openapi`                                         | ecosystem generators and their runtime helpers follow gqlgen, protobuf and OpenAPI tooling that Momo does not control |
+| `gen/apiquery`                                                                   | the helper surface of the generated API handlers, tied to the generators above                                        |
+| `importer` and `importer/...`                                                    | readers of other ORMs' models and migration history; they track those tools' formats                                  |
+| `internal/...`                                                                   | not importable; includes `internal/testdb`, `internal/suite` and the other test support                               |
+| `momotest`, `momotest/sqlitetest`, `migrate/migratetest`                         | test helpers: their assertions, fixtures and defaults may change to catch more mistakes                               |
+| `bench` and `examples/...`                                                       | separate benchmark module and runnable examples                                                                       |
+| the `otelmomo` module                                                            | versioned and tagged on its own (`otelmomo/vX.Y.Z`), so it carries its own promise from its own v1                    |
+| the exact SQL text, the wording of errors and diagnostics, the layout of reports | the sentinel errors and error types are covered; the SQL Momo writes and the messages it prints are not               |
+| anything marked experimental in its doc comment                                  | not covered by the promise, but the gate does not read doc comments: list the package or declare the change breaking  |
 
 The `apidiff-docs` gate knows the excluded packages from
-`scripts/apidiff-experimental.txt`, which lists the `gen/graphql`, `gen/grpc`,
-`gen/openapi`, `gen/apiquery` and `importer` rows above. The other rows are
-outside the gate already (`internal`, nested modules) or are not API (the SQL
-text, messages). Adding a package to the covered set later is a compatible
-change; moving a covered package to the excluded set is not allowed within
-`1.x`.
+`scripts/apidiff-experimental.txt`, read from the merge base so that a pull
+request cannot exempt its own change. The file lists the `gen/graphql`,
+`gen/grpc`, `gen/openapi`, `gen/apiquery` and `importer` rows above. The other
+rows are outside the gate already (`internal`, nested modules) or are not API
+(the SQL text, messages). The gate does not filter by doc comment: a pull
+request that changes an identifier marked experimental in a covered package
+must be declared breaking, or the package must be listed first. Adding a
+package to the covered set later is a compatible change; moving a covered
+package to the excluded set is not allowed within `1.x`.
 
 ## Deprecation
 
@@ -93,16 +96,24 @@ request.
   change on its own.
 - From v1 it also fails an incompatible change in a covered package unless
   the pull request is declared breaking: the title has a `!` after the type
-  (`feat!: remove X`), or the pull request body has a line that starts in
-  column 0 with `BREAKING CHANGE: ` and a description. A declared breaking
-  change ships in the next major version; release-please reads the same marker
-  to choose it. A major version above 1 also changes the module path to
-  `github.com/azrtydxb/momo/v2`, which is a decision for the maintainer to
-  make then.
+  (`feat!: remove X`; the type is matched in any case), or the pull request
+  body or a commit message has a line that starts in column 0 with
+  `BREAKING CHANGE: ` or `BREAKING-CHANGE: ` and a description. A declared
+  breaking change ships in the next major version; release-please reads the
+  same markers to choose it.
+- A major version above 1 also needs a new module path,
+  `github.com/azrtydxb/momo/v2`. release-please does not change the module
+  path, `go.mod` or the import paths, so that release is a manual step the
+  maintainer takes then; the gate does not check it.
 
-The gate reads the module version from `.release-please-manifest.json` on the
-base branch, so a pull request cannot switch it on or off by editing the file.
-The exact rule is in the header of `scripts/apidiff-docs-gate.sh`.
+The gate reads the module version from `.release-please-manifest.json` and the
+excluded packages from `scripts/apidiff-experimental.txt`, both on the merge
+base, so a pull request cannot switch the gate off or exempt its own change by
+editing either file. It reads the manifest only when a covered package has an
+incompatible change, and a manifest it cannot read counts as pre-v1. The exact
+rule is in the header of `scripts/apidiff-docs-gate.sh`; the filter that drops
+the excluded packages is `scripts/apidiff-incompatible.sh`, and
+`internal/repocheck` tests it against apidiff-shaped output.
 
 ## How pre-v1 differs today
 
