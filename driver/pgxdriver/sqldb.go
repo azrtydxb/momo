@@ -27,9 +27,9 @@ func FromSQLDB(db *sql.DB) momo.Driver { return NewSQL(db) }
 // set in that connection's pgx config; NewSQL cannot change it. The caller owns db and closes it; the
 // driver never does. Use OpenSQL to have the driver open and own the pool.
 //
-// opts is accepted so that every constructor has one shape and an option can be added without changing
-// the signature; the database/sql path uses only error classification, so the options of the native
-// driver, such as WithExecMode, have no effect here.
+// opts is accepted so that every constructor has one shape. The pool is already open, so no option of the
+// native driver can apply to it: an option given makes every call of the returned driver fail with
+// momo.ErrValidation, naming the option. Set the exec mode on the *pgx.ConnConfig before stdlib.OpenDB.
 //
 // The returned driver supports pinning, pool statistics and error classification. It implements neither
 // momo.Copier nor momo.Batcher.
@@ -51,7 +51,39 @@ func FromSQLDB(db *sql.DB) momo.Driver { return NewSQL(db) }
 //     database/sql with pgx does not send READ WRITE for TxOptions{ReadOnly: false}, so such a
 //     transaction takes the session's default_transaction_read_only (the native driver sends it explicitly).
 //   - A transaction still open on a pinned connection when it is released or discarded is rolled back.
-func NewSQL(db *sql.DB, _ ...Option) momo.Driver { return newSQLDriver(db) }
+func NewSQL(db *sql.DB, opts ...Option) momo.Driver {
+	if _, set, err := sqlOptions(opts); err != nil || set {
+		if err == nil {
+			err = sqlOptionError("WithExecMode", "set DefaultQueryExecMode on the *pgx.ConnConfig before stdlib.OpenDB")
+		}
+		return &sqlDriver{err: err}
+	}
+	return newSQLDriver(db)
+}
+
+// sqlOptions applies opts to a probe and reports what a database/sql pool can
+// take from them: the exec mode, when WithExecMode was given. Any other option
+// cannot apply, and an exec mode that simple protocol or an unknown mode
+// makes unusable is the error WithExecMode itself records.
+func sqlOptions(opts []Option) (mode pgx.QueryExecMode, set bool, err error) {
+	const unset = pgx.QueryExecMode(-1)
+	p := &driver{mode: unset}
+	for _, o := range opts {
+		o(p)
+	}
+	if p.vecFormat != VectorText {
+		return 0, false, sqlOptionError("WithVectorFormat", "the pgx vector codec belongs to the native pool; register it on your own pgx config")
+	}
+	if p.modeErr != nil {
+		return 0, false, p.modeErr
+	}
+	return p.mode, p.mode != unset, nil
+}
+
+// sqlOptionError is the momo.ErrValidation for an option a database/sql pool cannot take.
+func sqlOptionError(name, hint string) error {
+	return &momo.Error{Kind: momo.ErrValidation, Op: "build", Err: errors.New("pgxdriver: " + name + " cannot apply to a database/sql pool: " + hint)}
+}
 
 func newSQLDriver(db *sql.DB) *sqlDriver {
 	if db == nil {
@@ -65,19 +97,35 @@ func newSQLDriver(db *sql.DB) *sqlDriver {
 
 // OpenSQL parses dsn, opens a *sql.DB on it with the pgx stdlib driver and returns a driver that owns
 // it: close it through the io.Closer the returned driver implements, which closes the database. The
-// execution mode is the one the DSN selects: pgx.ParseConfig defaults it to pgx.QueryExecModeCacheStatement,
-// which is not PgBouncer transaction-mode safe, so a program behind PgBouncer adds
-// default_query_exec_mode=exec to the DSN. A DSN that selects simple protocol (default_query_exec_mode=
-// simple_protocol or prefer_simple_protocol) is refused: the driver then fails every Query, Exec, Begin
-// and Pin with momo.ErrUnsupported, and Close still closes the database. A dsn that does not parse is
-// returned as an error. Like Open, OpenSQL does not dial. See NewSQL for what the database/sql path
-// supports. opts is accepted for the shape of Open and has no effect.
-func OpenSQL(_ context.Context, dsn string, _ ...Option) (momo.Driver, error) {
+// execution mode is the one the DSN selects, or the one WithExecMode sets: pgx.ParseConfig defaults it to
+// pgx.QueryExecModeCacheStatement, which is not PgBouncer transaction-mode safe, so a program behind PgBouncer
+// gives WithExecMode(pgx.QueryExecModeExec) or adds default_query_exec_mode=exec to the DSN. Simple protocol
+// (from the DSN or from WithExecMode) is refused with momo.ErrUnsupported, and so is any other option of the
+// native driver, such as WithVectorFormat, with momo.ErrValidation: a database/sql pool cannot take it.
+// OpenSQL pings the server on ctx, as Open does, so a bad DSN, a refused connection or bad credentials are
+// reported here. On any error the database is closed and nothing is returned. See NewSQL for what the
+// database/sql path supports.
+func OpenSQL(ctx context.Context, dsn string, opts ...Option) (momo.Driver, error) {
+	mode, set, err := sqlOptions(opts)
+	if err != nil {
+		return nil, err
+	}
 	cfg, err := pgx.ParseConfig(dsn)
 	if err != nil {
 		return nil, err
 	}
+	if set {
+		cfg.DefaultQueryExecMode = mode
+	}
 	db, d := openConnConfig(cfg)
+	if d.err != nil {
+		_ = db.Close()
+		return nil, d.err
+	}
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, ClassifyError(err)
+	}
 	return &ownedSQLDriver{sqlDriver: d, db: db}, nil
 }
 

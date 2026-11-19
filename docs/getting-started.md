@@ -33,14 +33,15 @@ listed in [supported versions](supported-versions.md).
 ## Connect and run SQL
 
 `pgxdriver.Open` opens a pgx pool and returns a Momo driver that owns it, and
-`momo.New` returns the `*momo.DB`. Closing the driver closes the pool: the
-driver implements `io.Closer`. Every driver package has the same two
-constructors. `Open(ctx, dsn, opts...)` opens the database and owns it. `New(handle,
-opts...)` wraps a pool or `*sql.DB` you opened, and never closes it: you do.
-`db.Tx` runs a function in a
-transaction and commits when it returns nil. Inside it, use the `tx` handle for
-every statement. `momo.Exec` and `momo.Scalars` are the raw SQL path: `?`
-binds the next argument, so values never become part of the SQL text.
+`momo.New` returns the `*momo.DB`. `db.Close` closes the pool. Every driver
+package has the same two constructors: `Open(ctx, dsn, opts...)` opens the
+database and owns it, and `New(handle, opts...)` wraps a pool or `*sql.DB` you
+opened, so `db.Close` leaves it alone and you close it.
+
+`db.Tx` runs a function in a transaction and commits when it returns nil.
+Inside it, use the `tx` handle for every statement. `momo.Exec` and
+`momo.Scalars` are the raw SQL path: `?` binds the next argument, so values
+never become part of the SQL text.
 
 The program reads the connection string from `MOMO_EXAMPLE_DSN`, for example
 `postgres://user:pass@localhost:5432/scratch?sslmode=disable`. It creates a
@@ -54,7 +55,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"os"
 
@@ -73,8 +73,8 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer drv.(io.Closer).Close()
 	db := momo.New(drv)
+	defer db.Close()
 
 	return db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
 		if _, err := momo.Exec(ctx, tx, "CREATE TEMP TABLE notes (id bigint PRIMARY KEY, body text NOT NULL)"); err != nil {
@@ -109,7 +109,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 
@@ -123,8 +122,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer drv.(io.Closer).Close()
 	db := momo.New(drv)
+	defer db.Close()
 
 	err = db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
 		if _, err := momo.Exec(ctx, tx, "CREATE TEMP TABLE tags (name text PRIMARY KEY)"); err != nil {

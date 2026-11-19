@@ -10,7 +10,6 @@ import (
 	"errors"
 
 	"github.com/azrtydxb/momo"
-	"github.com/azrtydxb/momo/dialect"
 )
 
 // VecVersion is empty in this build: sqlite-vec is not linked. The cgo build
@@ -39,24 +38,13 @@ func Open(_ context.Context, _ string, opts ...Option) (momo.Driver, error) {
 }
 
 // New returns a driver whose every call reports momo.ErrUnsupported, for the
-// reason Open does. The signature is the one of the cgo build.
-func New(_ *sql.DB, _ ...Option) momo.Driver { return unsupportedDriver{} }
-
-// unsupportedDriver is the driver of a build without cgo.
-type unsupportedDriver struct{}
-
-func (unsupportedDriver) Dialect() *dialect.Dialect { return dialect.For(dialect.SQLite) }
-
-func (unsupportedDriver) Query(context.Context, string, []any) (momo.Rows, error) {
-	return nil, errUnsupported("select")
-}
-
-func (unsupportedDriver) Exec(context.Context, string, []any) (int64, error) {
-	return 0, errUnsupported("exec")
-}
-
-func (unsupportedDriver) Begin(context.Context, momo.TxOptions) (momo.DriverTx, error) {
-	return nil, errUnsupported("begin")
+// reason Open does, or momo.ErrValidation when an option sets anything, as in
+// the cgo build. The signature is the one of the cgo build.
+func New(_ *sql.DB, opts ...Option) momo.Driver {
+	if err := refusedOptions(config(opts)); err != nil {
+		return errDriver{err}
+	}
+	return errDriver{errUnsupported("build")}
 }
 
 // ClassifyError returns err unchanged: this build links no SQLite driver, so

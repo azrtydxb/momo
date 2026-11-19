@@ -175,16 +175,18 @@ func openDB(ctx context.Context, url string) (*momo.DB, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return momo.New(drv), func() { _ = drv.(io.Closer).Close() }, nil
+	db := momo.New(drv)
+	return db, func() { _ = db.Close() }, nil
 }
 ```
 
 - One constructor shape for every driver package. `Open(ctx, dsn, opts...)`
-  opens the database and returns a `momo.Driver` that owns it: close it through
-  the `io.Closer` the returned driver implements. `New(handle, opts...)` wraps a
-  pool or `*sql.DB` you opened (`pgxdriver.New(pool)`, `pgxdriver.NewSQL(db)`,
-  `sqlitedriver.New(db)`, `sqlitepure.New(db)`, `mysqldriver.New(db)`), does
-  not own it and never closes it. `momo.DB` has no `Close`.
+  opens the database and returns a `momo.Driver` that owns it: `db.Close()`
+  closes it. `New(handle, opts...)` wraps a pool or `*sql.DB` you opened
+  (`pgxdriver.New(pool)`, `pgxdriver.NewSQL(db)`, `sqlitedriver.New(db)`,
+  `sqlitepure.New(db)`, `mysqldriver.New(db)`), does not own it and never
+  closes it: `db.Close()` returns nil and leaves it open. `New` refuses an
+  option that tries to configure the open pool, with `ErrValidation`.
 - SQLite settings are options: `sqlitedriver.WithConfig(cfg)`,
   `sqlitedriver.WithBusyTimeout`, `sqlitedriver.WithSynchronous`,
   `sqlitedriver.WithTxLock` and `sqlitedriver.WithMaxOpenConns`, and

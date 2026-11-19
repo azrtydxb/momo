@@ -66,11 +66,11 @@ func newDriver(pool *pgxpool.Pool, opts []Option) *driver {
 
 // Open parses dsn, installs the pool acquire tracer (see InstrumentPool),
 // opens a pgxpool and returns a driver that owns it: close it through the
-// io.Closer the returned driver implements, which closes the pool. Like
-// pgxpool, Open does not dial unless the DSN sets a minimum pool size, so an
-// unreachable server shows on the first statement; run a statement such as
-// SELECT 1 to check at startup. A dsn that does not parse is returned as an
-// error and nothing is left open.
+// io.Closer the returned driver implements (momo.DB.Close calls it), which
+// closes the pool. Open pings the server on ctx, as the other drivers do, so a
+// bad DSN, a refused connection or bad credentials are reported here and not
+// on the first statement. On any error the pool is closed and nothing is
+// returned.
 //
 // Use NewPool and New instead when the program needs the *pgxpool.Pool
 // itself.
@@ -78,6 +78,10 @@ func Open(ctx context.Context, dsn string, opts ...Option) (momo.Driver, error) 
 	pool, err := NewPool(ctx, dsn)
 	if err != nil {
 		return nil, err
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, ClassifyError(err)
 	}
 	return &ownedDriver{newDriver(pool, opts)}, nil
 }

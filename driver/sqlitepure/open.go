@@ -11,9 +11,10 @@
 // sqlitedriver.Config and converts to it.
 //
 // Open(ctx, dsn, opts...) opens the database and returns a momo.Driver that
-// owns it: close the driver through the io.Closer it implements, and the
-// database closes with it. New(db, opts...) wraps a *sql.DB you opened, does
-// not own it, and never closes it. Every momo driver package has these two.
+// owns it: momo.DB.Close closes the driver, and the database with it. New(db,
+// opts...) wraps a *sql.DB you opened, does not own it, and never closes it;
+// it refuses options, because the pool is already open. Every momo driver
+// package has these two.
 //
 // Open uses the database/sql driver name "sqlite", which modernc registers
 // when it is imported, and so does not register anything of its own. The
@@ -71,9 +72,16 @@ func Open(ctx context.Context, dsn string, opts ...Option) (momo.Driver, error) 
 // closes it; the driver never does. The pool should come from the "sqlite"
 // driver of modernc.org/sqlite with the settings Open applies (see Config), or
 // the adapter's assumptions about busy timeout, journal mode and foreign keys
-// do not hold. The options configure how Open builds a pool, so they have no
-// effect here.
-func New(db *sql.DB, _ ...Option) momo.Driver { return newDriver(db) }
+// do not hold. The options configure how Open builds a pool, and this pool is
+// already built, so an option that sets anything makes every call of the
+// returned driver fail with momo.ErrValidation, naming the option: set the
+// pragmas on your own *sql.DB instead.
+func New(db *sql.DB, opts ...Option) momo.Driver {
+	if err := refusedOptions(config(opts)); err != nil {
+		return errDriver{err}
+	}
+	return newDriver(db)
+}
 
 // ownedDriver is the driver Open returns: it owns the pool and closes it.
 type ownedDriver struct{ *sqlDriver }

@@ -76,7 +76,7 @@ have their own tests in `driver/mysqldriver` and `rel_mysql_integration_test.go`
 ## Connecting
 
 Open the pool with `mysqldriver.Open(ctx, dsn, opts...)`, which returns a driver
-that owns the pool and closes it through the `io.Closer` it implements, or build
+that owns the pool (`db.Close()` closes it), or build
 the DSN with `mysqldriver.ConfigureDSN` and pass the `*sql.DB` you opened to
 `mysqldriver.New(db, opts...)`, which never closes it. The flavor is the option
 `mysqldriver.WithFlavor`: `dialect.FlavorMySQL` (the default) or

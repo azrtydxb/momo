@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 
@@ -51,7 +50,8 @@ func openDB(ctx context.Context, url string) (*momo.DB, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return momo.New(drv), func() { _ = drv.(io.Closer).Close() }, nil
+	db := momo.New(drv)
+	return db, func() { _ = db.Close() }, nil
 }
 
 func run(ctx context.Context, db *momo.DB) error {

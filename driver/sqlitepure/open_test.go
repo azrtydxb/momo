@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/sqlshared"
 	"github.com/azrtydxb/momo/internal/testdb"
 )
 
@@ -287,5 +288,45 @@ func TestPureSQLiteInMemoryAndDSNRefusals(t *testing.T) {
 	}
 	if _, _, err := openWith(testdb.SQLitePath(t)+"?_pragma=foreign_keys(0)", Config{}); err == nil {
 		t.Fatal("a _pragma DSN parameter was accepted")
+	}
+}
+
+// Catches: DB.Close leaving the pool of an Open driver open, closing the pool
+// of a New driver, and a second Close failing.
+func TestDBCloseOwnership(t *testing.T) {
+	ctx := context.Background()
+	drv, err := Open(ctx, testdb.SQLitePath(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := momo.New(drv)
+	pool := sqlshared.DB(drv)
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+	if _, err := momo.Exec(ctx, db, "SELECT 1"); err == nil {
+		t.Fatal("a statement ran after Close of an Open driver")
+	}
+	if err := pool.PingContext(ctx); err == nil {
+		t.Fatal("the pool of an Open driver is still open after Close")
+	}
+
+	own, err := sql.Open(driverName, testdb.SQLitePath(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = own.Close() }()
+	wrapped := momo.New(New(own))
+	if err := wrapped.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := own.PingContext(ctx); err != nil {
+		t.Fatalf("Close of a New driver closed the caller's pool: %v", err)
+	}
+	if _, err := momo.Exec(ctx, wrapped, "SELECT 1"); err != nil {
+		t.Fatalf("a New driver stopped working after Close: %v", err)
 	}
 }

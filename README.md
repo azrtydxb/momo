@@ -70,7 +70,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 
@@ -230,10 +229,10 @@ SQL before you apply it.
 ### 4. Open a database
 
 Every driver package has the same two constructors. `pgxdriver.Open(ctx, dsn,
-opts...)` opens a pgx pool and returns a Momo driver that owns it; closing the
-driver (it implements `io.Closer`) closes the pool. `pgxdriver.New(pool,
-opts...)` wraps a pool you opened and never closes it: the caller owns that
-pool. `sqlitedriver`, `sqlitepure` and `mysqldriver` follow the same rule.
+opts...)` opens a pgx pool and returns a Momo driver that owns it, and
+`db.Close()` closes that pool. `pgxdriver.New(pool, opts...)` wraps a pool you
+opened: `db.Close()` does nothing to it, and the caller closes it.
+`sqlitedriver`, `sqlitepure` and `mysqldriver` follow the same rule.
 
 <!-- docscheck:fragment -->
 
@@ -243,7 +242,8 @@ func openDB(ctx context.Context, url string) (*momo.DB, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return momo.New(drv), func() { _ = drv.(io.Closer).Close() }, nil
+	db := momo.New(drv)
+	return db, func() { _ = db.Close() }, nil
 }
 ```
 

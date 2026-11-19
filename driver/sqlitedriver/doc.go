@@ -37,9 +37,10 @@
 // # Constructors
 //
 // Open(ctx, dsn, opts...) opens the database and returns a momo.Driver that
-// owns it: close the driver through the io.Closer it implements, and the
-// database closes with it. New(db, opts...) wraps a *sql.DB you opened, does
-// not own it, and never closes it. Every momo driver package has these two.
+// owns it: momo.DB.Close closes the driver, and the database with it. New(db,
+// opts...) wraps a *sql.DB you opened, does not own it, and never closes it;
+// it refuses options, because the pool is already open. Every momo driver
+// package has these two.
 //
 // # Defaults
 //

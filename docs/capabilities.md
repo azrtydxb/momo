@@ -27,11 +27,11 @@ Imports: `github.com/azrtydxb/momo` (core), `github.com/azrtydxb/momo/driver/pgx
 `github.com/azrtydxb/momo/vecop` for the vector distance builders.
 
 Every driver package has the same two constructors. `Open(ctx, dsn, opts...)`
-opens the database and returns a `momo.Driver` that owns it; closing is done by
-the `io.Closer` the returned driver implements. `New(handle, opts...)` wraps a
-pool or `*sql.DB` you opened, does not own it and never closes it. Open a pool
-and let the driver own it, as the README does, or open the pool yourself,
-wrap it and close it yourself:
+opens the database and returns a `momo.Driver` that owns it; `db.Close()` closes
+it. `New(handle, opts...)` wraps a pool or `*sql.DB` you opened, does not own it
+and never closes it: `db.Close()` leaves it alone. Open a pool and let the
+driver own it, as the README does, or open the pool yourself, wrap it and close
+it yourself:
 
 <!-- docscheck:fragment -->
 
@@ -39,8 +39,8 @@ wrap it and close it yourself:
 // The driver owns the pool.
 drv, err := pgxdriver.Open(ctx, url) // (ctx, string, ...Option) (momo.Driver, error)
 if err != nil { return err }
-defer drv.(io.Closer).Close()
 db := momo.New(drv)
+defer db.Close()
 
 // You own the pool.
 pool, err := pgxdriver.NewPool(ctx, url) // (ctx, string) (*pgxpool.Pool, error)

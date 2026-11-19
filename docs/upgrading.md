@@ -17,8 +17,9 @@ one release.
 
 `New(handle, opts...)` wraps a pool or `*sql.DB` you opened, does not own it and
 never closes it. `Open(ctx, dsn, opts...)` opens the database, owns it and
-returns `(momo.Driver, error)`; the returned driver implements `io.Closer`, and
-`Close` closes the pool it opened. Before, nothing said who closed what: the
+returns `(momo.Driver, error)`; the new `momo.DB.Close` closes the pool it
+opened, and does nothing to a pool you passed to `New`. Before, nothing said
+who closed what: the
 SQLite and MySQL `Open` returned the `*sql.DB` for you to close, and
 `pgxdriver.NewPool` returned a pool.
 
@@ -34,9 +35,19 @@ SQLite and MySQL `Open` returned the `*sql.DB` for you to close, and
 | `db, drv := pgxdriver.FromConnConfig(cfg)`                           | `drv, err := pgxdriver.OpenSQL(ctx, dsn)`, or `stdlib.OpenDB(*cfg)` with `pgxdriver.NewSQL` (`FromConnConfig` is deprecated) |
 | `sqlitedriver.SQLiteVecVersion`                                      | `sqlitedriver.VecVersion` (`SQLiteVecVersion` is deprecated)                                                                 |
 
-Close an opened driver through the interface it implements: after
-`drv, err := sqlitepure.Open(ctx, "app.db")`, call `drv.(io.Closer).Close()`,
-for example in a `defer`, once you are done with `momo.New(drv)`.
+Close an opened driver with `db.Close()`: after
+`drv, err := sqlitepure.Open(ctx, "app.db")` and `db := momo.New(drv)`, call it
+once, for example in a `defer`, when you are done with `db` and with every
+transaction begun from it. A second call is safe.
+
+`pgxdriver.Open` and `pgxdriver.OpenSQL` now ping the server on `ctx`, so an
+unreachable server or a bad password is an error at `Open`, as it already was
+for SQLite and MySQL; `pgxdriver.NewPool` still does not dial. `New` refuses an
+option that tries to configure a pool that is already open: the SQLite `New`
+with `WithBusyTimeout` or another setting, and `pgxdriver.NewSQL` with
+`WithExecMode` or `WithVectorFormat`, return a driver whose every call fails
+with `ErrValidation` naming the option. Set those on your own `*sql.DB` or
+`*pgx.ConnConfig` instead; `pgxdriver.OpenSQL` takes `WithExecMode` itself.
 
 If you need the `*sql.DB` itself, for your own queries or to share it, open it
 yourself and wrap it: `sqlitepure.New(sqlDB)` does not own it, so you close it.
@@ -49,8 +60,9 @@ default flavor is MySQL.
 packages instead of aliasing one internal type. They have the same fields, so
 `sqlitepure.Config(cfg)` converts one to the other; they are no longer
 identical types. `gen/config.MigrateConfig` is declared in `gen/config` too.
-`sqlitedriver.SQLiteVecVersion` is renamed `VecVersion`, with the same value in
-the cgo and the no-cgo build. A build without cgo, or for Windows, has the same
+`sqlitedriver.SQLiteVecVersion` is renamed `VecVersion`: one name in both
+builds, a constant that is `"v0.1.6"` with cgo and `""` without, because
+sqlite-vec is not linked then. A build without cgo, or for Windows, has the same
 `Open`, `New` and option names as the cgo build, so code compiles either way;
 `Open` returns `ErrUnsupported` there and `New` returns a driver whose every
 call does.

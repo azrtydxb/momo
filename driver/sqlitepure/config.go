@@ -36,7 +36,8 @@ type Config struct {
 
 // Option configures how Open builds the pool. New takes the same type so that
 // every driver constructor has one shape, but a pool that already exists has
-// been configured, so the options have no effect on New.
+// been configured, so New refuses an option that sets anything: the driver it
+// returns fails every call with momo.ErrValidation.
 type Option func(*Config)
 
 // WithConfig sets every setting of Open to cfg, replacing the ones given by
