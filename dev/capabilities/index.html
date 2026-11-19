@@ -1980,6 +1980,13 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td><code>ErrUnsupported</code>: MySQL and MariaDB check each constraint at the end of the statement and have no <code>DEFERRABLE</code>; a declaration is a generator error and the renderer refuses it</td>
 </tr>
 <tr>
+<td>Embeddings kept in sync with their source columns (<code>embed_from</code>)</td>
+<td><code>vector.Embedder</code>, <code>vector.SourceHash</code></td>
+<td>yes: the generator adds a <code>varchar(64)</code> hash column beside the <code>*vector.Vector</code> field, <code>momo.StaleEmbeddings</code> finds the rows whose source hash or NULL vector says they are out of date, and <code>momo.SyncEmbeddings</code> embeds them in batches with a compare-and-set write, no transaction held during the <code>vector.Embedder</code> call</td>
+<td>yes: the same hash column and the same two functions on a sqlite-vec vector column; concurrent runners are limited by SQLite's single writer</td>
+<td><code>ErrUnsupported</code>: <code>embed_from</code> is a generator error and <code>momo.SyncEmbeddings</code> and <code>momo.StaleEmbeddings</code> refuse the dialect</td>
+</tr>
+<tr>
 <td>Range types on <code>types.Range[T]</code></td>
 <td><code>types.Range</code>, <code>types.Bound</code>, <code>types.Timestamp</code>, <code>rangeop.Contains</code>, <code>rangeop.ContainsRange</code>, <code>rangeop.ContainedBy</code>, <code>rangeop.Overlaps</code>, <code>rangeop.Adjacent</code>, <code>rangeop.StrictlyLeft</code>, <code>rangeop.StrictlyRight</code>, <code>rangeop.Lower</code>, <code>rangeop.Upper</code>, <code>rangeop.IsEmpty</code></td>
 <td>yes: <code>int4range</code>, <code>int8range</code>, <code>numrange</code>, <code>daterange</code>, <code>tsrange</code> and <code>tstzrange</code> are typed columns with empty, infinite, inclusive and exclusive bounds, written by <code>generate --from-db</code>, and queried with <code>rangeop</code> predicates for containment, overlap, adjacency, position, the bounds and emptiness; multiranges are not mapped</td>

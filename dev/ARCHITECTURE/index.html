@@ -1634,7 +1634,10 @@ schemas without being fooled by spelling differences.</p>
 <p>The pgvector value types <code>vector.Vector</code>, <code>vector.HalfVector</code>, <code>vector.SparseVector</code> and <code>vector.Bits</code>,
 each a <code>sql.Scanner</code> and <code>driver.Valuer</code> with a <code>Validate</code> method, and
 <code>ErrInvalidVector</code>. A vector field declares its dimension with the tag
-<code>dim:&lt;n&gt;</code>; the Go type selects the SQL type. See <a href="../vectors/">vectors</a>.</p>
+<code>dim:&lt;n&gt;</code>; the Go type selects the SQL type. It also holds the <code>vector.Embedder</code>
+interface an application implements for its embedding provider and
+<code>vector.SourceHash</code>, the hash that tells whether a stored embedding is still
+current (<code>momo.SyncEmbeddings</code> uses both). See <a href="../vectors/">vectors</a>.</p>
 <h3 id="types"><code>types</code><a class="headerlink" href="#types" title="Permanent link">&para;</a></h3>
 <p>Codec types for columns that have no plain Go equivalent: <code>types.JSON[T]</code>, <code>types.Date</code>,
 <code>types.TimeOfDay</code>, <code>types.UUID</code>, <code>types.Hstore</code> and the full-text <code>types.TSVector</code> and <code>types.TSQuery</code>. See

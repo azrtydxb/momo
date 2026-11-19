@@ -2487,6 +2487,21 @@
 <td>DriverTx is a driver-level transaction.</td>
 </tr>
 <tr>
+<td><code>momo.EmbedOptions</code></td>
+<td>type</td>
+<td>EmbedOptions tunes StaleEmbeddings and SyncEmbeddings.</td>
+</tr>
+<tr>
+<td><code>momo.EmbedResult</code></td>
+<td>type</td>
+<td>EmbedResult counts what SyncEmbeddings did.</td>
+</tr>
+<tr>
+<td><code>momo.EmbeddingMeta</code></td>
+<td>type</td>
+<td>EmbeddingMeta declares one vector column kept in sync with its source columns.</td>
+</tr>
+<tr>
 <td><code>momo.ErrAdoptedTx</code></td>
 <td>var</td>
 <td>ErrAdoptedTx: Commit or Rollback was called on a Tx from DB.AdoptTx.</td>
@@ -4707,6 +4722,11 @@
 <td>SoftDeleteUnix is a nullable integer, set to the statement time in Unix seconds.</td>
 </tr>
 <tr>
+<td><code>momo.StaleEmbeddings</code></td>
+<td>func</td>
+<td>StaleEmbeddings yields the rows of T whose embedding is out of date: the vector is NULL and the row has source text, or the hash of the current source values (vector.SourceHash) differs from the stored one, or no hash is stored.</td>
+</tr>
+<tr>
 <td><code>momo.Subquery</code></td>
 <td>type</td>
 <td>Subquery is a query usable as an expression: IN (...), EXISTS (...), scalar subqueries and FROM sources.</td>
@@ -4725,6 +4745,11 @@
 <td><code>momo.SumNumeric</code></td>
 <td>func</td>
 <td>SumNumeric is SUM(expr) as an exact types.Numeric over an integer or a types.Numeric column.</td>
+</tr>
+<tr>
+<td><code>momo.SyncEmbeddings</code></td>
+<td>func</td>
+<td>SyncEmbeddings brings the stale embeddings of T up to date.</td>
 </tr>
 <tr>
 <td><code>momo.TableRef</code></td>
@@ -6054,6 +6079,11 @@
 <td>Value returns the bit string as a string of 0 and 1.</td>
 </tr>
 <tr>
+<td><code>vector.Embedder</code></td>
+<td>type</td>
+<td>Embedder turns texts into embeddings.</td>
+</tr>
+<tr>
 <td><code>vector.ErrDialect</code></td>
 <td>var</td>
 <td>ErrDialect reports a vector type the target dialect cannot store or query.</td>
@@ -6107,6 +6137,11 @@
 <td><code>vector.MaxSparseNNZ</code></td>
 <td>const</td>
 <td>MaxSparseNNZ is the largest number of stored elements in a sparsevec.</td>
+</tr>
+<tr>
+<td><code>vector.SourceHash</code></td>
+<td>func</td>
+<td>SourceHash returns the hash of a row's embedding sources, as the hash column of an embed_from field stores it: the SHA-256 of the sources encoded in order, as 64 lowercase hexadecimal characters.</td>
 </tr>
 <tr>
 <td><code>vector.SparseVector</code></td>
