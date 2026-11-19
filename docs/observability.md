@@ -28,7 +28,7 @@ A hook sees bound argument values only when the DB was opened with
 every hook as `momo.RedactedArg` (`[redacted]`), never as the real value, and
 the hooks here cannot recover it. `obs.Recorder` stores a copy of the arguments and
 hands out copies. The slog hook logs arguments only when you also pass
-`momolog.Values(true)`.
+`momolog.WithValues(true)`.
 
 ## Recorder
 
@@ -145,13 +145,13 @@ The slog hook is `momolog.New`; there is one slog hook, not two.
 ```text
 logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 db := momo.New(drv, momo.WithHook(momolog.New(logger,
-    momolog.Level(slog.LevelInfo),
-    momolog.SlowOver(200*time.Millisecond), // slower statements log at WARN
+    momolog.WithLevel(slog.LevelInfo),
+    momolog.WithSlowThreshold(200*time.Millisecond), // slower statements log at WARN
 )))
 ```
 
 A statement record (`momo.query`) has `op`, `table`, `relation` (when set),
-`sql`, `duration`, `rows`, `err` (when set) and, with `momolog.Values(true)` and
+`sql`, `duration`, `rows`, `err` (when set) and, with `momolog.WithValues(true)` and
 `momo.WithArgLogging`, `args`. A relation record (`momo.relation`) has `parent`,
 `name`, `kind`, `parents`, `children`, `queries`, `duration` and `err` (when
 set). Errors are logged through `Error()` only.
