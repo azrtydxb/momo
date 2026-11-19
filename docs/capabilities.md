@@ -58,8 +58,9 @@ wraps one you opened. These have no Batch or COPY path.
 
 The other drivers: `sqlitedriver.Open(ctx, dsn, opts...)` and
 `sqlitepure.Open(ctx, dsn, opts...)` take the SQLite settings as options
-(`WithConfig`, `WithBusyTimeout`, `WithSynchronous`, `WithTxLock`,
-`WithMaxOpenConns`, and `sqlitepure.WithReadOnly`); `mysqldriver.Open(ctx, dsn,
+(`sqlitedriver.WithConfig`, `sqlitedriver.WithBusyTimeout`,
+`sqlitedriver.WithSynchronous`, `sqlitedriver.WithTxLock`,
+`sqlitedriver.WithMaxOpenConns`, and `sqlitepure.WithReadOnly`); `mysqldriver.Open(ctx, dsn,
 opts...)` takes the server flavor as `mysqldriver.WithFlavor`. Their `New(db,
 opts...)` wraps a `*sql.DB` you opened.
 

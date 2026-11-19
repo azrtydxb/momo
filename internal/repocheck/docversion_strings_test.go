@@ -28,7 +28,7 @@ var (
 	historicalRe  = regexp.MustCompile(`(?i)\b(upgrading|since|changelog|history)\b`)
 	goModDepRe    = regexp.MustCompile(`^\s*(?:require\s+)?(\S+\.\S+/\S+)\s+(v\d+\.\d+\.\d+\S*)\s*(?://.*)?$`)
 	goModGoRe     = regexp.MustCompile(`(?m)^go (\d+\.\d+\.\d+)\s*$`)
-	sqliteVecRe   = regexp.MustCompile(`(?m)^const VecVersion ="v?(\d+\.\d+\.\d+)"`)
+	sqliteVecRe   = regexp.MustCompile(`(?m)^const VecVersion = "v?(\d+\.\d+\.\d+)"`)
 	allowEntryRe  = regexp.MustCompile(`^v?(\d+\.\d+\.\d+)\s*\|\s*(\S.*)$`)
 	fenceMarkerRe = regexp.MustCompile("^\\s*(```|~~~)")
 )

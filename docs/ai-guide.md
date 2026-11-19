@@ -185,8 +185,9 @@ func openDB(ctx context.Context, url string) (*momo.DB, func(), error) {
   pool or `*sql.DB` you opened (`pgxdriver.New(pool)`, `pgxdriver.NewSQL(db)`,
   `sqlitedriver.New(db)`, `sqlitepure.New(db)`, `mysqldriver.New(db)`), does
   not own it and never closes it. `momo.DB` has no `Close`.
-- SQLite settings are options: `sqlitedriver.WithConfig(cfg)`, `WithBusyTimeout`,
-  `WithSynchronous`, `WithTxLock` and `WithMaxOpenConns`, and
+- SQLite settings are options: `sqlitedriver.WithConfig(cfg)`,
+  `sqlitedriver.WithBusyTimeout`, `sqlitedriver.WithSynchronous`,
+  `sqlitedriver.WithTxLock` and `sqlitedriver.WithMaxOpenConns`, and
   `sqlitepure.WithReadOnly`. The MySQL flavor is `mysqldriver.WithFlavor`
   (`dialect.FlavorMariaDB` for MariaDB; the default is MySQL).
 - `*momo.DB` is safe for concurrent use; create one at startup and share it.
