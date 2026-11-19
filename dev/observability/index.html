@@ -1456,7 +1456,7 @@ calls them. Ready-made implementations:</p>
 <thead>
 <tr>
 <th>Hook</th>
-<th>Constructor</th>
+<th>Constructor and return type</th>
 <th>What it does</th>
 </tr>
 </thead>
@@ -1468,28 +1468,37 @@ calls them. Ready-made implementations:</p>
 </tr>
 <tr>
 <td><code>obs.NPlusOne</code></td>
-<td><code>obs.NewNPlusOne(n, report)</code> (<code>obs</code>)</td>
+<td><code>obs.NewNPlusOne(n, report)</code> returns <code>*obs.NPlusOne</code></td>
 <td>Reports a relation that was loaded more than <code>n</code> times inside one <code>obs.WithScope</code>.</td>
 </tr>
 <tr>
-<td>slow query</td>
-<td><code>obs.NewSlowQuery(d, report, opts...)</code></td>
+<td><code>obs.StatementNPlusOne</code></td>
+<td><code>obs.NewStatementNPlusOne(n, report)</code> returns <code>*obs.StatementNPlusOne</code></td>
+<td>Reports a statement shape that ran more than <code>n</code> times inside one <code>obs.WithScope</code>.</td>
+</tr>
+<tr>
+<td><code>obs.SlowQueryHook</code></td>
+<td><code>obs.NewSlowQuery(d, report, opts...)</code> returns <code>*obs.SlowQueryHook</code></td>
 <td>Reports each statement slower than <code>d</code>, with an opt-in plain <code>EXPLAIN</code> plan.</td>
 </tr>
 <tr>
-<td>slog hook</td>
-<td><code>momolog.New(logger, opts...)</code> (<code>momolog</code>)</td>
+<td><code>momolog.Hook</code></td>
+<td><code>momolog.New(logger, opts...)</code> returns <code>*momolog.Hook</code></td>
 <td>Logs one <code>log/slog</code> record per statement and one per relation load (see <a href="#slog">slog</a>).</td>
 </tr>
 <tr>
-<td>OTel hook</td>
-<td><code>otelmomo.New(tp, mp, opts...)</code> (<code>otelmomo</code>)</td>
+<td><code>otelmomo.Hook</code></td>
+<td><code>otelmomo.New(tp, mp, opts...)</code> returns <code>(*otelmomo.Hook, error)</code></td>
 <td>Emits a client span and a duration histogram per statement (see <a href="#opentelemetry">OpenTelemetry</a>).</td>
 </tr>
 </tbody>
 </table>
-<p><code>obs</code> imports only <code>momo</code> and the standard library. All of these hooks are safe
-for concurrent use.</p>
+<p>Every constructor returns its concrete type, and each type implements
+<code>momo.Hook</code>, so you pass the value to <code>momo.WithHook</code> as it is. Methods added to
+a hook type later do not break your code, which a change of an interface return
+type would. <code>obs</code> imports only <code>momo</code>, the standard library and one internal
+package that both N+1 detectors share. All of these hooks are safe for
+concurrent use.</p>
 <h2 id="arguments-and-sensitive-columns">Arguments and sensitive columns<a class="headerlink" href="#arguments-and-sensitive-columns" title="Permanent link">&para;</a></h2>
 <p>A hook sees bound argument values only when the DB was opened with
 <code>momo.WithArgLogging</code>. A value bound from a column tagged <code>sensitive</code> reaches
@@ -1528,23 +1537,33 @@ check that the hook chain passes the context through.</p>
 <td>a relation <code>Load</code> inside a loop over the parents</td>
 </tr>
 <tr>
-<td><code>momo.NewNPlusOneHook</code></td>
+<td><code>obs.NewStatementNPlusOne</code></td>
 <td>repeated statement shapes</td>
-<td><code>momo.WithQueryScope(ctx)</code></td>
+<td><code>obs.WithScope(ctx)</code></td>
 <td>any repeated statement, such as a <code>Select</code> in a loop</td>
 </tr>
 </tbody>
 </table>
-<p>Use either or both. Each reads only its own scope, so a context needs
-<code>obs.WithScope</code> for the first and <code>momo.WithQueryScope</code> for the second; a
-context with only one of them is not tracked by the other detector.</p>
-<div class="highlight"><pre><span></span><code>det := obs.NewNPlusOne(3, func(f obs.Finding) {
+<p>Use either or both. They read the same scope, so one <code>obs.WithScope</code> serves
+both: wrap the context once and register one or both detectors. Each keeps its
+own counts in that scope, so a relation load never counts as a statement shape
+or the other way round. <code>obs.StatementFinding</code> reports a statement
+(<code>Shape</code>, <code>Example</code>, <code>Count</code>) and <code>obs.Finding</code> reports a relation.</p>
+<div class="highlight"><pre><span></span><code>rel := obs.NewNPlusOne(3, func(f obs.Finding) {
     log.Printf("N+1: %s loaded %d times", f.Relation, f.Count)
 })
-db := momo.New(drv, momo.WithHook(det))
+stmt := obs.NewStatementNPlusOne(3, func(f obs.StatementFinding) {
+    log.Printf("N+1: %s ran %d times", f.Shape, f.Count)
+})
+db := momo.New(drv, momo.WithHook(rel), momo.WithHook(stmt))
 
-ctx := obs.WithScope(r.Context()) // one request, one job
+ctx := obs.WithScope(r.Context()) // one request, one job, both detectors
 </code></pre></div>
+<p><code>obs.StatementNPlusOne</code> collapses placeholders and <code>IN</code> lists to one shape, so
+a batched load of any size is one shape while a statement per row repeats it.
+It ignores transaction control and <code>EXPLAIN</code> statements, tracks at most 1024
+shapes per scope, recovers a panic in <code>report</code> and drops it, and reports once
+per shape and scope, when the count first exceeds the threshold.</p>
 <p><code>obs.NPlusOne</code> counts relation loads per relation within a scope. It reports
 once per relation and scope, when the count first exceeds the threshold. One
 batched <code>Load</code> is one load however many parents it covers, so it never triggers
@@ -1553,7 +1572,13 @@ the parent count of the load that crossed the threshold; 1 is the usual sign of
 a loop. A context without a scope is not tracked, a scope tracks at most 1024
 relations, and a panic in <code>report</code> is recovered and dropped. <code>report</code> runs on
 the loading goroutine and must not query the database. Create the detector with
-<code>obs.NewNPlusOne</code>; its zero value must not be used.</p>
+<code>obs.NewNPlusOne</code>; its zero value must not be used. The same holds for
+<code>obs.NewStatementNPlusOne</code>.</p>
+<p>The root package keeps <code>momo.NewNPlusOneHook</code>, <code>momo.WithQueryScope</code> and
+<code>momo.NPlusOneFinding</code> as deprecated forwarders for one release. They count
+exactly as <code>obs.NewStatementNPlusOne</code> does, and <code>momo.WithQueryScope</code> returns
+the scope <code>obs.WithScope</code> makes, so a context made by one serves the detectors
+of the other. See <a href="../upgrading/">upgrading</a> for the move.</p>
 <h2 id="slow-queries">Slow queries<a class="headerlink" href="#slow-queries" title="Permanent link">&para;</a></h2>
 <p><code>obs.NewSlowQuery(threshold, report)</code> calls <code>report</code> with an <code>obs.SlowQuery</code>
 (<code>SQL</code>, <code>Duration</code>, and <code>Plan</code> or <code>PlanSkipped</code>) for each statement that took
@@ -1618,8 +1643,12 @@ the last release.</p>
 if err != nil {
     return err // a nil provider is an error; there is no global fallback
 }
-db := momo.New(drv, momo.WithHook(h))
+db := momo.New(drv, momo.WithHook(h)) // h is an *otelmomo.Hook
 </code></pre></div>
+<p><code>otelmomo.New</code> returns <code>*otelmomo.Hook</code>, like the other constructors. The module
+is versioned on its own and is still before its first stable release, so
+release-please bumps its minor version for this change; it has no <code>momo</code> release to wait for, because the
+type is its own and it compiles against the <code>momo</code> version in its <code>go.mod</code>.</p>
 <p>The providers are passed in; the package reads no global provider. Each
 statement becomes a client span named <code>&lt;OPERATION&gt; &lt;table&gt;</code> (<code>SELECT authors</code>),
 or <code>&lt;OPERATION&gt;</code> when no table is known, with the database client attributes

@@ -7048,6 +7048,31 @@
 </thead>
 <tbody>
 <tr>
+<td><code>momolog.Hook</code></td>
+<td>type</td>
+<td>Hook is the slog hook New returns.</td>
+</tr>
+<tr>
+<td><code>momolog.Hook.AfterQuery</code></td>
+<td>method</td>
+<td>AfterQuery logs the finished statement.</td>
+</tr>
+<tr>
+<td><code>momolog.Hook.AfterRelation</code></td>
+<td>method</td>
+<td>AfterRelation logs the finished relation load.</td>
+</tr>
+<tr>
+<td><code>momolog.Hook.BeforeQuery</code></td>
+<td>method</td>
+<td>BeforeQuery does nothing.</td>
+</tr>
+<tr>
+<td><code>momolog.Hook.BeforeRelation</code></td>
+<td>method</td>
+<td>BeforeRelation does nothing.</td>
+</tr>
+<tr>
 <td><code>momolog.Level</code></td>
 <td>func</td>
 <td>Level sets the level for ordinary statements (default Debug).</td>
@@ -7907,6 +7932,11 @@
 <td>NewSlowQuery returns a hook that calls report for each statement that took longer than threshold.</td>
 </tr>
 <tr>
+<td><code>obs.NewStatementNPlusOne</code></td>
+<td>func</td>
+<td>NewStatementNPlusOne returns a detector that calls report once per statement shape per scope when the shape has run more than threshold times (a threshold below 1 counts as 1).</td>
+</tr>
+<tr>
 <td><code>obs.Recorder</code></td>
 <td>type</td>
 <td>Recorder is a momo.Hook and momo.RelationHook that records every finished statement and every finished relation load, in the order they finished.</td>
@@ -7962,6 +7992,41 @@
 <td>SlowQuery describes one statement that took longer than the threshold of a slow-query hook.</td>
 </tr>
 <tr>
+<td><code>obs.SlowQueryHook</code></td>
+<td>type</td>
+<td>SlowQueryHook is the hook NewSlowQuery returns.</td>
+</tr>
+<tr>
+<td><code>obs.SlowQueryHook.AfterQuery</code></td>
+<td>method</td>
+<td>AfterQuery implements momo.Hook.</td>
+</tr>
+<tr>
+<td><code>obs.SlowQueryHook.BeforeQuery</code></td>
+<td>method</td>
+<td>BeforeQuery implements momo.Hook.</td>
+</tr>
+<tr>
+<td><code>obs.StatementFinding</code></td>
+<td>type</td>
+<td>StatementFinding reports a statement shape that repeated more than the threshold within one scope.</td>
+</tr>
+<tr>
+<td><code>obs.StatementNPlusOne</code></td>
+<td>type</td>
+<td>StatementNPlusOne is a development hook that finds any statement that runs again and again in one scope, such as a Select in a loop.</td>
+</tr>
+<tr>
+<td><code>obs.StatementNPlusOne.AfterQuery</code></td>
+<td>method</td>
+<td>AfterQuery does nothing.</td>
+</tr>
+<tr>
+<td><code>obs.StatementNPlusOne.BeforeQuery</code></td>
+<td>method</td>
+<td>BeforeQuery counts the statement and reports when the threshold is exceeded.</td>
+</tr>
+<tr>
 <td><code>obs.WithPlainExplain</code></td>
 <td>func</td>
 <td>WithPlainExplain turns on plan capture, running plain EXPLAIN, never EXPLAIN ANALYZE.</td>
@@ -7969,7 +8034,7 @@
 <tr>
 <td><code>obs.WithScope</code></td>
 <td>func</td>
-<td>WithScope returns a context that groups relation loads for NPlusOne.</td>
+<td>WithScope returns a context that groups statements and relation loads for the N+1 detectors, NPlusOne and StatementNPlusOne.</td>
 </tr>
 </tbody>
 </table>

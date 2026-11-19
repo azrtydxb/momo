@@ -2798,13 +2798,13 @@ session advisory lock.</p>
 </tr>
 <tr>
 <td>OpenTelemetry hook</td>
-<td>no such package in the repository</td>
-<td>implement <code>Hook</code></td>
+<td>yes; the nested module <code>otelmomo</code>, versioned on its own</td>
+<td><code>otelmomo.New</code></td>
 </tr>
 <tr>
 <td>N+1 detector (development)</td>
 <td>yes; counts statement shapes per scope, reports once past the threshold; at most 1024 shapes per scope; a panic in the report function is recovered</td>
-<td><code>WithQueryScope</code>, <code>NewNPlusOneHook</code></td>
+<td><code>obs.WithScope</code>, <code>obs.NewStatementNPlusOne</code></td>
 </tr>
 <tr>
 <td>Tenant filter</td>

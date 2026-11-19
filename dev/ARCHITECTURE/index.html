@@ -1743,9 +1743,10 @@ carries the format number and no release version.</p>
   migrations applied; <code>momotest/sqlitetest</code> is the SQLite variant, kept apart
   so PostgreSQL tests do not link cgo. See <a href="../testing/">testing</a>.</li>
 <li><code>momolog</code>: a <code>log/slog</code> hook for statements and relation loads.</li>
-<li><code>obs</code>: ready-made <code>Hook</code> and <code>RelationHook</code> implementations (a recorder and
-  an N+1 relation-load detector); imports only <code>momo</code>. See
-  <a href="../observability/">observability</a>.</li>
+<li><code>obs</code>: ready-made <code>Hook</code> and <code>RelationHook</code> implementations (a recorder, an
+  N+1 relation-load detector and an N+1 statement detector that share one
+  scope, and a slow-query hook); imports only <code>momo</code> and the internal package
+  the two detectors share. See <a href="../observability/">observability</a>.</li>
 <li><code>importer</code>, <code>importer/{gorm,bun,ent}</code>: static readers of other ORMs' models;
   see <a href="../importers/">importers</a>.</li>
 <li><code>bench</code> is a separate Go module with the comparison benchmarks; see

@@ -1139,6 +1139,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#one-n1-detector-family-and-one-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One N+1 detector family and one scope
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hook-constructors-return-their-concrete-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook constructors return their concrete types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#functional-options-are-named-with" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2498,6 +2520,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#one-n1-detector-family-and-one-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One N+1 detector family and one scope
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#hook-constructors-return-their-concrete-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hook constructors return their concrete types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#functional-options-are-named-with" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3746,10 +3790,103 @@ the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect 
 later releases can break more.</p>
 <h2 id="upgrading-to-0200">Upgrading to 0.20.0<a class="headerlink" href="#upgrading-to-0200" title="Permanent link">&para;</a></h2>
 <p>Six option and helper names changed so that every functional option is spelled
-With plus what it sets, and the 20 advisory lock functions became two
-functions with options. The old names stay as deprecated forwarders for this
-release and run the same statements, so your code keeps compiling and behaving
-as before; move to the new names before the forwarders go.</p>
+With plus what it sets, the 20 advisory lock functions became two functions
+with options, the statement N+1 detector moved into <code>obs</code> and now shares one
+scope with the relation-load detector, and the hook constructors return their
+concrete types. The old names stay as deprecated forwarders for this release
+and run the same statements, so your code keeps compiling and behaving as
+before; move to the new names before the forwarders go. The one change that can
+stop code compiling now is a constructor result that you assert to an interface
+or assign to a variable of another type.</p>
+<h3 id="one-n1-detector-family-and-one-scope">One N+1 detector family and one scope<a class="headerlink" href="#one-n1-detector-family-and-one-scope" title="Permanent link">&para;</a></h3>
+<p>Before, <code>momo.NewNPlusOneHook</code> counted statement shapes in a scope made with
+<code>momo.WithQueryScope</code>, and <code>obs.NewNPlusOne</code> counted relation loads in a scope
+made with <code>obs.WithScope</code>. A request that wanted both detectors had to be
+wrapped twice, and the two names did not say which counted what. Both detectors
+now live in <code>obs</code> and read the one scope that <code>obs.WithScope</code> makes, so you wrap
+the context once and register one or both. They keep separate counts inside it.</p>
+<table>
+<thead>
+<tr>
+<th>Before</th>
+<th>After</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>momo.NewNPlusOneHook(n, report)</code></td>
+<td><code>obs.NewStatementNPlusOne(n, report)</code></td>
+</tr>
+<tr>
+<td><code>momo.NPlusOneFinding</code> (<code>Shape</code>, <code>Example</code>, <code>Count</code>)</td>
+<td><code>obs.StatementFinding</code> (the same three fields)</td>
+</tr>
+<tr>
+<td><code>momo.WithQueryScope(ctx)</code></td>
+<td><code>obs.WithScope(ctx)</code></td>
+</tr>
+<tr>
+<td><code>obs.NewNPlusOne(n, report)</code> with <code>obs.WithScope</code></td>
+<td>unchanged; the scope now also serves the statement detector</td>
+</tr>
+</tbody>
+</table>
+<p>Replace the three <code>momo</code> names with the <code>obs</code> ones. The <code>momo</code> names are marked
+<code>Deprecated:</code> and are removed in the release after this one. They count exactly
+as the <code>obs</code> detector does, and <code>momo.WithQueryScope</code> returns the scope
+<code>obs.WithScope</code> makes, so you can move one call site at a time: a context made
+by either serves the detectors of both. The finding type is a separate type with
+the same fields, so a <code>report</code> function that takes <code>momo.NPlusOneFinding</code> takes
+<code>obs.StatementFinding</code> after the move.</p>
+<p>Two behaviors changed with the shared scope. A context made by <code>obs.WithScope</code>
+now also drives the deprecated <code>momo.NewNPlusOneHook</code>. Nesting <code>obs.WithScope</code>
+inside <code>momo.WithQueryScope</code>, or the reverse, now replaces the outer scope and
+restarts the counts, so wrap the context once per unit of work.</p>
+<h3 id="hook-constructors-return-their-concrete-types">Hook constructors return their concrete types<a class="headerlink" href="#hook-constructors-return-their-concrete-types" title="Permanent link">&para;</a></h3>
+<p>Before, <code>obs.NewNPlusOne</code> returned <code>*obs.NPlusOne</code> while <code>obs.NewSlowQuery</code> and
+<code>momolog.New</code> returned <code>momo.Hook</code> and <code>otelmomo.New</code> returned
+<code>(momo.Hook, error)</code>. Each constructor now returns the type it builds, which
+still implements <code>momo.Hook</code>, so <code>momo.WithHook(h)</code> is unchanged.</p>
+<table>
+<thead>
+<tr>
+<th>Constructor</th>
+<th>Before</th>
+<th>After</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>obs.NewSlowQuery</code></td>
+<td><code>momo.Hook</code></td>
+<td><code>*obs.SlowQueryHook</code></td>
+</tr>
+<tr>
+<td><code>momolog.New</code></td>
+<td><code>momo.Hook</code></td>
+<td><code>*momolog.Hook</code></td>
+</tr>
+<tr>
+<td><code>otelmomo.New</code></td>
+<td><code>(momo.Hook, error)</code></td>
+<td><code>(*otelmomo.Hook, error)</code></td>
+</tr>
+<tr>
+<td><code>obs.NewStatementNPlusOne</code></td>
+<td>new</td>
+<td><code>*obs.StatementNPlusOne</code></td>
+</tr>
+</tbody>
+</table>
+<p>Code that passes the result to <code>momo.WithHook</code> needs no edit. Code that stores
+it in a variable of type <code>momo.Hook</code> still compiles. Code that type-asserts the
+result, as in <code>momolog.New(l).(momo.RelationHook)</code>, no longer compiles because
+the result is not an interface; assign it to a <code>momo.Hook</code> first, or call the
+methods on the concrete type. A variable that you declared with <code>:=</code> and later
+assigned a different hook to now has a concrete type and rejects that
+assignment; declare it as <code>momo.Hook</code>. <code>otelmomo</code> is a separate module with its
+own release, so this change reaches it in its own next release; <code>momo.NewNPlusOneHook</code>
+keeps returning <code>momo.Hook</code> because it is a deprecated forwarder.</p>
 <h3 id="functional-options-are-named-with">Functional options are named <code>With*</code><a class="headerlink" href="#functional-options-are-named-with" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
