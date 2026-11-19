@@ -32,6 +32,10 @@ func TestDiffExcludeFollowsConcurrentIndexDropOfTheSameName(t *testing.T) {
 	to := docsSchema()
 	to.Extensions = append(to.Extensions, schema.Extension{Name: "btree_gist"})
 	to.Tables[0].Indexes = nil
+	// A transactional change keeps a head to split from: with only the drop
+	// and the constraint, nothing is left for the head and the whole plan is
+	// one no-transaction migration with no Next.
+	to.Tables[0].Columns = append(to.Tables[0].Columns, schema.Column{Name: "note", Type: "TEXT", Nullable: true})
 	to.Tables[0].Excludes = []schema.Exclude{{Name: "docs_title", Elements: []schema.ExcludeElement{{Column: "title", Operator: "="}}}}
 	m, err := offlineEngine(t, mapFS(m1.Files), lockfreeClock).Diff(ctx, to, "swap", migrate.DiffOptions{})
 	if err != nil || m == nil {
