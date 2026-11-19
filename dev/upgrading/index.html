@@ -1139,6 +1139,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#exclusion-constraints-are-part-of-the-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exclusion constraints are part of the schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#range-columns-map-to-typesrange" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Range columns map to types.Range
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#one-constructor-shape-for-every-driver" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2542,6 +2564,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#exclusion-constraints-are-part-of-the-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exclusion constraints are part of the schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#range-columns-map-to-typesrange" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Range columns map to types.Range
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#one-constructor-shape-for-every-driver" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3846,7 +3890,36 @@ forwarders for this release and run the same statements, so that code keeps
 compiling and behaving as before; move to the new names before the forwarders
 go. Beyond the driver constructors, the one change that can stop code compiling
 is a hook constructor result that you assert to an interface or assign to a
-variable of another type.</p>
+variable of another type. Separately,
+<code>momo migrate drift</code>, <code>momo migrate baseline</code> and <code>momo generate --from-db</code> now
+see exclusion constraints on PostgreSQL and write range columns as <code>types.Range</code>
+fields (the first two sections below); no edit is needed in your code for that,
+but inspection of a database that holds an exclusion constraint momo cannot
+model now stops with an error.</p>
+<h3 id="exclusion-constraints-are-part-of-the-schema">Exclusion constraints are part of the schema<a class="headerlink" href="#exclusion-constraints-are-part-of-the-schema" title="Permanent link">&para;</a></h3>
+<p>Before, inspection skipped the constraints of kind <code>x</code> in <code>pg_constraint</code>, so a
+database with <code>EXCLUDE USING gist (room_id WITH =, during WITH &amp;&amp;)</code> read as a
+table without it, and the init migration that <code>generate --from-db</code> produced
+built the table without the rule. Inspection now reads each one, and <code>momo
+generate --from-db</code> writes it as a <code>Config.Exclude</code> declaration. A snapshot you
+already have loads with no exclusion constraints, so the snapshot format version
+is unchanged and no snapshot needs rewriting.</p>
+<p>If your database has one, <code>drift</code> and <code>baseline</code> now report it as missing from
+the snapshot until the snapshot says so. Run <code>momo generate --from-db</code> again, or
+declare it in <code>MomoConfig</code> and run <code>momo migrate diff</code>. A constraint with a
+<code>WHERE</code> predicate, an expression, an operator class or an ordering is not
+modelled: inspection stops with an error that names it and its table. Hide the
+table with <code>migrate.exclude</code>, and keep the constraint in a migration written by
+hand. See <a href="../migrations/#exclusion-constraints">migrations</a>.</p>
+<h3 id="range-columns-map-to-typesrange">Range columns map to <code>types.Range</code><a class="headerlink" href="#range-columns-map-to-typesrange" title="Permanent link">&para;</a></h3>
+<p><code>generate --from-db</code> mapped no range type before, so a table with an <code>int4range</code>
+or <code>tstzrange</code> column stopped the generation until an <code>introspect</code> types rule
+named a Go type for it. The six built-in range types now map to
+<code>types.Range[T]</code>: <code>int4range</code> to <code>types.Range[int32]</code>, <code>int8range</code> to
+<code>types.Range[int64]</code>, <code>numrange</code> to <code>types.Range[types.Numeric]</code>, <code>daterange</code> to
+<code>types.Range[types.Date]</code>, <code>tsrange</code> to <code>types.Range[types.Timestamp]</code> and
+<code>tstzrange</code> to <code>types.Range[time.Time]</code>. A rule you wrote for such a column still
+wins. See <a href="../TYPE_MAPPING/#range-types">type mapping</a>.</p>
 <h3 id="one-constructor-shape-for-every-driver">One constructor shape for every driver<a class="headerlink" href="#one-constructor-shape-for-every-driver" title="Permanent link">&para;</a></h3>
 <p><code>New(handle, opts...)</code> wraps a pool or <code>*sql.DB</code> you opened, does not own it and
 never closes it. <code>Open(ctx, dsn, opts...)</code> opens the database, owns it and

@@ -524,6 +524,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#range-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Range types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#edge-values-and-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1384,6 +1395,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#range-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Range types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#edge-values-and-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1597,6 +1619,42 @@ has no array columns, so the generator rejects them there.</p>
 <td>json</td>
 </tr>
 <tr>
+<td><code>types.Range[int32]</code></td>
+<td>int4range</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>types.Range[int64]</code></td>
+<td>int8range</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>types.Range[types.Numeric]</code></td>
+<td>numrange</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>types.Range[types.Date]</code></td>
+<td>daterange</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>types.Range[types.Timestamp]</code></td>
+<td>tsrange</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
+<td><code>types.Range[time.Time]</code></td>
+<td>tstzrange</td>
+<td>unsupported</td>
+<td>unsupported</td>
+</tr>
+<tr>
 <td><code>vector.Vector</code></td>
 <td>vector(N)</td>
 <td>unsupported</td>
@@ -1781,6 +1839,58 @@ document because nothing generates one.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="range-types">Range types<a class="headerlink" href="#range-types" title="Permanent link">&para;</a></h2>
+<p><code>types.Range[T]</code> is a PostgreSQL range column, with an empty range, infinite
+bounds and inclusive or exclusive bounds. The element type <code>T</code> picks the range
+type:</p>
+<ul>
+<li><code>int32</code> is <code>int4range</code> and <code>int64</code> is <code>int8range</code>;</li>
+<li><code>types.Numeric</code> is <code>numrange</code> and <code>types.Date</code> is <code>daterange</code>;</li>
+<li><code>time.Time</code> is <code>tstzrange</code>, a range of timestamps with a time zone;</li>
+<li><code>types.Timestamp</code> is <code>tsrange</code>, a range of timestamps without a zone. It is a
+  struct around a <code>time.Time</code> whose wall clock is written without a zone and
+  read back as a UTC time, the way the column stores it. It has
+  <code>types.Timestamp.Infinity</code> and <code>types.Timestamp.NegInfinity</code> flags for the
+  special timestamps, as <code>types.Date</code> has.</li>
+</ul>
+<p>A <code>types.Range</code> holds a lower and an upper <code>types.Bound</code>, each with a <code>Value</code>, an
+<code>Inclusive</code> flag and an <code>Infinite</code> flag (no limit on that side), and an <code>Empty</code>
+flag. Build one with <code>types.ClosedOpen(lower, upper)</code> (<code>[lower,upper)</code>, the usual
+form for a period), <code>types.NewRange</code> with <code>types.Incl</code>, <code>types.Excl</code> and
+<code>types.NoBound</code> for any other shape, or <code>types.EmptyRange</code>. A nullable column is
+a <code>*types.Range[T]</code> field.</p>
+<p>The zero value <code>types.Range[T]{}</code> is the empty range: it is written as <code>empty</code>,
+not as <code>(0,0)</code>, so a field you never set does not change on a round trip. It
+reads back with <code>Empty</code> set, which is the same range but not the same Go value,
+so ask the range whether it is empty (the <code>types.Range</code> method of that name)
+rather than comparing with <code>==</code> when either may be the zero value. A bound may also be the special value infinity, which is not an
+unbounded side: a <code>daterange</code> and a <code>tsrange</code> hold it in the element's
+<code>types.Date.Infinity</code> and <code>types.Date.NegInfinity</code> flags (and the same flags of
+<code>types.Timestamp</code>), while a <code>time.Time</code> cannot, so a <code>tstzrange</code>
+whose bound is infinity fails to scan into <code>types.Range[time.Time]</code>. Use
+<code>types.NoBound</code> for a <code>tstzrange</code> with no limit.</p>
+<p>A range travels as the text PostgreSQL prints, such as <code>[1,10)</code>, <code>(,5]</code> or
+<code>empty</code>: <code>Value</code> writes it and <code>Scan</code> reads it, so it needs no driver codec and
+works with every driver the generator supports. The pgx driver turns its binary
+form into that text before it reaches <code>Scan</code>. PostgreSQL stores <code>int4range</code>,
+<code>int8range</code> and <code>daterange</code> in the canonical form <code>[lower,upper)</code>, so a range
+written <code>(0,9]</code> reads back as <code>[1,10)</code>: compare ranges of those types in that
+form. A <code>numrange</code>, <code>tsrange</code> and <code>tstzrange</code> keep the bounds as written. A
+timestamp bound has microsecond precision.</p>
+<p>The <code>rangeop</code> package queries them: <code>rangeop.Contains</code> for an element,
+<code>rangeop.ContainsRange</code>, <code>rangeop.ContainedBy</code>, <code>rangeop.Overlaps</code>,
+<code>rangeop.Adjacent</code>, <code>rangeop.StrictlyLeft</code>, <code>rangeop.StrictlyRight</code>,
+<code>rangeop.IsEmpty</code>, <code>rangeop.LowerInfinite</code>, <code>rangeop.UpperInfinite</code>, and
+<code>rangeop.Lower</code> and <code>rangeop.Upper</code> for the bounds, which compare like any scalar
+expression. Each binds its operand with a cast to the range or element type.</p>
+<p>Range types exist on PostgreSQL alone. The generator reports a <code>types.Range</code>
+field when the target dialect is SQLite, MySQL or MariaDB, and a <code>rangeop</code>
+builder fails the build with <code>momo.ErrUnsupported</code> there. Multiranges
+(<code>int4multirange</code> and the others) and a range over another element type have no
+Go type; <code>generate --from-db</code> reports such a column as unmapped, and an
+<code>introspect</code> types rule or a <code>type</code> tag declares it. A GiST exclusion
+constraint over a range is declared with <code>Config.Exclude</code>; see
+<a href="../migrations/#exclusion-constraints">migrations</a>.</p>
 <h2 id="edge-values-and-behavior">Edge values and behavior<a class="headerlink" href="#edge-values-and-behavior" title="Permanent link">&para;</a></h2>
 <p>Each statement below is asserted by a test against PostgreSQL, and the ones
 about SQLite or MySQL and MariaDB by the SQLite and MySQL tests named at the

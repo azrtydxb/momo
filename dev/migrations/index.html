@@ -715,6 +715,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#exclusion-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exclusion constraints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#checksums" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1872,6 +1883,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#exclusion-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exclusion constraints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#checksums" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2631,6 +2653,55 @@ key itself, and a deferrable key that nothing references, are fine.</p>
   attributes. A difference reads <code>deferrable=false</code> on one side and
   <code>deferrable=true</code> on the other, and the repair is the drop and add above. As
   every drop, it is withheld unless <code>--allow-destructive</code> is given.</li>
+</ul>
+<h3 id="exclusion-constraints">Exclusion constraints<a class="headerlink" href="#exclusion-constraints" title="Permanent link">&para;</a></h3>
+<p>An exclusion constraint on PostgreSQL forbids two rows from satisfying every
+operator of the constraint at once: <code>EXCLUDE USING gist (room_id WITH =, during
+WITH &amp;&amp;)</code> stops two bookings of one room from overlapping, which a unique
+constraint cannot say. The model keeps them in <code>schema.Table.Excludes</code>, each a
+<code>schema.Exclude</code> with a name, an access method (<code>gist</code> when empty, and a
+normalized schema always says it), a list of <code>schema.ExcludeElement</code> (a column
+and an operator) and the same <code>Deferrable</code> and <code>InitiallyDeferred</code> flags as a
+unique constraint. A snapshot written before they existed loads with none, so
+the snapshot format version stays 1.</p>
+<p>The declaration is <code>Config.Exclude</code> in <code>MomoConfig</code>: a name, then pairs of a
+field reference and the operator, with <code>ExcludeOpts.Using</code>,
+<code>ExcludeOpts.Deferrable</code> and <code>ExcludeOpts.InitiallyDeferred</code> to chain. For
+the bookings above it is <code>c.Exclude("bookings_no_overlap", &amp;b.RoomID, "=", &amp;b.During,
+"&amp;&amp;")</code>. The operator is a string literal of operator characters and is checked before
+it reaches a statement. The constraint is backed by an index of its own name, so
+it shares the index namespace and the generator refuses a name that an index or
+a unique constraint already has. A GiST index over a scalar column such as
+<code>room_id</code> needs the <code>btree_gist</code> extension; the generator adds it to the schema
+when a constraint compares a scalar, so a migration creates it before the table.
+A constraint over range columns alone needs none. SQLite, MySQL and MariaDB
+have no exclusion constraints: the generator reports a diagnostic for a
+declaration when the target dialect is not PostgreSQL, and the SQLite and MySQL
+renderers return an error that wraps <code>momo.ErrUnsupported</code>.</p>
+<p>Only plain columns with their default operator class and ordering are modelled:
+an expression, a <code>WHERE</code> predicate, an <code>INCLUDE</code> list, an operator class, an
+ordering and storage parameters are not. The PostgreSQL inspector reads each
+constraint from <code>pg_get_constraintdef</code>, and refuses one it cannot model with an
+error that names the constraint and its table, because skipping it would let
+<code>Baseline</code> and <code>drift</code> call a database clean that does not match its model.
+Hide the table with <code>migrate.exclude</code> to proceed, and keep that constraint in a
+migration written by hand.</p>
+<p>What the tools do on PostgreSQL:</p>
+<ul>
+<li><code>momo generate --from-db</code> writes <code>Config.Exclude</code> for each inspected
+  constraint, with <code>Using</code> for a method other than <code>gist</code> and the deferral
+  calls. A range column comes out as a <code>types.Range</code> field.</li>
+<li><code>diff</code> renders the constraint after the unique constraints in <code>CREATE TABLE</code>,
+  and as an <code>ADD CONSTRAINT</code> and a <code>DROP CONSTRAINT</code> statement on an existing
+  table. Any change of the elements, the method or the deferrability is a drop
+  and an add of the constraint in one transaction, because PostgreSQL cannot
+  alter one. Adding one to a table that holds rows
+  builds a GiST index and checks every row under an <code>ACCESS EXCLUSIVE</code> lock, and
+  fails if existing rows already conflict; <code>diff</code> reports it as a risky change.</li>
+<li><code>Baseline</code>, <code>drift</code> and <code>drift --fix-sql</code> compare each constraint as an object
+  of its table. A constraint that is missing, extra or different is reported,
+  and the repair is the drop and add above, withheld without
+  <code>--allow-destructive</code> like every drop. <code>AutoMigrate</code> never drops one.</li>
 </ul>
 <h3 id="checksums">Checksums<a class="headerlink" href="#checksums" title="Permanent link">&para;</a></h3>
 <p>Two independent checks, both SHA-256 of the file bytes:</p>

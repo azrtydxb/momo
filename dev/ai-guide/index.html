@@ -2208,7 +2208,7 @@ string literals only.</p>
 <code>&lt;table&gt;_&lt;col&gt;_idx</code> produced by an <code>index</code> tag (the <code>Plan</code> field above already
 yields <code>accounts_plan_idx</code>); the generator refuses the duplicate.</p>
 <p>Config methods: <code>Config.Index</code>, <code>Config.IndexExpr</code>, <code>Config.Unique</code>, <code>Config.ForeignKey</code>, <code>Config.Check</code>, <code>Config.CheckIn</code>, <code>Config.Enum</code>, <code>Config.Default</code>, <code>Config.Generated</code>,
-<code>Config.Comment</code>, <code>Config.Collate</code>, <code>Config.IDGen</code>, <code>Config.FKName</code>, <code>Config.PrimaryKey</code>, <code>Config.PrimaryKeyDeferrable</code>, <code>Config.PrimaryKeyInitiallyDeferred</code>, <code>Config.View</code>, <code>Config.Function</code>, <code>Config.Trigger</code>, <code>Config.Policy</code>, <code>Config.RLS</code>, <code>Config.Partition</code>,
+<code>Config.Comment</code>, <code>Config.Collate</code>, <code>Config.IDGen</code>, <code>Config.FKName</code>, <code>Config.Exclude</code>, <code>Config.PrimaryKey</code>, <code>Config.PrimaryKeyDeferrable</code>, <code>Config.PrimaryKeyInitiallyDeferred</code>, <code>Config.View</code>, <code>Config.Function</code>, <code>Config.Trigger</code>, <code>Config.Policy</code>, <code>Config.RLS</code>, <code>Config.Partition</code>,
 <code>Config.PartitionOf</code>. Index chain: <code>IndexOpts.Unique()</code> (on <code>Config.Index</code> or <code>Config.IndexExpr</code>), <code>Where(pred)</code>, <code>Method(m)</code>, <code>IndexOpts.With(k, v)</code>,
 <code>Opclass(field, op)</code>, <code>Desc(field)</code>, <code>Nulls(field, "first"|"last")</code>,
 <code>Concurrently()</code> (<code>diff</code> writes the index as <code>CREATE INDEX CONCURRENTLY</code> in its own no-transaction migration).</p>
@@ -2263,6 +2263,14 @@ columns; otherwise the generator reports a diagnostic. The key is a plain
 constraint: <code>diff</code> adds, replaces and drops it like a single-column key, and
 <code>generate --from-db</code> writes it back. There is no <code>belongs_to</code> form for a
 composite key; the relation still needs a single-column key.</p>
+<p>An exclusion constraint (PostgreSQL) is declared with <code>c.Exclude(name, &amp;m.A,
+"=", &amp;m.B, "&amp;&amp;")</code>: pairs of a field and an operator, so <code>&amp;m.RoomID, "=", &amp;m.During,
+"&amp;&amp;"</code> forbids two rows of one room with overlapping <code>During</code> ranges. Chain
+<code>.Using("gist")</code> (the default; <code>spgist</code>, <code>btree</code> and <code>hash</code> also work),
+<code>.Deferrable()</code> or <code>.InitiallyDeferred()</code>. A GiST constraint over a scalar column
+makes the generator add the <code>btree_gist</code> extension. It models plain columns only
+(no <code>WHERE</code>, expression or operator class); the other dialects refuse it. See
+<a href="../migrations/#exclusion-constraints">migrations</a>.</p>
 <p>A unique constraint, a foreign key and a primary key can be <code>DEFERRABLE</code> on
 PostgreSQL: <code>c.Unique(...).Deferrable()</code> or <code>.InitiallyDeferred()</code> (a unique
 with any other option is an index, which cannot be deferred),
@@ -2832,6 +2840,24 @@ column, call or <code>momo.Value</code> elements (an empty list is <code>ErrVali
 <code>momo.ArraySubquery[T]</code> renders <code>ARRAY(subquery)</code> for a one-column
 <code>SelectQuery</code> or <code>momo.Union</code>. Both are <code>Expression[[]T]</code>, so they scan into
 a <code>[]T</code> field and feed <code>arrayop</code> predicates; PostgreSQL only.</p>
+<p>Range columns (a PostgreSQL type). A <code>types.Range[T]</code> field is generated as the
+range type of its element: <code>int32</code> is <code>int4range</code>, <code>int64</code> is <code>int8range</code>,
+<code>types.Numeric</code> is <code>numrange</code>, <code>types.Date</code> is <code>daterange</code>, <code>time.Time</code> is
+<code>tstzrange</code> and <code>types.Timestamp</code> (a timestamp without a zone) is <code>tsrange</code>.
+Build a value with <code>types.ClosedOpen(lower, upper)</code> (<code>[lower,upper)</code>),
+<code>types.NewRange(types.Incl(a), types.NoBound[T]())</code> for any other shape, or
+<code>types.EmptyRange[T]()</code>; a bound is a <code>types.Bound</code> with <code>Value</code>, <code>Inclusive</code> and
+<code>Infinite</code>. The predicates are generic functions over the typed column, in the
+package <code>github.com/azrtydxb/momo/rangeop</code>: <code>rangeop.Contains(col, element)</code>
+(<code>@&gt;</code>), <code>rangeop.ContainsRange</code>, <code>rangeop.ContainedBy</code> (<code>&lt;@</code>),
+<code>rangeop.Overlaps</code> (<code>&amp;&amp;</code>), <code>rangeop.Adjacent</code> (<code>-|-</code>), <code>rangeop.StrictlyLeft</code>
+(<code>&lt;&lt;</code>), <code>rangeop.StrictlyRight</code> (<code>&gt;&gt;</code>), <code>rangeop.IsEmpty</code>,
+<code>rangeop.LowerInfinite</code>, <code>rangeop.UpperInfinite</code>, and <code>rangeop.Lower</code> and
+<code>rangeop.Upper</code>, which are scalar expressions (<code>rangeop.Lower(during).Ge(start)</code>).
+Each binds its operand with a cast to the range or element type. PostgreSQL
+stores the discrete ranges as <code>[lower,upper)</code>, so <code>(0,9]</code> reads back as
+<code>[1,10)</code>. On other dialects the generator refuses the field and the builders fail
+the build with <code>ErrUnsupported</code>. Multiranges are not mapped.</p>
 <p>Searching with user input safely. <code>Like</code> and <code>ILike</code> always render
 <code>ESCAPE '!'</code> on every dialect, matching <code>EscapeLike</code>. Wildcards (<code>%</code>, <code>_</code>) in
 the pattern still work; only a <code>!</code> makes the next character literal, so a

@@ -1320,6 +1320,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rangeop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rangeop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sqlfn" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1619,6 +1630,17 @@
     <span class="md-ellipsis">
       
         obs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rangeop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        rangeop
       
     </span>
   </a>
@@ -2073,6 +2095,11 @@
 <td><code>momo.Config.Enum</code></td>
 <td>method</td>
 <td>Enum declares a named enum type with its values.</td>
+</tr>
+<tr>
+<td><code>momo.Config.Exclude</code></td>
+<td>method</td>
+<td>Exclude declares a named exclusion constraint (PostgreSQL): no two rows may satisfy every operator at once.</td>
 </tr>
 <tr>
 <td><code>momo.Config.FKName</code></td>
@@ -2588,6 +2615,26 @@
 <td><code>momo.Exact</code></td>
 <td>type</td>
 <td>Exact is the constraint of SumNumeric and AvgNumeric: the column types whose aggregate the database can compute exactly, integers and types.Numeric.</td>
+</tr>
+<tr>
+<td><code>momo.ExcludeOpts</code></td>
+<td>type</td>
+<td>ExcludeOpts carries the optional parts of an exclusion constraint declaration.</td>
+</tr>
+<tr>
+<td><code>momo.ExcludeOpts.Deferrable</code></td>
+<td>method</td>
+<td>Deferrable makes the exclusion constraint DEFERRABLE: a transaction can defer its check to commit with SET CONSTRAINTS.</td>
+</tr>
+<tr>
+<td><code>momo.ExcludeOpts.InitiallyDeferred</code></td>
+<td>method</td>
+<td>InitiallyDeferred makes the exclusion constraint DEFERRABLE INITIALLY DEFERRED: the check runs at commit unless a transaction asks for it sooner.</td>
+</tr>
+<tr>
+<td><code>momo.ExcludeOpts.Using</code></td>
+<td>method</td>
+<td>Using sets the index access method of an exclusion constraint: gist (the default), spgist, btree or hash.</td>
 </tr>
 <tr>
 <td><code>momo.ExcludedExpr</code></td>
@@ -5396,6 +5443,16 @@
 <td>ErrNewerFormat is returned when a snapshot was written by a newer momo.</td>
 </tr>
 <tr>
+<td><code>schema.Exclude</code></td>
+<td>type</td>
+<td>Exclude is an exclusion constraint (PostgreSQL only): no two rows of the table may satisfy every element's operator at once, as in EXCLUDE USING gist (room_id WITH =, during WITH &amp;&amp;), which forbids two bookings of one room from overlapping.</td>
+</tr>
+<tr>
+<td><code>schema.ExcludeElement</code></td>
+<td>type</td>
+<td>ExcludeElement is one column of an exclusion constraint and the operator two rows are compared with on it, such as "=" or "&amp;&amp;".</td>
+</tr>
+<tr>
 <td><code>schema.Extension</code></td>
 <td>type</td>
 <td>Extension is a PostgreSQL extension such as "vector".</td>
@@ -5629,6 +5686,16 @@
 </thead>
 <tbody>
 <tr>
+<td><code>types.Bound</code></td>
+<td>type</td>
+<td>Bound is one end of a Range.</td>
+</tr>
+<tr>
+<td><code>types.ClosedOpen</code></td>
+<td>func</td>
+<td>ClosedOpen returns [lower, upper), the form PostgreSQL stores a discrete range in and the usual one for a period of time.</td>
+</tr>
+<tr>
 <td><code>types.Codec</code></td>
 <td>type</td>
 <td>Codec is the custom-type contract: database/sql scanning, driver value encoding and the SQL type per dialect.</td>
@@ -5659,6 +5726,16 @@
 <td>Value encodes the date as 'YYYY-MM-DD' using the year, month and day of Time in its own location, or as 'infinity' or '-infinity'.</td>
 </tr>
 <tr>
+<td><code>types.EmptyRange</code></td>
+<td>func</td>
+<td>EmptyRange returns the empty range.</td>
+</tr>
+<tr>
+<td><code>types.Excl</code></td>
+<td>func</td>
+<td>Excl returns the finite exclusive bound v: the ( of a lower bound, the ) of an upper one.</td>
+</tr>
+<tr>
 <td><code>types.Hstore</code></td>
 <td>type</td>
 <td>Hstore is map[string]*string: hstore on PostgreSQL, TEXT JSON on SQLite.</td>
@@ -5677,6 +5754,11 @@
 <td><code>types.Hstore.Value</code></td>
 <td>method</td>
 <td>Value returns the hstore text form, e.g.</td>
+</tr>
+<tr>
+<td><code>types.Incl</code></td>
+<td>func</td>
+<td>Incl returns the finite inclusive bound v: the [ of a lower bound, the ] of an upper one.</td>
 </tr>
 <tr>
 <td><code>types.JSON</code></td>
@@ -5717,6 +5799,16 @@
 <td><code>types.JSONNuller</code></td>
 <td>type</td>
 <td>JSONNuller is implemented by JSON[T] and by no other type.</td>
+</tr>
+<tr>
+<td><code>types.NewRange</code></td>
+<td>func</td>
+<td>NewRange returns the range from lower to upper.</td>
+</tr>
+<tr>
+<td><code>types.NoBound</code></td>
+<td>func</td>
+<td>NoBound returns the infinite bound: no lower limit as a lower bound, no upper limit as an upper one.</td>
 </tr>
 <tr>
 <td><code>types.Numeric</code></td>
@@ -5784,6 +5876,41 @@
 <td>ParseUUID parses the canonical 36-character form (dashes at 8, 13, 18, 23) or 32 bare hex digits.</td>
 </tr>
 <tr>
+<td><code>types.Range</code></td>
+<td>type</td>
+<td>Range is a PostgreSQL range of T, with empty, infinite and inclusive/exclusive bounds: int4range for int32, int8range for int64, numrange for Numeric, daterange for Date, tsrange for Timestamp and tstzrange for time.Time.</td>
+</tr>
+<tr>
+<td><code>types.Range.IsEmpty</code></td>
+<td>method</td>
+<td>IsEmpty reports whether r is the empty range: Empty is set, or r is the zero value Range[T]{}.</td>
+</tr>
+<tr>
+<td><code>types.Range.SQLType</code></td>
+<td>method</td>
+<td>SQLType returns the column type for d: the range type on PostgreSQL, and the empty string on the other dialects, which have no range type.</td>
+</tr>
+<tr>
+<td><code>types.Range.Scan</code></td>
+<td>method</td>
+<td>Scan accepts the PostgreSQL range text as string or []byte: empty, or bounds in brackets with an infinite side left blank.</td>
+</tr>
+<tr>
+<td><code>types.Range.String</code></td>
+<td>method</td>
+<td>String returns the text form Value writes, or the error text when an element is not valid.</td>
+</tr>
+<tr>
+<td><code>types.Range.Value</code></td>
+<td>method</td>
+<td>Value encodes r as PostgreSQL range text: "empty", or the bounds in brackets such as [1,10) with an infinite side left blank.</td>
+</tr>
+<tr>
+<td><code>types.RangeElem</code></td>
+<td>type</td>
+<td>RangeElem is the element types a Range holds, one for each built-in PostgreSQL range type:</td>
+</tr>
+<tr>
 <td><code>types.TSQuery</code></td>
 <td>type</td>
 <td>TSQuery is a PostgreSQL full-text query: tsquery on PostgreSQL, TEXT on SQLite.</td>
@@ -5842,6 +5969,26 @@
 <td><code>types.TimeOfDay.Value</code></td>
 <td>method</td>
 <td>Value encodes the time as 'HH:MM:SS.uuuuuu', truncated to microseconds because PostgreSQL time has microsecond precision (rounding would turn the last microsecond of the day into 24:00:00).</td>
+</tr>
+<tr>
+<td><code>types.Timestamp</code></td>
+<td>type</td>
+<td>Timestamp is a timestamp without a time zone: timestamp on PostgreSQL.</td>
+</tr>
+<tr>
+<td><code>types.Timestamp.SQLType</code></td>
+<td>method</td>
+<td>SQLType returns the column type for d.</td>
+</tr>
+<tr>
+<td><code>types.Timestamp.Scan</code></td>
+<td>method</td>
+<td>Scan accepts the text form as string or []byte, or a time.Time (as pgx returns for a timestamp column), whose wall clock is kept as UTC.</td>
+</tr>
+<tr>
+<td><code>types.Timestamp.Value</code></td>
+<td>method</td>
+<td>Value encodes the wall clock of t as "YYYY-MM-DD HH:MM:SS[.ffffff]", or as 'infinity' or '-infinity'.</td>
 </tr>
 <tr>
 <td><code>types.UUID</code></td>
@@ -6031,6 +6178,11 @@
 </tr>
 <tr>
 <td><code>migrate.AddColumn</code></td>
+<td>const</td>
+<td>Change kinds produced by Diff.</td>
+</tr>
+<tr>
+<td><code>migrate.AddExclude</code></td>
 <td>const</td>
 <td>Change kinds produced by Diff.</td>
 </tr>
@@ -6256,6 +6408,11 @@
 </tr>
 <tr>
 <td><code>migrate.DropEnum</code></td>
+<td>const</td>
+<td>Change kinds produced by Diff.</td>
+</tr>
+<tr>
+<td><code>migrate.DropExclude</code></td>
 <td>const</td>
 <td>Change kinds produced by Diff.</td>
 </tr>
@@ -8040,6 +8197,99 @@
 <td><code>obs.WithScope</code></td>
 <td>func</td>
 <td>WithScope returns a context that groups statements and relation loads for the N+1 detectors, NPlusOne and StatementNPlusOne.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="rangeop">rangeop<a class="headerlink" href="#rangeop" title="Permanent link">&para;</a></h2>
+<p>Import path: <code>github.com/azrtydxb/momo/rangeop</code></p>
+<table>
+<thead>
+<tr>
+<th>Identifier</th>
+<th>Kind</th>
+<th>Synopsis</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rangeop.Adjacent</code></td>
+<td>func</td>
+<td>Adjacent is true when the range column and other share no point and no point lies between them, as [1,5) and [5,9) do (PostgreSQL -|-).</td>
+</tr>
+<tr>
+<td><code>rangeop.BoundExpr</code></td>
+<td>type</td>
+<td>BoundExpr is the lower or upper bound of a range column, an Expression[T] with the comparison and ordering methods of any scalar expression.</td>
+</tr>
+<tr>
+<td><code>rangeop.BoundExpr.AppendSQL</code></td>
+<td>method</td>
+<td>AppendSQL renders the bound, or fails the build with ErrUnsupported on a dialect without range types.</td>
+</tr>
+<tr>
+<td><code>rangeop.BoundExpr.As</code></td>
+<td>method</td>
+<td>As names the expression in a select list.</td>
+</tr>
+<tr>
+<td><code>rangeop.BoundExpr.Flags</code></td>
+<td>method</td>
+<td>Flags returns the flags of the column operand, so a sensitive column keeps the values it is compared with masked.</td>
+</tr>
+<tr>
+<td><code>rangeop.ContainedBy</code></td>
+<td>func</td>
+<td>ContainedBy is true when every point of the range column is in other (PostgreSQL &lt;@).</td>
+</tr>
+<tr>
+<td><code>rangeop.Contains</code></td>
+<td>func</td>
+<td>Contains is true when the range column contains the element v (PostgreSQL @&gt; with an element).</td>
+</tr>
+<tr>
+<td><code>rangeop.ContainsRange</code></td>
+<td>func</td>
+<td>ContainsRange is true when the range column contains every point of other (PostgreSQL @&gt; with a range).</td>
+</tr>
+<tr>
+<td><code>rangeop.IsEmpty</code></td>
+<td>func</td>
+<td>IsEmpty is true when the range column holds the empty range (PostgreSQL isempty).</td>
+</tr>
+<tr>
+<td><code>rangeop.Lower</code></td>
+<td>func</td>
+<td>Lower is the lower bound of the range column (PostgreSQL lower).</td>
+</tr>
+<tr>
+<td><code>rangeop.LowerInfinite</code></td>
+<td>func</td>
+<td>LowerInfinite is true when the range column has no lower limit (PostgreSQL lower_inf).</td>
+</tr>
+<tr>
+<td><code>rangeop.Overlaps</code></td>
+<td>func</td>
+<td>Overlaps is true when the range column and other share a point (PostgreSQL &amp;&amp;).</td>
+</tr>
+<tr>
+<td><code>rangeop.StrictlyLeft</code></td>
+<td>func</td>
+<td>StrictlyLeft is true when every point of the range column is below every point of other (PostgreSQL &lt;&lt;).</td>
+</tr>
+<tr>
+<td><code>rangeop.StrictlyRight</code></td>
+<td>func</td>
+<td>StrictlyRight is true when every point of the range column is above every point of other (PostgreSQL &gt;&gt;).</td>
+</tr>
+<tr>
+<td><code>rangeop.Upper</code></td>
+<td>func</td>
+<td>Upper is the upper bound of the range column (PostgreSQL upper).</td>
+</tr>
+<tr>
+<td><code>rangeop.UpperInfinite</code></td>
+<td>func</td>
+<td>UpperInfinite is true when the range column has no upper limit (PostgreSQL upper_inf).</td>
 </tr>
 </tbody>
 </table>

@@ -1979,6 +1979,20 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td><code>ErrUnsupported</code>: a declaration is a generator error and the renderer refuses it, because <code>PRAGMA foreign_key_list</code> does not report the deferrability of a foreign key and a primary key or unique constraint cannot be deferred</td>
 <td><code>ErrUnsupported</code>: MySQL and MariaDB check each constraint at the end of the statement and have no <code>DEFERRABLE</code>; a declaration is a generator error and the renderer refuses it</td>
 </tr>
+<tr>
+<td>Range types on <code>types.Range[T]</code></td>
+<td><code>types.Range</code>, <code>types.Bound</code>, <code>types.Timestamp</code>, <code>rangeop.Contains</code>, <code>rangeop.ContainsRange</code>, <code>rangeop.ContainedBy</code>, <code>rangeop.Overlaps</code>, <code>rangeop.Adjacent</code>, <code>rangeop.StrictlyLeft</code>, <code>rangeop.StrictlyRight</code>, <code>rangeop.Lower</code>, <code>rangeop.Upper</code>, <code>rangeop.IsEmpty</code></td>
+<td>yes: <code>int4range</code>, <code>int8range</code>, <code>numrange</code>, <code>daterange</code>, <code>tsrange</code> and <code>tstzrange</code> are typed columns with empty, infinite, inclusive and exclusive bounds, written by <code>generate --from-db</code>, and queried with <code>rangeop</code> predicates for containment, overlap, adjacency, position, the bounds and emptiness; multiranges are not mapped</td>
+<td><code>ErrUnsupported</code>: a <code>types.Range</code> field is a generator error, because SQLite has no range type, and each <code>rangeop</code> builder fails the build</td>
+<td><code>ErrUnsupported</code>: a <code>types.Range</code> field is a generator error, because MySQL and MariaDB have no range type, and each <code>rangeop</code> builder fails the build</td>
+</tr>
+<tr>
+<td>Exclusion constraints</td>
+<td><code>schema.Exclude</code>, <code>schema.ExcludeElement</code>, <code>schema.Table</code></td>
+<td>yes: <code>EXCLUDE USING gist (room WITH =, during WITH &amp;&amp;)</code> over plain columns is declared with <code>Config.Exclude</code>, read from <code>pg_constraint</code>, written by <code>generate --from-db</code>, rendered, compared by <code>diff</code>, <code>Baseline</code> and <code>drift</code>, and kept by a snapshot; a GiST constraint over a scalar column adds the <code>btree_gist</code> extension; a constraint with a <code>WHERE</code> predicate, an expression or an operator class is refused by the inspector</td>
+<td><code>ErrUnsupported</code>: a declaration is a generator error and the renderer refuses it, because SQLite has no exclusion constraints</td>
+<td><code>ErrUnsupported</code>: a declaration is a generator error and the renderer refuses it, because MySQL and MariaDB have no exclusion constraints</td>
+</tr>
 </tbody>
 </table>
 <!-- /generated:features -->
