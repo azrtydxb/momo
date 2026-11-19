@@ -180,8 +180,8 @@ db := momo.New(drv, momo.WithHook(h)) // h is an *otelmomo.Hook
 ```
 
 `otelmomo.New` returns `*otelmomo.Hook`, like the other constructors. The module
-is versioned on its own and is still before 1.0.0, so release-please bumps its
-minor version for this change; it has no `momo` release to wait for, because the
+is versioned on its own and is still before its first stable release, so
+release-please bumps its minor version for this change; it has no `momo` release to wait for, because the
 type is its own and it compiles against the `momo` version in its `go.mod`.
 
 The providers are passed in; the package reads no global provider. Each
