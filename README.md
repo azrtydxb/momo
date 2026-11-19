@@ -504,6 +504,8 @@ for usage or configuration errors, and 3 for database errors.
   how they layer.
 - [docs/upgrading.md](docs/upgrading.md) lists breaking changes between
   releases and how to rewrite your code.
+- [docs/compatibility.md](docs/compatibility.md) is the compatibility and
+  deprecation policy: what a v1 promise covers and what pre-v1 means today.
 - [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build and test Momo.
 - [SECURITY.md](SECURITY.md) explains how to report a vulnerability.
 - [LICENSE](LICENSE) is Apache-2.0.

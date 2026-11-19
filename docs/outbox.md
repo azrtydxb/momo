@@ -82,8 +82,14 @@ What each column is for:
 
 The table holds only what the relay needs. The two indexes keep the claim and
 the retention cleanup fast however many published rows are kept. On MySQL and
-MariaDB `payload` is a `blob` (65,535 bytes at most) and `headers` is `text`;
-change the column type in a migration if events are larger.
+MariaDB `payload` is a `blob`, which holds 65,535 bytes at most, and `headers`
+is `text`. PostgreSQL (`bytea`) and SQLite (`blob`) have no such limit. The
+model has one type tag for every database, so it cannot name `mediumblob` or
+`longblob` without breaking the other two; if events on MySQL or MariaDB can be
+larger, widen the column in a migration, for example
+`ALTER TABLE outbox_events MODIFY payload longblob NOT NULL`. An event that is
+too large for the column makes `outbox.Outbox.Add` return an error (the
+default strict SQL mode), so the caller rolls the transaction back.
 
 ## Write an event with the data
 
@@ -213,7 +219,7 @@ func main() {
 `outbox.Relay.Run` returns nil when its context ends. The relay can also be
 driven by hand: `outbox.Relay.RunOnce` claims and publishes one batch and returns
 how many events it claimed, which suits a cron job or a test. `outbox.Relay.Wake`
-makes an idle `Run` look at once, for example from the code that just committed
+makes an idle `outbox.Relay.Run` look at once, for example from the code that just committed
 an event.
 
 ## How a batch is delivered

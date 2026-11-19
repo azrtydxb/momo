@@ -1365,3 +1365,13 @@ Integrator notes, decided and not asked:
 - Lease and backoff use the clock of the process that claims, so relay hosts need agreeing clocks.
 - The table has two plain indexes instead of partial ones, because MySQL and MariaDB have no partial indexes.
 - Times are bound as UTC `time.Time` on PostgreSQL and as fixed-width UTC text on SQLite, MySQL and MariaDB.
+- `Event.Attempt` is the number of the attempt that is starting, 1 for the first, on every database. PostgreSQL and SQLite return the row from the claiming UPDATE; the MySQL claim selects before it leases, so the relay adds the counted attempt to the selected value.
+- The MySQL and MariaDB `payload` column stays `blob` (65,535 bytes): momo maps `[]byte` to `blob` there and the model's `type:` tag is one string for every database, so `longblob` would break PostgreSQL and SQLite. docs/outbox.md states the limit and gives the `ALTER TABLE ... MODIFY payload longblob` migration for larger events. Changing the global `[]byte` mapping on MySQL was not done: it is outside this PR.
+
+## Compatibility policy (#254)
+
+Question: which packages are excluded from the v1 compatibility promise, and what happens to the API-review findings?
+
+Decision (2026-11-19, the user, via AskUserQuestion): accept the proposed experimental list: `gen/graphql`, `gen/grpc`, `gen/openapi`, `gen/apiquery`, `importer`.
+
+Decision (2026-11-19, the user): carry out all seven API-review cleanup groups as breaking changes before v1, tracked as separate issues.

@@ -1,0 +1,10 @@
+# Packages the compatibility promise does not cover (docs/compatibility.md,
+# "What is excluded"). scripts/apidiff-docs-gate.sh ignores an incompatible
+# change in them once the module is at 1.0.0 or later. One module-relative
+# package path per line; a path covers its subpackages. Blank lines and lines
+# that start with # are ignored.
+gen/graphql
+gen/grpc
+gen/openapi
+gen/apiquery
+importer

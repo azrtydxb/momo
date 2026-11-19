@@ -30,7 +30,7 @@ func main() {
 		log.Fatal(err)
 	}
 	l, err := pgxdriver.Listen(ctx, cfg, []string{"orders", "invoices"},
-		pgxdriver.OnReconnect(func() { log.Println("reconnected: resync") }),
+		pgxdriver.WithOnReconnect(func() { log.Println("reconnected: resync") }),
 		pgxdriver.WithBackoff(200*time.Millisecond, 15*time.Second),
 	)
 	if err != nil {
@@ -62,8 +62,8 @@ twice.
 
 When the connection drops (a restart, a failover, `pg_terminate_backend`),
 `Wait` reconnects inside the same call, re-issues `LISTEN` for every channel,
-runs the `OnReconnect` function and goes on waiting. The delay before a
-redial starts at the `WithBackoff` minimum and doubles up to its maximum
+runs the `WithOnReconnect` function and goes on waiting. The delay before a
+redial starts at the `pgxdriver.WithBackoff` minimum and doubles up to its maximum
 (default 100ms to 10s) while connections keep failing. That includes a
 connection that connects and is then lost before it delivered a notification
 or stayed up for the maximum delay, so a server that accepts and kills
@@ -75,18 +75,18 @@ permanent failure such as a wrong password or a missing role shows up in the
 error.
 
 Notifications sent while the listener was disconnected are lost: PostgreSQL
-does not queue them for absent listeners. Treat every `OnReconnect` call as
+does not queue them for absent listeners. Treat every `WithOnReconnect` call as
 "something may have been missed" and re-read whatever the notifications
-signal. `OnReconnect` runs on the goroutine that called `Wait`, before `Wait`
+signal. `WithOnReconnect` runs on the goroutine that called `Wait`, before `Wait`
 returns anything from the new connection, so keep it short.
 
 Ending the `ctx` given to `Wait` is not a lost connection. `Wait` returns the
 context's error, the connection stays open, and the next `Wait` reads from it:
-notifications that arrived in between are delivered and `OnReconnect` does not
+notifications that arrived in between are delivered and `WithOnReconnect` does not
 run. A `Wait` with a short timeout is therefore a fine way to poll.
 
 `Close` ends a blocked `Wait` with `ErrListenerClosed`. If `Close`'s own
-context expires while `Wait` is running the `OnReconnect` function, `Close`
+context expires while `Wait` is running the `WithOnReconnect` function, `Close`
 returns that context's error; the listener is still closed, and `Wait` closes
 the connection when the function returns.
 

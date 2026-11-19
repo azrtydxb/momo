@@ -345,6 +345,11 @@ func (r *Relay) claimMySQL(ctx context.Context, now, deadline time.Time) ([]clai
 	if err != nil {
 		return nil, err
 	}
+	// The select ran before the lease counted the attempt; PostgreSQL and
+	// SQLite return the row after their UPDATE, so match them.
+	for i := range rows {
+		rows[i].C6++
+	}
 	return rows, nil
 }
 

@@ -5,7 +5,7 @@ go 1.26.10
 require (
 	entgo.io/ent v0.14.6
 	github.com/azrtydxb/momo v0.0.0-00010101000000-000000000000
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 )
 
 require (
