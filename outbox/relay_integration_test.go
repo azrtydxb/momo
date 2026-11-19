@@ -299,3 +299,62 @@ func TestWithoutNotifyNeedsWake(t *testing.T) {
 		t.Fatal("Wake did not make the relay look again")
 	}
 }
+
+// listenerPIDs returns the backend ids of the idle sessions that last ran
+// LISTEN.
+func listenerPIDs(t *testing.T, db *momo.DB) map[int64]bool {
+	t.Helper()
+	got, err := momo.Scalars[int64](context.Background(), db,
+		`SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND state = 'idle' AND query LIKE 'LISTEN%'`)
+	if err != nil {
+		t.Fatalf("listener pids: %v", err)
+	}
+	set := map[int64]bool{}
+	for _, pid := range got {
+		set[pid] = true
+	}
+	return set
+}
+
+// Catches: a relay that does not look again after its listener reconnected. A
+// notification sent while the connection was down is lost, so the reconnect has
+// to wake the relay (pgxdriver.WithOnReconnect). WithoutNotify and an hour of
+// polling leave the reconnect as the only thing that can make it find the event.
+func TestListenerReconnectWakesRelay(t *testing.T) {
+	db := testopen.Postgres(t)
+	o := setup(t, db, dialect.Postgres, outbox.WithoutNotify())
+	got := make(chan outbox.Event, 4)
+	before := listenerPIDs(t, db)
+	startListeningRelay(t, db, o, outbox.PublisherFunc(func(_ context.Context, e outbox.Event) error {
+		got <- e
+		return nil
+	}))
+	var mine []int64
+	for pid := range listenerPIDs(t, db) {
+		if !before[pid] {
+			mine = append(mine, pid)
+		}
+	}
+	if len(mine) == 0 {
+		t.Fatal("the relay's listener session was not found")
+	}
+	addAll(t, db, o, outbox.Event{Topic: "t", Payload: []byte("missed")})
+	select {
+	case e := <-got:
+		t.Fatalf("published %+v with no notification, wake or reconnect", e)
+	case <-time.After(750 * time.Millisecond):
+	}
+	for _, pid := range mine {
+		if _, err := momo.Scalars[bool](context.Background(), db, `SELECT pg_terminate_backend(?)`, pid); err != nil {
+			t.Fatalf("terminate the listener session: %v", err)
+		}
+	}
+	select {
+	case e := <-got:
+		if string(e.Payload) != "missed" {
+			t.Fatalf("published %+v", e)
+		}
+	case <-time.After(relayWait):
+		t.Fatal("the relay did not look again after its listener reconnected")
+	}
+}

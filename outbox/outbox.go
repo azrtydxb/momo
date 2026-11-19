@@ -28,13 +28,17 @@
 // Outbox.NewRelay returns a Relay. Relay.Run claims a batch of due events with
 // one statement (FOR UPDATE SKIP LOCKED on PostgreSQL), which moves their
 // available_at to the end of a lease and counts an attempt. The row locks last
-// only for that statement (on MySQL and MariaDB, one short transaction): the events are published afterwards, one at a time,
-// with no lock and no transaction held across the publish. A published event
-// is marked with published_at. An event whose publish fails is retried after an
-// exponential backoff, and becomes dead (dead_at) after the maximum number of
+// only for that statement (on MySQL and MariaDB, one short transaction): the
+// events are published afterwards, one at a time, with no lock and no
+// transaction held across the publish. A published event is marked with
+// published_at. An event whose publish fails is retried after an exponential
+// backoff with jitter, and becomes dead (dead_at) after the maximum number of
 // attempts. A relay that crashes loses its lease, and its events are claimed
-// again when the lease ends. Any number of relays, in any number of processes,
-// can run on one table.
+// again when the lease ends; the attempt that was running counts, so an event
+// that keeps crashing its relay becomes dead instead of being claimed forever.
+// Any number of relays, in any number of processes, can run on one table. The
+// statements that record an outcome apply only while the relay still holds the
+// claim; see ErrLeaseLost.
 //
 // # Guarantees
 //
@@ -54,9 +58,11 @@
 // the other order. Serialize the writers of one key, for example by locking the
 // row of the entity the key names.
 //
-// The relay measures leases and backoff with the clock of the process that
-// claims, so the processes that share a table need clocks that agree to within
-// a small part of the lease.
+// Every time in the table comes from the Go clock of the process that writes
+// it, not from the database: the relay measures leases and backoff, and Add,
+// Requeue and Cleanup stamp created_at, available_at and the retention cutoff.
+// The processes that share a table need clocks that agree to within a small
+// part of the lease.
 //
 // # Dialects
 //

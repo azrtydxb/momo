@@ -87,17 +87,22 @@ FOR UPDATE SKIP LOCKED`
 		s.lease = `UPDATE ` + q + ` SET attempts = attempts + 1, available_at = ? WHERE id IN `
 	}
 
-	s.published = `UPDATE ` + q + ` SET published_at = ?, last_error = NULL WHERE id = ?`
-	s.retry = `UPDATE ` + q + ` SET available_at = ?, last_error = ? WHERE id = ?`
-	s.dead = `UPDATE ` + q + ` SET dead_at = ?, last_error = ? WHERE id = ?`
-	s.release = `UPDATE ` + q + ` SET available_at = ?, attempts = attempts - 1 WHERE id = ? AND published_at IS NULL`
+	// The outcome statements are fenced to the claim: the attempts value is the
+	// one the relay's claim counted, so a relay whose lease ended and whose event
+	// another relay claimed since changes nothing. Zero rows affected means the
+	// lease was lost. Arguments: the value to set, the id, the attempts.
+	s.published = `UPDATE ` + q + ` SET published_at = ?, last_error = NULL WHERE id = ? AND attempts = ?`
+	s.retry = `UPDATE ` + q + ` SET available_at = ?, last_error = ? WHERE id = ? AND attempts = ? AND published_at IS NULL AND dead_at IS NULL`
+	s.dead = `UPDATE ` + q + ` SET dead_at = ?, last_error = ? WHERE id = ? AND attempts = ? AND published_at IS NULL AND dead_at IS NULL`
+	s.release = `UPDATE ` + q + ` SET available_at = ?, attempts = attempts - 1 WHERE id = ? AND attempts = ? AND published_at IS NULL`
 	if d == dialect.MySQL {
 		// MySQL cannot select from the table it deletes from in a subquery, nor
-		// LIMIT one, but takes ORDER BY and LIMIT on a single-table DELETE.
+		// LIMIT one, but takes ORDER BY and LIMIT on a single-table DELETE, where
+		// the ORDER BY makes the LIMIT take the oldest rows first.
 		s.cleanup = `DELETE FROM ` + q + ` WHERE published_at IS NOT NULL AND published_at < ? ORDER BY id LIMIT ?`
 	} else {
 		s.cleanup = `DELETE FROM ` + q + ` WHERE id IN (
-	SELECT id FROM ` + q + ` WHERE published_at IS NOT NULL AND published_at < ? ORDER BY id LIMIT ?
+	SELECT id FROM ` + q + ` WHERE published_at IS NOT NULL AND published_at < ? LIMIT ?
 )`
 	}
 	// The caller appends the parenthesized list of ids.

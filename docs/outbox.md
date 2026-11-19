@@ -219,31 +219,50 @@ func main() {
 `outbox.Relay.Run` returns nil when its context ends. The relay can also be
 driven by hand: `outbox.Relay.RunOnce` claims and publishes one batch and returns
 how many events it claimed, which suits a cron job or a test. `outbox.Relay.Wake`
-makes an idle `outbox.Relay.Run` look at once, for example from the code that just committed
-an event.
+makes an idle `outbox.Relay.Run` look at once, for example from the code that
+just committed an event.
 
 ## How a batch is delivered
 
 One statement claims a batch of due events. It moves each event's
 `available_at` to the end of a lease (30 seconds by default) and counts an
 attempt. The statement selects with `FOR UPDATE SKIP LOCKED`, so a second relay
-skips the rows the first is claiming. The row locks end with that statement
-(on MySQL and MariaDB with one short transaction). The events are then published one at a time, in id order, with no
-transaction and no lock held, so a slow broker does not hold a row lock or a
-connection. After each publish the relay records the outcome:
+skips the rows the first is claiming. The row locks end with that statement (on
+MySQL and MariaDB with one short transaction). The events are then published
+one at a time, in id order, with no transaction and no lock held, so a slow
+broker does not hold a row lock or a connection. After each publish the relay
+records the outcome:
 
 - Published: `published_at` is set.
 - Failed: `last_error` is set and `available_at` moves to the retry time. The
   delay is the backoff base after the first failure and doubles with each
-  failure up to the maximum (one second up to five minutes by default).
+  failure up to the maximum (one second up to five minutes by default). Each
+  delay is spread at random by up to 20 percent either way, and never exceeds
+  the maximum, so events that failed together do not come back together.
 - Failed on the last allowed attempt (10 by default): `dead_at` is set. The
   event is not retried.
 
-If a relay dies, its leases run out and the events are claimed again. A
-batch must fit in the lease: the context given to the publisher ends at the end
-of the lease, and the events of the batch that were not reached by then are
-released, not counted as attempts. If a publisher panics, the relay treats it as
-a failed attempt.
+Each of these statements applies only while the relay still holds the claim: it
+matches the `attempts` value the claim counted. If a publish outlives its lease
+and another relay claims the event, the first relay's late outcome changes
+nothing. It is reported to the `outbox.WithOnError` function as an error that
+wraps `outbox.ErrLeaseLost`, and `outbox.Outcome.LeaseLost` is true, so the
+count of publishes that outlive `outbox.WithLease` is visible.
+
+If a relay dies, its leases run out and the events are claimed again. A batch
+must fit in the lease: the context given to the publisher ends at the end of the
+lease, and the events of the batch that were not reached by then are released,
+not counted as attempts. If a publisher panics, the relay treats it as a failed
+attempt and reports the panic with its stack to `outbox.WithOnError`.
+
+A crash during a publish consumes an attempt, because the claim counts it before
+the publish starts. An event that keeps crashing the relay therefore reaches the
+maximum of attempts: the next claim marks it dead without publishing it, and
+reports it to `outbox.WithOnError`. A poison event cannot take the process down
+forever; look for dead events with a `last_error` that says the attempt never
+ended, and `outbox.Outbox.Requeue` them once the cause is fixed. If a publish
+that outlives its lease on the last allowed attempt did reach the broker, the
+event is still marked dead, so the broker may hold a message for a dead event.
 
 ## Delivery guarantees
 
@@ -279,9 +298,12 @@ writers of one key, for example by locking the row of the entity the key names
 
 Run as many relays as you like, in one process or many, against one table. They
 share the work and do not publish the same event, except in the at-least-once
-cases above. The relays measure leases and backoff with the clock of the process
-that claims, so the hosts need clocks that agree to within a small part of the
-lease.
+cases above. Every time in the table comes from the Go clock of the process that
+writes it, not from the database: the relays measure leases and backoff, and
+`outbox.Outbox.Add`, `outbox.Outbox.Requeue` and `outbox.Outbox.Cleanup` stamp
+`created_at`, `available_at` and the retention cutoff. The hosts that write to
+or read from one table therefore need clocks that agree to within a small part
+of the lease.
 
 On SQLite there is one writer: each claim is one statement, so claims are
 serialized. There is no `LISTEN` on SQLite, MySQL or MariaDB, so the relay polls
@@ -410,3 +432,7 @@ func main() {
 - Delivery is at least once and order holds per key only, as described above.
 - A batch is at most 1000 events. The PostgreSQL notification carries no
   payload: it only tells the relay to look.
+- A dead key with a large backlog is probed on every claim: the `NOT EXISTS`
+  check that holds back the later events of a key runs for each of them, so the
+  claim gets slower the more events wait behind a dead one. Requeue or delete
+  the dead event promptly.
