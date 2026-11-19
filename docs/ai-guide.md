@@ -461,14 +461,20 @@ declares `<table>_history` (the model's columns plus `history_id`,
 `<table>_history_fn` and the trigger `<table>_history_trg`, which records the new
 row of an insert or update and the removed row of a delete, whoever makes the
 change. Never declare those objects by hand next to `c.History()`: they are
-ordinary schema objects, so `migrate diff` mirrors every column change of the
-model on the history table in the same plan, and `generate --from-db` writes
-`c.History()` for a database whose history objects match exactly. Record the
+ordinary schema objects, so `migrate diff` mirrors a column added, altered or
+renamed on the model on the history table in the same plan (a column the model
+drops stays there as nullable, so no audit data is lost; `--rename-table` and
+`--rename-column` follow too), and `generate --from-db` writes `c.History()` for
+a database whose history objects match exactly. A primary key change closes the
+old key's timeline with a DELETE row, and an UPDATE that changes nothing records
+nothing. Record the
 actor with `momo.SetActor` on the `*momo.Tx` before the change (a
 transaction-local setting; a change made without it records a NULL actor), and
 read the versions with `momo.HistoryOf` (every version of a row) and
 `momo.HistoryAsOf` (its state at a time, `momo.ErrNotFound` when the row did not
-exist then); both take the primary key values after the handle. SQLite, MySQL and MariaDB refuse it: a generator
+exist then); both take the primary key values after the handle, and accept a
+`momo.TenantFilter(ctx, column)` after them to scope the read to a tenant.
+SQLite, MySQL and MariaDB refuse it: a generator
 diagnostic, and `momo.ErrUnsupported` from the three calls. See
 [history](history.md).
 

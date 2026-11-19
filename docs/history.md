@@ -65,7 +65,21 @@ of the four is refused.
 
 The trigger records the new row after an `INSERT` or an `UPDATE`, and the removed
 row on a `DELETE`. The history is therefore the complete log of every state of
-every row, and the state at a time is the latest version at or before it.
+every row, and the state at a time is the latest version at or before it. Two
+cases are handled on purpose:
+
+- An `UPDATE` that changes nothing records nothing. The trigger compares the old
+  and the new row as `jsonb`, so a column type without an equality operator
+  (`json`, `xml`, `point`) does not break it.
+- An `UPDATE` that changes the primary key records the old row as a `DELETE`
+  before the new row, so the timeline of the old key ends and the timeline of the
+  new key starts with the new row. `HistoryAsOf` of the old key then reports that
+  the row is gone.
+
+A soft delete is an ordinary `UPDATE` that sets the deleted marker (`deleted_at`),
+so the history records it as an `UPDATE` and `HistoryAsOf` returns the row as
+existing, with the marker set. Only a hard delete or a purge, a `DELETE`
+statement, records a `DELETE`.
 
 The history table repeats each model column by name, type, nullability, default,
 enum and collation. It leaves out the identity and generated parts (the trigger
@@ -95,17 +109,36 @@ actor, including a change made outside momo.
 Two generic functions read the history of a model that declared `Config.History`.
 Both take the primary key values in key order, on a `*momo.DB` or a `*momo.Tx`:
 
-- `momo.HistoryOf` returns every `momo.HistoryEntry` of a row, oldest first. An
-  entry holds the row (`Row`), the `Operation`, `ChangedAt`, `ChangedBy` (nil
-  when no actor was set) and the history `ID`.
+- `momo.HistoryOf` returns every `momo.HistoryEntry` of a row in the order of the
+  changes, which is the history `ID` (a sequence, so it is the real order even
+  when two changes carry the same time). An entry holds the row (`Row`), the
+  `Operation`, `ChangedAt`, `ChangedBy` (nil when no actor was set) and the
+  history `ID`.
 - `momo.HistoryAsOf` returns the version in force at a `time.Time`: the latest
   entry at or before it. It returns an error matching `momo.ErrNotFound` when the
   row did not exist then, because its first version is later or because its
   latest version is a `DELETE`.
 
-The versions come from the history table directly, so soft-delete filters,
-tenant interceptors and row-level security of the model do not apply to them.
-They return `momo.ErrUnsupported` on SQLite, MySQL and MariaDB.
+The time of a version is the moment its trigger fired (`clock_timestamp()`), not
+the moment its transaction committed. A transaction that commits later than a
+second one that started after it can therefore be recorded with an earlier time.
+`HistoryAsOf` answers by that change time.
+
+Soft-delete filters and interceptors of the model do not apply to the versions,
+because the history is an audit log. Tenant scope does: pass a predicate after
+the key values, the way a `Where` takes one, and the read adds it on the history
+table's column of the same name:
+
+```go
+ctx = momo.WithTenant(ctx, int64(5))
+versions, err := momo.HistoryOf[Note](ctx, db, int64(1), momo.TenantFilter(ctx, NoteTenantID))
+```
+
+A context without a tenant of the column's type fails with `momo.ErrValidation`
+before any statement runs, exactly as `TenantFilter` does in a `Select`. Row-level
+security of the history table is yours to configure; the trigger writes the rows
+with the privileges of the writing role. Both functions return
+`momo.ErrUnsupported` on SQLite, MySQL and MariaDB.
 
 ## Schema changes
 
@@ -114,16 +147,35 @@ runs, so a model change reaches the history table in the same migration:
 
 - A column added to the model is added to `notes_history`, and the trigger
   function is replaced with a version that writes it.
-- A column dropped from the model is dropped from `notes_history`, and the
-  function is replaced. The versions that held the column lose it.
+- A column dropped from the model stays on `notes_history`, relaxed to nullable
+  (`ALTER COLUMN ... DROP NOT NULL`) when it was NOT NULL. The function is
+  replaced with a version that no longer writes it, so new rows hold `NULL` there
+  and the recorded values survive. The migration's snapshot records the kept
+  column, so `migrate diff` finds nothing more to do and `drift` reports no
+  difference. To remove it for good, write a migration by hand
+  (`ALTER TABLE notes_history DROP COLUMN title`). Until then, a
+  `generate --from-db` run models such a history as an ordinary table, function
+  and trigger, because the table no longer equals what `Config.History` builds.
 - A column whose type or nullability changes is altered on both tables.
 - Turning `Config.History` off drops the trigger, the function and the history
   table. Dropping a table is destructive, so `migrate diff` refuses it without
   `--allow-destructive`.
 
-A NOT NULL column without a default is staged like any other (`--stage`): backfill
-the history table as well as the model table before `--enforce-not-null`, or the
-step fails on the older versions.
+## Renames
+
+A rename of the model follows on its history, so no recorded version is lost:
+
+- `--rename-column notes.title=headline` renames the column on `notes` and on
+  `notes_history` in the same plan, and the trigger function is replaced with one
+  that writes the new name.
+- `--rename-table notes=memos` renames `notes` and `notes_history`. The trigger
+  function, the trigger and the row index are rebuilt under the new names
+  (`memos_history_fn`, `memos_history_trg`, `memos_history_row_idx`); the
+  function body names the new history table. The rebuild of the index reads the
+  history table once.
+
+Without the flag, a renamed column or table is a drop and an add, and the
+history table keeps the old column as described above.
 
 ## generate --from-db
 

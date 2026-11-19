@@ -1363,6 +1363,17 @@ Decision (2026-11-19, the user): carry out all seven API-review cleanup groups a
 - `TestDiffCreatesTheHistoryObjectsInDependencyOrder` expected three changes; Diff also creates the history table's lookup index (`notes_history_row_idx`), which is correct. The test now expects four changes and checks that the table comes before its index and trigger. The empty field in `create_function  notes_history_fn` is the empty table of a function change, not a bug.
 - `docs/history.md` names the declaration as `Config.History`, the method the model calls.
 
+## Audit history review round (#252, PR #259)
+
+Decision (2026-11-19, the user, via the coordinator): four design questions of the fresh review.
+
+- Primary key change: an UPDATE whose primary key differs also records the old row as a `DELETE` before the new row, so the old key's timeline closes (`schema/history.go`). A no-op UPDATE records nothing; the rows are compared as `jsonb` because a record comparison fails on `json`, `xml` and `point` columns.
+- Renames follow: `migrate.Diff` repeats `--rename-table` and `--rename-column` of a model on its history table (`migrate/diff_history.go`). The history function, trigger and row index are rebuilt under the new names (drop and create, no data in them); the old trigger is dropped on the renamed table. No rename of the index in place, since the plan has no rename-index change.
+- Dropped model column: the column stays on the history table, relaxed to nullable, so the audit data survives. `adaptHistory` adds it to the desired schema, so the migration snapshot records it and drift sees no difference; removing it is a manual migration. `generate --from-db` does not recognise a history with such a column and models it as ordinary objects (documented).
+- Tenant scope: the models have no tenant column of their own; tenancy is the explicit `TenantFilter(ctx, column)` of a `Where`. `HistoryOf` and `HistoryAsOf` therefore take Predicate values among their trailing arguments, aliasing the history table as the model's table so model column descriptors resolve. A missing or mistyped tenant fails with `ErrValidation` through the predicate itself. The read does not pick a tenant up from the context on its own.
+- `HistoryOf` is ordered by `history_id`; `HistoryAsOf` stays by `history_changed_at` (trigger time, not commit time) and the docs say so. A soft delete is an UPDATE.
+- The feature entry cannot list the `momo.*` names: `checkFeatureAPI` resolves `<package>.<Name>` against a package directory and the root package has none, so they stay in the prose cells and the guard is unchanged.
+
 ## Driver constructors (#268)
 
 Question A: who closes the pool behind a driver made by an `Open` function, and how does an application do it?
