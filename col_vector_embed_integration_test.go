@@ -363,6 +363,39 @@ func TestSyncEmbeddingsLostRaceIsNotMarkedFresh(t *testing.T) {
 	})
 }
 
+// Catches: a row that is stale only because its vector is NULL (its hash is
+// current) being written by two runners and counted as embedded twice.
+func TestSyncEmbeddingsNullVectorWrittenOnce(t *testing.T) {
+	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
+		embCreate(t, db, d)
+		embInsert(t, db, 1, "alpha", nil)
+		mustExecPG(t, db, "UPDATE embed_docs SET emb_hash = ? WHERE id = ?", vector.SourceHash(sql.NullString{String: "alpha", Valid: true}, sql.NullString{}), int64(1))
+		if got, want := embStale(t, db), []int64{1}; !slices.Equal(got, want) {
+			t.Fatalf("stale = %v, want %v", got, want)
+		}
+
+		var other momo.EmbedResult
+		a := &embFake{}
+		a.during = func([]string) {
+			var err error
+			other, err = momo.SyncEmbeddings[embDoc](t.Context(), db, &embFake{}, momo.EmbedOptions{})
+			if err != nil {
+				t.Error(err)
+			}
+		}
+		res, err := momo.SyncEmbeddings[embDoc](t.Context(), db, a, momo.EmbedOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if other.Embedded != 1 {
+			t.Fatalf("the second runner result = %+v, want 1 embedded", other)
+		}
+		if res.Embedded != 0 || res.Conflicts != 1 {
+			t.Fatalf("the first runner result = %+v, want no row written and 1 conflict", res)
+		}
+	})
+}
+
 // Catches: two runners that both write a row (a lost update of the hash), a
 // row skipped by both, or a runner that holds a lock during the Embedder
 // call and so blocks the other.

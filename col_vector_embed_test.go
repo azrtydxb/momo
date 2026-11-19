@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/fakedriver"
+	"github.com/azrtydxb/momo/internal/obstest"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -249,5 +251,125 @@ func TestStaleEmbeddingsKeysetAndSoftDelete(t *testing.T) {
 	}
 	if want := []any{int64(7), int64(7), int64(9)}; !reflect.DeepEqual(calls[1].Args, want) {
 		t.Fatalf("second page args = %v, want %v", calls[1].Args, want)
+	}
+}
+
+// embuSecret has a sensitive source column.
+type embuSecret struct {
+	ID     int64
+	Secret string
+	Emb    *vector.Vector
+}
+
+var embuSecretMeta = momo.Meta[embuSecret]{
+	Table:      "secrets",
+	Columns:    []momo.ColumnMeta{{Name: "id"}, {Name: "secret", Flags: momo.FlagSensitive}, {Name: "emb"}},
+	Ptr:        func(m *embuSecret, i int) any { return []any{&m.ID, &m.Secret, &m.Emb}[i] },
+	Value:      func(m *embuSecret, i int) any { return []any{m.ID, m.Secret, m.Emb}[i] },
+	Identity:   -1,
+	Version:    -1,
+	SoftDelete: -1,
+	CreatedAt:  -1,
+	UpdatedAt:  -1,
+	PK:         []int{0},
+	Embeddings: []momo.EmbeddingMeta{{Vector: 2, Dim: 3, HashColumn: "emb_hash", Sources: []int{1}}},
+}
+
+func (*embuSecret) MomoMeta() *momo.Meta[embuSecret] { return &embuSecretMeta }
+
+// Catches: the write-back binding a sensitive source column's text, the old
+// and new hash and the vector derived from it without the column's flags, so
+// they show unredacted in QueryEvent.Args.
+func TestSyncEmbeddingsRedactsSensitiveSources(t *testing.T) {
+	const source = "text of the sensitive source"
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{int64(1), source, nil, int64(1)}})
+	rec := &obstest.Recorder{}
+	db := momo.New(drv, momo.WithHook(rec), momo.WithArgLogging())
+	if _, err := momo.SyncEmbeddings[embuSecret](t.Context(), db, &embuFixed{}, momo.EmbedOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	var args []any
+	for _, e := range rec.Events() {
+		if strings.HasPrefix(e.SQL, "UPDATE") {
+			args = e.Args
+		}
+	}
+	// $1 vector, $2 new hash, $3 key, $4 source text, $5 old hash.
+	if len(args) != 5 {
+		t.Fatalf("update event args = %v, want 5", args)
+	}
+	for _, i := range []int{0, 1, 3, 4} {
+		if args[i] != momo.RedactedArg {
+			t.Errorf("update arg $%d = %v, want %v", i+1, args[i], momo.RedactedArg)
+		}
+	}
+	if args[2] != int64(1) {
+		t.Errorf("key arg = %v, want it shown", args[2])
+	}
+	if !slices.Contains(drv.Calls()[1].Args, any(source)) {
+		t.Errorf("the driver must still get the real source text: %v", drv.Calls()[1].Args)
+	}
+}
+
+// Catches: a row that is stale only because its vector is NULL being written
+// without checking the vector is still NULL, so two runners both write it, and
+// a row stale by its hash being given a needless vector predicate.
+func TestSyncEmbeddingsUpdateChecksVectorState(t *testing.T) {
+	hash := vector.SourceHash(ns("alpha"), ns("one"))
+	run := func(row []any) string {
+		drv := fakedriver.New(dialect.Postgres)
+		drv.SetRows([][]any{row})
+		if _, err := momo.SyncEmbeddings[embuDoc](t.Context(), momo.New(drv), &embuFixed{}, momo.EmbedOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		return drv.Calls()[1].SQL
+	}
+	if sql := run([]any{int64(1), "alpha", "one", ns(hash), int64(1)}); !strings.Contains(sql, `AND "emb" IS NULL`) {
+		t.Fatalf("update of a row with a NULL vector lacks the vector check:\n%s", sql)
+	}
+	if sql := run([]any{int64(1), "alpha", "one", ns("old"), int64(0)}); strings.Contains(sql, `"emb" IS NULL`) {
+		t.Fatalf("update of a row stale by hash has a vector check:\n%s", sql)
+	}
+}
+
+// Catches: the write-back ignoring soft delete, so a row deleted while the
+// Embedder ran is still written.
+func TestSyncEmbeddingsUpdateSkipsSoftDeleted(t *testing.T) {
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{int64(7), int64(9), "t", nil, int64(1)}})
+	if _, err := momo.SyncEmbeddings[embuPair](t.Context(), momo.New(drv), &embuFixed{}, momo.EmbedOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	up := drv.Calls()[1].SQL
+	if !strings.Contains(up, `"pairs"."deleted" IS NULL`) {
+		t.Fatalf("update statement lacks the soft-delete predicate:\n%s", up)
+	}
+}
+
+type errEmbedder struct{ err error }
+
+func (e errEmbedder) Embed(context.Context, []string) ([]vector.Vector, error) { return nil, e.err }
+
+// Catches: a context cancellation inside the Embedder not satisfying
+// errors.Is(err, momo.ErrCanceled), or hiding the provider's own error.
+func TestSyncEmbeddingsEmbedderCancel(t *testing.T) {
+	for _, cause := range []error{context.Canceled, context.DeadlineExceeded} {
+		drv := fakedriver.New(dialect.Postgres)
+		drv.SetRows([][]any{{int64(1), "alpha", "one", nil, int64(1)}})
+		_, err := momo.SyncEmbeddings[embuDoc](t.Context(), momo.New(drv), errEmbedder{fmt.Errorf("provider: %w", cause)}, momo.EmbedOptions{})
+		if !errors.Is(err, momo.ErrCanceled) {
+			t.Fatalf("error = %v, want ErrCanceled", err)
+		}
+		if !errors.Is(err, cause) {
+			t.Fatalf("error = %v, want it to wrap %v", err, cause)
+		}
+	}
+	boom := errors.New("provider down")
+	drv := fakedriver.New(dialect.Postgres)
+	drv.SetRows([][]any{{int64(1), "alpha", "one", nil, int64(1)}})
+	_, err := momo.SyncEmbeddings[embuDoc](t.Context(), momo.New(drv), errEmbedder{boom}, momo.EmbedOptions{})
+	if errors.Is(err, momo.ErrCanceled) || !errors.Is(err, boom) {
+		t.Fatalf("plain failure error = %v, want the provider error and not ErrCanceled", err)
 	}
 }
