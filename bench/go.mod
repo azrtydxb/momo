@@ -5,7 +5,7 @@ go 1.26.10
 require (
 	entgo.io/ent v0.14.6
 	github.com/azrtydxb/momo v0.0.0
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/uptrace/bun v1.3.0
 	github.com/uptrace/bun/dialect/pgdialect v1.3.0
 	go.yaml.in/yaml/v3 v3.0.6
