@@ -2416,22 +2416,29 @@ Examples: every `examples/*/example_test.go`, harness
   `momolog.WithSlowThreshold` (statements slower than the duration log at WARN) and `momolog.WithValues`.
   Argument values are logged only with `momolog.WithValues(true)` and `momo.WithArgLogging`
   together; a sensitive column's value is `momo.RedactedArg`.
-- `momo.WithQueryScope(ctx)` groups statements for `momo.NewNPlusOneHook(threshold,
-report)`, a development hook that reports once per statement shape per scope
-  when the shape runs more than the threshold. Contexts without a scope are not
-  tracked; a scope tracks at most 1024 shapes; a panic in the report function is
-  recovered. A single batched relation load runs one statement per relation and does not trigger it.
+- `obs.WithScope(ctx)` groups statements and relation loads for the two N+1
+  detectors. `obs.NewStatementNPlusOne(threshold, report)` is a development hook
+  that reports once per statement shape per scope when the shape runs more than
+  the threshold. Contexts without a scope are not tracked; a scope tracks at most
+  1024 shapes; a panic in the report function is recovered. A single batched
+  relation load runs one statement per relation and does not trigger it. The
+  root forms `momo.WithQueryScope` and `momo.NewNPlusOneHook` are deprecated
+  forwarders for one release; write the `obs` ones in new code.
 - Hooks, package `github.com/azrtydxb/momo/obs` (see
-  [observability](observability.md)): both implement `momo.Hook` and
+  [observability](observability.md)): every constructor returns its concrete
+  type, and each implements `momo.Hook`, so `momo.WithHook` takes the value as it
+  is. `obs.Recorder`, `obs.NPlusOne` and `momolog.Hook` also implement
   `momo.RelationHook`, so `momo.WithHook` registers them for statements and for
   relation loads. `&obs.Recorder{}` keeps events for test assertions (`Events`,
-  `SQLs`, `Relations`, `Reset`). `obs.NewNPlusOne(threshold, report)` with
-  `obs.WithScope(ctx)` reports a relation loaded more than the threshold times
-  in one scope (a `Load` inside a loop; one batched `Load` stays silent). It is
-  separate from `momo.NewNPlusOneHook`, which counts repeated statement shapes in
-  a `momo.WithQueryScope` scope; each needs its own scope on the context. A value
-  bound from a sensitive column is always `momo.RedactedArg` in what these hooks
-  see. They are safe for concurrent use. For slog use `momolog.New`.
+  `SQLs`, `Relations`, `Reset`). `obs.NewNPlusOne(threshold, report)` reports a
+  relation loaded more than the threshold times in one scope (a `Load` inside a
+  loop; one batched `Load` stays silent). It is separate from
+  `obs.NewStatementNPlusOne`, which counts repeated statement shapes, but both
+  read the one scope `obs.WithScope` makes, so one scope on the context serves
+  both. A value bound from a sensitive column is always `momo.RedactedArg` in
+  what these hooks see. They are safe for concurrent use. For slog use
+  `momolog.New`, which returns `*momolog.Hook`; `otelmomo.New` returns
+  `(*otelmomo.Hook, error)`.
   `obs.NewSlowQuery(threshold, report, obs.WithPlainExplain(plainDB))` reports
   each statement slower than the threshold and, only with `obs.WithPlainExplain`,
   adds a plain `EXPLAIN` plan (never `ANALYZE`; inside a transaction through a

@@ -79,7 +79,9 @@ type failDriver struct {
 func (d failDriver) Query(context.Context, string, []any) (momo.Rows, error) { return nil, d.err }
 
 func TestHookIsARelationHook(t *testing.T) {
-	if _, ok := momolog.New(slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))).(momo.RelationHook); !ok {
+	h := momolog.New(slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)))
+	var asHook momo.Hook = h
+	if _, ok := asHook.(momo.RelationHook); !ok {
 		t.Fatal("momolog.New must return a hook that also implements momo.RelationHook")
 	}
 }
