@@ -139,8 +139,8 @@ The report notes each history it recognised.
 
 ## Limits
 
-- PostgreSQL only. The generator refuses `History` for a SQLite, MySQL or MariaDB
-  dialect with a diagnostic that names the model. SQLite and MySQL have no
+- PostgreSQL only. The generator refuses `Config.History` for a SQLite, MySQL or
+  MariaDB dialect with a diagnostic that names the model. SQLite and MySQL have no
   transaction-local setting for the actor, so a trigger there could not record
   `changed_by`.
 - `TRUNCATE` is not recorded, because a row trigger does not fire for it.

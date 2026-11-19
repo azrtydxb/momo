@@ -101,10 +101,12 @@ func TestDiffCreatesTheHistoryObjectsInDependencyOrder(t *testing.T) {
 	tableAt := slices.Index(order, CreateTable)
 	fnAt := slices.Index(order, CreateFunction)
 	trgAt := slices.Index(order, CreateTrigger)
-	if tableAt < 0 || fnAt < 0 || trgAt < 0 || trgAt < tableAt || trgAt < fnAt {
-		t.Fatalf("changes = %v, want create_table and create_function before create_trigger", order)
+	idxAt := slices.Index(order, CreateIndex)
+	if tableAt < 0 || fnAt < 0 || trgAt < 0 || idxAt < 0 || trgAt < tableAt || trgAt < fnAt || idxAt < tableAt {
+		t.Fatalf("changes = %v, want create_table before create_index and create_trigger, and create_function before create_trigger", order)
 	}
-	if got := described(changes); !slices.Equal(got, []string{"create_function  notes_history_fn", "create_table notes_history notes_history", "create_trigger notes notes_history_trg"}) {
+	// A function has no table, so its entry has an empty table field.
+	if got := described(changes); !slices.Equal(got, []string{"create_function  notes_history_fn", "create_index notes_history notes_history_row_idx", "create_table notes_history notes_history", "create_trigger notes notes_history_trg"}) {
 		t.Errorf("changes = %q", got)
 	}
 }

@@ -150,14 +150,3 @@ func TestColumnChangesReachTheHistoryTableInOnePlan(t *testing.T) {
 		t.Fatalf("history rows of the note = %v (%v), want 2 (the insert and the update)", n, err)
 	}
 }
-
-func mergeFiles(a, b map[string][]byte) map[string][]byte {
-	out := make(map[string][]byte, len(a)+len(b))
-	for k, v := range a {
-		out[k] = v
-	}
-	for k, v := range b {
-		out[k] = v
-	}
-	return out
-}

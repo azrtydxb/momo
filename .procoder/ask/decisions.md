@@ -1355,3 +1355,10 @@ Question: which packages are excluded from the v1 compatibility promise, and wha
 Decision (2026-11-19, the user, via AskUserQuestion): accept the proposed experimental list: `gen/graphql`, `gen/grpc`, `gen/openapi`, `gen/apiquery`, `importer`.
 
 Decision (2026-11-19, the user): carry out all seven API-review cleanup groups as breaking changes before v1, tracked as separate issues.
+
+## Audit history CI fixes (#252, PR #259)
+
+- The audit history API lives in `db_history.go` (root file prefix `db`), with tests in `db_history_unit_test.go` and `db_history_integration_test.go`; the prefix guard is unchanged.
+- The "Audit history tables" feature names only `schema.History` and `schema.HistoryFor`. `checkFeatureAPI` resolves `<package>.<Name>` against a package directory, and the root package has none, so `momo.SetActor`, `momo.HistoryOf`, `momo.HistoryAsOf` and `momo.HistoryEntry` stay in the feature's prose cells only.
+- `TestDiffCreatesTheHistoryObjectsInDependencyOrder` expected three changes; Diff also creates the history table's lookup index (`notes_history_row_idx`), which is correct. The test now expects four changes and checks that the table comes before its index and trigger. The empty field in `create_function  notes_history_fn` is the empty table of a function change, not a bug.
+- `docs/history.md` names the declaration as `Config.History`, the method the model calls.

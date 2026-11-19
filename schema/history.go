@@ -92,8 +92,8 @@ func HistoryFor(t *Table) (History, error) {
 			return History{}, fmt.Errorf("the derived name %q is longer than %d bytes, which PostgreSQL would cut; use a shorter table name", n, maxHistoryIdent)
 		}
 	}
-	h := Table{Name: HistoryTableName(t.Name), Columns: make([]Column, 0, len(t.Columns)+4)}
-	names := make([]string, 0, len(t.Columns)+3)
+	h := Table{Name: HistoryTableName(t.Name)}
+	var names []string
 	for _, c := range t.Columns {
 		h.Columns = append(h.Columns, Column{Name: c.Name, Type: c.Type, Nullable: c.Nullable, Default: c.Default, Enum: c.Enum, Collate: c.Collate})
 		names = append(names, historyIdent(c.Name))
@@ -105,7 +105,7 @@ func HistoryFor(t *Table) (History, error) {
 		Column{Name: HistoryChangedByColumn, Type: "text", Nullable: true},
 	)
 	h.PrimaryKey = []string{HistoryIDColumn}
-	parts := make([]IndexPart, 0, len(t.PrimaryKey)+2)
+	var parts []IndexPart
 	for _, c := range t.PrimaryKey {
 		parts = append(parts, IndexPart{Column: c})
 	}
@@ -113,7 +113,7 @@ func HistoryFor(t *Table) (History, error) {
 	h.Indexes = []Index{{Name: HistoryIndexName(t.Name), Parts: parts}}
 
 	insert := func(row string) string {
-		vals := make([]string, 0, len(t.Columns)+3)
+		var vals []string
 		for _, c := range t.Columns {
 			vals = append(vals, row+"."+historyIdent(c.Name))
 		}
