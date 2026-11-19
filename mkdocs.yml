@@ -65,6 +65,7 @@ nav:
       - Capabilities: capabilities.md
       - Performance: PERFORMANCE.md
       - Supported versions: supported-versions.md
+      - Compatibility policy: compatibility.md
       - Upgrading: upgrading.md
       - API reference: reference.md
       - Architecture: ARCHITECTURE.md

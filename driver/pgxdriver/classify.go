@@ -68,7 +68,7 @@ func ClassifyError(err error) error {
 		}
 		return err
 	}
-	return momo.WithDetail(&momo.Error{
+	return momo.Annotate(&momo.Error{
 		Kind:       kind,
 		Table:      pe.TableName,
 		Column:     pe.ColumnName,
