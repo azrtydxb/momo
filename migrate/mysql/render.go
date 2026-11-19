@@ -95,6 +95,8 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 			return nil, err
 		}
 		return one("ALTER TABLE " + t + " ADD " + uniqueDef(u)), nil
+	case migrate.AddExclude, migrate.DropExclude:
+		return nil, noExclude("exclusion constraint " + c.Name)
 	case migrate.DropUnique:
 		// A UNIQUE constraint is an index of the same name.
 		return one("ALTER TABLE " + t + " DROP INDEX " + ident(c.Name)), nil
@@ -327,8 +329,17 @@ func noDeferral(what string, deferrable, initiallyDeferred bool) error {
 	return &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate/mysql", Err: fmt.Errorf("%s is DEFERRABLE, which MySQL and MariaDB do not support: they check a constraint at the end of each statement; deferrable constraints are PostgreSQL only", what)}
 }
 
-// checkDeferral refuses every deferrable constraint of t.
+// noExclude refuses an exclusion constraint: MySQL and MariaDB have none.
+func noExclude(what string) error {
+	return &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate/mysql", Err: fmt.Errorf("%s is not supported: MySQL and MariaDB have no exclusion constraints; they are PostgreSQL only", what)}
+}
+
+// checkDeferral refuses every deferrable constraint of t, and every exclusion
+// constraint.
 func checkDeferral(t schema.Table) error {
+	if len(t.Excludes) > 0 {
+		return noExclude("exclusion constraint " + t.Excludes[0].Name + " of table " + t.Name)
+	}
 	if err := noDeferral("the primary key of table "+t.Name, t.PrimaryKeyDeferrable, t.PrimaryKeyInitiallyDeferred); err != nil {
 		return err
 	}

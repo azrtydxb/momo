@@ -789,6 +789,29 @@ func (g *generator) constraints(m *model) {
 		uniques = append(uniques, u)
 	}
 	t.Uniques = uniques
+	var excludes []schema.Exclude
+	for _, x := range t.Excludes {
+		cols := make([]string, len(x.Elements))
+		for i, e := range x.Elements {
+			cols[i] = e.Column
+		}
+		refs, ok := m.refs(cols)
+		if !ok {
+			g.add(SevWarn, t.Name, "exclusion constraint %q uses a column the models do not have: left out of the models and the snapshot", x.Name)
+			continue
+		}
+		args := make([]string, 0, 2*len(refs))
+		for i, r := range refs {
+			args = append(args, r, strconv.Quote(x.Elements[i].Operator))
+		}
+		s := "c.Exclude(" + strconv.Quote(x.Name) + ", " + strings.Join(args, ", ") + ")"
+		if x.Method != "" && x.Method != "gist" {
+			s += ".Using(" + strconv.Quote(x.Method) + ")"
+		}
+		m.stmts = append(m.stmts, s+deferralCalls(x.Deferrable, x.InitiallyDeferred))
+		excludes = append(excludes, x)
+	}
+	t.Excludes = excludes
 	for i := range t.Checks {
 		ck := &t.Checks[i]
 		if g.checkIn(m, ck) {

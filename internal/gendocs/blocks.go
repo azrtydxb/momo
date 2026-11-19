@@ -246,6 +246,20 @@ var features = []feature{
 		SQLite: "yes: the same hash column and the same two functions on a sqlite-vec vector column; concurrent runners are limited by SQLite's single writer",
 		MySQL:  "`ErrUnsupported`: `embed_from` is a generator error and `momo.SyncEmbeddings` and `momo.StaleEmbeddings` refuse the dialect",
 	},
+	{
+		Name:   "Range types on `types.Range[T]`",
+		API:    []string{"types.Range", "types.Bound", "types.Timestamp", "rangeop.Contains", "rangeop.ContainsRange", "rangeop.ContainedBy", "rangeop.Overlaps", "rangeop.Adjacent", "rangeop.StrictlyLeft", "rangeop.StrictlyRight", "rangeop.Lower", "rangeop.Upper", "rangeop.IsEmpty"},
+		PG:     "yes: `int4range`, `int8range`, `numrange`, `daterange`, `tsrange` and `tstzrange` are typed columns with empty, infinite, inclusive and exclusive bounds, written by `generate --from-db`, and queried with `rangeop` predicates for containment, overlap, adjacency, position, the bounds and emptiness; multiranges are not mapped",
+		SQLite: "`ErrUnsupported`: a `types.Range` field is a generator error, because SQLite has no range type, and each `rangeop` builder fails the build",
+		MySQL:  "`ErrUnsupported`: a `types.Range` field is a generator error, because MySQL and MariaDB have no range type, and each `rangeop` builder fails the build",
+	},
+	{
+		Name:   "Exclusion constraints",
+		API:    []string{"schema.Exclude", "schema.ExcludeElement", "schema.Table"},
+		PG:     "yes: `EXCLUDE USING gist (room WITH =, during WITH &&)` over plain columns is declared with `Config.Exclude`, read from `pg_constraint`, written by `generate --from-db`, rendered, compared by `diff`, `Baseline` and `drift`, and kept by a snapshot; a GiST constraint over a scalar column adds the `btree_gist` extension; a constraint with a `WHERE` predicate, an expression or an operator class is refused by the inspector",
+		SQLite: "`ErrUnsupported`: a declaration is a generator error and the renderer refuses it, because SQLite has no exclusion constraints",
+		MySQL:  "`ErrUnsupported`: a declaration is a generator error and the renderer refuses it, because MySQL and MariaDB have no exclusion constraints",
+	},
 }
 
 // featuresBlock is the feature support table built from the features data and
@@ -305,6 +319,12 @@ var typeRows = []typeRow{
 	{"types.Date", "types.Date", tags.Tags{}},
 	{"types.Numeric", "types.Numeric", tags.Tags{}},
 	{"types.JSON[T]", "types.JSON[T]", tags.Tags{}},
+	{"types.Range[int32]", "types.Range[int32]", tags.Tags{}},
+	{"types.Range[int64]", "types.Range[int64]", tags.Tags{}},
+	{"types.Range[types.Numeric]", "types.Range[types.Numeric]", tags.Tags{}},
+	{"types.Range[types.Date]", "types.Range[types.Date]", tags.Tags{}},
+	{"types.Range[types.Timestamp]", "types.Range[types.Timestamp]", tags.Tags{}},
+	{"types.Range[time.Time]", "types.Range[time.Time]", tags.Tags{}},
 	{"vector.Vector", "vector.Vector", tags.Tags{Dim: sentinel}},
 	{"vector.HalfVector", "vector.HalfVector", tags.Tags{Dim: sentinel}},
 	{"vector.SparseVector", "vector.SparseVector", tags.Tags{Dim: sentinel}},

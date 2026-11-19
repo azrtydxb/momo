@@ -49,6 +49,8 @@ const (
 	AddCheck          ChangeKind = "add_check"
 	DropCheck         ChangeKind = "drop_check"
 	AlterCheckIn      ChangeKind = "alter_check_in"
+	AddExclude        ChangeKind = "add_exclude"
+	DropExclude       ChangeKind = "drop_exclude"
 	AddFK             ChangeKind = "add_fk"
 	DropFK            ChangeKind = "drop_fk"
 	CreateIndex       ChangeKind = "create_index"

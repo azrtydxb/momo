@@ -1365,6 +1365,20 @@ Decision (2026-11-18, the user, via AskUserQuestion): change the write path so t
 
 Decision (2026-11-18, the user, via AskUserQuestion): keep the fixed `<column>_hash` name; no change.
 
+## Range types and exclusion constraints (#253)
+
+Items 1 and 2 of issue #253 (PR #258). Decided, not asked:
+
+- Text codec only: `types.Range[T]` writes and reads the PostgreSQL range text through `Value` and `Scan`. There is no pgx binary codec, because pgx already turns the binary form into text for an `sql.Scanner` and sends a string as text, so the pgx driver and `database/sql` both work without registering anything.
+- No multiranges: they would need a second generic type and more predicates. `--from-db` reports a multirange column as unmapped, as before.
+- Exclusion constraints model plain columns only (column, operator, access method, deferral flags). The PostgreSQL inspector refuses a constraint with a `WHERE` predicate, an expression, an operator class, an ordering, `INCLUDE` or storage parameters, with an error naming it and its table, instead of skipping it; `migrate.exclude` hides the table. Partial exclusion constraints are the likely follow-up and need the canonicalization round trip.
+- `types.Timestamp` is the element of a `tsrange`, so the Go type says whether a column has a time zone and `rangeop` can cast an operand correctly. It has `Infinity` and `NegInfinity` flags like `types.Date`; `time.Time` cannot hold infinity, so a `tstzrange` infinity bound does not scan.
+- The zero `types.Range[T]{}` is the empty range: it is written as `empty` and reads back with `Empty` set. Compare with `IsEmpty`, not `==`.
+- Range predicates live in a new feature package `rangeop` (listed in `internal/repocheck/testdata/packages.txt` and in the docscheck API list), not in the root package.
+- Bare-name allow-list: the docs already name the `Range` window frame and the `Exclude` glob list, which now share a name with `types.Range` and `schema.Exclude`, so `internal/docscheck/testdata/bare_allow.txt` allows them on the pages that use them instead of rewriting those pages.
+- MySQL and MariaDB get no integration coverage: they refuse a range field and an exclusion constraint with `momo.ErrUnsupported`, which the render and generator tests cover.
+- An exclusion constraint is backed by an index of its own name, so `splitNoTx` treats `add_exclude` and `drop_exclude` like the other index-name changes and moves them into the no-transaction tail after a concurrent drop of the same name.
+
 ## Compatibility policy (#254)
 
 Question: which packages are excluded from the v1 compatibility promise, and what happens to the API-review findings?
