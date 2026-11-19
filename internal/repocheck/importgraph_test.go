@@ -28,6 +28,10 @@ var coreAllowed = map[string]bool{
 	modPath + "/internal/snake":    true,
 	modPath + "/internal/floatfmt": true,
 
+	// The scope and counting rules both N+1 detectors share, so the deprecated
+	// root forwarders and obs count alike; it imports only the standard library.
+	modPath + "/internal/nplusone": true,
+
 	// The search-text parser of hybrid search; it imports only the standard
 	// library.
 	modPath + "/internal/ftsquery": true,

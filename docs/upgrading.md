@@ -5,6 +5,62 @@ Momo is pre-v1 and makes no compatibility promise between releases; see the
 the `CHANGELOG.md` entry of a release before you upgrade, and expect that
 later releases can break more.
 
+## Upgrading to 0.20.0
+
+The statement N+1 detector moved into `obs` and now shares one scope with the
+relation-load detector, and the hook constructors return their concrete types.
+The old `momo` names keep working for this release as deprecated forwarders, so
+nothing breaks until you remove them; code that assigns a constructor result to
+a variable of another type, or asserts it to an interface, needs an edit now.
+
+### One N+1 detector family and one scope
+
+Before, `momo.NewNPlusOneHook` counted statement shapes in a scope made with
+`momo.WithQueryScope`, and `obs.NewNPlusOne` counted relation loads in a scope
+made with `obs.WithScope`. A request that wanted both detectors had to be
+wrapped twice, and the two names did not say which counted what. Both detectors
+now live in `obs` and read the one scope that `obs.WithScope` makes, so you wrap
+the context once and register one or both. They keep separate counts inside it.
+
+| Before                                               | After                                                       |
+| ---------------------------------------------------- | ----------------------------------------------------------- |
+| `momo.NewNPlusOneHook(n, report)`                    | `obs.NewStatementNPlusOne(n, report)`                       |
+| `momo.NPlusOneFinding` (`Shape`, `Example`, `Count`) | `obs.StatementFinding` (the same three fields)              |
+| `momo.WithQueryScope(ctx)`                           | `obs.WithScope(ctx)`                                        |
+| `obs.NewNPlusOne(n, report)` with `obs.WithScope`    | unchanged; the scope now also serves the statement detector |
+
+Replace the three `momo` names with the `obs` ones. The `momo` names are marked
+`Deprecated:` and are removed in the release after this one. They count exactly
+as the `obs` detector does, and `momo.WithQueryScope` returns the scope
+`obs.WithScope` makes, so you can move one call site at a time: a context made
+by either serves the detectors of both. The finding type is a separate type with
+the same fields, so a `report` function that takes `momo.NPlusOneFinding` takes
+`obs.StatementFinding` after the move.
+
+### Hook constructors return their concrete types
+
+Before, `obs.NewNPlusOne` returned `*obs.NPlusOne` while `obs.NewSlowQuery` and
+`momolog.New` returned `momo.Hook` and `otelmomo.New` returned
+`(momo.Hook, error)`. Each constructor now returns the type it builds, which
+still implements `momo.Hook`, so `momo.WithHook(h)` is unchanged.
+
+| Constructor                | Before               | After                     |
+| -------------------------- | -------------------- | ------------------------- |
+| `obs.NewSlowQuery`         | `momo.Hook`          | `*obs.SlowQueryHook`      |
+| `momolog.New`              | `momo.Hook`          | `*momolog.Hook`           |
+| `otelmomo.New`             | `(momo.Hook, error)` | `(*otelmomo.Hook, error)` |
+| `obs.NewStatementNPlusOne` | new                  | `*obs.StatementNPlusOne`  |
+
+Code that passes the result to `momo.WithHook` needs no edit. Code that stores
+it in a variable of type `momo.Hook` still compiles. Code that type-asserts the
+result, as in `momolog.New(l).(momo.RelationHook)`, no longer compiles because
+the result is not an interface; assign it to a `momo.Hook` first, or call the
+methods on the concrete type. A variable that you declared with `:=` and later
+assigned a different hook to now has a concrete type and rejects that
+assignment; declare it as `momo.Hook`. `otelmomo` is a separate module with its
+own release, so this change reaches it in its own next release; `momo.NewNPlusOneHook`
+keeps returning `momo.Hook` because it is a deprecated forwarder.
+
 ## Upgrading to 0.19.0
 
 `momo migrate drift`, the refusal of `momo migrate baseline` and

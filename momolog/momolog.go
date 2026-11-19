@@ -11,7 +11,10 @@ import (
 	"github.com/azrtydxb/momo"
 )
 
-type hook struct {
+// Hook is the slog hook New returns. It implements momo.Hook and
+// momo.RelationHook, so one momo.WithHook call registers it. The zero value is
+// not usable; create it with New.
+type Hook struct {
 	l      *slog.Logger
 	level  slog.Level
 	slow   time.Duration
@@ -19,18 +22,18 @@ type hook struct {
 }
 
 // Option configures New.
-type Option func(*hook)
+type Option func(*Hook)
 
 // Level sets the level for ordinary statements (default Debug).
-func Level(l slog.Level) Option { return func(h *hook) { h.level = l } }
+func Level(l slog.Level) Option { return func(h *Hook) { h.level = l } }
 
 // SlowOver logs statements slower than d at Warn.
-func SlowOver(d time.Duration) Option { return func(h *hook) { h.slow = d } }
+func SlowOver(d time.Duration) Option { return func(h *Hook) { h.slow = d } }
 
 // Values includes bound argument values in the record. It has an effect only
 // when the DB was also opened with momo.WithArgLogging; otherwise the event
 // carries no values to log.
-func Values(on bool) Option { return func(h *hook) { h.values = on } }
+func Values(on bool) Option { return func(h *Hook) { h.values = on } }
 
 // New returns a hook that logs one "momo.query" record per finished statement
 // with the attributes op, table, relation (when set), sql, duration, rows and
@@ -40,17 +43,19 @@ func Values(on bool) Option { return func(h *hook) { h.values = on } }
 // Errors are logged through Error() only. Argument values are logged only with
 // Values(true) and momo.WithArgLogging together, and a value bound from a
 // sensitive column is momo.RedactedArg in them.
-func New(l *slog.Logger, opts ...Option) momo.Hook {
-	h := &hook{l: l, level: slog.LevelDebug}
+func New(l *slog.Logger, opts ...Option) *Hook {
+	h := &Hook{l: l, level: slog.LevelDebug}
 	for _, o := range opts {
 		o(h)
 	}
 	return h
 }
 
-func (h *hook) BeforeQuery(ctx context.Context, _ *momo.QueryEvent) context.Context { return ctx }
+// BeforeQuery does nothing.
+func (h *Hook) BeforeQuery(ctx context.Context, _ *momo.QueryEvent) context.Context { return ctx }
 
-func (h *hook) AfterQuery(ctx context.Context, e *momo.QueryEvent) {
+// AfterQuery logs the finished statement.
+func (h *Hook) AfterQuery(ctx context.Context, e *momo.QueryEvent) {
 	level := h.level
 	if h.slow > 0 && e.Duration > h.slow {
 		level = slog.LevelWarn
@@ -81,15 +86,17 @@ func (h *hook) AfterQuery(ctx context.Context, e *momo.QueryEvent) {
 }
 
 var (
-	_ momo.Hook         = (*hook)(nil)
-	_ momo.RelationHook = (*hook)(nil)
+	_ momo.Hook         = (*Hook)(nil)
+	_ momo.RelationHook = (*Hook)(nil)
 )
 
-func (h *hook) BeforeRelation(ctx context.Context, _ *momo.RelationEvent) context.Context {
+// BeforeRelation does nothing.
+func (h *Hook) BeforeRelation(ctx context.Context, _ *momo.RelationEvent) context.Context {
 	return ctx
 }
 
-func (h *hook) AfterRelation(ctx context.Context, e *momo.RelationEvent) {
+// AfterRelation logs the finished relation load.
+func (h *Hook) AfterRelation(ctx context.Context, e *momo.RelationEvent) {
 	if !h.l.Enabled(ctx, h.level) {
 		return
 	}
