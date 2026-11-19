@@ -195,6 +195,7 @@ func (b *schemaBuilder) addModel(m *Model) {
 		}
 		t.Columns = append(t.Columns, col)
 	}
+	b.applyEmbeddings(m, &t)
 	b.names = map[string]string{}
 	b.applyIndexTags(m, &t)
 	b.applyCompanion(m, &t)

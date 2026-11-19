@@ -393,6 +393,93 @@ scan, not the scan itself. For
 a different mix of signals, write your own score as shown in
 [full-text search](fulltext.md#hybrid-ranking-vector-plus-text).
 
+## Keeping embeddings in sync
+
+An embedding is stale as soon as the text it was computed from changes. Tag the
+vector field with `embed_from`, naming its source columns, and Momo tracks that
+for you:
+
+```text
+Embedding *vector.Vector `momo:"dim:1536,embed_from:title|body"`
+```
+
+- The field must be a `*vector.Vector`: a new row has no embedding yet, so the
+  column is nullable, and only float32 vectors are embedded.
+- The sources are separated by `|`. Each is a column name or a Go field name of
+  a string field (`string`, `*string`, `sql.NullString`, or a named string
+  type). Their order is part of the hash.
+- The generator adds a nullable `varchar(64)` column named `<column>_hash`
+  (`embedding_hash` here) right after the vector column. It is not a field of
+  the model. `momo migrate diff` adds it like any other column, and a table
+  that already holds embeddings gets it empty, so every row counts as stale and
+  the first run embeds them all.
+- Tag the vector field `read_only` when only `momo.SyncEmbeddings` should write
+  it: an insert or update of the model then never puts an old embedding back
+  over a fresh one.
+- The generator refuses `embed_from` on MySQL and MariaDB, on a field that is
+  not a `*vector.Vector`, on a source that is missing, repeated, not a string or
+  itself an embedding, on a view model, and when a column named
+  `<column>_hash` already exists.
+
+The hash column holds `vector.SourceHash` of the source values the stored
+embedding was computed from: the SHA-256 of the sources in tag order, as 64
+lowercase hex characters. A NULL source encodes as the byte `N`, any other
+source as `S`, its length in bytes in decimal, a colon and its bytes, so two
+different lists of sources never encode alike. The hash depends on the values
+and their order only, never on column names, the model or the database, and it
+does not change between releases.
+
+`momo.StaleEmbeddings[T]` iterates the rows whose embedding is out of date: the
+hash of the current source values differs from the stored one or none is
+stored, or the vector is NULL and the row has text. It reads the key and the
+source columns of every live row in primary-key order, a page at a time with no
+statement open between pages, and yields models that hold the key and the source
+fields. The hash is computed in Go, so a run reads every live row's source text
+even when little changed. Soft-deleted rows are skipped.
+
+`momo.SyncEmbeddings[T]` brings them up to date. You supply the provider by
+implementing the one-method interface `vector.Embedder`, which turns a slice of
+texts into one `vector.Vector` each; Momo ships no provider and makes no
+network call. Pass a `*momo.DB`, not a `*momo.Tx`:
+
+- It reads stale rows, passes `EmbedOptions.BatchSize` texts (default 100) to
+  `Embed`, checks the count and the dimension of what comes back, and writes
+  each vector together with the hash of the source values it was computed
+  from.
+- No transaction is held and no statement is open during the `Embed` call.
+- Each row is written by one compare-and-set `UPDATE` that matches the row only
+  while its source columns and its stored hash are what was read. A row edited
+  while the provider worked is therefore not marked fresh: it is counted in
+  `EmbedResult.Conflicts`, stays stale and is embedded again on the next run.
+  A row two runners both embedded is written once.
+- Any number of runners may work at once, on one process or many. They do not
+  coordinate, so two runners reading the same rows both call the provider for
+  them; start one runner per slice of a large backfill when that cost matters.
+- A run is resumable: a failure, a cancelled context or a crash leaves the rows
+  it did not reach stale, and the next run starts from them. A provider error is
+  returned wrapped, with the rows handled so far in the result.
+- The default text of a row joins its sources that are not NULL and not empty
+  with a blank line. `EmbedOptions.Text` replaces that. A row whose text is
+  empty has no embedding: its vector is set to NULL and its hash is written
+  (`EmbedResult.Cleared`), so it is not stale again. The hash covers the source
+  values, not the text that `EmbedOptions.Text` builds from them. After you
+  change `EmbedOptions.Text` or the provider, clear the hash column
+  (`UPDATE <table> SET <column>_hash = NULL`) so every row counts as stale and
+  is embedded again.
+- `EmbedOptions.Limit` stops after that many stale rows, and
+  `EmbedOptions.Vector` picks the embedding when a model has more than one.
+
+The write sets the vector and the hash column only. It does not touch
+`updated_at` or a version column and does not run hooks. The interceptors of the
+handle run as for a typed query: the page statements are a `select` and each
+write an `update`, and the predicates an interceptor adds are applied to both.
+A row outside a tenant scope is therefore neither listed as stale nor written,
+and an interceptor that denies the statement fails the run.
+
+On SQLite the same functions work on a sqlite-vec column; concurrent runners
+queue behind SQLite's single writer. On MySQL and MariaDB both functions
+return `momo.ErrUnsupported`.
+
 ## Verifying index use
 
 `SelectQuery.Explain(ctx)` runs `EXPLAIN` (never `EXPLAIN ANALYZE`), binds

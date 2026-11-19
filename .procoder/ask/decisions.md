@@ -1348,6 +1348,23 @@ Issue #225: the adopt refusal gave only counts, `drift` on a database without hi
 - Not done: no `repair` command that applies the statements. A caller reviews and runs the script.
 - Review round: a create that replaces a withheld drop (same kind, schema, table, name: a changed view, trigger, policy, index or constraint) is withheld with it, so the script never prints an "already exists" create. `drift --version N` and `DriftOptions.Version` / `RepairOptions.Version` compare with the snapshot of exactly version N (the one `baseline --version N` checks), and `DriftReport.SnapshotVersion` names the one compared. A repair is complete only when nothing is withheld, unsupported or uncovered (a report entry no change touches: invalid index, unmanaged extension or schema) and no NOT NULL column was staged nullable; `Unverified` entries do not count, as in `drift`. `--fix-sql` keeps standard output SQL only (`no drift`, notes and reasons go to stderr) and notes that MySQL and MariaDB do not roll DDL back.
 
+## Embedding sync design (#250)
+
+PR #257 keeps embeddings in sync with their source columns (`embed_from`). Four design points were put to the maintainer.
+
+- Concurrency: compare-and-set on the source columns and stored hash, not `FOR UPDATE SKIP LOCKED`, so no transaction is held during the Embedder call; the cost is duplicate provider calls between runners.
+- Staleness: decided in Go from `vector.SourceHash`, not in SQL, because a portable SQL hash is not possible across dialects; the cost is reading every live row's source text per run.
+- Write path: a raw write of the vector and hash only (no `updated_at`, version bump or hooks), but the stale read and the write-back both run the handle's interceptors, so tenant scoping applies.
+- Hash column name: fixed `<column>_hash`, not configurable.
+
+Decision (2026-11-18, the user, via AskUserQuestion): keep compare-and-set; no change.
+
+Decision (2026-11-18, the user, via AskUserQuestion): keep deciding staleness in Go; no change.
+
+Decision (2026-11-18, the user, via AskUserQuestion): change the write path so the read and the write-back apply the model's interceptors; keep the raw write without hooks, `updated_at` or version.
+
+Decision (2026-11-18, the user, via AskUserQuestion): keep the fixed `<column>_hash` name; no change.
+
 ## Range types and exclusion constraints (#253)
 
 Items 1 and 2 of issue #253 (PR #258). Decided, not asked:

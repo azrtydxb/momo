@@ -103,6 +103,10 @@ type Meta[T any] struct {
 	// for a model that embeds View. Insert, Upsert, Update, SoftDelete,
 	// BulkUpdate, Delete and Merge refuse such a model with ErrValidation.
 	View bool
+	// Embeddings declares the vector columns kept in sync with their source
+	// columns. Generated code sets it for a field tagged embed_from. See
+	// SyncEmbeddings.
+	Embeddings []EmbeddingMeta
 }
 
 // viewWriteErr is the ErrValidation error of a write to a view model, or nil

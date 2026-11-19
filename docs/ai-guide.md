@@ -341,6 +341,7 @@ Tag reference (all lower case):
 | `size:<n>`                                                                | `varchar(n)`; strings only                                                                                                                                                                                                                                                                                                                                    |
 | `precision:<p>`, `scale:<s>`                                              | numeric precision (float, decimal, or a string without `size` that carries a numeric); `scale` needs `precision`                                                                                                                                                                                                                                              |
 | `dim:<n>`                                                                 | vector dimension; optional on vector and halfvec (none: dimensionless column), required on sparsevec and bit, invalid elsewhere                                                                                                                                                                                                                               |
+| `embed_from:<a>\|<b>`                                                     | names the string source columns or fields (separated by `\|`) of the embedding of a `*vector.Vector` field. The generator adds a nullable `varchar(64)` hash column `<column>_hash` beside it, and `momo.StaleEmbeddings` and `momo.SyncEmbeddings` keep the embedding current (see Keeping embeddings in sync). Refused on MySQL                             |
 | `default:<sql>`                                                           | column default, raw SQL (`default:now()`, `default:'free'`, `default:0`)                                                                                                                                                                                                                                                                                      |
 | `unique` / `unique:<name>`                                                | unique index (single column)                                                                                                                                                                                                                                                                                                                                  |
 | `index` / `index:<name>`                                                  | index; modifiers `sort:asc\|desc`, `nulls:first\|last`, `method:<m>` need `index` or `unique`                                                                                                                                                                                                                                                                 |
@@ -2255,6 +2256,37 @@ sequential, so keep it short and dedicated), `HNSWEfSearch`,
 `IVFFlatMaxProbes`. Zero leaves the server default. Out of range:
 `ErrValidation`. Iterative/max-scan/scan-mem/max-probes fields on pgvector older than 0.8.0
 or a missing extension: `ErrUnsupported`.
+
+Keeping embeddings in sync with their source text:
+
+- Tag the field `*vector.Vector` with `embed_from:title|body` (column or Go
+  names of string fields, in the order that is hashed). `momo generate` adds a
+  nullable `varchar(64)` column `<column>_hash` after the vector; it is not a
+  field of the model, so do not declare it yourself and do not name a column
+  that. `momo migrate diff` adds it; on a table that already holds embeddings
+  every row then counts as stale.
+- Implement `vector.Embedder` for your provider: its one method returns one
+  `vector.Vector` per text. Momo ships none and makes no network call. Call
+  `momo.SyncEmbeddings[T]` from a worker or job with the `*momo.DB`, the
+  embedder and a `momo.EmbedOptions`, not with a `*momo.Tx`: no transaction or
+  statement is open while the embedder runs. `momo.StaleEmbeddings[T]` lists the
+  stale rows without embedding them.
+- Concurrent runners are safe. Each row is written by one compare-and-set
+  `UPDATE` on its source columns and stored hash, so a row edited while the
+  provider worked stays stale (`EmbedResult.Conflicts`) and is picked up by the
+  next run. Runners do not split the work, so two of them embed the same stale
+  rows twice. Rerun after an error: a run keeps no state.
+- The hash is `vector.SourceHash` (SHA-256 over a length-prefixed encoding of the
+  sources, hex). To force a re-embed after changing the model, set the hash
+  column to NULL with raw SQL.
+- A row with no source text gets a NULL vector, never a call to the provider.
+  Tag the vector field `read_only` so ordinary inserts and updates cannot write
+  an old embedding over a fresh one.
+- The handle's interceptors apply to both the stale read (kind `select`) and the
+  write-back (kind `update`), so a tenant-scoped handle only sees and writes its
+  own rows; the write still skips hooks, `updated_at` and version columns.
+- PostgreSQL and SQLite only: the generator refuses `embed_from` for MySQL or
+  MariaDB and both functions return `ErrUnsupported` there.
 
 Pitfalls:
 

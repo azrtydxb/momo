@@ -240,6 +240,13 @@ var features = []feature{
 		MySQL:  "`ErrUnsupported`: MySQL and MariaDB check each constraint at the end of the statement and have no `DEFERRABLE`; a declaration is a generator error and the renderer refuses it",
 	},
 	{
+		Name:   "Embeddings kept in sync with their source columns (`embed_from`)",
+		API:    []string{"vector.Embedder", "vector.SourceHash"},
+		PG:     "yes: the generator adds a `varchar(64)` hash column beside the `*vector.Vector` field, `momo.StaleEmbeddings` finds the rows whose source hash or NULL vector says they are out of date, and `momo.SyncEmbeddings` embeds them in batches with a compare-and-set write, no transaction held during the `vector.Embedder` call",
+		SQLite: "yes: the same hash column and the same two functions on a sqlite-vec vector column; concurrent runners are limited by SQLite's single writer",
+		MySQL:  "`ErrUnsupported`: `embed_from` is a generator error and `momo.SyncEmbeddings` and `momo.StaleEmbeddings` refuse the dialect",
+	},
+	{
 		Name:   "Range types on `types.Range[T]`",
 		API:    []string{"types.Range", "types.Bound", "types.Timestamp", "rangeop.Contains", "rangeop.ContainsRange", "rangeop.ContainedBy", "rangeop.Overlaps", "rangeop.Adjacent", "rangeop.StrictlyLeft", "rangeop.StrictlyRight", "rangeop.Lower", "rangeop.Upper", "rangeop.IsEmpty"},
 		PG:     "yes: `int4range`, `int8range`, `numrange`, `daterange`, `tsrange` and `tstzrange` are typed columns with empty, infinite, inclusive and exclusive bounds, written by `generate --from-db`, and queried with `rangeop` predicates for containment, overlap, adjacency, position, the bounds and emptiness; multiranges are not mapped",

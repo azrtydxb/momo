@@ -34,6 +34,11 @@ type Tags struct {
 	// IDGen is the idgen option: the name of a Go-side id generator.
 	IDGen string
 
+	// EmbedFrom is the embed_from option on a vector field: the source
+	// columns or fields of its embedding, as one value joined by "|". It is
+	// split and resolved by BuildSchema.
+	EmbedFrom string
+
 	Materialized bool
 
 	Rel, PolyType, PolyValue string
@@ -284,6 +289,8 @@ func (t *Tags) set(key, val string, hasVal bool) string {
 		return str(&t.Prefix)
 	case "idgen":
 		return str(&t.IDGen)
+	case "embed_from":
+		return str(&t.EmbedFrom)
 	case "generated":
 		return str(&t.Generated)
 	case "virtual":
