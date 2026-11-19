@@ -307,7 +307,7 @@ func TestSyncEmbeddingsRedactsSensitiveSources(t *testing.T) {
 	if args[2] != int64(1) {
 		t.Errorf("key arg = %v, want it shown", args[2])
 	}
-	if !slices.Contains(drv.Calls()[1].Args, any(source)) {
+	if !slices.Contains(drv.Calls()[1].Args, any(ns(source))) {
 		t.Errorf("the driver must still get the real source text: %v", drv.Calls()[1].Args)
 	}
 }

@@ -1110,16 +1110,21 @@ Import path: `github.com/azrtydxb/momo/migrate`
 
 Import path: `github.com/azrtydxb/momo/momolog`
 
-| Identifier                  | Kind | Synopsis                                                                                                                                                                |
-| --------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `momolog.Level`             | func | Level sets the level for ordinary statements (default Debug).                                                                                                           |
-| `momolog.New`               | func | New returns a hook that logs one "momo.query" record per finished statement with the attributes op, table, relation (when set), sql, duration, rows and err (when set). |
-| `momolog.Option`            | type | Option configures New.                                                                                                                                                  |
-| `momolog.SlowOver`          | func | SlowOver logs statements slower than d at Warn.                                                                                                                         |
-| `momolog.Values`            | func | Values includes bound argument values in the record.                                                                                                                    |
-| `momolog.WithLevel`         | func | WithLevel sets the level for ordinary statements (default Debug).                                                                                                       |
-| `momolog.WithSlowThreshold` | func | WithSlowThreshold logs statements slower than d at Warn.                                                                                                                |
-| `momolog.WithValues`        | func | WithValues includes bound argument values in the record.                                                                                                                |
+| Identifier                    | Kind   | Synopsis                                                                                                                                                                |
+| ----------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `momolog.Hook`                | type   | Hook is the slog hook New returns.                                                                                                                                      |
+| `momolog.Hook.AfterQuery`     | method | AfterQuery logs the finished statement.                                                                                                                                 |
+| `momolog.Hook.AfterRelation`  | method | AfterRelation logs the finished relation load.                                                                                                                          |
+| `momolog.Hook.BeforeQuery`    | method | BeforeQuery does nothing.                                                                                                                                               |
+| `momolog.Hook.BeforeRelation` | method | BeforeRelation does nothing.                                                                                                                                            |
+| `momolog.Level`               | func   | Level sets the level for ordinary statements (default Debug).                                                                                                           |
+| `momolog.New`                 | func   | New returns a hook that logs one "momo.query" record per finished statement with the attributes op, table, relation (when set), sql, duration, rows and err (when set). |
+| `momolog.Option`              | type   | Option configures New.                                                                                                                                                  |
+| `momolog.SlowOver`            | func   | SlowOver logs statements slower than d at Warn.                                                                                                                         |
+| `momolog.Values`              | func   | Values includes bound argument values in the record.                                                                                                                    |
+| `momolog.WithLevel`           | func   | WithLevel sets the level for ordinary statements (default Debug).                                                                                                       |
+| `momolog.WithSlowThreshold`   | func   | WithSlowThreshold logs statements slower than d at Warn.                                                                                                                |
+| `momolog.WithValues`          | func   | WithValues includes bound argument values in the record.                                                                                                                |
 
 ## momotest
 
@@ -1308,30 +1313,38 @@ Import path: `github.com/azrtydxb/momo/jsonop`
 
 Import path: `github.com/azrtydxb/momo/obs`
 
-| Identifier                    | Kind   | Synopsis                                                                                                                                                   |
-| ----------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `obs.Event`                   | type   | Event is a copy of an AfterQuery event plus the value the Recorder put into the context in BeforeQuery.                                                    |
-| `obs.Finding`                 | type   | Finding reports a relation that was loaded more often than the threshold within one scope.                                                                 |
-| `obs.NPlusOne`                | type   | NPlusOne is a development hook that finds the N+1 pattern: one query loads the parents, then a loop loads a relation once per parent.                      |
-| `obs.NPlusOne.AfterQuery`     | method | AfterQuery does nothing.                                                                                                                                   |
-| `obs.NPlusOne.AfterRelation`  | method | AfterRelation does nothing.                                                                                                                                |
-| `obs.NPlusOne.BeforeQuery`    | method | BeforeQuery does nothing.                                                                                                                                  |
-| `obs.NPlusOne.BeforeRelation` | method | BeforeRelation counts the load and reports when the threshold is exceeded.                                                                                 |
-| `obs.NewNPlusOne`             | func   | NewNPlusOne returns a detector that calls report when a relation has been loaded more than threshold times in one scope (a threshold below 1 counts as 1). |
-| `obs.NewSlowQuery`            | func   | NewSlowQuery returns a hook that calls report for each statement that took longer than threshold.                                                          |
-| `obs.Recorder`                | type   | Recorder is a momo.Hook and momo.RelationHook that records every finished statement and every finished relation load, in the order they finished.          |
-| `obs.Recorder.AfterQuery`     | method | AfterQuery records the finished statement.                                                                                                                 |
-| `obs.Recorder.AfterRelation`  | method | AfterRelation records the finished relation load.                                                                                                          |
-| `obs.Recorder.BeforeQuery`    | method | BeforeQuery stores the statement text in the returned context.                                                                                             |
-| `obs.Recorder.BeforeRelation` | method | BeforeRelation does nothing.                                                                                                                               |
-| `obs.Recorder.Events`         | method | Events returns a copy of the recorded statements.                                                                                                          |
-| `obs.Recorder.Relations`      | method | Relations returns a copy of the recorded relation load events.                                                                                             |
-| `obs.Recorder.Reset`          | method | Reset forgets all recorded events.                                                                                                                         |
-| `obs.Recorder.SQLs`           | method | SQLs returns the SQL text of each recorded statement.                                                                                                      |
-| `obs.SlowOption`              | type   | SlowOption configures NewSlowQuery.                                                                                                                        |
-| `obs.SlowQuery`               | type   | SlowQuery describes one statement that took longer than the threshold of a slow-query hook.                                                                |
-| `obs.WithPlainExplain`        | func   | WithPlainExplain turns on plan capture, running plain EXPLAIN, never EXPLAIN ANALYZE.                                                                      |
-| `obs.WithScope`               | func   | WithScope returns a context that groups relation loads for NPlusOne.                                                                                       |
+| Identifier                          | Kind   | Synopsis                                                                                                                                                                         |
+| ----------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `obs.Event`                         | type   | Event is a copy of an AfterQuery event plus the value the Recorder put into the context in BeforeQuery.                                                                          |
+| `obs.Finding`                       | type   | Finding reports a relation that was loaded more often than the threshold within one scope.                                                                                       |
+| `obs.NPlusOne`                      | type   | NPlusOne is a development hook that finds the N+1 pattern: one query loads the parents, then a loop loads a relation once per parent.                                            |
+| `obs.NPlusOne.AfterQuery`           | method | AfterQuery does nothing.                                                                                                                                                         |
+| `obs.NPlusOne.AfterRelation`        | method | AfterRelation does nothing.                                                                                                                                                      |
+| `obs.NPlusOne.BeforeQuery`          | method | BeforeQuery does nothing.                                                                                                                                                        |
+| `obs.NPlusOne.BeforeRelation`       | method | BeforeRelation counts the load and reports when the threshold is exceeded.                                                                                                       |
+| `obs.NewNPlusOne`                   | func   | NewNPlusOne returns a detector that calls report when a relation has been loaded more than threshold times in one scope (a threshold below 1 counts as 1).                       |
+| `obs.NewSlowQuery`                  | func   | NewSlowQuery returns a hook that calls report for each statement that took longer than threshold.                                                                                |
+| `obs.NewStatementNPlusOne`          | func   | NewStatementNPlusOne returns a detector that calls report once per statement shape per scope when the shape has run more than threshold times (a threshold below 1 counts as 1). |
+| `obs.Recorder`                      | type   | Recorder is a momo.Hook and momo.RelationHook that records every finished statement and every finished relation load, in the order they finished.                                |
+| `obs.Recorder.AfterQuery`           | method | AfterQuery records the finished statement.                                                                                                                                       |
+| `obs.Recorder.AfterRelation`        | method | AfterRelation records the finished relation load.                                                                                                                                |
+| `obs.Recorder.BeforeQuery`          | method | BeforeQuery stores the statement text in the returned context.                                                                                                                   |
+| `obs.Recorder.BeforeRelation`       | method | BeforeRelation does nothing.                                                                                                                                                     |
+| `obs.Recorder.Events`               | method | Events returns a copy of the recorded statements.                                                                                                                                |
+| `obs.Recorder.Relations`            | method | Relations returns a copy of the recorded relation load events.                                                                                                                   |
+| `obs.Recorder.Reset`                | method | Reset forgets all recorded events.                                                                                                                                               |
+| `obs.Recorder.SQLs`                 | method | SQLs returns the SQL text of each recorded statement.                                                                                                                            |
+| `obs.SlowOption`                    | type   | SlowOption configures NewSlowQuery.                                                                                                                                              |
+| `obs.SlowQuery`                     | type   | SlowQuery describes one statement that took longer than the threshold of a slow-query hook.                                                                                      |
+| `obs.SlowQueryHook`                 | type   | SlowQueryHook is the hook NewSlowQuery returns.                                                                                                                                  |
+| `obs.SlowQueryHook.AfterQuery`      | method | AfterQuery implements momo.Hook.                                                                                                                                                 |
+| `obs.SlowQueryHook.BeforeQuery`     | method | BeforeQuery implements momo.Hook.                                                                                                                                                |
+| `obs.StatementFinding`              | type   | StatementFinding reports a statement shape that repeated more than the threshold within one scope.                                                                               |
+| `obs.StatementNPlusOne`             | type   | StatementNPlusOne is a development hook that finds any statement that runs again and again in one scope, such as a Select in a loop.                                             |
+| `obs.StatementNPlusOne.AfterQuery`  | method | AfterQuery does nothing.                                                                                                                                                         |
+| `obs.StatementNPlusOne.BeforeQuery` | method | BeforeQuery counts the statement and reports when the threshold is exceeded.                                                                                                     |
+| `obs.WithPlainExplain`              | func   | WithPlainExplain turns on plan capture, running plain EXPLAIN, never EXPLAIN ANALYZE.                                                                                            |
+| `obs.WithScope`                     | func   | WithScope returns a context that groups statements and relation loads for the N+1 detectors, NPlusOne and StatementNPlusOne.                                                     |
 
 ## sqlfn
 
