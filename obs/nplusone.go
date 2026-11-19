@@ -4,9 +4,9 @@ package obs
 
 import (
 	"context"
-	"sync"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/nplusone"
 )
 
 // Finding reports a relation that was loaded more often than the threshold
@@ -21,22 +21,14 @@ type Finding struct {
 	Parents int
 }
 
-// maxScopeRelations bounds the memory one scope can hold.
-const maxScopeRelations = 1024
-
-type scopeKey struct{}
-
-type scope struct {
-	mu       sync.Mutex
-	counts   map[string]int
-	reported map[string]bool
-}
-
-// WithScope returns a context that groups relation loads for NPlusOne. Wrap
-// one unit of work (an HTTP request, a job) and pass the context to every
-// load in it. A context without a scope is not tracked.
+// WithScope returns a context that groups statements and relation loads for the
+// N+1 detectors, NPlusOne and StatementNPlusOne. Wrap one unit of work (an HTTP
+// request, a job) and pass the context to every query and load in it. One scope
+// serves both detectors, and each counts in its own table, so a relation load
+// never counts as a statement shape or the other way round. A context without a
+// scope is not tracked.
 func WithScope(ctx context.Context) context.Context {
-	return context.WithValue(ctx, scopeKey{}, &scope{counts: map[string]int{}, reported: map[string]bool{}})
+	return nplusone.With(ctx)
 }
 
 // NPlusOne is a development hook that finds the N+1 pattern: one query loads
@@ -46,12 +38,10 @@ func WithScope(ctx context.Context) context.Context {
 // exceeds the threshold. A single batched load is one load however many
 // parents it covers, so it never triggers a finding.
 //
-// It differs from the root momo.NewNPlusOneHook, which counts repeated
-// statement shapes in a scope made with momo.WithQueryScope. Use NPlusOne for
-// a relation Load inside a loop, the root hook for any repeated statement (a
-// Select in a loop, for instance), or both. Each reads its own scope: wrap the
-// context with obs.WithScope for this detector and momo.WithQueryScope for the
-// root one; one does not see the other's scope.
+// It differs from StatementNPlusOne, which counts repeated statement shapes.
+// Use NPlusOne for a relation Load inside a loop, StatementNPlusOne for any
+// repeated statement (a Select in a loop, for instance), or both. They read the
+// same scope: wrap the context once with WithScope.
 //
 // Create it with NewNPlusOne; the zero value is not usable. It implements
 // momo.Hook and momo.RelationHook, so one momo.WithHook call registers it. It
@@ -86,24 +76,9 @@ func (n *NPlusOne) AfterQuery(context.Context, *momo.QueryEvent) {}
 
 // BeforeRelation counts the load and reports when the threshold is exceeded.
 func (n *NPlusOne) BeforeRelation(ctx context.Context, e *momo.RelationEvent) context.Context {
-	sc, ok := ctx.Value(scopeKey{}).(*scope)
-	if !ok {
-		return ctx
-	}
 	key := e.Parent + "." + e.Name
-	sc.mu.Lock()
-	if _, seen := sc.counts[key]; !seen && len(sc.counts) >= maxScopeRelations {
-		sc.mu.Unlock()
-		return ctx
-	}
-	sc.counts[key]++
-	count := sc.counts[key]
-	fire := count > n.threshold && !sc.reported[key]
-	if fire {
-		sc.reported[key] = true
-	}
-	sc.mu.Unlock()
-	if fire {
+	count, fire, ok := nplusone.Relation(ctx, key, n.threshold)
+	if ok && fire {
 		n.safeReport(Finding{Relation: key, Count: count, Parents: e.Parents})
 	}
 	return ctx
