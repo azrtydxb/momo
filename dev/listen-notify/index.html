@@ -1386,7 +1386,7 @@ mode: connect to the server directly, or to PgBouncer in session mode.</p>
 <span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="w">    </span><span class="nx">l</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">Listen</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">cfg</span><span class="p">,</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span><span class="p">{</span><span class="s">"orders"</span><span class="p">,</span><span class="w"> </span><span class="s">"invoices"</span><span class="p">},</span>
-<span class="w">        </span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">OnReconnect</span><span class="p">(</span><span class="kd">func</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">log</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"reconnected: resync"</span><span class="p">)</span><span class="w"> </span><span class="p">}),</span>
+<span class="w">        </span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">WithOnReconnect</span><span class="p">(</span><span class="kd">func</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">log</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"reconnected: resync"</span><span class="p">)</span><span class="w"> </span><span class="p">}),</span>
 <span class="w">        </span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">WithBackoff</span><span class="p">(</span><span class="mi">200</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Millisecond</span><span class="p">,</span><span class="w"> </span><span class="mi">15</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">),</span>
 <span class="w">    </span><span class="p">)</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
@@ -1415,7 +1415,7 @@ twice.</p>
 <h2 id="reconnecting">Reconnecting<a class="headerlink" href="#reconnecting" title="Permanent link">&para;</a></h2>
 <p>When the connection drops (a restart, a failover, <code>pg_terminate_backend</code>),
 <code>Wait</code> reconnects inside the same call, re-issues <code>LISTEN</code> for every channel,
-runs the <code>OnReconnect</code> function and goes on waiting. The delay before a
+runs the <code>WithOnReconnect</code> function and goes on waiting. The delay before a
 redial starts at the <code>WithBackoff</code> minimum and doubles up to its maximum
 (default 100ms to 10s) while connections keep failing. That includes a
 connection that connects and is then lost before it delivered a notification
@@ -1427,16 +1427,16 @@ is still reconnecting, the error also wraps the last connect error, so a
 permanent failure such as a wrong password or a missing role shows up in the
 error.</p>
 <p>Notifications sent while the listener was disconnected are lost: PostgreSQL
-does not queue them for absent listeners. Treat every <code>OnReconnect</code> call as
+does not queue them for absent listeners. Treat every <code>WithOnReconnect</code> call as
 "something may have been missed" and re-read whatever the notifications
-signal. <code>OnReconnect</code> runs on the goroutine that called <code>Wait</code>, before <code>Wait</code>
+signal. <code>WithOnReconnect</code> runs on the goroutine that called <code>Wait</code>, before <code>Wait</code>
 returns anything from the new connection, so keep it short.</p>
 <p>Ending the <code>ctx</code> given to <code>Wait</code> is not a lost connection. <code>Wait</code> returns the
 context's error, the connection stays open, and the next <code>Wait</code> reads from it:
-notifications that arrived in between are delivered and <code>OnReconnect</code> does not
+notifications that arrived in between are delivered and <code>WithOnReconnect</code> does not
 run. A <code>Wait</code> with a short timeout is therefore a fine way to poll.</p>
 <p><code>Close</code> ends a blocked <code>Wait</code> with <code>ErrListenerClosed</code>. If <code>Close</code>'s own
-context expires while <code>Wait</code> is running the <code>OnReconnect</code> function, <code>Close</code>
+context expires while <code>Wait</code> is running the <code>WithOnReconnect</code> function, <code>Close</code>
 returns that context's error; the listener is still closed, and <code>Wait</code> closes
 the connection when the function returns.</p>
 <h2 id="notify">Notify<a class="headerlink" href="#notify" title="Permanent link">&para;</a></h2>

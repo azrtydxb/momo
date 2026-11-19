@@ -1932,10 +1932,10 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <tbody>
 <tr>
 <td>Advisory session locks</td>
-<td><code>advisory.Lock</code>, <code>advisory.LockString</code>, <code>advisory.TryLock</code>, <code>advisory.TryLockString</code>, <code>advisory.Unlock</code>, <code>advisory.UnlockString</code></td>
+<td><code>advisory.Acquire</code>, <code>advisory.Release</code>, <code>advisory.Try</code>, <code>advisory.Shared</code>, <code>advisory.Xact</code>, <code>advisory.WithHash64</code></td>
 <td>yes: <code>pg_advisory_lock</code>, <code>pg_try_advisory_lock</code> and <code>pg_advisory_unlock</code> on a pinned connection (<code>db.OnConn</code>); the shared and the transaction-scoped forms are also <code>yes</code></td>
 <td><code>ErrUnsupported</code></td>
-<td><code>GET_LOCK</code>, <code>GET_LOCK(name, 0)</code> and <code>RELEASE_LOCK</code> on a pinned connection (<code>db.OnConn</code>) on MySQL 8.4, MySQL 9.7 and MariaDB 11.8; the lock name is <code>momo:advisory:&lt;db&gt;:&lt;key&gt;</code>, scoped to the current database as on PostgreSQL, with an <code>int64</code> key in decimal and a text key as <code>s:</code> plus 32 hex digits of its sha256, and <code>advisory.Hash64</code> has no effect; the transaction-scoped and the shared forms are <code>ErrUnsupported</code>, because a <code>GET_LOCK</code> lock belongs to the session, a commit does not release it and there is no shared mode</td>
+<td><code>GET_LOCK</code>, <code>GET_LOCK(name, 0)</code> and <code>RELEASE_LOCK</code> on a pinned connection (<code>db.OnConn</code>) on MySQL 8.4, MySQL 9.7 and MariaDB 11.8; the lock name is <code>momo:advisory:&lt;db&gt;:&lt;key&gt;</code>, scoped to the current database as on PostgreSQL, with an <code>int64</code> key in decimal and a text key as <code>s:</code> plus 32 hex digits of its sha256, and <code>advisory.WithHash64</code> has no effect; <code>advisory.Xact</code> and <code>advisory.Shared</code> are <code>ErrUnsupported</code>, because a <code>GET_LOCK</code> lock belongs to the session, a commit does not release it and there is no shared mode</td>
 </tr>
 <tr>
 <td>JSON operators on <code>types.JSON[T]</code></td>
@@ -2156,7 +2156,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 </tr>
 <tr>
 <td>Savepoints</td>
-<td>yes: <code>Tx.Savepoint</code>, <code>RollbackTo</code>, <code>Release</code></td>
+<td>yes: <code>Tx.Savepoint</code>, <code>RollbackTo</code>, <code>Tx.Release</code></td>
 <td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
 <td>a dialect without savepoints: <code>ErrUnsupported</code> (Op "savepoint")</td>
 </tr>
@@ -2255,13 +2255,13 @@ primary key. The statements are listed by <code>MergeQuery.Statements</code>;
 <td>Advisory transaction locks</td>
 <td>yes: <code>pg_advisory_xact_lock</code>, <code>pg_try_advisory_xact_lock</code>, text keys through <code>hashtext</code></td>
 <td><code>ErrUnsupported</code></td>
-<td><code>advisory.XactLock</code>, <code>advisory.XactLockString</code>, <code>advisory.TryXactLock</code>, <code>advisory.TryXactLockString</code>, and the shared locks <code>advisory.XactLockShared</code>, <code>advisory.XactLockSharedString</code>, <code>advisory.TryXactLockShared</code>, <code>advisory.TryXactLockSharedString</code> (<code>pg_advisory_xact_lock_shared</code>, PostgreSQL only; package <code>github.com/azrtydxb/momo/advisory</code>, taking the <code>*Tx</code>); a <code>DB</code> does not compile, because a transaction lock outside a transaction is meaningless. String and int64 keys share one bigint key space, and <code>hashtext</code> is not stable across PostgreSQL major versions, so never store a hashed key</td>
+<td><code>advisory.Acquire</code> with <code>advisory.Xact</code>, optionally with <code>advisory.Try</code> and with <code>advisory.Shared</code> for the shared lock (<code>pg_advisory_xact_lock_shared</code>, PostgreSQL only; package <code>github.com/azrtydxb/momo/advisory</code>, taking the <code>*Tx</code>); a <code>DB</code> is <code>ErrValidation</code>, because a transaction lock outside a transaction is meaningless. String and int64 keys share one bigint key space, and <code>hashtext</code> is not stable across PostgreSQL major versions, so never store a hashed key</td>
 </tr>
 <tr>
 <td>Advisory session locks</td>
-<td>yes: <code>pg_advisory_lock</code>, <code>pg_try_advisory_lock</code>, <code>pg_advisory_unlock</code> on a pinned connection (<code>db.OnConn</code>); 64-bit text keys through <code>advisory.Hash64</code></td>
+<td>yes: <code>pg_advisory_lock</code>, <code>pg_try_advisory_lock</code>, <code>pg_advisory_unlock</code> on a pinned connection (<code>db.OnConn</code>); 64-bit text keys through <code>advisory.WithHash64</code></td>
 <td>SQLite: <code>ErrUnsupported</code>. MySQL and MariaDB: yes, <code>GET_LOCK</code> and <code>RELEASE_LOCK</code> on a pinned connection, names <code>momo:advisory:&lt;db&gt;:&lt;key&gt;</code> scoped to the current database; the shared and transaction forms are <code>ErrUnsupported</code> (see <a href="../mysql/#advisory-locks">MySQL</a>). A pooled <code>*DB</code> is <code>ErrValidation</code></td>
-<td><code>advisory.Lock</code>, <code>advisory.TryLock</code>, <code>advisory.Unlock</code> and the string forms; the shared locks <code>advisory.LockShared</code>, <code>advisory.TryLockShared</code>, <code>advisory.UnlockShared</code> and their string forms (<code>pg_advisory_lock_shared</code>, PostgreSQL only)</td>
+<td><code>advisory.Acquire</code> and <code>advisory.Release</code>, with <code>advisory.Try</code> for the non-blocking form and an <code>int64</code> or a string key; the shared locks through <code>advisory.Shared</code> (<code>pg_advisory_lock_shared</code>, PostgreSQL only)</td>
 </tr>
 <tr>
 <td>CTE</td>
@@ -2794,7 +2794,7 @@ session advisory lock.</p>
 <tr>
 <td>slog hook</td>
 <td>yes</td>
-<td><code>momolog.New</code> with <code>momolog.Level</code>, <code>momolog.SlowOver</code>, <code>momolog.Values</code>; values logged only with <code>momolog.Values(true)</code> and <code>WithArgLogging</code></td>
+<td><code>momolog.New</code> with <code>momolog.WithLevel</code>, <code>momolog.WithSlowThreshold</code>, <code>momolog.WithValues</code>; values logged only with <code>momolog.WithValues(true)</code> and <code>WithArgLogging</code></td>
 </tr>
 <tr>
 <td>OpenTelemetry hook</td>

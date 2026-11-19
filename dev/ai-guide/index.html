@@ -2903,42 +2903,46 @@ other <code>agg.Func</code>) is <code>ErrUnsupported</code> on MySQL and MariaDB
 names the reason, because the rewrite would add a NULL element per
 filtered-out row; filter in <code>Where</code> or a subquery. <code>agg.Func</code> over a raw <code>*</code>
 with <code>Filter</code> is <code>ErrUnsupported</code> there too; use <code>momo.CountAll().Filter(p)</code>.</p>
-<p>Advisory locks (PostgreSQL, inside a transaction), in the package
-<code>github.com/azrtydxb/momo/advisory</code>: <code>advisory.XactLock(ctx, tx, key)</code> waits
-for a transaction-scoped lock on an int64 key, <code>advisory.TryXactLock</code> returns
-whether it was granted, and the string variants (<code>advisory.XactLockString</code>,
-<code>advisory.TryXactLockString</code>) hash a text key with <code>hashtext</code>; pass
-<code>advisory.Hash64(seed)</code> to hash with the 64-bit <code>hashtextextended(key, seed)</code>
-instead (seed 0 matches <code>pg_advisory_xact_lock(hashtextextended(key, 0))</code> in
-existing SQL). The lock ends at commit or rollback. They take a <code>*Tx</code>, so a
-<code>*DB</code> does not compile: open a transaction first. Other dialects fail with
-<code>ErrUnsupported</code>. Never store a hashed key, it can change across PostgreSQL
-major versions.</p>
-<p>Session-level advisory locks: <code>advisory.Lock</code>, <code>advisory.TryLock</code>,
-<code>advisory.Unlock</code> and the string variants (<code>advisory.LockString</code>, <code>advisory.TryLockString</code>,
-<code>advisory.UnlockString</code>, which take the same <code>advisory.Hash64</code> option) take <code>pg_advisory_lock</code>
-and friends. They need a handle whose statements stay on one connection:
-<code>db.OnConn(pc)</code> over a connection from <code>Pinner.Pin</code>. A pooled <code>*DB</code> fails with
-<code>ErrValidation</code>, because the lock and the unlock could reach different
-connections. The lock lasts until <code>advisory.Unlock</code> or until the connection closes, so
-unlock before <code>pc.Release()</code> (or <code>Discard</code> the connection if the unlock fails).
-<code>db.IsPinned()</code> reports whether a handle is pinned. On MySQL and MariaDB the same
-session functions take <code>GET_LOCK</code>, <code>GET_LOCK(name, 0)</code> and <code>RELEASE_LOCK</code> under the
-name <code>momo:advisory:&lt;db&gt;:&lt;key&gt;</code>, scoped to the current database as on PostgreSQL (<code>&lt;db&gt;</code> is 8 hex
-digits of <code>sha256(DATABASE())</code>; a text key is <code>s:</code> plus 32 hex digits of its sha256, and
-<code>advisory.Hash64</code> has no effect); the transaction-scoped and shared functions are
-<code>ErrUnsupported</code> there. After an <code>advisory.Lock</code> error <code>Discard</code> the pinned connection.</p>
-<p>Shared advisory locks (the reader half of a reader/writer pair on one key):
-<code>advisory.XactLockShared</code>, <code>advisory.TryXactLockShared</code>, <code>advisory.LockShared</code>,
-<code>advisory.TryLockShared</code>, <code>advisory.UnlockShared</code> and the <code>...String</code> forms take
-<code>pg_advisory_xact_lock_shared</code>, <code>pg_advisory_lock_shared</code> and friends, with the
-same arguments, <code>advisory.Hash64</code> option, transaction and pinned-connection rules
-as the exclusive helpers. Any number of sessions hold the shared lock of a key
-together; none runs while another holds the exclusive lock of that key
-(<code>advisory.XactLock</code>), and the exclusive lock waits for every shared holder.
-<code>advisory.XactLockSharedString(ctx, tx, k, advisory.Hash64(52))</code> takes the lock
-<code>pg_advisory_xact_lock_shared(hashtextextended(k, 52))</code> takes. <code>advisory.Unlock</code>
-does not release a shared lock; use <code>advisory.UnlockShared</code>.</p>
+<p>Advisory locks (PostgreSQL), in the package
+<code>github.com/azrtydxb/momo/advisory</code>: two functions and four options.
+<code>advisory.Acquire(ctx, q, key, opts...)</code> takes a lock and returns whether it is
+held, <code>advisory.Release(ctx, q, key, opts...)</code> releases a session lock. The key
+is an int64 or a string; a string is hashed with <code>hashtext</code>, or with the 64-bit
+<code>hashtextextended(key, seed)</code> when you pass <code>advisory.WithHash64(seed)</code> (seed 0
+matches <code>pg_advisory_xact_lock(hashtextextended(key, 0))</code> in existing SQL).
+The options are <code>advisory.Xact()</code> (transaction-scoped, <code>q</code> is a <code>*Tx</code>),
+<code>advisory.Shared()</code> (the reader half of a reader/writer pair), <code>advisory.Try()</code>
+(return <code>false</code> instead of waiting) and <code>advisory.WithHash64(seed)</code>. Never store
+a hashed key, it can change across PostgreSQL major versions. Other dialects
+fail with <code>ErrUnsupported</code>.</p>
+<p>A transaction-scoped lock, <code>advisory.Acquire(ctx, tx, key, advisory.Xact())</code>,
+ends at commit or rollback and has no release. A <code>*DB</code> with <code>advisory.Xact()</code>
+and a <code>*Tx</code> without it fail with <code>ErrValidation</code>: open a transaction first.</p>
+<p>A session lock, <code>advisory.Acquire(ctx, db, key)</code> with <code>pg_advisory_lock</code> and
+friends, needs a handle whose statements stay on one connection: <code>db.OnConn(pc)</code>
+over a connection from <code>Pinner.Pin</code>. A pooled <code>*DB</code> fails with <code>ErrValidation</code>,
+because the lock and the unlock could reach different connections. The lock
+lasts until <code>advisory.Release</code> or until the connection closes, so release
+before <code>pc.Release()</code> (or <code>Discard</code> the connection if the release fails).
+<code>db.IsPinned()</code> reports whether a handle is pinned. On MySQL and MariaDB the
+same session functions take <code>GET_LOCK</code>, <code>GET_LOCK(name, 0)</code> and <code>RELEASE_LOCK</code>
+under the name <code>momo:advisory:&lt;db&gt;:&lt;key&gt;</code>, scoped to the current database as on
+PostgreSQL (<code>&lt;db&gt;</code> is 8 hex digits of <code>sha256(DATABASE())</code>; a text key is <code>s:</code>
+plus 32 hex digits of its sha256, and <code>advisory.WithHash64</code> has no effect);
+<code>advisory.Xact()</code> and <code>advisory.Shared()</code> are <code>ErrUnsupported</code> there. After an
+<code>advisory.Acquire</code> error <code>Discard</code> the pinned connection.</p>
+<p>Shared locks: any number of sessions hold the shared lock of a key together;
+none runs while another holds the exclusive lock of that key, and the exclusive
+lock waits for every shared holder. <code>advisory.Acquire(ctx, tx, k,
+advisory.Xact(), advisory.Shared(), advisory.WithHash64(52))</code> takes the lock
+<code>pg_advisory_xact_lock_shared(hashtextextended(k, 52))</code> takes. A release without
+<code>advisory.Shared()</code> does not release a shared lock; pass the same <code>advisory.Shared</code> and
+<code>advisory.WithHash64</code> options to <code>advisory.Release</code> that the acquire used.</p>
+<p>The 20 functions of the earlier API (<code>advisory.Lock</code>, <code>advisory.TryLock</code>,
+<code>advisory.Unlock</code>, <code>advisory.XactLock</code>, <code>advisory.LockShared</code> and the other
+fifteen, with their <code>...String</code> forms) and <code>advisory.Hash64</code> are deprecated
+forwarders that run the same statements. New code uses <code>advisory.Acquire</code>,
+<code>advisory.Release</code> and <code>advisory.WithHash64</code>.</p>
 <p>Typed expressions (no <code>momo.SQL</code> needed). Computed values (<code>momo.Func</code> and, in the
 package <code>github.com/azrtydxb/momo/sqlfn</code>, <code>sqlfn.Substr</code>, <code>sqlfn.Lower</code>,
 <code>sqlfn.Upper</code>, <code>sqlfn.Length</code>, <code>sqlfn.Case</code>, <code>sqlfn.Add</code>/<code>sqlfn.Sub</code>/<code>sqlfn.Mul</code>,
@@ -4168,7 +4172,7 @@ reports a column only for NOT NULL). Use <code>Constraint</code> for those three
 </tr>
 <tr>
 <td><code>ErrPinnedBusy</code></td>
-<td><code>Release</code> on a pinned connection that is still executing</td>
+<td><code>PinnedConn.Release</code> on a pinned connection that is still executing</td>
 <td>wait and release again</td>
 </tr>
 <tr>
@@ -4275,9 +4279,9 @@ steps.</p>
 <li><code>momolog.New(logger, opts...)</code> returns a hook that logs one record per
   statement (op, table, relation, sql, duration, rows, err) and, because it also
   implements <code>momo.RelationHook</code>, one record per relation load (parent, name,
-  kind, parents, children, queries, duration, err). Options: <code>momolog.Level</code>,
-  <code>momolog.SlowOver</code> (statements slower than the duration log at WARN) and <code>momolog.Values</code>.
-  Argument values are logged only with <code>momolog.Values(true)</code> and <code>momo.WithArgLogging</code>
+  kind, parents, children, queries, duration, err). Options: <code>momolog.WithLevel</code>,
+  <code>momolog.WithSlowThreshold</code> (statements slower than the duration log at WARN) and <code>momolog.WithValues</code>.
+  Argument values are logged only with <code>momolog.WithValues(true)</code> and <code>momo.WithArgLogging</code>
   together; a sensitive column's value is <code>momo.RedactedArg</code>.</li>
 <li><code>momo.WithQueryScope(ctx)</code> groups statements for <code>momo.NewNPlusOneHook(threshold,
 report)</code>, a development hook that reports once per statement shape per scope

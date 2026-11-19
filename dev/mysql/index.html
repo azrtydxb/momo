@@ -1941,12 +1941,13 @@ level is <code>ErrUnsupported</code>. <code>ForNoKeyUpdate</code> and <code>ForK
 only and return <code>ErrUnsupported</code> here. <code>timeop.ClockTimestamp</code> renders
 <code>SYSDATE(6)</code>; <code>timeop.StatementTimestamp</code> is <code>ErrUnsupported</code>.</p>
 <h3 id="advisory-locks">Advisory locks<a class="headerlink" href="#advisory-locks" title="Permanent link">&para;</a></h3>
-<p>The <code>advisory</code> session functions <code>advisory.Lock</code>, <code>advisory.TryLock</code>,
-<code>advisory.Unlock</code> and their text-key forms (<code>advisory.LockString</code> and the others) run on MySQL and MariaDB with
-<code>GET_LOCK</code>, <code>GET_LOCK(name, 0)</code> and <code>RELEASE_LOCK</code>. A <code>GET_LOCK</code> lock belongs to
-the connection, so pass a <code>*momo.DB</code> from <code>db.OnConn(pc)</code> over a pinned
-connection (<code>pc</code> from <code>momo.Pinner</code>), exactly as on PostgreSQL, and unlock
-before you release the pinned connection to the pool. A pooled <code>*momo.DB</code> is
+<p>The <code>advisory</code> session functions <code>advisory.Acquire</code> and <code>advisory.Release</code>, with
+<code>advisory.Try</code> for the non-blocking form and an <code>int64</code> or a string key, run on
+MySQL and MariaDB with <code>GET_LOCK</code>, <code>GET_LOCK(name, 0)</code> and <code>RELEASE_LOCK</code>. A
+<code>GET_LOCK</code> lock belongs to the connection, so pass a <code>*momo.DB</code> from
+<code>db.OnConn(pc)</code> over a pinned connection (<code>pc</code> from <code>momo.Pinner</code>), exactly as
+on PostgreSQL, and release the lock before you return the pinned connection to
+the pool. A pooled <code>*momo.DB</code> is
 <code>ErrValidation</code>.</p>
 <ul>
 <li>Key mapping: the lock name is <code>momo:advisory:&lt;db&gt;:&lt;key&gt;</code>. <code>GET_LOCK</code> names are
@@ -1957,25 +1958,25 @@ before you release the pinned connection to the pool. A pooled <code>*momo.DB</c
   the connection to another lock space). <code>&lt;key&gt;</code> is the decimal <code>int64</code> key (for
   example <code>-42</code>) or <code>s:</code> plus the first 32 hex digits of the sha256 of a text key.
   The longest name is 57 characters, under the 64 that <code>GET_LOCK</code> allows.
-  <code>advisory.Hash64</code> has no effect, and a text key locks a different thing here
-  than on PostgreSQL.</li>
-<li><code>advisory.TryLock</code> is <code>GET_LOCK(name, 0)</code>: <code>false</code> when another session holds
-  the lock. A NULL result from the server is an error (<code>ErrBusy</code>). A key the same
-  session already holds is granted at once and counted.</li>
-<li><code>advisory.Lock</code> waits in one-second <code>GET_LOCK</code> calls until the lock is
-  granted or the context ends, because a negative timeout waits forever on MySQL
-  and returns NULL on MariaDB. A canceled context returns an <code>ErrCanceled</code> error
-  that wraps the context error. After any <code>advisory.Lock</code> error, <code>Discard</code> the
-  pinned connection (<code>momo.Discarder</code>) instead of releasing it: a lock the
-  server granted while the call was being abandoned may still be attached to the
-  connection, and closing it frees the lock.</li>
-<li><code>advisory.Unlock</code> is <code>RELEASE_LOCK</code>: <code>true</code> when this session held the lock,
+  <code>advisory.WithHash64</code> has no effect, and a text key locks a different thing
+  here than on PostgreSQL.</li>
+<li><code>advisory.Acquire</code> with <code>advisory.Try</code> is <code>GET_LOCK(name, 0)</code>: <code>false</code> when
+  another session holds the lock. A NULL result from the server is an error
+  (<code>ErrBusy</code>). A key the same session already holds is granted at once and
+  counted.</li>
+<li><code>advisory.Acquire</code> without <code>advisory.Try</code> waits in one-second <code>GET_LOCK</code> calls
+  until the lock is granted or the context ends, because a negative timeout waits
+  forever on MySQL and returns NULL on MariaDB. A canceled context returns an
+  <code>ErrCanceled</code> error that wraps the context error. After any <code>advisory.Acquire</code>
+  error, <code>Discard</code> the pinned connection (<code>momo.Discarder</code>) instead of releasing
+  it: a lock the server granted while the call was being abandoned may still be
+  attached to the connection, and closing it frees the lock.</li>
+<li><code>advisory.Release</code> is <code>RELEASE_LOCK</code>: <code>true</code> when this session held the lock,
   <code>false</code> for a lock another session holds or nobody holds. Locks are counted, so
-  a key locked twice needs two unlocks.</li>
-<li>The transaction-scoped functions (<code>advisory.XactLock</code> and the rest) and the
-  shared functions (<code>advisory.LockShared</code> and the rest) are <code>ErrUnsupported</code>.
-  A <code>GET_LOCK</code> lock is not released by a commit or rollback and has no shared
-  mode, so emulating them would silently hold a session lock.</li>
+  a key acquired twice needs two releases.</li>
+<li><code>advisory.Xact</code> (the transaction-scoped lock) and <code>advisory.Shared</code> are
+  <code>ErrUnsupported</code>. A <code>GET_LOCK</code> lock is not released by a commit or rollback and
+  has no shared mode, so emulating them would silently hold a session lock.</li>
 </ul>
 <h2 id="errors">Errors<a class="headerlink" href="#errors" title="Permanent link">&para;</a></h2>
 <p>Server errors map by number: 1062 unique, 1451 and 1452 (and 1216, 1217)

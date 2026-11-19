@@ -1127,6 +1127,45 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0200" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.20.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.20.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#functional-options-are-named-with" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Functional options are named With*
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advisory-locks-are-advisoryacquire-and-advisoryrelease" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advisory locks are advisory.Acquire and advisory.Release
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0190" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2447,6 +2486,45 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#upgrading-to-0200" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading to 0.20.0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrading to 0.20.0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#functional-options-are-named-with" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Functional options are named With*
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#advisory-locks-are-advisoryacquire-and-advisoryrelease" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advisory locks are advisory.Acquire and advisory.Release
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#upgrading-to-0190" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3666,6 +3744,130 @@
 <a href="../supported-versions/#stability-policy">stability policy</a>. Read this page and
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
+<h2 id="upgrading-to-0200">Upgrading to 0.20.0<a class="headerlink" href="#upgrading-to-0200" title="Permanent link">&para;</a></h2>
+<p>Six option and helper names changed so that every functional option is spelled
+With plus what it sets, and the 20 advisory lock functions became two
+functions with options. The old names stay as deprecated forwarders for this
+release and run the same statements, so your code keeps compiling and behaving
+as before; move to the new names before the forwarders go.</p>
+<h3 id="functional-options-are-named-with">Functional options are named <code>With*</code><a class="headerlink" href="#functional-options-are-named-with" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Old name</th>
+<th>New name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>momolog.Level</code></td>
+<td><code>momolog.WithLevel</code></td>
+</tr>
+<tr>
+<td><code>momolog.SlowOver</code></td>
+<td><code>momolog.WithSlowThreshold</code></td>
+</tr>
+<tr>
+<td><code>momolog.Values</code></td>
+<td><code>momolog.WithValues</code></td>
+</tr>
+<tr>
+<td><code>advisory.Hash64</code></td>
+<td><code>advisory.WithHash64</code></td>
+</tr>
+<tr>
+<td><code>pgxdriver.OnReconnect</code></td>
+<td><code>pgxdriver.WithOnReconnect</code></td>
+</tr>
+<tr>
+<td><code>momo.WithDetail</code> (an error)</td>
+<td><code>momo.Annotate</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>momo.WithDetail</code> is not an option: it copies an error with its raw driver
+detail set, so it is now <code>momo.Annotate</code>. The With prefix is kept for options
+and for context wrappers such as <code>momo.WithTenant</code>, which keep the shape of
+<code>context.WithValue</code>; the rule is in the package comment of <code>momo</code> and in the
+contributor guide. The arguments and the behavior of every renamed function are
+unchanged, so <code>gofmt -r</code> renames a call site:</p>
+<div class="highlight"><pre><span></span><code>gofmt<span class="w"> </span>-r<span class="w"> </span><span class="s1">'momolog.Level -&gt; momolog.WithLevel'</span><span class="w"> </span>-w<span class="w"> </span>.
+gofmt<span class="w"> </span>-r<span class="w"> </span><span class="s1">'momolog.SlowOver -&gt; momolog.WithSlowThreshold'</span><span class="w"> </span>-w<span class="w"> </span>.
+gofmt<span class="w"> </span>-r<span class="w"> </span><span class="s1">'momolog.Values -&gt; momolog.WithValues'</span><span class="w"> </span>-w<span class="w"> </span>.
+gofmt<span class="w"> </span>-r<span class="w"> </span><span class="s1">'advisory.Hash64 -&gt; advisory.WithHash64'</span><span class="w"> </span>-w<span class="w"> </span>.
+gofmt<span class="w"> </span>-r<span class="w"> </span><span class="s1">'pgxdriver.OnReconnect -&gt; pgxdriver.WithOnReconnect'</span><span class="w"> </span>-w<span class="w"> </span>.
+gofmt<span class="w"> </span>-r<span class="w"> </span><span class="s1">'momo.WithDetail -&gt; momo.Annotate'</span><span class="w"> </span>-w<span class="w"> </span>.
+</code></pre></div>
+<h3 id="advisory-locks-are-advisoryacquire-and-advisoryrelease">Advisory locks are <code>advisory.Acquire</code> and <code>advisory.Release</code><a class="headerlink" href="#advisory-locks-are-advisoryacquire-and-advisoryrelease" title="Permanent link">&para;</a></h3>
+<p><code>advisory.Acquire(ctx, q, key, opts...)</code> takes a lock and returns whether it is
+held; <code>advisory.Release(ctx, q, key, opts...)</code> releases a session lock. The key
+is an <code>int64</code> (or <code>int</code>) or a string, so the <code>...String</code> forms are gone, and
+three options choose the lock: <code>advisory.Xact</code> (transaction-scoped, <code>q</code> is the
+<code>*momo.Tx</code>), <code>advisory.Shared</code> and <code>advisory.Try</code> (return <code>false</code> instead of
+waiting). <code>advisory.Acquire</code> without <code>advisory.Try</code> blocks and returns <code>true</code>.
+A session lock still needs the pinned <code>*momo.DB</code> of <code>db.OnConn(pc)</code>. The old
+functions map like this, with <code>K</code> an <code>int64</code> or a string key:</p>
+<table>
+<thead>
+<tr>
+<th>Old call</th>
+<th>New call</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>advisory.XactLock(ctx, tx, K)</code></td>
+<td><code>advisory.Acquire(ctx, tx, K, advisory.Xact())</code></td>
+</tr>
+<tr>
+<td><code>advisory.TryXactLock(ctx, tx, K)</code></td>
+<td><code>advisory.Acquire(ctx, tx, K, advisory.Xact(), advisory.Try())</code></td>
+</tr>
+<tr>
+<td><code>advisory.XactLockShared(ctx, tx, K)</code></td>
+<td><code>advisory.Acquire(ctx, tx, K, advisory.Xact(), advisory.Shared())</code></td>
+</tr>
+<tr>
+<td><code>advisory.TryXactLockShared(ctx, tx, K)</code></td>
+<td><code>advisory.Acquire(ctx, tx, K, advisory.Xact(), advisory.Shared(), advisory.Try())</code></td>
+</tr>
+<tr>
+<td><code>advisory.Lock(ctx, db, K)</code></td>
+<td><code>advisory.Acquire(ctx, db, K)</code></td>
+</tr>
+<tr>
+<td><code>advisory.TryLock(ctx, db, K)</code></td>
+<td><code>advisory.Acquire(ctx, db, K, advisory.Try())</code></td>
+</tr>
+<tr>
+<td><code>advisory.Unlock(ctx, db, K)</code></td>
+<td><code>advisory.Release(ctx, db, K)</code></td>
+</tr>
+<tr>
+<td><code>advisory.LockShared(ctx, db, K)</code></td>
+<td><code>advisory.Acquire(ctx, db, K, advisory.Shared())</code></td>
+</tr>
+<tr>
+<td><code>advisory.TryLockShared(ctx, db, K)</code></td>
+<td><code>advisory.Acquire(ctx, db, K, advisory.Shared(), advisory.Try())</code></td>
+</tr>
+<tr>
+<td><code>advisory.UnlockShared(ctx, db, K)</code></td>
+<td><code>advisory.Release(ctx, db, K, advisory.Shared())</code></td>
+</tr>
+</tbody>
+</table>
+<p>The <code>...String</code> forms (<code>advisory.XactLockString</code>, <code>advisory.LockString</code>,
+<code>advisory.UnlockSharedString</code> and the other seven) map the same way with a
+string key, and keep taking the hash option, now <code>advisory.WithHash64</code>; they
+refuse any other option with <code>ErrValidation</code>. Two differences to know:</p>
+<ul>
+<li><code>advisory.Acquire</code> and <code>advisory.Release</code> take a <code>momo.Querier</code>, so a
+  <code>*momo.DB</code> with <code>advisory.Xact</code> and a <code>*momo.Tx</code> without it fail at run time
+  with <code>ErrValidation</code> where the old transaction functions failed to compile.</li>
+<li><code>advisory.Acquire</code> returns <code>(bool, error)</code> for the blocking form too, so
+  assign or discard the boolean.</li>
+</ul>
 <h2 id="upgrading-to-0190">Upgrading to 0.19.0<a class="headerlink" href="#upgrading-to-0190" title="Permanent link">&para;</a></h2>
 <p><code>momo migrate drift</code>, the refusal of <code>momo migrate baseline</code> and
 <code>momo generate --from-db</code> now see <code>DEFERRABLE</code> constraints on PostgreSQL; no

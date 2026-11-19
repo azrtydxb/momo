@@ -1496,7 +1496,7 @@ for concurrent use.</p>
 every hook as <code>momo.RedactedArg</code> (<code>[redacted]</code>), never as the real value, and
 the hooks here cannot recover it. <code>obs.Recorder</code> stores a copy of the arguments and
 hands out copies. The slog hook logs arguments only when you also pass
-<code>momolog.Values(true)</code>.</p>
+<code>momolog.WithValues(true)</code>.</p>
 <h2 id="recorder">Recorder<a class="headerlink" href="#recorder" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>rec := &amp;obs.Recorder{}
 db := momo.New(drv, momo.WithHook(rec))
@@ -1593,12 +1593,12 @@ neither on its own, and hooks see both as Op <code>explain</code>.
 <p>The slog hook is <code>momolog.New</code>; there is one slog hook, not two.</p>
 <div class="highlight"><pre><span></span><code>logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 db := momo.New(drv, momo.WithHook(momolog.New(logger,
-    momolog.Level(slog.LevelInfo),
-    momolog.SlowOver(200*time.Millisecond), // slower statements log at WARN
+    momolog.WithLevel(slog.LevelInfo),
+    momolog.WithSlowThreshold(200*time.Millisecond), // slower statements log at WARN
 )))
 </code></pre></div>
 <p>A statement record (<code>momo.query</code>) has <code>op</code>, <code>table</code>, <code>relation</code> (when set),
-<code>sql</code>, <code>duration</code>, <code>rows</code>, <code>err</code> (when set) and, with <code>momolog.Values(true)</code> and
+<code>sql</code>, <code>duration</code>, <code>rows</code>, <code>err</code> (when set) and, with <code>momolog.WithValues(true)</code> and
 <code>momo.WithArgLogging</code>, <code>args</code>. A relation record (<code>momo.relation</code>) has <code>parent</code>,
 <code>name</code>, <code>kind</code>, <code>parents</code>, <code>children</code>, <code>queries</code>, <code>duration</code> and <code>err</code> (when
 set). Errors are logged through <code>Error()</code> only.</p>
