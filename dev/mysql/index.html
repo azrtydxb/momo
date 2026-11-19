@@ -1657,9 +1657,12 @@ unaliased expression by its PostgreSQL name must alias it, because it is
 tests of the shared suite whose SQL is written for PostgreSQL alone. The graph writes
 have their own tests in <code>driver/mysqldriver</code> and <code>rel_mysql_integration_test.go</code>.</p>
 <h2 id="connecting">Connecting<a class="headerlink" href="#connecting" title="Permanent link">&para;</a></h2>
-<p>Open the pool with <code>mysqldriver.Open(dsn, flavor)</code>, or build the DSN with
-<code>mysqldriver.ConfigureDSN</code> and pass the <code>*sql.DB</code> to <code>mysqldriver.New</code>. The
-configured DSN always has:</p>
+<p>Open the pool with <code>mysqldriver.Open(ctx, dsn, opts...)</code>, which returns a driver
+that owns the pool (<code>db.Close()</code> closes it), or build
+the DSN with <code>mysqldriver.ConfigureDSN</code> and pass the <code>*sql.DB</code> you opened to
+<code>mysqldriver.New(db, opts...)</code>, which never closes it. The flavor is the option
+<code>mysqldriver.WithFlavor</code>: <code>dialect.FlavorMySQL</code> (the default) or
+<code>dialect.FlavorMariaDB</code>. The configured DSN always has:</p>
 <ul>
 <li><code>parseTime=true</code> and <code>loc=UTC</code>, and the session <code>time_zone</code> set to <code>+00:00</code>;</li>
 <li><code>clientFoundRows=true</code>, so an UPDATE reports the rows it matched;</li>
@@ -1673,7 +1676,9 @@ connection or bad credentials fail at <code>Open</code> and not on the first sta
 An unknown flavor makes <code>Open</code> return <code>ErrUnsupported</code>; on any error the pool
 is closed and nothing is returned. (<code>New</code>, which takes an already opened
 <code>*sql.DB</code>, still returns a driver whose every call is <code>ErrUnsupported</code> for an
-unknown flavor, because it has no error to return.)</p>
+unknown flavor, because it has no error to return.) The <code>Open</code> of an earlier
+release took the flavor as an argument and returned the <code>*sql.DB</code> too; see
+<a href="../upgrading/">upgrading</a>.</p>
 <p><code>ConfigureDSN</code> (and so <code>Open</code>) refuses two DSN settings with <code>ErrValidation</code>:</p>
 <ul>
 <li><code>allowAllFiles=true</code>, which lets the server read any client file through

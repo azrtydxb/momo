@@ -1667,18 +1667,38 @@ call exists and fails with <code>momo.ErrUnsupported</code>.</p>
 <p>Imports: <code>github.com/azrtydxb/momo</code> (core), <code>github.com/azrtydxb/momo/driver/pgxdriver</code>
 (PostgreSQL driver), <code>github.com/azrtydxb/momo/vector</code> for vector types and
 <code>github.com/azrtydxb/momo/vecop</code> for the vector distance builders.</p>
-<p>Open a pool and wrap it, as the README does (the caller closes the pool):</p>
+<p>Every driver package has the same two constructors. <code>Open(ctx, dsn, opts...)</code>
+opens the database and returns a <code>momo.Driver</code> that owns it; <code>db.Close()</code> closes
+it. <code>New(handle, opts...)</code> wraps a pool or <code>*sql.DB</code> you opened, does not own it
+and never closes it: <code>db.Close()</code> leaves it alone. Open a pool and let the
+driver own it, as the README does, or open the pool yourself, wrap it and close
+it yourself:</p>
 <!-- docscheck:fragment -->
 
-<div class="highlight"><pre><span></span><code><span class="nx">pool</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">NewPool</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">url</span><span class="p">)</span><span class="w"> </span><span class="c1">// (ctx, string) (*pgxpool.Pool, error)</span>
+<div class="highlight"><pre><span></span><code><span class="c1">// The driver owns the pool.</span>
+<span class="nx">drv</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">Open</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">url</span><span class="p">)</span><span class="w"> </span><span class="c1">// (ctx, string, ...Option) (momo.Driver, error)</span>
+<span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="p">}</span>
+<span class="nx">db</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">drv</span><span class="p">)</span>
+<span class="k">defer</span><span class="w"> </span><span class="nx">db</span><span class="p">.</span><span class="nx">Close</span><span class="p">()</span>
+
+<span class="c1">// You own the pool.</span>
+<span class="nx">pool</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">NewPool</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">url</span><span class="p">)</span><span class="w"> </span><span class="c1">// (ctx, string) (*pgxpool.Pool, error)</span>
 <span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="p">}</span>
 <span class="k">defer</span><span class="w"> </span><span class="nx">pool</span><span class="p">.</span><span class="nx">Close</span><span class="p">()</span>
-<span class="nx">db</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pool</span><span class="p">))</span><span class="w"> </span><span class="c1">// New(pool, opts ...Option) momo.Driver</span>
+<span class="nx">db</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pool</span><span class="p">))</span><span class="w"> </span><span class="c1">// New(pool, opts ...Option) momo.Driver</span>
 </code></pre></div>
 <p>DSN: <code>postgres://user:password@host:5432/dbname?sslmode=verify-full</code>. Use
 <code>sslmode=disable</code> for local development only.</p>
-<p>With <code>database/sql</code>: <code>pgxdriver.FromConnConfig(cfg *pgx.ConnConfig, opts ...Option) (*sql.DB, momo.Driver)</code>
-or <code>pgxdriver.FromSQLDB(db *sql.DB)</code>. These have no Batch or COPY path.</p>
+<p>With <code>database/sql</code>: <code>pgxdriver.OpenSQL(ctx, dsn, opts...) (momo.Driver, error)</code>
+opens the <code>*sql.DB</code> and owns it, and <code>pgxdriver.NewSQL(db *sql.DB, opts ...Option)</code>
+wraps one you opened. These have no Batch or COPY path.</p>
+<p>The other drivers: <code>sqlitedriver.Open(ctx, dsn, opts...)</code> and
+<code>sqlitepure.Open(ctx, dsn, opts...)</code> take the SQLite settings as options
+(<code>sqlitedriver.WithConfig</code>, <code>sqlitedriver.WithBusyTimeout</code>,
+<code>sqlitedriver.WithSynchronous</code>, <code>sqlitedriver.WithTxLock</code>,
+<code>sqlitedriver.WithMaxOpenConns</code>, and <code>sqlitepure.WithReadOnly</code>); <code>mysqldriver.Open(ctx, dsn,
+opts...)</code> takes the server flavor as <code>mysqldriver.WithFlavor</code>. Their <code>New(db,
+opts...)</code> wraps a <code>*sql.DB</code> you opened.</p>
 <p>Existing transactions: <code>db.AdoptTx(pgxdriver.SQLTx(sqlTx))</code> and
 <code>db.AdoptTx(pgxdriver.PgxTx(pgxTx))</code> run momo inside a transaction the caller
 began (Commit and Rollback return <code>ErrAdoptedTx</code>; the caller finishes it), and
@@ -1697,10 +1717,11 @@ vector column (see <code>vectors.md</code>).</p>
 <p>PgBouncer (transaction pooling): <code>pgxdriver.New</code> defaults to
 <code>pgx.QueryExecModeExec</code> (unnamed statements), and the CI PgBouncer tests open a
 pool and use <code>New(pool)</code> with that default, so no setting is needed. With
-<code>FromConnConfig</code> the exec mode is <code>cfg.DefaultQueryExecMode</code>, which pgx
-defaults to <code>CacheStatement</code> (not PgBouncer-safe), so set
-<code>cfg.DefaultQueryExecMode = pgx.QueryExecModeExec</code> before calling it; its
-<code>opts</code> have no effect.</p>
+<code>pgxdriver.OpenSQL</code> the exec mode is the one the DSN selects, which pgx
+defaults to <code>CacheStatement</code> (not PgBouncer-safe), so add
+<code>default_query_exec_mode=exec</code> to the DSN (with <code>pgxdriver.NewSQL</code>, set
+<code>cfg.DefaultQueryExecMode = pgx.QueryExecModeExec</code> before <code>stdlib.OpenDB</code>); the
+<code>opts</code> of both have no effect.</p>
 <h2 id="dialect-and-driver-status">Dialect and driver status<a class="headerlink" href="#dialect-and-driver-status" title="Permanent link">&para;</a></h2>
 <!-- generated:capabilities -->
 
@@ -2140,13 +2161,13 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>Bulk <code>COPY</code></td>
 <td>yes: <code>InsertQuery[T].Copy</code> (after <code>Omit</code>, with the models as its argument) on the pgx driver; also <code>momo.CopierOf(querier)</code> for the driver call</td>
 <td>SQLite and MySQL: <code>Copy</code> returns <code>ErrUnsupported</code> (neither <code>sqlitedriver</code> nor <code>mysqldriver</code> has a <code>Copier</code>)</td>
-<td><code>Copy</code> runs the insert interceptors (deny only) and <code>BeforeInsert</code> over a copy of the models; it skips <code>OnConflict</code>, <code>Returning</code> and chunking, and it counts as a write for <code>NewUnitOfWork</code>. On a <code>*DB</code> with <code>WithImplicitTx</code> it runs in its own transaction; on a pinned handle with <code>WithTxSetup</code> it fails closed. Not available through <code>FromSQLDB</code></td>
+<td><code>Copy</code> runs the insert interceptors (deny only) and <code>BeforeInsert</code> over a copy of the models; it skips <code>OnConflict</code>, <code>Returning</code> and chunking, and it counts as a write for <code>NewUnitOfWork</code>. On a <code>*DB</code> with <code>WithImplicitTx</code> it runs in its own transaction; on a pinned handle with <code>WithTxSetup</code> it fails closed. Not available through <code>pgxdriver.NewSQL</code></td>
 </tr>
 <tr>
 <td>Batch (several statements, one round trip)</td>
 <td>driver level: <code>momo.BatcherOf(querier)</code>; relation loading uses it automatically</td>
 <td>SQLite: no (<code>sqlitedriver</code> has no <code>Batcher</code>); MySQL: no (<code>mysqldriver</code> has no <code>Batcher</code>)</td>
-<td>not available through <code>FromSQLDB</code></td>
+<td>not available through <code>pgxdriver.NewSQL</code></td>
 </tr>
 <tr>
 <td>Transactions</td>
@@ -2435,7 +2456,7 @@ relation loading on SQLite (<code>testopen.Each</code>). Behavior and error tabl
 </tr>
 <tr>
 <td>Pipelined loading</td>
-<td>yes, automatic when the driver is a <code>Batcher</code> (pgx pool, transaction, pinned connection); sequential on other drivers such as <code>FromSQLDB</code>, and when the driver rejects the batch (Op "batch")</td>
+<td>yes, automatic when the driver is a <code>Batcher</code> (pgx pool, transaction, pinned connection); sequential on other drivers such as <code>pgxdriver.NewSQL</code>, and when the driver rejects the batch (Op "batch")</td>
 <td>nothing to configure</td>
 </tr>
 <tr>
@@ -2817,7 +2838,7 @@ session advisory lock.</p>
 <ul>
 <li>Argument masking: with <code>WithArgLogging</code>, a value bound from a column tagged <code>sensitive</code> reaches hooks as <code>momo.RedactedArg</code>, not the value. This covers insert values, <code>Column.Set</code> and <code>SetExpr</code> assignments on insert, update and upsert (every argument inside an expression assigned to a sensitive column), the primary-key and version predicates of a model update or delete, keyset <code>After</code> values, and WHERE predicates in which a sensitive column is one operand: the comparison methods, <code>EqExpr</code> and the other expression comparisons, <code>In</code>, <code>NotIn</code>, <code>Between</code>, <code>Like</code>, <code>ILike</code>, <code>ContainsLiteral</code>, <code>arrayop.Contains</code>, <code>arrayop.ContainedBy</code>, <code>arrayop.Overlaps</code>, <code>arrayop.AnyOf</code>, and the same methods on an expression that reads a sensitive column such as <code>sqlfn.Lower</code> of it. Relation loading, <code>Link</code>, <code>Unlink</code>, <code>Replace</code> and <code>Count</code> mask key values bound to sensitive key columns, including join-table columns that map to them. The database still receives the real value. <code>QueryEvent.Args</code> is always a copy, so a hook cannot replace or reorder the bound arguments. The copy is deep for <code>[]byte</code> and <code>json.RawMessage</code> values only, so changing those in place does not reach the driver; other mutable argument types are shared. Known gaps: arguments passed to raw <code>momo.SQL</code> or <code>momo.TypedSQL</code> fragments are not masked, because Momo cannot tell which column they belong to; SQLite renders values in an ON CONFLICT target predicate as SQL literals, so such a value appears in <code>QueryEvent.SQL</code>. Do not enable argument logging where raw fragments or conflict-target predicates carry secrets. <code>Error.Detail()</code> is also unmasked: it returns the raw driver detail, which for a PostgreSQL constraint violation quotes the offending key values, including sensitive ones. Do not log it or return it to clients; <code>Error()</code> is the safe text.</li>
 <li>Encode errors: the pgx driver withholds the text of pgx client-side encode failures, which quote the bound value, on every path (pool, transactions, pinned and adopted connections, the database/sql adapter, rows). The message keeps the argument position, such as <code>args[2]</code>; the original error stays reachable with <code>errors.Is</code>, <code>errors.As</code> and <code>Unwrap</code>. That unwrapped cause still contains the bound value, so code that logs every link of an error chain must not print the causes.</li>
-<li>Simple protocol: <code>pgxdriver.WithExecMode</code>, <code>FromConnConfig</code> and <code>FromSQLDB</code> refuse simple protocol, which interpolates values client-side, with <code>ErrUnsupported</code>. <code>FromConnConfig</code> checks the config it is given. <code>FromSQLDB</code> cannot read the pgx config of an opaque <code>*sql.DB</code>, so it checks the first connection it uses, on the first statement, not at construction. Only that first connection is checked: a custom connector that varies the exec mode per connection is not checked.</li>
+<li>Simple protocol: <code>pgxdriver.WithExecMode</code>, <code>pgxdriver.OpenSQL</code> and <code>pgxdriver.NewSQL</code> refuse simple protocol, which interpolates values client-side, with <code>ErrUnsupported</code>. <code>pgxdriver.OpenSQL</code> checks the DSN it is given. <code>pgxdriver.NewSQL</code> cannot read the pgx config of an opaque <code>*sql.DB</code>, so it checks the first connection it uses, on the first statement, not at construction. Only that first connection is checked: a custom connector that varies the exec mode per connection is not checked.</li>
 </ul>
 <h2 id="multi-tenant-row-level-security">Multi-tenant row-level security<a class="headerlink" href="#multi-tenant-row-level-security" title="Permanent link">&para;</a></h2>
 <p>Row-level security (RLS) policies usually read a setting such as
@@ -3005,8 +3026,8 @@ runs concurrent tenants through PgBouncer and checks no scope leaks.</p>
 <td>simple protocol or any unlisted mode: every query returns it</td>
 </tr>
 <tr>
-<td><code>pgxdriver.FromSQLDB</code></td>
-<td>nil <code>db</code>, or a <code>db</code> not backed by the pgx stdlib driver (every Query, Exec, Begin and Pin then fails). A valid <code>FromSQLDB</code> driver can Pin, but the pinned connection has no Batch or COPY</td>
+<td><code>pgxdriver.NewSQL</code></td>
+<td>nil <code>db</code>, or a <code>db</code> not backed by the pgx stdlib driver (every Query, Exec, Begin and Pin then fails). A valid <code>pgxdriver.NewSQL</code> driver can Pin, but the pinned connection has no Batch or COPY</td>
 </tr>
 <tr>
 <td>Generator type mapping</td>
@@ -3014,7 +3035,7 @@ runs concurrent tenants through PgBouncer and checks no scope leaks.</p>
 </tr>
 <tr>
 <td>Batch, <code>COPY</code></td>
-<td>a pinned connection without a batch or COPY path (Op "batch", "copy"); <code>WithExecMode</code> differing from the connection's default exec mode makes the pgx batch fail (Op "batch"). Relation loading falls back to sequential on its own in both cases; a <code>FromSQLDB</code> pinned connection has no <code>Batcher</code> and loads sequentially</td>
+<td>a pinned connection without a batch or COPY path (Op "batch", "copy"); <code>WithExecMode</code> differing from the connection's default exec mode makes the pgx batch fail (Op "batch"). Relation loading falls back to sequential on its own in both cases; a <code>pgxdriver.NewSQL</code> pinned connection has no <code>Batcher</code> and loads sequentially</td>
 </tr>
 </tbody>
 </table>

@@ -2192,7 +2192,7 @@ in <code>driver/pgxdriver</code>:</p>
 </ul>
 <h2 id="sqlite-and-sqlite-vec">SQLite and sqlite-vec<a class="headerlink" href="#sqlite-and-sqlite-vec" title="Permanent link">&para;</a></h2>
 <p><code>driver/sqlitedriver</code> links sqlite-vec v0.1.6 (the version <code>vec_version()</code>
-reports; <code>sqlitedriver.SQLiteVecVersion</code> is the release it is tested with, and
+reports; <code>sqlitedriver.VecVersion</code> is the release it is tested with, and
 <code>Open</code> fails with <code>ErrUnsupported</code> on another minor or major version but accepts
 a later patch release of the same minor). The same typed builders that serve pgvector
 render sqlite-vec's scalar functions, and the integration tests run them

@@ -95,11 +95,16 @@ listed in [supported versions](supported-versions.md).
 
 ## Connect and run SQL
 
-`pgxdriver.NewPool` opens a pgx pool, `pgxdriver.New` wraps it as a Momo driver
-and `momo.New` returns the `*momo.DB`. `db.Tx` runs a function in a
-transaction and commits when it returns nil. Inside it, use the `tx` handle for
-every statement. `momo.Exec` and `momo.Scalars` are the raw SQL path: `?`
-binds the next argument, so values never become part of the SQL text.
+`pgxdriver.Open` opens a pgx pool and returns a Momo driver that owns it, and
+`momo.New` returns the `*momo.DB`. `db.Close` closes the pool. Every driver
+package has the same two constructors: `Open(ctx, dsn, opts...)` opens the
+database and owns it, and `New(handle, opts...)` wraps a pool or `*sql.DB` you
+opened, so `db.Close` leaves it alone and you close it.
+
+`db.Tx` runs a function in a transaction and commits when it returns nil.
+Inside it, use the `tx` handle for every statement. `momo.Exec` and
+`momo.Scalars` are the raw SQL path: `?` binds the next argument, so values
+never become part of the SQL text.
 
 The program reads the connection string from `MOMO_EXAMPLE_DSN`, for example
 `postgres://user:pass@localhost:5432/scratch?sslmode=disable`. It creates a
@@ -127,12 +132,12 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	pool, err := pgxdriver.NewPool(ctx, os.Getenv("MOMO_EXAMPLE_DSN"))
+	drv, err := pgxdriver.Open(ctx, os.Getenv("MOMO_EXAMPLE_DSN"))
 	if err != nil {
 		return err
 	}
-	defer pool.Close()
-	db := momo.New(pgxdriver.New(pool))
+	db := momo.New(drv)
+	defer db.Close()
 
 	return db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
 		if _, err := momo.Exec(ctx, tx, "CREATE TEMP TABLE notes (id bigint PRIMARY KEY, body text NOT NULL)"); err != nil {
@@ -176,12 +181,12 @@ import (
 
 func main() {
 	ctx := context.Background()
-	pool, err := pgxdriver.NewPool(ctx, os.Getenv("MOMO_EXAMPLE_DSN"))
+	drv, err := pgxdriver.Open(ctx, os.Getenv("MOMO_EXAMPLE_DSN"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer pool.Close()
-	db := momo.New(pgxdriver.New(pool))
+	db := momo.New(drv)
+	defer db.Close()
 
 	err = db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
 		if _, err := momo.Exec(ctx, tx, "CREATE TEMP TABLE tags (name text PRIMARY KEY)"); err != nil {
@@ -405,15 +410,27 @@ Details: README "Configure and generate". Example: [quickstart](../examples/quic
 
 ```go
 func openDB(ctx context.Context, url string) (*momo.DB, func(), error) {
-	pool, err := pgxdriver.NewPool(ctx, url) // (ctx, string) (*pgxpool.Pool, error)
+	drv, err := pgxdriver.Open(ctx, url) // (ctx, string, ...Option) (momo.Driver, error)
 	if err != nil {
 		return nil, nil, err
 	}
-	return momo.New(pgxdriver.New(pool)), pool.Close, nil // New(pool, opts ...Option) momo.Driver
+	db := momo.New(drv)
+	return db, func() { _ = db.Close() }, nil
 }
 ```
 
-- The caller owns and closes the pool. `momo.DB` has no `Close`.
+- One constructor shape for every driver package. `Open(ctx, dsn, opts...)`
+  opens the database and returns a `momo.Driver` that owns it: `db.Close()`
+  closes it. `New(handle, opts...)` wraps a pool or `*sql.DB` you opened
+  (`pgxdriver.New(pool)`, `pgxdriver.NewSQL(db)`, `sqlitedriver.New(db)`,
+  `sqlitepure.New(db)`, `mysqldriver.New(db)`), does not own it and never
+  closes it: `db.Close()` returns nil and leaves it open. `New` refuses an
+  option that tries to configure the open pool, with `ErrValidation`.
+- SQLite settings are options: `sqlitedriver.WithConfig(cfg)`,
+  `sqlitedriver.WithBusyTimeout`, `sqlitedriver.WithSynchronous`,
+  `sqlitedriver.WithTxLock` and `sqlitedriver.WithMaxOpenConns`, and
+  `sqlitepure.WithReadOnly`. The MySQL flavor is `mysqldriver.WithFlavor`
+  (`dialect.FlavorMariaDB` for MariaDB; the default is MySQL).
 - `*momo.DB` is safe for concurrent use; create one at startup and share it.
 - DSN: `postgres://user:password@host:5432/dbname?sslmode=verify-full`. Use
   `sslmode=disable` for local development only. Momo adds no TLS options; pgx
@@ -429,8 +446,8 @@ Other constructors:
 <!-- docscheck:fragment -->
 
 ```go
-sqlDB, drv := pgxdriver.FromConnConfig(cfg, opts...) // cfg *pgx.ConnConfig; returns (*sql.DB, momo.Driver)
-drv = pgxdriver.FromSQLDB(sqlDB)                     // sqlDB must be backed by pgx stdlib; for an existing *sql.Tx see SQLTx, AdoptTx and UnwrapSQLTx in section Transactions
+drv, err := pgxdriver.OpenSQL(ctx, url) // database/sql on the pgx stdlib driver; drv owns the *sql.DB
+drv = pgxdriver.NewSQL(sqlDB)           // sqlDB must be backed by pgx stdlib; you own it; for an existing *sql.Tx see SQLTx, AdoptTx and UnwrapSQLTx in section Transactions
 ```
 
 `database/sql` paths have no Batch or COPY path (relation loading falls back to
@@ -451,9 +468,10 @@ PgBouncer (transaction pooling):
   `pgx.QueryExecModeCacheDescribe`, `pgx.QueryExecModeDescribeExec` (import
   `github.com/jackc/pgx/v5`; not tested through PgBouncer). The simple protocol is rejected
   with `ErrUnsupported` on every query. DON'T select it.
-- With `FromConnConfig` set `cfg.DefaultQueryExecMode = pgx.QueryExecModeExec`
-  first; pgx defaults to `CacheStatement`, which is NOT PgBouncer-safe. Its
-  `opts` have no effect.
+- With `pgxdriver.OpenSQL` add `default_query_exec_mode=exec` to the DSN, and
+  with `pgxdriver.NewSQL` set `cfg.DefaultQueryExecMode = pgx.QueryExecModeExec`
+  before `stdlib.OpenDB`; pgx defaults to `CacheStatement`, which is NOT
+  PgBouncer-safe. The options of `OpenSQL` and `NewSQL` have no effect.
 - DON'T run `momo migrate` through a transaction pooler (section 5).
 - Set `search_path` per role or per transaction, not at connection startup.
 
@@ -1879,7 +1897,7 @@ Joined and CTE-prefixed writes:
 
 Bulk and set-based writes:
 
-- `InsertQuery[T].Copy` streams models through the driver COPY path. It returns `ErrUnsupported` on SQLite and MySQL and through `FromSQLDB` (the driver must offer a COPY path). It runs the insert interceptors (deny only, a predicate they add is ignored) and the `BeforeInsert` hook over a copy of the models, validates fields like `Models`, and counts as a write for `NewUnitOfWork`. It skips `OnConflict`, `Returning` and chunking, and it cannot be combined with `Model`, `Models`, `InsertQuery.Values`, `FromSelect`, `OnConflict` or `Upsert` (`ErrValidation`). On a `*DB` with `WithImplicitTx` it runs in its own transaction, so `WithTxSetup` applies; on a pinned `OnConn` handle with `WithTxSetup` it fails closed with `ErrUnsupported`.
+- `InsertQuery[T].Copy` streams models through the driver COPY path. It returns `ErrUnsupported` on SQLite and MySQL and through `pgxdriver.NewSQL` (the driver must offer a COPY path). It runs the insert interceptors (deny only, a predicate they add is ignored) and the `BeforeInsert` hook over a copy of the models, validates fields like `Models`, and counts as a write for `NewUnitOfWork`. It skips `OnConflict`, `Returning` and chunking, and it cannot be combined with `Model`, `Models`, `InsertQuery.Values`, `FromSelect`, `OnConflict` or `Upsert` (`ErrValidation`). On a `*DB` with `WithImplicitTx` it runs in its own transaction, so `WithTxSetup` applies; on a pinned `OnConn` handle with `WithTxSetup` it fails closed with `ErrUnsupported`.
 - `InsertQuery[T].Unnest()` (the method, not the package-level FROM source `momo.Unnest`) renders a `Model` or `Models` insert as `INSERT ... SELECT * FROM unnest($1::bigint[], $2::text[])`: one array parameter per written column, one statement. The bind count does not depend on the row count, so it bypasses `MaxParams` and `WithMaxParams` and never chunks (and is not split into a transaction of several statements). Other dialects return `ErrUnsupported`. `InsertQuery.Values`, `InsertQuery.ValuesRows` and `FromSelect` return `ErrValidation`, and so does a model without a table schema in its generated metadata (the array types come from it). Int, float, bool, string, `time.Time` and `[]byte` columns bind as typed slices (`[]*T` when a value is NULL); any other element type (uuid, json, decimal, named enums) falls back to `[]any`, which pgx may reject for an array type, so use plain `Models` for such a model. `OnConflict`, `Upsert` and `Returning` work as for `Models`; interceptors, `BeforeInsert`, field validators, automatic timestamps and id generators run as for `Models`. A `FlagSensitive` column's array shows as `RedactedArg` in `QueryEvent.Args`.
 - `Merge` is PostgreSQL 15 or later; `.Returning` needs 17 or later. An older server or a driver without `ServerVersioner` returns `ErrUnsupported` before the statement runs. SQLite, MySQL and MariaDB have no MERGE: `Exec` runs the clauses as temporary-table copies of the source and of the matched pairs, an `UPDATE` and an `INSERT` in one transaction (a savepoint inside a `Tx`), which gives PostgreSQL's final table and affected-row count without concurrent writers (it takes no lock against a matching row committed between its steps); a target row that two source rows match is `ErrTooManyRows` (on PostgreSQL too), `Returning`, `SET col = DEFAULT` and a matched update on a model without a primary key are `ErrUnsupported`, and `MergeQuery.Statements` lists the statements because `SQL` has no single text there. It needs `On` and at least one WHEN clause (`ErrValidation`). An interceptor that adds predicates makes it fail with `ErrValidation`, because they cannot be applied to a MERGE; deny the kind instead. Field validators do not run on the values inserted from the source.
 - `BulkUpdate` and `BulkUpdateKeys` (a composite key) update only the keys in their row list, bind one parameter per value, and keep the version and updated-at columns current. They run on PostgreSQL, SQLite, MySQL and MariaDB (`UPDATE ... FROM` on the first two, `UPDATE ... JOIN` on the MySQL family). `Exec` splits a list over the parameter limit into chunks that run atomically (a transaction on a `DB`, a savepoint on a `Tx`); `SQL` and `Rows` render one statement and return `ErrLimitExceeded` over the limit. `Returning` needs a dialect with `UPDATE ... RETURNING`, so MySQL and MariaDB return `ErrUnsupported`. `RowsAffected` counts the rows that match a listed key on every dialect, changed or not.
@@ -2127,7 +2145,7 @@ err := db.Tx(ctx, momo.TxOptions{}, func(tx *momo.Tx) error {
   `tx.Rollback(ctx)`; a finished `*Tx` returns `ErrTxDone`. Prefer `db.Tx`.
 - Incremental adoption in a `database/sql` or pgx codebase, both directions:
   - Adopt a transaction the caller began: `mtx := db.AdoptTx(pgxdriver.SQLTx(sqlTx))`
-    for a `*sql.Tx` (database must be pgx-stdlib backed, `FromSQLDB`), or
+    for a `*sql.Tx` (database must be pgx-stdlib backed, `pgxdriver.NewSQL`), or
     `db.AdoptTx(pgxdriver.PgxTx(pgxTx, opts...))` for a `pgx.Tx` (pgxpool driver; `opts` are the options of `New`, such as `WithExecMode`; an unsupported exec mode returns `ErrUnsupported` on use, as with `New`). An adopted `pgx.Tx` keeps Batch and `COPY`; an adopted `*sql.Tx` has neither. Statements,
     hooks, error classification and savepoints (`mtx.Tx`) work as usual. `Commit`
     and `Rollback` on `mtx` return `ErrAdoptedTx` and do nothing: the caller
@@ -4549,7 +4567,7 @@ db := momo.New(pgxdriver.New(pool, pgxdriver.WithVectorFormat(pgxdriver.VectorBi
 ## SQLite and sqlite-vec
 
 `driver/sqlitedriver` links sqlite-vec v0.1.6 (the version `vec_version()`
-reports; `sqlitedriver.SQLiteVecVersion` is the release it is tested with, and
+reports; `sqlitedriver.VecVersion` is the release it is tested with, and
 `Open` fails with `ErrUnsupported` on another minor or major version but accepts
 a later patch release of the same minor). The same typed builders that serve pgvector
 render sqlite-vec's scalar functions, and the integration tests run them
@@ -5305,9 +5323,12 @@ have their own tests in `driver/mysqldriver` and `rel_mysql_integration_test.go`
 
 ## Connecting
 
-Open the pool with `mysqldriver.Open(dsn, flavor)`, or build the DSN with
-`mysqldriver.ConfigureDSN` and pass the `*sql.DB` to `mysqldriver.New`. The
-configured DSN always has:
+Open the pool with `mysqldriver.Open(ctx, dsn, opts...)`, which returns a driver
+that owns the pool (`db.Close()` closes it), or build
+the DSN with `mysqldriver.ConfigureDSN` and pass the `*sql.DB` you opened to
+`mysqldriver.New(db, opts...)`, which never closes it. The flavor is the option
+`mysqldriver.WithFlavor`: `dialect.FlavorMySQL` (the default) or
+`dialect.FlavorMariaDB`. The configured DSN always has:
 
 - `parseTime=true` and `loc=UTC`, and the session `time_zone` set to `+00:00`;
 - `clientFoundRows=true`, so an UPDATE reports the rows it matched;
@@ -5321,7 +5342,9 @@ connection or bad credentials fail at `Open` and not on the first statement.
 An unknown flavor makes `Open` return `ErrUnsupported`; on any error the pool
 is closed and nothing is returned. (`New`, which takes an already opened
 `*sql.DB`, still returns a driver whose every call is `ErrUnsupported` for an
-unknown flavor, because it has no error to return.)
+unknown flavor, because it has no error to return.) The `Open` of an earlier
+release took the flavor as an argument and returned the `*sql.DB` too; see
+[upgrading](upgrading.md).
 
 `ConfigureDSN` (and so `Open`) refuses two DSN settings with `ErrValidation`:
 
@@ -9875,22 +9898,43 @@ Imports: `github.com/azrtydxb/momo` (core), `github.com/azrtydxb/momo/driver/pgx
 (PostgreSQL driver), `github.com/azrtydxb/momo/vector` for vector types and
 `github.com/azrtydxb/momo/vecop` for the vector distance builders.
 
-Open a pool and wrap it, as the README does (the caller closes the pool):
+Every driver package has the same two constructors. `Open(ctx, dsn, opts...)`
+opens the database and returns a `momo.Driver` that owns it; `db.Close()` closes
+it. `New(handle, opts...)` wraps a pool or `*sql.DB` you opened, does not own it
+and never closes it: `db.Close()` leaves it alone. Open a pool and let the
+driver own it, as the README does, or open the pool yourself, wrap it and close
+it yourself:
 
 <!-- docscheck:fragment -->
 
 ```go
+// The driver owns the pool.
+drv, err := pgxdriver.Open(ctx, url) // (ctx, string, ...Option) (momo.Driver, error)
+if err != nil { return err }
+db := momo.New(drv)
+defer db.Close()
+
+// You own the pool.
 pool, err := pgxdriver.NewPool(ctx, url) // (ctx, string) (*pgxpool.Pool, error)
 if err != nil { return err }
 defer pool.Close()
-db := momo.New(pgxdriver.New(pool)) // New(pool, opts ...Option) momo.Driver
+db = momo.New(pgxdriver.New(pool)) // New(pool, opts ...Option) momo.Driver
 ```
 
 DSN: `postgres://user:password@host:5432/dbname?sslmode=verify-full`. Use
 `sslmode=disable` for local development only.
 
-With `database/sql`: `pgxdriver.FromConnConfig(cfg *pgx.ConnConfig, opts ...Option) (*sql.DB, momo.Driver)`
-or `pgxdriver.FromSQLDB(db *sql.DB)`. These have no Batch or COPY path.
+With `database/sql`: `pgxdriver.OpenSQL(ctx, dsn, opts...) (momo.Driver, error)`
+opens the `*sql.DB` and owns it, and `pgxdriver.NewSQL(db *sql.DB, opts ...Option)`
+wraps one you opened. These have no Batch or COPY path.
+
+The other drivers: `sqlitedriver.Open(ctx, dsn, opts...)` and
+`sqlitepure.Open(ctx, dsn, opts...)` take the SQLite settings as options
+(`sqlitedriver.WithConfig`, `sqlitedriver.WithBusyTimeout`,
+`sqlitedriver.WithSynchronous`, `sqlitedriver.WithTxLock`,
+`sqlitedriver.WithMaxOpenConns`, and `sqlitepure.WithReadOnly`); `mysqldriver.Open(ctx, dsn,
+opts...)` takes the server flavor as `mysqldriver.WithFlavor`. Their `New(db,
+opts...)` wraps a `*sql.DB` you opened.
 
 Existing transactions: `db.AdoptTx(pgxdriver.SQLTx(sqlTx))` and
 `db.AdoptTx(pgxdriver.PgxTx(pgxTx))` run momo inside a transaction the caller
@@ -9912,10 +9956,11 @@ vector column (see `vectors.md`).
 PgBouncer (transaction pooling): `pgxdriver.New` defaults to
 `pgx.QueryExecModeExec` (unnamed statements), and the CI PgBouncer tests open a
 pool and use `New(pool)` with that default, so no setting is needed. With
-`FromConnConfig` the exec mode is `cfg.DefaultQueryExecMode`, which pgx
-defaults to `CacheStatement` (not PgBouncer-safe), so set
-`cfg.DefaultQueryExecMode = pgx.QueryExecModeExec` before calling it; its
-`opts` have no effect.
+`pgxdriver.OpenSQL` the exec mode is the one the DSN selects, which pgx
+defaults to `CacheStatement` (not PgBouncer-safe), so add
+`default_query_exec_mode=exec` to the DSN (with `pgxdriver.NewSQL`, set
+`cfg.DefaultQueryExecMode = pgx.QueryExecModeExec` before `stdlib.OpenDB`); the
+`opts` of both have no effect.
 
 ## Dialect and driver status
 
@@ -10009,8 +10054,8 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 | Graph writes                               | yes                                                                                                                                                                                                                                           | SQLite: yes, covered by the integration tests that run on SQLite; MySQL 8.4, MySQL 9.7 and MariaDB 11.8: covered by the `integration-mysql` tests (MySQL reads keys with `LAST_INSERT_ID`, MariaDB with `INSERT ... RETURNING`)                                            | `CreateGraph`, `FindOrCreate` (`ON CONFLICT`; on MySQL and MariaDB a transaction with a plain insert and a shared-lock select), `UpsertByPK`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `Merge`, `Truncate`                        | yes: `Merge` is PostgreSQL 15 or later and `.Returning` needs 17 or later (`ErrUnsupported` on an older server or a driver without `ServerVersioner`); `Truncate` is `TRUNCATE TABLE`                                                         | `Merge`: emulated, see below. `Truncate`: SQLite runs `DELETE FROM` and resets the autoincrement counter; MySQL runs `TRUNCATE TABLE` (refused inside a transaction)                                                                                                       | `Merge` returns `ErrValidation` when an interceptor adds predicates (deny the kind instead). `MergeQuery.Statements` lists the statements `Exec` runs. `Truncate` runs interceptors with the kind `truncate`, has no `RESTART IDENTITY` or `CASCADE`, and is refused inside a MySQL transaction. `Merge` does not run field validators on the inserted values                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `BulkUpdate`, `BulkUpdateKeys`             | yes: one `UPDATE ... FROM (SELECT ... UNION ALL SELECT ...)` over a list of rows (one per key), keys first; `BulkUpdateKeys` takes a composite key; `Returning` works; `Exec` splits a list over the bind-parameter limit into atomic chunks. | SQLite: `UPDATE ... FROM`, same rules. MySQL and MariaDB: `UPDATE ... JOIN (SELECT ... UNION ALL ...) ... SET`; `Returning` is `ErrUnsupported` there (no `UPDATE ... RETURNING`)                                                                                          | `BulkUpdate(q, key, cols, rows)` and `BulkUpdateKeys(q, keys, cols, rows)`: each row holds the key values, then one value per column. Only listed keys change; a key outside the table changes nothing and a NULL key matches nothing. A NULL value sets NULL. The version and updated_at columns are maintained (updated_at from the statement clock; an explicit one is `ErrValidation`). Using With, From, Set, or Model gives `ErrValidation`. Soft-deleted rows match as in `Update`: add a `Where` to leave them out. `RowsAffected` counts matched rows on every dialect (the MySQL driver sets clientFoundRows). `Exec` chunks and is atomic (a DB pinned by `OnConn` is `ErrUnsupported`); `SQL` and `Rows` render one statement and return `ErrLimitExceeded` over the limit.                                                                                                                                                       |
-| Bulk `COPY`                                | yes: `InsertQuery[T].Copy` (after `Omit`, with the models as its argument) on the pgx driver; also `momo.CopierOf(querier)` for the driver call                                                                                               | SQLite and MySQL: `Copy` returns `ErrUnsupported` (neither `sqlitedriver` nor `mysqldriver` has a `Copier`)                                                                                                                                                                | `Copy` runs the insert interceptors (deny only) and `BeforeInsert` over a copy of the models; it skips `OnConflict`, `Returning` and chunking, and it counts as a write for `NewUnitOfWork`. On a `*DB` with `WithImplicitTx` it runs in its own transaction; on a pinned handle with `WithTxSetup` it fails closed. Not available through `FromSQLDB`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Batch (several statements, one round trip) | driver level: `momo.BatcherOf(querier)`; relation loading uses it automatically                                                                                                                                                               | SQLite: no (`sqlitedriver` has no `Batcher`); MySQL: no (`mysqldriver` has no `Batcher`)                                                                                                                                                                                   | not available through `FromSQLDB`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Bulk `COPY`                                | yes: `InsertQuery[T].Copy` (after `Omit`, with the models as its argument) on the pgx driver; also `momo.CopierOf(querier)` for the driver call                                                                                               | SQLite and MySQL: `Copy` returns `ErrUnsupported` (neither `sqlitedriver` nor `mysqldriver` has a `Copier`)                                                                                                                                                                | `Copy` runs the insert interceptors (deny only) and `BeforeInsert` over a copy of the models; it skips `OnConflict`, `Returning` and chunking, and it counts as a write for `NewUnitOfWork`. On a `*DB` with `WithImplicitTx` it runs in its own transaction; on a pinned handle with `WithTxSetup` it fails closed. Not available through `pgxdriver.NewSQL`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Batch (several statements, one round trip) | driver level: `momo.BatcherOf(querier)`; relation loading uses it automatically                                                                                                                                                               | SQLite: no (`sqlitedriver` has no `Batcher`); MySQL: no (`mysqldriver` has no `Batcher`)                                                                                                                                                                                   | not available through `pgxdriver.NewSQL`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Transactions                               | yes: `db.Tx(ctx, opts, fn)`, `db.Begin`; read uncommitted, read committed, repeatable read, serializable; read-only                                                                                                                           | SQLite and MySQL: commit, rollback and panic cases run in the shared suite (`suite.RunAll`); SQLite accepts the default and serializable isolation only (other levels `ErrUnsupported`) and runs read-only transactions through `PRAGMA query_only` (`sqlitedriver` tests) | any other `sql.IsolationLevel`: `ErrUnsupported` (Op "begin")                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Savepoints                                 | yes: `Tx.Savepoint`, `RollbackTo`, `Tx.Release`                                                                                                                                                                                               | SQLite and MySQL: yes, covered by the shared suite (`suite.RunAll`)                                                                                                                                                                                                        | a dialect without savepoints: `ErrUnsupported` (Op "savepoint")                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Pinned connection                          | yes: `db.OnConn(pc)`                                                                                                                                                                                                                          | SQLite and MySQL: the drivers implement `Pinner` (driver tests); `db.OnConn` itself is exercised by a MySQL test (generated keys) and not by a SQLite test                                                                                                                 | no transactions on a pinned `*DB`: `Begin`, `Tx`, `Replace` and `CreateGraph` fail with `ErrUnsupported` (Op "begin"), chunked `Insert` with Op "insert"; `Link`, `Unlink` and `Count` work                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -10093,22 +10138,22 @@ The table describes PostgreSQL behavior; the shared integration tests also run
 relation loading on SQLite (`testopen.Each`). Behavior and error table:
 [relations.md](relations.md).
 
-| Feature                              | PostgreSQL                                                                                                                                                                                    | API                                                                                                               |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Kinds                                | yes                                                                                                                                                                                           | `belongs_to`, `has_one`, `has_many`, `many2many` (tag `rel:`); polymorphic through `Discriminator`                |
-| Foreign keys on composite-PK columns | yes: `belongs_to` with `fk:` naming a column inside the referencing model's composite primary key                                                                                             | `momo:"belongs_to,fk:LicenseID"`; the target needs a single-column primary key                                    |
-| Load one or several                  | yes; one statement per relation per bind-limit chunk                                                                                                                                          | `Load`, `LoadAll`                                                                                                 |
-| Load through a query                 | yes for `All`, `One`, `First`                                                                                                                                                                 | `SelectQuery.Preload(...)`                                                                                        |
-| Load options                         | yes                                                                                                                                                                                           | `Relation.Scope(...)` with `LoadWhere`, `LoadOrderBy`, `LoadPerParentLimit`, `LoadWithDeleted`, `LoadOnlyDeleted` |
-| Top-N per parent                     | has-many and many-to-many; belongs-to and has-one: `ErrUnsupported`                                                                                                                           | `LoadPerParentLimit(n)`                                                                                           |
-| Nested loads                         | yes                                                                                                                                                                                           | `Relation.Then(...)`                                                                                              |
-| Single-query load                    | belongs-to with a unique child key only; others `ErrUnsupported`                                                                                                                              | `Relation.Joined()` passed to `Preload` (LEFT JOIN)                                                               |
-| Pipelined loading                    | yes, automatic when the driver is a `Batcher` (pgx pool, transaction, pinned connection); sequential on other drivers such as `FromSQLDB`, and when the driver rejects the batch (Op "batch") | nothing to configure                                                                                              |
-| Predicates                           | yes                                                                                                                                                                                           | `Has`, `HasFrom`, `HasNo`, `CountOrder`                                                                           |
-| Traversal                            | yes; many-to-many: `ErrValidation`                                                                                                                                                            | `Relation.From(parentQuery)`                                                                                      |
-| Association helpers                  | yes; belongs-to: `ErrUnsupported`                                                                                                                                                             | `Link`, `Unlink`, `Replace`, `Count`                                                                              |
-| Graph writes                         | yes                                                                                                                                                                                           | `Include` with `CreateGraph`, `FindOrCreate`, `UpsertByPK`                                                        |
-| Hooks                                | yes                                                                                                                                                                                           | `RelationHook`, `RelationEvent`                                                                                   |
+| Feature                              | PostgreSQL                                                                                                                                                                                           | API                                                                                                               |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Kinds                                | yes                                                                                                                                                                                                  | `belongs_to`, `has_one`, `has_many`, `many2many` (tag `rel:`); polymorphic through `Discriminator`                |
+| Foreign keys on composite-PK columns | yes: `belongs_to` with `fk:` naming a column inside the referencing model's composite primary key                                                                                                    | `momo:"belongs_to,fk:LicenseID"`; the target needs a single-column primary key                                    |
+| Load one or several                  | yes; one statement per relation per bind-limit chunk                                                                                                                                                 | `Load`, `LoadAll`                                                                                                 |
+| Load through a query                 | yes for `All`, `One`, `First`                                                                                                                                                                        | `SelectQuery.Preload(...)`                                                                                        |
+| Load options                         | yes                                                                                                                                                                                                  | `Relation.Scope(...)` with `LoadWhere`, `LoadOrderBy`, `LoadPerParentLimit`, `LoadWithDeleted`, `LoadOnlyDeleted` |
+| Top-N per parent                     | has-many and many-to-many; belongs-to and has-one: `ErrUnsupported`                                                                                                                                  | `LoadPerParentLimit(n)`                                                                                           |
+| Nested loads                         | yes                                                                                                                                                                                                  | `Relation.Then(...)`                                                                                              |
+| Single-query load                    | belongs-to with a unique child key only; others `ErrUnsupported`                                                                                                                                     | `Relation.Joined()` passed to `Preload` (LEFT JOIN)                                                               |
+| Pipelined loading                    | yes, automatic when the driver is a `Batcher` (pgx pool, transaction, pinned connection); sequential on other drivers such as `pgxdriver.NewSQL`, and when the driver rejects the batch (Op "batch") | nothing to configure                                                                                              |
+| Predicates                           | yes                                                                                                                                                                                                  | `Has`, `HasFrom`, `HasNo`, `CountOrder`                                                                           |
+| Traversal                            | yes; many-to-many: `ErrValidation`                                                                                                                                                                   | `Relation.From(parentQuery)`                                                                                      |
+| Association helpers                  | yes; belongs-to: `ErrUnsupported`                                                                                                                                                                    | `Link`, `Unlink`, `Replace`, `Count`                                                                              |
+| Graph writes                         | yes                                                                                                                                                                                                  | `Include` with `CreateGraph`, `FindOrCreate`, `UpsertByPK`                                                        |
+| Hooks                                | yes                                                                                                                                                                                                  | `RelationHook`, `RelationEvent`                                                                                   |
 
 ## Vectors
 
@@ -10211,7 +10256,7 @@ session advisory lock.
 
 - Argument masking: with `WithArgLogging`, a value bound from a column tagged `sensitive` reaches hooks as `momo.RedactedArg`, not the value. This covers insert values, `Column.Set` and `SetExpr` assignments on insert, update and upsert (every argument inside an expression assigned to a sensitive column), the primary-key and version predicates of a model update or delete, keyset `After` values, and WHERE predicates in which a sensitive column is one operand: the comparison methods, `EqExpr` and the other expression comparisons, `In`, `NotIn`, `Between`, `Like`, `ILike`, `ContainsLiteral`, `arrayop.Contains`, `arrayop.ContainedBy`, `arrayop.Overlaps`, `arrayop.AnyOf`, and the same methods on an expression that reads a sensitive column such as `sqlfn.Lower` of it. Relation loading, `Link`, `Unlink`, `Replace` and `Count` mask key values bound to sensitive key columns, including join-table columns that map to them. The database still receives the real value. `QueryEvent.Args` is always a copy, so a hook cannot replace or reorder the bound arguments. The copy is deep for `[]byte` and `json.RawMessage` values only, so changing those in place does not reach the driver; other mutable argument types are shared. Known gaps: arguments passed to raw `momo.SQL` or `momo.TypedSQL` fragments are not masked, because Momo cannot tell which column they belong to; SQLite renders values in an ON CONFLICT target predicate as SQL literals, so such a value appears in `QueryEvent.SQL`. Do not enable argument logging where raw fragments or conflict-target predicates carry secrets. `Error.Detail()` is also unmasked: it returns the raw driver detail, which for a PostgreSQL constraint violation quotes the offending key values, including sensitive ones. Do not log it or return it to clients; `Error()` is the safe text.
 - Encode errors: the pgx driver withholds the text of pgx client-side encode failures, which quote the bound value, on every path (pool, transactions, pinned and adopted connections, the database/sql adapter, rows). The message keeps the argument position, such as `args[2]`; the original error stays reachable with `errors.Is`, `errors.As` and `Unwrap`. That unwrapped cause still contains the bound value, so code that logs every link of an error chain must not print the causes.
-- Simple protocol: `pgxdriver.WithExecMode`, `FromConnConfig` and `FromSQLDB` refuse simple protocol, which interpolates values client-side, with `ErrUnsupported`. `FromConnConfig` checks the config it is given. `FromSQLDB` cannot read the pgx config of an opaque `*sql.DB`, so it checks the first connection it uses, on the first statement, not at construction. Only that first connection is checked: a custom connector that varies the exec mode per connection is not checked.
+- Simple protocol: `pgxdriver.WithExecMode`, `pgxdriver.OpenSQL` and `pgxdriver.NewSQL` refuse simple protocol, which interpolates values client-side, with `ErrUnsupported`. `pgxdriver.OpenSQL` checks the DSN it is given. `pgxdriver.NewSQL` cannot read the pgx config of an opaque `*sql.DB`, so it checks the first connection it uses, on the first statement, not at construction. Only that first connection is checked: a custom connector that varies the exec mode per connection is not checked.
 
 ## Multi-tenant row-level security
 
@@ -10317,9 +10362,9 @@ All match `errors.Is(err, momo.ErrUnsupported)`. Build-time errors surface from
 | `SelectQuery.Explain`                                         | MySQL and MariaDB                                                                                                                                                                                                                                                                                                                                             |
 | Migration inspect or apply                                    | missing extension (for example `vector`): the error names it; unsupported object on inspect                                                                                                                                                                                                                                                                   |
 | `pgxdriver.WithExecMode`                                      | simple protocol or any unlisted mode: every query returns it                                                                                                                                                                                                                                                                                                  |
-| `pgxdriver.FromSQLDB`                                         | nil `db`, or a `db` not backed by the pgx stdlib driver (every Query, Exec, Begin and Pin then fails). A valid `FromSQLDB` driver can Pin, but the pinned connection has no Batch or COPY                                                                                                                                                                     |
+| `pgxdriver.NewSQL`                                            | nil `db`, or a `db` not backed by the pgx stdlib driver (every Query, Exec, Begin and Pin then fails). A valid `pgxdriver.NewSQL` driver can Pin, but the pinned connection has no Batch or COPY                                                                                                                                                              |
 | Generator type mapping                                        | Go type with no SQL mapping on the dialect (`gen/typemap`)                                                                                                                                                                                                                                                                                                    |
-| Batch, `COPY`                                                 | a pinned connection without a batch or COPY path (Op "batch", "copy"); `WithExecMode` differing from the connection's default exec mode makes the pgx batch fail (Op "batch"). Relation loading falls back to sequential on its own in both cases; a `FromSQLDB` pinned connection has no `Batcher` and loads sequentially                                    |
+| Batch, `COPY`                                                 | a pinned connection without a batch or COPY path (Op "batch", "copy"); `WithExecMode` differing from the connection's default exec mode makes the pgx batch fail (Op "batch"). Relation loading falls back to sequential on its own in both cases; a `pgxdriver.NewSQL` pinned connection has no `Batcher` and loads sequentially                             |
 
 
 # Source: PERFORMANCE.md
@@ -10524,7 +10569,7 @@ and the allocation gate (`make bench-gate`).
 | Other majors            | untested; no minimum is enforced in code and none is documented                                                                                                        |
 | `MERGE`                 | the `momo.Merge` builder; it reads `server_version_num` (`ServerVersioner`) and returns `ErrUnsupported` below PostgreSQL 15, and for `.Returning` below PostgreSQL 17 |
 | Authentication in tests | password (`postgres` and `momo_app` roles); TLS is off in CI (`sslmode=disable`)                                                                                       |
-| Driver                  | pgx v5 pool through `pgxdriver.NewPool` or `pgxdriver.New`; `database/sql` through `pgxdriver.FromSQLDB`                                                               |
+| Driver                  | pgx v5 pool through `pgxdriver.NewPool` or `pgxdriver.New`; `database/sql` through `pgxdriver.NewSQL`                                                                  |
 
 ## pgvector
 
@@ -10743,15 +10788,74 @@ later releases can break more.
 
 ## Upgrading to 0.20.0
 
-Six option and helper names changed so that every functional option is spelled
-With plus what it sets, the 20 advisory lock functions became two functions
-with options, the statement N+1 detector moved into `obs` and now shares one
-scope with the relation-load detector, and the hook constructors return their
-concrete types. The old names stay as deprecated forwarders for this release
-and run the same statements, so your code keeps compiling and behaving as
-before; move to the new names before the forwarders go. The one change that can
-stop code compiling now is a constructor result that you assert to an interface
-or assign to a variable of another type.
+Every driver package now has the same two constructors, so code that opens a
+SQLite or MySQL database must change: `sqlitedriver.Open`, `sqlitepure.Open`,
+`mysqldriver.Open` and `mysqldriver.New` take different arguments and no longer
+return a `*sql.DB`. Six option and helper names also changed so that every
+functional option is spelled With plus what it sets, the 20 advisory lock
+functions became two functions with options, the statement N+1 detector moved
+into `obs` and now shares one scope with the relation-load detector, and the
+hook constructors return their concrete types. The old `pgxdriver` names, the
+renamed options, the advisory functions and the old N+1 names stay as deprecated
+forwarders for this release and run the same statements, so that code keeps
+compiling and behaving as before; move to the new names before the forwarders
+go. Beyond the driver constructors, the one change that can stop code compiling
+is a hook constructor result that you assert to an interface or assign to a
+variable of another type.
+
+### One constructor shape for every driver
+
+`New(handle, opts...)` wraps a pool or `*sql.DB` you opened, does not own it and
+never closes it. `Open(ctx, dsn, opts...)` opens the database, owns it and
+returns `(momo.Driver, error)`; the new `momo.DB.Close` closes the pool it
+opened, and does nothing to a pool you passed to `New`. Before, nothing said
+who closed what: the
+SQLite and MySQL `Open` returned the `*sql.DB` for you to close, and
+`pgxdriver.NewPool` returned a pool.
+
+| Before                                                               | After                                                                                                                        |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `db, drv, err := sqlitedriver.Open(dsn, cfg)`                        | `drv, err := sqlitedriver.Open(ctx, dsn, sqlitedriver.WithConfig(cfg))`                                                      |
+| `db, drv, err := sqlitepure.Open(dsn, cfg)`                          | `drv, err := sqlitepure.Open(ctx, dsn, sqlitepure.WithConfig(cfg))`                                                          |
+| `sqlitepure.Config{ReadOnly: true}`                                  | `sqlitepure.WithReadOnly()`                                                                                                  |
+| `db, drv, err := mysqldriver.Open(dsn, dialect.FlavorMariaDB)`       | `drv, err := mysqldriver.Open(ctx, dsn, mysqldriver.WithFlavor(dialect.FlavorMariaDB))`                                      |
+| `mysqldriver.New(db, dialect.FlavorMariaDB)`                         | `mysqldriver.New(db, mysqldriver.WithFlavor(dialect.FlavorMariaDB))`                                                         |
+| `pool, err := pgxdriver.NewPool(ctx, url)` and `pgxdriver.New(pool)` | `drv, err := pgxdriver.Open(ctx, url)`; `NewPool` and `New` stay for a program that needs the pool                           |
+| `pgxdriver.FromSQLDB(db)`                                            | `pgxdriver.NewSQL(db)` (`FromSQLDB` is deprecated)                                                                           |
+| `db, drv := pgxdriver.FromConnConfig(cfg)`                           | `drv, err := pgxdriver.OpenSQL(ctx, dsn)`, or `stdlib.OpenDB(*cfg)` with `pgxdriver.NewSQL` (`FromConnConfig` is deprecated) |
+| `sqlitedriver.SQLiteVecVersion`                                      | `sqlitedriver.VecVersion` (`SQLiteVecVersion` is deprecated)                                                                 |
+
+Close an opened driver with `db.Close()`: after
+`drv, err := sqlitepure.Open(ctx, "app.db")` and `db := momo.New(drv)`, call it
+once, for example in a `defer`, when you are done with `db` and with every
+transaction begun from it. A second call is safe.
+
+`pgxdriver.Open` and `pgxdriver.OpenSQL` now ping the server on `ctx`, so an
+unreachable server or a bad password is an error at `Open`, as it already was
+for SQLite and MySQL; `pgxdriver.NewPool` still does not dial. `New` refuses an
+option that tries to configure a pool that is already open: the SQLite `New`
+with `WithBusyTimeout` or another setting, and `pgxdriver.NewSQL` with
+`WithExecMode` or `WithVectorFormat`, return a driver whose every call fails
+with `ErrValidation` naming the option. Set those on your own `*sql.DB` or
+`*pgx.ConnConfig` instead; `pgxdriver.OpenSQL` takes `WithExecMode` itself.
+
+If you need the `*sql.DB` itself, for your own queries or to share it, open it
+yourself and wrap it: `sqlitepure.New(sqlDB)` does not own it, so you close it.
+A MariaDB server needs `mysqldriver.WithFlavor(dialect.FlavorMariaDB)`; the
+default flavor is MySQL.
+
+### Settings are options and the types are public
+
+`sqlitedriver.Config` and `sqlitepure.Config` are now declared in their own
+packages instead of aliasing one internal type. They have the same fields, so
+`sqlitepure.Config(cfg)` converts one to the other; they are no longer
+identical types. `gen/config.MigrateConfig` is declared in `gen/config` too.
+`sqlitedriver.SQLiteVecVersion` is renamed `VecVersion`: one name in both
+builds, a constant that is `"v0.1.6"` with cgo and `""` without, because
+sqlite-vec is not linked then. A build without cgo, or for Windows, has the same
+`Open`, `New` and option names as the cgo build, so code compiles either way;
+`Open` returns `ErrUnsupported` there and `New` returns a driver whose every
+call does.
 
 ### One N+1 detector family and one scope
 
@@ -13236,6 +13340,7 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.DB`                                 | type   | DB is a Momo handle over a driver.                                                                                                                                                                                                                                                |
 | `momo.DB.AdoptTx`                         | method | AdoptTx binds a Tx to dtx, a driver transaction the caller already began and keeps ownership of.                                                                                                                                                                                  |
 | `momo.DB.Begin`                           | method | Begin starts an explicit transaction.                                                                                                                                                                                                                                             |
+| `momo.DB.Close`                           | method | Close closes the driver when the driver owns its connections, that is when it implements io.Closer, as the driver an Open function of a driver package returns does.                                                                                                              |
 | `momo.DB.Dialect`                         | method | Dialect returns the dialect of the connection.                                                                                                                                                                                                                                    |
 | `momo.DB.Driver`                          | method | Driver returns the underlying driver, e.g.                                                                                                                                                                                                                                        |
 | `momo.DB.IsPinned`                        | method | IsPinned reports whether db is a handle from OnConn, whose statements all run on one pinned connection.                                                                                                                                                                           |

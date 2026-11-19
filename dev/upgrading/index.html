@@ -1139,6 +1139,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#one-constructor-shape-for-every-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One constructor shape for every driver
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#settings-are-options-and-the-types-are-public" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings are options and the types are public
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#one-n1-detector-family-and-one-scope" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2520,6 +2542,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#one-constructor-shape-for-every-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One constructor shape for every driver
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#settings-are-options-and-the-types-are-public" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings are options and the types are public
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#one-n1-detector-family-and-one-scope" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3789,15 +3833,101 @@
 the <code>CHANGELOG.md</code> entry of a release before you upgrade, and expect that
 later releases can break more.</p>
 <h2 id="upgrading-to-0200">Upgrading to 0.20.0<a class="headerlink" href="#upgrading-to-0200" title="Permanent link">&para;</a></h2>
-<p>Six option and helper names changed so that every functional option is spelled
-With plus what it sets, the 20 advisory lock functions became two functions
-with options, the statement N+1 detector moved into <code>obs</code> and now shares one
-scope with the relation-load detector, and the hook constructors return their
-concrete types. The old names stay as deprecated forwarders for this release
-and run the same statements, so your code keeps compiling and behaving as
-before; move to the new names before the forwarders go. The one change that can
-stop code compiling now is a constructor result that you assert to an interface
-or assign to a variable of another type.</p>
+<p>Every driver package now has the same two constructors, so code that opens a
+SQLite or MySQL database must change: <code>sqlitedriver.Open</code>, <code>sqlitepure.Open</code>,
+<code>mysqldriver.Open</code> and <code>mysqldriver.New</code> take different arguments and no longer
+return a <code>*sql.DB</code>. Six option and helper names also changed so that every
+functional option is spelled With plus what it sets, the 20 advisory lock
+functions became two functions with options, the statement N+1 detector moved
+into <code>obs</code> and now shares one scope with the relation-load detector, and the
+hook constructors return their concrete types. The old <code>pgxdriver</code> names, the
+renamed options, the advisory functions and the old N+1 names stay as deprecated
+forwarders for this release and run the same statements, so that code keeps
+compiling and behaving as before; move to the new names before the forwarders
+go. Beyond the driver constructors, the one change that can stop code compiling
+is a hook constructor result that you assert to an interface or assign to a
+variable of another type.</p>
+<h3 id="one-constructor-shape-for-every-driver">One constructor shape for every driver<a class="headerlink" href="#one-constructor-shape-for-every-driver" title="Permanent link">&para;</a></h3>
+<p><code>New(handle, opts...)</code> wraps a pool or <code>*sql.DB</code> you opened, does not own it and
+never closes it. <code>Open(ctx, dsn, opts...)</code> opens the database, owns it and
+returns <code>(momo.Driver, error)</code>; the new <code>momo.DB.Close</code> closes the pool it
+opened, and does nothing to a pool you passed to <code>New</code>. Before, nothing said
+who closed what: the
+SQLite and MySQL <code>Open</code> returned the <code>*sql.DB</code> for you to close, and
+<code>pgxdriver.NewPool</code> returned a pool.</p>
+<table>
+<thead>
+<tr>
+<th>Before</th>
+<th>After</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>db, drv, err := sqlitedriver.Open(dsn, cfg)</code></td>
+<td><code>drv, err := sqlitedriver.Open(ctx, dsn, sqlitedriver.WithConfig(cfg))</code></td>
+</tr>
+<tr>
+<td><code>db, drv, err := sqlitepure.Open(dsn, cfg)</code></td>
+<td><code>drv, err := sqlitepure.Open(ctx, dsn, sqlitepure.WithConfig(cfg))</code></td>
+</tr>
+<tr>
+<td><code>sqlitepure.Config{ReadOnly: true}</code></td>
+<td><code>sqlitepure.WithReadOnly()</code></td>
+</tr>
+<tr>
+<td><code>db, drv, err := mysqldriver.Open(dsn, dialect.FlavorMariaDB)</code></td>
+<td><code>drv, err := mysqldriver.Open(ctx, dsn, mysqldriver.WithFlavor(dialect.FlavorMariaDB))</code></td>
+</tr>
+<tr>
+<td><code>mysqldriver.New(db, dialect.FlavorMariaDB)</code></td>
+<td><code>mysqldriver.New(db, mysqldriver.WithFlavor(dialect.FlavorMariaDB))</code></td>
+</tr>
+<tr>
+<td><code>pool, err := pgxdriver.NewPool(ctx, url)</code> and <code>pgxdriver.New(pool)</code></td>
+<td><code>drv, err := pgxdriver.Open(ctx, url)</code>; <code>NewPool</code> and <code>New</code> stay for a program that needs the pool</td>
+</tr>
+<tr>
+<td><code>pgxdriver.FromSQLDB(db)</code></td>
+<td><code>pgxdriver.NewSQL(db)</code> (<code>FromSQLDB</code> is deprecated)</td>
+</tr>
+<tr>
+<td><code>db, drv := pgxdriver.FromConnConfig(cfg)</code></td>
+<td><code>drv, err := pgxdriver.OpenSQL(ctx, dsn)</code>, or <code>stdlib.OpenDB(*cfg)</code> with <code>pgxdriver.NewSQL</code> (<code>FromConnConfig</code> is deprecated)</td>
+</tr>
+<tr>
+<td><code>sqlitedriver.SQLiteVecVersion</code></td>
+<td><code>sqlitedriver.VecVersion</code> (<code>SQLiteVecVersion</code> is deprecated)</td>
+</tr>
+</tbody>
+</table>
+<p>Close an opened driver with <code>db.Close()</code>: after
+<code>drv, err := sqlitepure.Open(ctx, "app.db")</code> and <code>db := momo.New(drv)</code>, call it
+once, for example in a <code>defer</code>, when you are done with <code>db</code> and with every
+transaction begun from it. A second call is safe.</p>
+<p><code>pgxdriver.Open</code> and <code>pgxdriver.OpenSQL</code> now ping the server on <code>ctx</code>, so an
+unreachable server or a bad password is an error at <code>Open</code>, as it already was
+for SQLite and MySQL; <code>pgxdriver.NewPool</code> still does not dial. <code>New</code> refuses an
+option that tries to configure a pool that is already open: the SQLite <code>New</code>
+with <code>WithBusyTimeout</code> or another setting, and <code>pgxdriver.NewSQL</code> with
+<code>WithExecMode</code> or <code>WithVectorFormat</code>, return a driver whose every call fails
+with <code>ErrValidation</code> naming the option. Set those on your own <code>*sql.DB</code> or
+<code>*pgx.ConnConfig</code> instead; <code>pgxdriver.OpenSQL</code> takes <code>WithExecMode</code> itself.</p>
+<p>If you need the <code>*sql.DB</code> itself, for your own queries or to share it, open it
+yourself and wrap it: <code>sqlitepure.New(sqlDB)</code> does not own it, so you close it.
+A MariaDB server needs <code>mysqldriver.WithFlavor(dialect.FlavorMariaDB)</code>; the
+default flavor is MySQL.</p>
+<h3 id="settings-are-options-and-the-types-are-public">Settings are options and the types are public<a class="headerlink" href="#settings-are-options-and-the-types-are-public" title="Permanent link">&para;</a></h3>
+<p><code>sqlitedriver.Config</code> and <code>sqlitepure.Config</code> are now declared in their own
+packages instead of aliasing one internal type. They have the same fields, so
+<code>sqlitepure.Config(cfg)</code> converts one to the other; they are no longer
+identical types. <code>gen/config.MigrateConfig</code> is declared in <code>gen/config</code> too.
+<code>sqlitedriver.SQLiteVecVersion</code> is renamed <code>VecVersion</code>: one name in both
+builds, a constant that is <code>"v0.1.6"</code> with cgo and <code>""</code> without, because
+sqlite-vec is not linked then. A build without cgo, or for Windows, has the same
+<code>Open</code>, <code>New</code> and option names as the cgo build, so code compiles either way;
+<code>Open</code> returns <code>ErrUnsupported</code> there and <code>New</code> returns a driver whose every
+call does.</p>
 <h3 id="one-n1-detector-family-and-one-scope">One N+1 detector family and one scope<a class="headerlink" href="#one-n1-detector-family-and-one-scope" title="Permanent link">&para;</a></h3>
 <p>Before, <code>momo.NewNPlusOneHook</code> counted statement shapes in a scope made with
 <code>momo.WithQueryScope</code>, and <code>obs.NewNPlusOne</code> counted relation loads in a scope
