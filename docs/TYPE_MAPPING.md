@@ -207,7 +207,7 @@ example `c.Domain("email").As("text").NotNull().Check("email_shape", "VALUE
 LIKE '%@%'")`, and a field uses it through the `type` tag, which names the
 domain as the column type:
 
-```go
+```text
 Email string `momo:"type:email"`
 ```
 
@@ -233,7 +233,7 @@ declared with `Config.Composite`, for example
 `c.Composite("address").Attr("street", "text").Attr("zip", "text")`, and read
 into a Go struct through `types.Composite[T]`:
 
-```go
+```text
 type Address struct {
 	Street string
 	Zip    *string
@@ -261,9 +261,11 @@ array of a composite type are not supported yet: the generator, `generate
 --from-db` and the inspector refuse them with a diagnostic that wraps
 `momo.ErrUnsupported`.
 
-Equality on the whole value works with the typed query API: `col.Eq(value)`
-compares the record. Access to one attribute is not part of the API; write it
-as a raw expression, `(home).street`.
+Equality on the whole value is `momo.CompositeEq(col, "address", value)` and
+`momo.CompositeNe`: the type name casts the bound value, because PostgreSQL reads
+the parameter of a plain `col.Eq(value)` as an anonymous record and refuses it.
+Access to one attribute is not part of the API; write it as a raw expression,
+`(home).street`.
 
 Domains and composite types exist on PostgreSQL alone. The generator reports a
 declaration when the target dialect is SQLite, MySQL or MariaDB, and the SQLite

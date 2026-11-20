@@ -108,11 +108,11 @@ func TestCompanionDomainAndCompositeRefusals(t *testing.T) {
 // composite type and a domain over one. Each fails at apply or at the first
 // scan otherwise, far from the model that caused it.
 func TestCompositeUseRefusals(t *testing.T) {
-	g, diags, err := Load([]string{"./companiondomainuse"}, Config{Dir: fixturesDir(t)})
-	if err != nil || len(diags) != 0 {
-		t.Fatalf("load: %v %v", err, diags)
+	// Load builds the schema, so the diagnostics come with it.
+	_, diags, err := Load([]string{"./companiondomainuse"}, Config{Dir: fixturesDir(t)})
+	if err != nil {
+		t.Fatal(err)
 	}
-	_, diags = BuildSchema(g.Models, pg())
 	joined := diagStrings(diags)
 	for _, want := range []string{
 		`a types.Composite field needs a type tag that names a composite type declared with Config.Composite`,

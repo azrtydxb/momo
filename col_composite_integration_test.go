@@ -133,13 +133,13 @@ func TestCompositeEqualityAndUpdateLive(t *testing.T) {
 		pred momo.Predicate
 		want []int64
 	}{
-		"home equals":      {dcHome.Eq(home), []int64{1}},
-		"other equals":     {dcHome.Eq(other), []int64{2}},
-		"home differs":     {dcHome.Ne(home), []int64{2}},
-		"work equals":      {dcWork.Eq(home), []int64{2}},
+		"home equals":      {momo.CompositeEq(dcHome, "dc_address", home), []int64{1}},
+		"other equals":     {momo.CompositeEq(dcHome, "dc_address", other), []int64{2}},
+		"home differs":     {momo.CompositeNe(dcHome, "dc_address", home), []int64{2}},
+		"work equals":      {momo.CompositeEq(dcWork, "dc_address", home), []int64{2}},
 		"work is null":     {dcWork.IsNull(), []int64{1}},
-		"a missing value":  {dcHome.Eq(types.Composite[dcAddress]{V: dcAddress{Street: "Main St", Floor: 3}}), []int64{}},
-		"domain and value": {momo.And(dcEmail.Eq("x@y.z"), dcHome.Eq(other)), []int64{2}},
+		"a missing value":  {momo.CompositeEq(dcHome, "dc_address", types.Composite[dcAddress]{V: dcAddress{Street: "Main St", Floor: 3}}), []int64{}},
+		"domain and value": {momo.And(dcEmail.Eq("x@y.z"), momo.CompositeEq(dcHome, "dc_address", other)), []int64{2}},
 	} {
 		if got := ids(c.pred); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s: ids = %v, want %v", name, got, c.want)
@@ -154,7 +154,7 @@ func TestCompositeEqualityAndUpdateLive(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("UPDATE changed %d rows", n)
 	}
-	if got := ids(dcHome.Eq(moved)); !reflect.DeepEqual(got, []int64{2}) {
+	if got := ids(momo.CompositeEq(dcHome, "dc_address", moved)); !reflect.DeepEqual(got, []int64{2}) {
 		t.Errorf("after the update, home equals moved: ids = %v", got)
 	}
 	if got := ids(dcWork.IsNull()); !reflect.DeepEqual(got, []int64{1, 2}) {
