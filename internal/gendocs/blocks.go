@@ -240,6 +240,13 @@ var features = []feature{
 		MySQL:  "`ErrUnsupported`: MySQL and MariaDB check each constraint at the end of the statement and have no `DEFERRABLE`; a declaration is a generator error and the renderer refuses it",
 	},
 	{
+		Name:   "Audit history tables",
+		API:    []string{"schema.History", "schema.HistoryFor"},
+		PG:     "yes: `Config.History` declares `<table>_history`, a trigger function and an `AFTER INSERT OR UPDATE OR DELETE` row trigger as ordinary schema objects, so `diff`, `Baseline`, `drift` and `generate --from-db` handle them and a column change or rename of the model reaches the history table in the same plan, and a dropped column stays there as nullable; the actor is the transaction-local setting `momo.actor`, set by `momo.SetActor`; `momo.HistoryOf` reads the versions of a row and `momo.HistoryAsOf` its state at a time",
+		SQLite: "`ErrUnsupported`: a declaration is a generator error, and `momo.SetActor`, `momo.HistoryOf` and `momo.HistoryAsOf` return `ErrUnsupported`, because SQLite has no transaction-local setting to carry the actor",
+		MySQL:  "`ErrUnsupported`: a declaration is a generator error, and `momo.SetActor`, `momo.HistoryOf` and `momo.HistoryAsOf` return `ErrUnsupported`, because MySQL and MariaDB have no transaction-local setting to carry the actor",
+	},
+	{
 		Name:   "Transactional outbox",
 		API:    []string{"outbox.New", "outbox.Outbox", "outbox.Relay", "outbox.Publisher", "outbox.WithListen"},
 		PG:     "yes: `outbox.Outbox.Add` writes the event in the caller's transaction and sends `NOTIFY`; `outbox.Relay` claims batches with `FOR UPDATE SKIP LOCKED` and a lease, publishes with no lock held, retries with backoff up to a maximum of attempts, keeps the order of each key, and wakes on `NOTIFY` through `outbox.WithListen` with polling as the fallback; several relays in several processes share one table",

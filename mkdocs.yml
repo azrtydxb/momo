@@ -50,6 +50,7 @@ nav:
       - Full-text search: fulltext.md
       - MySQL and MariaDB: mysql.md
       - Migrations: migrations.md
+      - Audit history tables: history.md
       - Importing from other ORMs: importers.md
       - Coming from GORM: guides/gorm.md
       - Coming from Bun: guides/bun.md

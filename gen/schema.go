@@ -115,6 +115,11 @@ func buildSchema(models []*Model, cfg Config) (*schema.Schema, map[*Model]*schem
 			b.addRelations(m)
 		}
 	}
+	for _, m := range sorted {
+		if b.tableBy[tableKey(m)] == m {
+			b.addHistory(m)
+		}
+	}
 	b.finish()
 	s.Sort()
 	sort.SliceStable(b.diags, func(i, j int) bool {
@@ -950,6 +955,47 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 	mergeObjects(b, &b.s.Functions, "function", c.Functions, func(f schema.Function) string { return f.Schema + "." + f.Name + "(" + f.Args + ")" }, m.Pos)
 	mergeObjects(b, &b.s.Triggers, "trigger", c.Triggers, func(g schema.Trigger) string { return g.Schema + "." + g.Table + "." + g.Name }, m.Pos)
 	mergeObjects(b, &b.s.Policies, "policy", c.Policies, func(p schema.Policy) string { return p.Schema + "." + p.Table + "." + p.Name }, m.Pos)
+}
+
+// addHistory declares the audit history of m when its companion calls History:
+// the history table, the trigger function and the trigger, all ordinary schema
+// objects built by schema.HistoryFor from the table as the models define it, so
+// a column added to or dropped from the model changes them in the same
+// generation and Diff mirrors it. PostgreSQL only: the trigger reads the
+// transaction-local setting that carries the actor, which SQLite and MySQL
+// have no equivalent of.
+func (b *schemaBuilder) addHistory(m *Model) {
+	if m.IsView || m.Config == nil || !m.Config.History {
+		return
+	}
+	for _, d := range append(slices.Clone(b.dialects), b.primary) {
+		if d != dialect.Postgres {
+			b.diag(m.Pos, fmt.Sprintf("model %s: History is not supported on %s (audit history needs PostgreSQL: the trigger reads a transaction-local setting for changed_by, which %s has no equivalent of)", m.GoName, d, d))
+			return
+		}
+	}
+	idx, ok := b.index[m]
+	if !ok {
+		return
+	}
+	h, err := schema.HistoryFor(&b.s.Tables[idx])
+	if err != nil {
+		b.diag(m.Pos, fmt.Sprintf("model %s: History: %v", m.GoName, err))
+		return
+	}
+	if other, ok := b.tableBy[m.Schema+"\x00"+h.Table.Name]; ok {
+		b.diag(m.Pos, fmt.Sprintf("model %s: History: the history table %q is already the table of model %s", m.GoName, h.Table.Name, other.GoName))
+		return
+	}
+	for _, t := range b.s.Tables {
+		if t.Schema == h.Table.Schema && t.Name == h.Table.Name {
+			b.diag(m.Pos, fmt.Sprintf("model %s: History: the history table %q is already declared by another table or join table", m.GoName, h.Table.Name))
+			return
+		}
+	}
+	b.s.Tables = append(b.s.Tables, h.Table)
+	b.s.Functions = append(b.s.Functions, h.Function)
+	b.s.Triggers = append(b.s.Triggers, h.Trigger)
 }
 
 // checkSequences reports each standalone sequence declared for a dialect that

@@ -57,6 +57,8 @@ func Diff(from, to *schema.Schema, opts DiffOptions) (changes []Change, hints []
 	if to == nil {
 		to = &schema.Schema{}
 	}
+	to, opts = adaptHistory(from, to, opts)
+	from = historyTriggersAfterRename(from, to, opts)
 	d := &differ{
 		d:        to.Dialect,
 		opts:     opts,
