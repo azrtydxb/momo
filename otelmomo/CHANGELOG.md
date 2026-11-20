@@ -2,14 +2,11 @@
 
 ## [0.2.0](https://github.com/azrtydxb/momo/compare/otelmomo/v0.1.0...otelmomo/v0.2.0) (2026-11-20)
 
+_`otelmomo.New` returns its concrete hook type, matching the other momo hook constructors. It needs momo v0.20.0 or later; a caller that stores the result as a `momo.Hook` keeps compiling. See [docs/observability.md](https://github.com/azrtydxb/momo/blob/v0.20.0/docs/observability.md)._
 
 ### ⚠ BREAKING CHANGES
 
-* obs.NewSlowQuery, momolog.New and otelmomo.New return concrete types instead of momo.Hook; momo.NewNPlusOneHook, momo.WithQueryScope and momo.NPlusOneFinding are deprecated for obs.NewStatementNPlusOne, obs.WithScope and obs.StatementFinding.
-
-### Code Refactoring
-
-* one N+1 detector and one hook constructor shape ([#275](https://github.com/azrtydxb/momo/issues/275)) ([6bcee50](https://github.com/azrtydxb/momo/commit/6bcee50d8c3184c481c5b9441d3370ea71fc8434)), closes [#269](https://github.com/azrtydxb/momo/issues/269)
+- **otelmomo:** `otelmomo.New` returns `*otelmomo.Hook` instead of `momo.Hook` ([#275](https://github.com/azrtydxb/momo/pull/275), closes [#269](https://github.com/azrtydxb/momo/issues/269))
 
 ## 0.1.0 (2026-11-10)
 
