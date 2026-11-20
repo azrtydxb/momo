@@ -3653,10 +3653,11 @@ back, but a rollback cannot undo <code>nextval</code>, <code>NOTIFY</code> or <c
 Examples: <a href="https://github.com/azrtydxb/momo/tree/main/examples/crud-zero-null/">crud-zero-null</a>,
 <a href="https://github.com/azrtydxb/momo/tree/main/examples/projection-pagination/">projection-pagination</a>.</p>
 <h3 id="writing-your-own-expression">Writing your own expression<a class="headerlink" href="#writing-your-own-expression" title="Permanent link">&para;</a></h3>
-<p>Code outside the root package (your own package, or a Momo subpackage) builds
-typed expressions with a small extension API. Every name below is an extension
-point: writing one correctly means identifiers go through <code>Builder.Ident</code> and
-values through <code>Builder.Arg</code> or <code>Builder.ArgFor</code>, never concatenated into the SQL.</p>
+<p>Code outside the root package builds typed expressions with a small frozen
+extension API, listed with the reason for each name in the
+<a href="../compatibility/#the-expression-extension-api">compatibility policy</a>. Writing
+one correctly means identifiers go through <code>Builder.Ident</code> and values through
+<code>Builder.Arg</code>, never concatenated into the SQL.</p>
 <ul>
 <li><code>momo.Ops[T]</code>: embed it in your struct to make the struct an <code>Expression[T]</code>
   (a <code>Predicate</code> when <code>T</code> is <code>bool</code>) with <code>Eq</code>, <code>Ne</code>, <code>Lt</code>, <code>Le</code>, <code>Gt</code>, <code>Ge</code>,
@@ -3665,36 +3666,20 @@ values through <code>Builder.Arg</code> or <code>Builder.ArgFor</code>, never co
   the constructor, as the example below does. An unbound <code>Ops</code> fails the
   build with <code>ErrValidation</code>.</li>
 <li><code>momo.Typed[T]</code>: wraps any <code>Expr</code> as an <code>Expression[T]</code> without comparison
-  methods.</li>
-<li><code>momo.PredicateFunc</code>: turns <code>func(*momo.Builder)</code> into a <code>Predicate</code>.</li>
-<li><code>momo.Flagged</code> and <code>momo.FlagsOf</code>: the column flags of an expression, or 0. Give your
-  expression a <code>Flags() uint16</code> method that returns <code>FlagsOf</code> of the wrapped
-  column so a sensitive column stays masked.</li>
-<li><code>Builder.ArgFor</code>: binds a value, masked as <code>momo.RedactedArg</code> in hook
-  events when the flags argument has <code>FlagSensitive</code>.</li>
-<li><code>Builder.RenderSensitive</code>: renders an expression and returns the flags with
-  <code>FlagSensitive</code> added when it read a sensitive column; pass the result to the
-  other operands.</li>
-<li><code>Builder.ExprFor</code>: renders an expression with every argument it binds masked
-  when the flags argument has <code>FlagSensitive</code>.</li>
-<li><code>Builder.Unsupported</code>: records <code>ErrUnsupported</code> for a dialect that
-  cannot express the feature. <code>Builder.WriteByte</code> appends a trusted SQL byte.</li>
-<li><code>Order.AppendOrder</code>: renders one ORDER BY item (<code>expr ASC|DESC [NULLS ...]</code>) for
-  an expression that carries its own ordering, such as <code>agg.Call.OrderBy</code>.</li>
-<li><code>Builder.AppendFilter</code>: writes <code>FILTER (WHERE p)</code> after an aggregate call
-  and fails the build for a nil predicate or on MySQL. MySQL has no FILTER, so an
-  aggregate that wants MySQL support rewrites its own arguments to
-  <code>CASE WHEN p THEN x END</code> instead, as <code>momo.Agg.Filter</code> and <code>agg.Call.Filter</code> do.</li>
-<li><code>momo.WindowOf[T]</code>: turns your aggregate call into a window function,
-  <code>call OVER (...)</code>; <code>agg.Call.Over</code> is built on it.</li>
-<li><code>Builder.MarkSensitive</code>: call it from an expression that writes a sensitive
-  column's identifier directly, so an enclosing comparison masks its other
-  operands. A column reference does this by itself.</li>
-<li><code>momo.ValidName</code>: checks a function name or alias before you write it with
-  <code>Builder.Ident</code>.</li>
-<li><code>momo.VectorColumnOf</code>: the <code>VectorColumn</code> behind any <code>VectorSource</code>
-  (read its table, name, dimension and flags for a custom distance expression).</li>
+  methods, which is how a predicate that has no methods of its own is built.</li>
+<li><code>momo.Flagged</code>: the column flags of an expression. Give your expression a
+  <code>Flags() momo.ColumnFlags</code> method that returns the flags of the wrapped
+  column (assert <code>momo.Flagged</code> on it, or return 0) so a sensitive column stays
+  masked in hook events when you compare through the <code>Ops</code> methods.</li>
+<li><code>Builder.Ident</code>, <code>Builder.Arg</code>, <code>Builder.WriteString</code>, <code>Builder.Dialect</code> and
+  <code>Builder.SetErr</code>: identifiers, values, the fixed SQL text, the dialect being
+  rendered, and the build error. Call <code>SetErr</code> with a <code>*momo.Error</code> of kind
+  <code>momo.ErrUnsupported</code> for a dialect that cannot express the feature.</li>
 </ul>
+<p>A value you bind with <code>Builder.Arg</code> yourself is not masked beside a sensitive
+column; compare through the <code>Ops</code> methods when an operand can be one. The
+helpers the Momo subpackages (<code>agg</code>, <code>fts</code>, <code>jsonop</code>, <code>sqlfn</code> and the others)
+use beyond this list are internal and not available to you.</p>
 <div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="p">(</span>
@@ -3720,7 +3705,12 @@ values through <code>Builder.Arg</code> or <code>Builder.ArgFor</code>, never co
 <span class="w">    </span><span class="nx">b</span><span class="p">.</span><span class="nx">WriteString</span><span class="p">(</span><span class="s">")"</span><span class="p">)</span>
 <span class="p">}</span>
 
-<span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">s</span><span class="w"> </span><span class="nx">shout</span><span class="p">)</span><span class="w"> </span><span class="nx">Flags</span><span class="p">()</span><span class="w"> </span><span class="kt">uint16</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">FlagsOf</span><span class="p">(</span><span class="nx">s</span><span class="p">.</span><span class="nx">src</span><span class="p">)</span><span class="w"> </span><span class="p">}</span>
+<span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">s</span><span class="w"> </span><span class="nx">shout</span><span class="p">)</span><span class="w"> </span><span class="nx">Flags</span><span class="p">()</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">ColumnFlags</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">f</span><span class="p">,</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nx">src</span><span class="p">.(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Flagged</span><span class="p">);</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">f</span><span class="p">.</span><span class="nx">Flags</span><span class="p">()</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span>
+<span class="p">}</span>
 
 <span class="c1">// newShout(col) works in Columns, Where (newShout(col).Eq("X")) and OrderBy.</span>
 <span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
@@ -3730,7 +3720,7 @@ values through <code>Builder.Arg</code> or <code>Builder.ArgFor</code>, never co
 <span class="p">}</span>
 </code></pre></div>
 <p>DON'T build the SQL text from caller input with <code>WriteString</code>; use <code>Ident</code> and
-<code>Arg</code>. A tested version is <code>TestExtensionOpsCustomExpressions</code> in <code>expr_ops_test.go</code>.</p>
+<code>Arg</code>. A tested version is the <code>NewOps</code> example in <code>expr_extension_example_test.go</code>.</p>
 <h2 id="7-transactions">7. Transactions<a class="headerlink" href="#7-transactions" title="Permanent link">&para;</a></h2>
 <!-- docscheck:fragment -->
 

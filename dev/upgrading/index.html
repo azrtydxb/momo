@@ -1282,6 +1282,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#the-expression-extension-api-is-small-and-column-flags-have-a-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The expression extension API is small, and column flags have a type
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2701,6 +2712,17 @@
     <span class="md-ellipsis">
       
         Advisory locks are advisory.Acquire and advisory.Release
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-expression-extension-api-is-small-and-column-flags-have-a-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The expression extension API is small, and column flags have a type
       
     </span>
   </a>
@@ -4264,6 +4286,110 @@ refuse any other option with <code>ErrValidation</code>. Two differences to know
 <li><code>advisory.Acquire</code> returns <code>(bool, error)</code> for the blocking form too, so
   assign or discard the boolean.</li>
 </ul>
+<h3 id="the-expression-extension-api-is-small-and-column-flags-have-a-type">The expression extension API is small, and column flags have a type<a class="headerlink" href="#the-expression-extension-api-is-small-and-column-flags-have-a-type" title="Permanent link">&para;</a></h3>
+<p>Code outside this module may define its own typed expressions, and the surface
+for that is now frozen and small: <code>momo.Expr</code>, <code>momo.Expression</code>, <code>momo.Ops</code>,
+<code>momo.NewOps</code>, <code>momo.Typed</code> and <code>momo.Flagged</code>, and on <code>*momo.Builder</code> the
+methods <code>Ident</code>, <code>Arg</code>, <code>momo.Builder.Dialect</code>, <code>SetErr</code> and <code>WriteString</code>. The other names
+that the docs called extension points moved behind an internal bridge that only
+the packages of this module (<code>agg</code>, <code>arrayop</code>, <code>fts</code>, <code>jsonop</code>, <code>rangeop</code>,
+<code>sqlfn</code>, <code>timeop</code> and <code>vecop</code>) can import. They stay as deprecated forwarders
+with their old signatures for this release, so existing code keeps compiling;
+move off them before the next release, which removes them.</p>
+<table>
+<thead>
+<tr>
+<th>Old name</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>momo.NewBuilder</code></td>
+<td>render through a query: <code>momo.NewOffline(dialect.Postgres)</code> and the <code>SQL</code> method of a query builder</td>
+</tr>
+<tr>
+<td><code>(*momo.Builder).WriteByte</code></td>
+<td><code>WriteString</code> with the one-character string</td>
+</tr>
+<tr>
+<td><code>(*momo.Builder).ArgFor</code></td>
+<td><code>Arg</code>, and compare through the <code>momo.Ops</code> methods, which mask a value compared with a sensitive column</td>
+</tr>
+<tr>
+<td><code>(*momo.Builder).RenderSensitive</code></td>
+<td>no replacement; <code>momo.Ops</code> comparisons do this for the host</td>
+</tr>
+<tr>
+<td><code>(*momo.Builder).ExprFor</code></td>
+<td>no replacement; <code>momo.Ops</code> comparisons do this for the host</td>
+</tr>
+<tr>
+<td><code>(*momo.Builder).MarkSensitive</code></td>
+<td>no replacement; a column reference records itself when it renders</td>
+</tr>
+<tr>
+<td><code>(*momo.Builder).AppendFilter</code></td>
+<td>no replacement outside the module; <code>agg.Call.Filter</code> and <code>momo.FilteredAgg</code> write the clause</td>
+</tr>
+<tr>
+<td><code>(*momo.Builder).Unsupported</code></td>
+<td><code>SetErr</code> with a <code>*momo.Error</code> carrying a kind <code>momo.ErrUnsupported</code></td>
+</tr>
+<tr>
+<td><code>momo.FlagsOf</code></td>
+<td>assert <code>momo.Flagged</code> on the expression</td>
+</tr>
+<tr>
+<td><code>momo.IsBound</code></td>
+<td>no replacement</td>
+</tr>
+<tr>
+<td><code>momo.PredicateFunc</code></td>
+<td>a type that embeds <code>momo.Ops[bool]</code>, or <code>momo.Typed[bool]</code> around an <code>momo.Expr</code></td>
+</tr>
+<tr>
+<td><code>momo.ValidName</code> and <code>momo.ValidTypeName</code></td>
+<td>no replacement; validate the name in your own code</td>
+</tr>
+<tr>
+<td><code>momo.WindowOf</code></td>
+<td>no replacement; <code>agg.Call.Over</code> builds the window function of an aggregate, and its result is now <code>agg.WindowExpr[T]</code> instead of <code>momo.WindowExpr[T]</code></td>
+</tr>
+<tr>
+<td><code>momo.VectorColumnOf</code></td>
+<td>call <code>Table</code>, <code>ColumnName</code>, <code>Dim</code> and <code>Flags</code> on the vector column itself</td>
+</tr>
+<tr>
+<td><code>momo.MetaTableSchema</code></td>
+<td>read <code>TableSchema</code> from the model's <code>MomoMeta()</code></td>
+</tr>
+<tr>
+<td><code>momo.Order.AppendOrder</code></td>
+<td>no replacement outside the module; <code>agg.Call.OrderBy</code> renders the ORDER BY of an ordered aggregate</td>
+</tr>
+</tbody>
+</table>
+<p>Two changes cannot keep their old shape. <code>agg.Call.Over</code> returns an
+<code>agg.WindowExpr[T]</code>, a type of its own with <code>As</code> and the <code>momo.Ops</code> methods, so
+a variable declared as <code>momo.WindowExpr[T]</code> that you assign it to must change to
+the <code>agg</code> type or to <code>momo.Expression[T]</code>. And the column flags are a named
+type: <code>momo.ColumnFlags</code> replaces <code>uint16</code> in <code>momo.ColumnMeta.Flags</code>, in the
+<code>momo.NewColumn</code> family of constructors, in <code>momo.Flagged</code> and in the
+<code>momo.Flag*</code> constants. Generated code and any call that passes the constants or
+an untyped number compiles unchanged, so run <code>momo generate</code> only if you want
+to; a variable or parameter of type <code>uint16</code> that holds flags must become
+<code>momo.ColumnFlags</code>. A type that implements <code>Flags() uint16</code> no longer satisfies
+<code>momo.Flagged</code>, but for this release <code>momo.Ops</code> and keyset pagination still
+read its flags, so a sensitive column it wraps stays masked. Change its result
+type to <code>momo.ColumnFlags</code> before the next release, which drops that path.</p>
+<p>The <code>momo.NewColumn</code> family (<code>NewNullColumn</code>, <code>NewReadOnlyColumn</code>,
+<code>NewNullReadOnlyColumn</code>, <code>NewCreateOnlyColumn</code>, <code>NewImmutableColumn</code> and the six
+<code>NewVectorColumn</code> variants) is generated-code support: it is called by what
+<code>momo generate</code> writes and kept stable for that code, and hand-written code
+should use the generated column variables. <a href="../compatibility/#the-expression-extension-api">The compatibility
+policy</a> lists the frozen surface
+and the reason for each name in it.</p>
 <h2 id="upgrading-to-0190">Upgrading to 0.19.0<a class="headerlink" href="#upgrading-to-0190" title="Permanent link">&para;</a></h2>
 <p><code>momo migrate drift</code>, the refusal of <code>momo migrate baseline</code> and
 <code>momo generate --from-db</code> now see <code>DEFERRABLE</code> constraints on PostgreSQL; no

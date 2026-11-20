@@ -2086,10 +2086,11 @@ Examples: [crud-zero-null](../examples/crud-zero-null/),
 
 ### Writing your own expression
 
-Code outside the root package (your own package, or a Momo subpackage) builds
-typed expressions with a small extension API. Every name below is an extension
-point: writing one correctly means identifiers go through `Builder.Ident` and
-values through `Builder.Arg` or `Builder.ArgFor`, never concatenated into the SQL.
+Code outside the root package builds typed expressions with a small frozen
+extension API, listed with the reason for each name in the
+[compatibility policy](compatibility.md#the-expression-extension-api). Writing
+one correctly means identifiers go through `Builder.Ident` and values through
+`Builder.Arg`, never concatenated into the SQL.
 
 - `momo.Ops[T]`: embed it in your struct to make the struct an `Expression[T]`
   (a `Predicate` when `T` is `bool`) with `Eq`, `Ne`, `Lt`, `Le`, `Gt`, `Ge`,
@@ -2098,35 +2099,20 @@ values through `Builder.Arg` or `Builder.ArgFor`, never concatenated into the SQ
   the constructor, as the example below does. An unbound `Ops` fails the
   build with `ErrValidation`.
 - `momo.Typed[T]`: wraps any `Expr` as an `Expression[T]` without comparison
-  methods.
-- `momo.PredicateFunc`: turns `func(*momo.Builder)` into a `Predicate`.
-- `momo.Flagged` and `momo.FlagsOf`: the column flags of an expression, or 0. Give your
-  expression a `Flags() uint16` method that returns `FlagsOf` of the wrapped
-  column so a sensitive column stays masked.
-- `Builder.ArgFor`: binds a value, masked as `momo.RedactedArg` in hook
-  events when the flags argument has `FlagSensitive`.
-- `Builder.RenderSensitive`: renders an expression and returns the flags with
-  `FlagSensitive` added when it read a sensitive column; pass the result to the
-  other operands.
-- `Builder.ExprFor`: renders an expression with every argument it binds masked
-  when the flags argument has `FlagSensitive`.
-- `Builder.Unsupported`: records `ErrUnsupported` for a dialect that
-  cannot express the feature. `Builder.WriteByte` appends a trusted SQL byte.
-- `Order.AppendOrder`: renders one ORDER BY item (`expr ASC|DESC [NULLS ...]`) for
-  an expression that carries its own ordering, such as `agg.Call.OrderBy`.
-- `Builder.AppendFilter`: writes ` FILTER (WHERE p)` after an aggregate call
-  and fails the build for a nil predicate or on MySQL. MySQL has no FILTER, so an
-  aggregate that wants MySQL support rewrites its own arguments to
-  `CASE WHEN p THEN x END` instead, as `momo.Agg.Filter` and `agg.Call.Filter` do.
-- `momo.WindowOf[T]`: turns your aggregate call into a window function,
-  `call OVER (...)`; `agg.Call.Over` is built on it.
-- `Builder.MarkSensitive`: call it from an expression that writes a sensitive
-  column's identifier directly, so an enclosing comparison masks its other
-  operands. A column reference does this by itself.
-- `momo.ValidName`: checks a function name or alias before you write it with
-  `Builder.Ident`.
-- `momo.VectorColumnOf`: the `VectorColumn` behind any `VectorSource`
-  (read its table, name, dimension and flags for a custom distance expression).
+  methods, which is how a predicate that has no methods of its own is built.
+- `momo.Flagged`: the column flags of an expression. Give your expression a
+  `Flags() momo.ColumnFlags` method that returns the flags of the wrapped
+  column (assert `momo.Flagged` on it, or return 0) so a sensitive column stays
+  masked in hook events when you compare through the `Ops` methods.
+- `Builder.Ident`, `Builder.Arg`, `Builder.WriteString`, `Builder.Dialect` and
+  `Builder.SetErr`: identifiers, values, the fixed SQL text, the dialect being
+  rendered, and the build error. Call `SetErr` with a `*momo.Error` of kind
+  `momo.ErrUnsupported` for a dialect that cannot express the feature.
+
+A value you bind with `Builder.Arg` yourself is not masked beside a sensitive
+column; compare through the `Ops` methods when an operand can be one. The
+helpers the Momo subpackages (`agg`, `fts`, `jsonop`, `sqlfn` and the others)
+use beyond this list are internal and not available to you.
 
 ```go
 package main
@@ -2154,7 +2140,12 @@ func (s shout) AppendSQL(b *momo.Builder) {
 	b.WriteString(")")
 }
 
-func (s shout) Flags() uint16 { return momo.FlagsOf(s.src) }
+func (s shout) Flags() momo.ColumnFlags {
+	if f, ok := s.src.(momo.Flagged); ok {
+		return f.Flags()
+	}
+	return 0
+}
 
 // newShout(col) works in Columns, Where (newShout(col).Eq("X")) and OrderBy.
 func main() {
@@ -2165,7 +2156,7 @@ func main() {
 ```
 
 DON'T build the SQL text from caller input with `WriteString`; use `Ident` and
-`Arg`. A tested version is `TestExtensionOpsCustomExpressions` in `expr_ops_test.go`.
+`Arg`. A tested version is the `NewOps` example in `expr_extension_example_test.go`.
 
 ## 7. Transactions
 
@@ -11665,6 +11656,53 @@ package to the excluded set is not allowed within `1.x`.
   exist only in a cgo build, such as those of `driver/sqlitedriver`, are not
   compared by it. A change to them is reviewed by hand.
 
+## The expression extension API
+
+Code outside Momo may define its own typed expressions, and the surface for
+that is deliberately small. These names are the extension API, covered like any
+other exported identifier, and nothing else in the root package is an
+extension point:
+
+| Name                          | Why a minimal external expression needs it                                                                                                                                  |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `momo.Expr`                   | the one method, `AppendSQL`, that every fragment implements                                                                                                                 |
+| `momo.Expression`             | the typed form: an `Expression[bool]` is a `momo.Predicate`, so the compiler checks operand types                                                                           |
+| `momo.Ops`                    | embedding `momo.Ops[T]` gives the host the comparison and ordering methods (`Eq`, `In`, `Between`, `Asc` and the rest) without writing them                                 |
+| `momo.NewOps`                 | binds the embedded `momo.Ops` to the finished host; there is no other way to build one                                                                                      |
+| `momo.Typed`                  | gives a plain `momo.Expr` a result type, for a fragment that needs no comparison methods of its own                                                                         |
+| `momo.Flagged`                | lets a wrapper forward the flags of the column it wraps, so a value compared with a sensitive column stays masked in hook events through the wrapper                        |
+| `momo.ColumnFlags`            | the result type of `momo.Flagged`                                                                                                                                           |
+| `(*momo.Builder).Ident`       | writes a quoted identifier; names never go into the SQL as text                                                                                                             |
+| `(*momo.Builder).Arg`         | binds a value as a parameter; values never go into the SQL as text                                                                                                          |
+| `(*momo.Builder).Dialect`     | lets the expression choose its SQL or refuse a dialect                                                                                                                      |
+| `(*momo.Builder).SetErr`      | reports a bad argument or an unsupported dialect, with a `*momo.Error` of kind `momo.ErrValidation` or `momo.ErrUnsupported`                                                |
+| `(*momo.Builder).WriteString` | writes the fixed SQL text of the expression (keywords, operators, punctuation); without it an expression could only write identifiers and parameters, never a function call |
+
+The example attached to `momo.NewOps` in the root package's tests is a worked
+expression built from these names alone, and CI compiles and runs it.
+
+Everything else that agg, arrayop, fts, jsonop, rangeop, sqlfn, timeop and
+vecop needed (binding a value with the sensitive-column mask, rendering an
+operand to learn whether it read a sensitive column, a FILTER clause, a
+bound-value check, name validation and a window wrapper) is behind an internal
+bridge that only the packages of this module can import. Those names are not
+promised, and a limit follows from that: a value that a custom expression binds
+with `Builder.Arg` itself is not masked when the expression compares with a
+sensitive column, so compare through the `momo.Ops` methods when an operand can
+be one. The names that left the extension API stay as deprecated forwarders for one
+release; [upgrading](upgrading.md) lists them.
+
+### Generated-code support
+
+`momo.NewColumn`, `momo.NewNullColumn`, `momo.NewReadOnlyColumn`,
+`momo.NewNullReadOnlyColumn`, `momo.NewCreateOnlyColumn`,
+`momo.NewImmutableColumn` and the six `momo.NewVectorColumn` variants exist for
+the code `momo generate` writes. Their flags parameter is a `momo.ColumnFlags`,
+built from the `momo.Flag*` constants, and `momo.ColumnMeta.Flags` has the same
+type. They are covered by the generated code shape promise above, so they stay
+stable even though application code should use the generated column variables
+instead of calling them.
+
 ## Deprecation
 
 An API leaves in two steps: it is deprecated, and much later it is removed.
@@ -11969,6 +12007,59 @@ refuse any other option with `ErrValidation`. Two differences to know:
   with `ErrValidation` where the old transaction functions failed to compile.
 - `advisory.Acquire` returns `(bool, error)` for the blocking form too, so
   assign or discard the boolean.
+
+### The expression extension API is small, and column flags have a type
+
+Code outside this module may define its own typed expressions, and the surface
+for that is now frozen and small: `momo.Expr`, `momo.Expression`, `momo.Ops`,
+`momo.NewOps`, `momo.Typed` and `momo.Flagged`, and on `*momo.Builder` the
+methods `Ident`, `Arg`, `momo.Builder.Dialect`, `SetErr` and `WriteString`. The other names
+that the docs called extension points moved behind an internal bridge that only
+the packages of this module (`agg`, `arrayop`, `fts`, `jsonop`, `rangeop`,
+`sqlfn`, `timeop` and `vecop`) can import. They stay as deprecated forwarders
+with their old signatures for this release, so existing code keeps compiling;
+move off them before the next release, which removes them.
+
+| Old name                                  | What to do                                                                                                                                            |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `momo.NewBuilder`                         | render through a query: `momo.NewOffline(dialect.Postgres)` and the `SQL` method of a query builder                                                   |
+| `(*momo.Builder).WriteByte`               | `WriteString` with the one-character string                                                                                                           |
+| `(*momo.Builder).ArgFor`                  | `Arg`, and compare through the `momo.Ops` methods, which mask a value compared with a sensitive column                                                |
+| `(*momo.Builder).RenderSensitive`         | no replacement; `momo.Ops` comparisons do this for the host                                                                                           |
+| `(*momo.Builder).ExprFor`                 | no replacement; `momo.Ops` comparisons do this for the host                                                                                           |
+| `(*momo.Builder).MarkSensitive`           | no replacement; a column reference records itself when it renders                                                                                     |
+| `(*momo.Builder).AppendFilter`            | no replacement outside the module; `agg.Call.Filter` and `momo.FilteredAgg` write the clause                                                          |
+| `(*momo.Builder).Unsupported`             | `SetErr` with a `*momo.Error` carrying a kind `momo.ErrUnsupported`                                                                                   |
+| `momo.FlagsOf`                            | assert `momo.Flagged` on the expression                                                                                                               |
+| `momo.IsBound`                            | no replacement                                                                                                                                        |
+| `momo.PredicateFunc`                      | a type that embeds `momo.Ops[bool]`, or `momo.Typed[bool]` around an `momo.Expr`                                                                      |
+| `momo.ValidName` and `momo.ValidTypeName` | no replacement; validate the name in your own code                                                                                                    |
+| `momo.WindowOf`                           | no replacement; `agg.Call.Over` builds the window function of an aggregate, and its result is now `agg.WindowExpr[T]` instead of `momo.WindowExpr[T]` |
+| `momo.VectorColumnOf`                     | call `Table`, `ColumnName`, `Dim` and `Flags` on the vector column itself                                                                             |
+| `momo.MetaTableSchema`                    | read `TableSchema` from the model's `MomoMeta()`                                                                                                      |
+| `momo.Order.AppendOrder`                  | no replacement outside the module; `agg.Call.OrderBy` renders the ORDER BY of an ordered aggregate                                                    |
+
+Two changes cannot keep their old shape. `agg.Call.Over` returns an
+`agg.WindowExpr[T]`, a type of its own with `As` and the `momo.Ops` methods, so
+a variable declared as `momo.WindowExpr[T]` that you assign it to must change to
+the `agg` type or to `momo.Expression[T]`. And the column flags are a named
+type: `momo.ColumnFlags` replaces `uint16` in `momo.ColumnMeta.Flags`, in the
+`momo.NewColumn` family of constructors, in `momo.Flagged` and in the
+`momo.Flag*` constants. Generated code and any call that passes the constants or
+an untyped number compiles unchanged, so run `momo generate` only if you want
+to; a variable or parameter of type `uint16` that holds flags must become
+`momo.ColumnFlags`. A type that implements `Flags() uint16` no longer satisfies
+`momo.Flagged`, but for this release `momo.Ops` and keyset pagination still
+read its flags, so a sensitive column it wraps stays masked. Change its result
+type to `momo.ColumnFlags` before the next release, which drops that path.
+
+The `momo.NewColumn` family (`NewNullColumn`, `NewReadOnlyColumn`,
+`NewNullReadOnlyColumn`, `NewCreateOnlyColumn`, `NewImmutableColumn` and the six
+`NewVectorColumn` variants) is generated-code support: it is called by what
+`momo generate` writes and kept stable for that code, and hand-written code
+should use the generated column variables. [The compatibility
+policy](compatibility.md#the-expression-extension-api) lists the frozen surface
+and the reason for each name in it.
 
 ## Upgrading to 0.19.0
 
@@ -14253,20 +14344,20 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.Builder`                            | type   | Builder accumulates SQL text and bind arguments for one statement.                                                                                                                                                                                                                |
 | `momo.Builder.AppendFilter`               | method | AppendFilter writes " FILTER (WHERE p)" for an aggregate call that was just rendered.                                                                                                                                                                                             |
 | `momo.Builder.Arg`                        | method | Arg appends a bind placeholder and records v as its argument.                                                                                                                                                                                                                     |
-| `momo.Builder.ArgFor`                     | method | ArgFor binds v like Arg and records it as sensitive when flags carries FlagSensitive, so QueryEvent.Args shows RedactedArg instead of the value.                                                                                                                                  |
+| `momo.Builder.ArgFor`                     | method | ArgFor binds v like Arg and records it as sensitive when flags carries FlagSensitive.                                                                                                                                                                                             |
 | `momo.Builder.Args`                       | method | Args returns the bind arguments built so far.                                                                                                                                                                                                                                     |
-| `momo.Builder.Dialect`                    | method | Dialect returns the dialect being rendered.                                                                                                                                                                                                                                       |
+| `momo.Builder.Dialect`                    | method | Dialect returns the dialect being rendered, so a custom expression can choose its SQL or refuse a dialect it cannot express.                                                                                                                                                      |
 | `momo.Builder.Err`                        | method | Err returns the first build error.                                                                                                                                                                                                                                                |
-| `momo.Builder.ExprFor`                    | method | ExprFor renders e with every argument it binds recorded as sensitive when flags carries FlagSensitive, for an expression compared with or assigned to such a column.                                                                                                              |
+| `momo.Builder.ExprFor`                    | method | ExprFor renders e with every argument it binds recorded as sensitive when flags carries FlagSensitive.                                                                                                                                                                            |
 | `momo.Builder.Ident`                      | method | Ident appends a quoted identifier.                                                                                                                                                                                                                                                |
-| `momo.Builder.MarkSensitive`              | method | MarkSensitive records that the expression being rendered read a sensitive column, so an enclosing predicate that compares it masks its other operands in hook events.                                                                                                             |
+| `momo.Builder.MarkSensitive`              | method | MarkSensitive records that the expression being rendered read a sensitive column.                                                                                                                                                                                                 |
 | `momo.Builder.QualifiedIdent`             | method | QualifiedIdent appends qualifier.name, both quoted.                                                                                                                                                                                                                               |
 | `momo.Builder.RenderSensitive`            | method | RenderSensitive renders e and returns flags with FlagSensitive added when e read a sensitive column.                                                                                                                                                                              |
 | `momo.Builder.SetErr`                     | method | SetErr records the first build error; rendering continues but the statement will not be executed.                                                                                                                                                                                 |
 | `momo.Builder.String`                     | method | String returns the SQL text built so far.                                                                                                                                                                                                                                         |
 | `momo.Builder.Unsupported`                | method | Unsupported records an ErrUnsupported build error for feature, naming the dialect being rendered.                                                                                                                                                                                 |
 | `momo.Builder.WriteByte`                  | method | WriteByte appends a trusted SQL byte.                                                                                                                                                                                                                                             |
-| `momo.Builder.WriteString`                | method | WriteString appends trusted SQL text.                                                                                                                                                                                                                                             |
+| `momo.Builder.WriteString`                | method | WriteString appends trusted SQL text: keywords, operators and punctuation that the expression itself fixes.                                                                                                                                                                       |
 | `momo.BulkUpdate`                         | func   | BulkUpdate updates rows of T from a list of rows keyed by key.                                                                                                                                                                                                                    |
 | `momo.BulkUpdateKeys`                     | func   | BulkUpdateKeys is BulkUpdate for a composite key: each row holds one value per column of keys first, then one value per column of cols.                                                                                                                                           |
 | `momo.CTE`                                | func   | CTE references a common table expression (or any table not described by a model) by name.                                                                                                                                                                                         |
@@ -14281,6 +14372,7 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.Column.SetDefault`                  | method | SetDefault assigns the column's database default.                                                                                                                                                                                                                                 |
 | `momo.Column.SetExcluded`                 | method | SetExcluded assigns the value proposed for insertion in an upsert (ON CONFLICT ...                                                                                                                                                                                                |
 | `momo.Column.SetExpr`                     | method | SetExpr assigns an expression.                                                                                                                                                                                                                                                    |
+| `momo.ColumnFlags`                        | type   | ColumnFlags is the set of Flag* bits a column descriptor carries.                                                                                                                                                                                                                 |
 | `momo.ColumnMeta`                         | type   | ColumnMeta describes one mapped field.                                                                                                                                                                                                                                            |
 | `momo.ColumnNamer`                        | type   | ColumnNamer is implemented by Rows that can report the names of their result columns, in order, as the database reports them.                                                                                                                                                     |
 | `momo.ColumnOf`                           | func   | ColumnOf declares a typed column of an ad-hoc source (CTE, subquery alias).                                                                                                                                                                                                       |
@@ -14598,13 +14690,13 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.New`                                | func   | New wraps a driver.                                                                                                                                                                                                                                                               |
 | `momo.NewAllowlist`                       | func   | NewAllowlist builds an allowlist keyed by ColumnName().                                                                                                                                                                                                                           |
 | `momo.NewBuilder`                         | func   | NewBuilder returns a builder for the dialect.                                                                                                                                                                                                                                     |
-| `momo.NewColumn`                          | func   | NewColumn is used by generated code.                                                                                                                                                                                                                                              |
+| `momo.NewColumn`                          | func   | NewColumn is generated-code support: the generated descriptors call it, and hand-written code should use the generated column variables instead.                                                                                                                                  |
 | `momo.NewCreateOnlyColumn`                | func   | NewCreateOnlyColumn is used by generated code.                                                                                                                                                                                                                                    |
 | `momo.NewCreateOnlyVectorColumn`          | func   | NewCreateOnlyVectorColumn is used by generated code.                                                                                                                                                                                                                              |
 | `momo.NewImmutableColumn`                 | func   | NewImmutableColumn is used by generated code.                                                                                                                                                                                                                                     |
 | `momo.NewImmutableVectorColumn`           | func   | NewImmutableVectorColumn is used by generated code.                                                                                                                                                                                                                               |
 | `momo.NewNPlusOneHook`                    | func   | NewNPlusOneHook returns a development hook that calls report once per statement shape per scope when the shape has run more than threshold times (a threshold below 1 counts as 1).                                                                                               |
-| `momo.NewNullColumn`                      | func   | NewNullColumn is used by generated code.                                                                                                                                                                                                                                          |
+| `momo.NewNullColumn`                      | func   | NewNullColumn is generated-code support; see NewColumn.                                                                                                                                                                                                                           |
 | `momo.NewNullReadOnlyColumn`              | func   | NewNullReadOnlyColumn is used by generated code.                                                                                                                                                                                                                                  |
 | `momo.NewNullReadOnlyVectorColumn`        | func   | NewNullReadOnlyVectorColumn is used by generated code.                                                                                                                                                                                                                            |
 | `momo.NewNullVectorColumn`                | func   | NewNullVectorColumn is used by generated code.                                                                                                                                                                                                                                    |
@@ -14900,7 +14992,7 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.Upsert`                             | func   | Upsert starts an INSERT ...                                                                                                                                                                                                                                                       |
 | `momo.UpsertByPK`                         | func   | UpsertByPK inserts m, or updates the row with the same primary key: INSERT ...                                                                                                                                                                                                    |
 | `momo.ValidName`                          | func   | ValidName checks an identifier-like name: non-empty, at most 63 bytes, a letter or underscore first, then letters, digits, underscores or dollar signs.                                                                                                                           |
-| `momo.ValidTypeName`                      | func   | ValidTypeName checks a "word word(1,2)" shaped SQL type name: words of letters, digits and underscores separated by single spaces, with an optional (n) or (n,m) suffix, such as bigint, double precision or numeric(10,2).                                                       |
+| `momo.ValidTypeName`                      | func   | ValidTypeName checks a "word word(1,2)" shaped SQL type name, such as bigint, double precision or numeric(10,2).                                                                                                                                                                  |
 | `momo.Value`                              | func   | Value wraps a Go value as a typed bound parameter.                                                                                                                                                                                                                                |
 | `momo.VectorColumn`                       | type   | VectorColumn is a typed, writable vector column descriptor.                                                                                                                                                                                                                       |
 | `momo.VectorColumn.As`                    | method | As returns the same column qualified by a table alias.                                                                                                                                                                                                                            |
@@ -14909,7 +15001,7 @@ Import path: `github.com/azrtydxb/momo`
 | `momo.VectorColumn.SetDefault`            | method | SetDefault assigns the column's database default.                                                                                                                                                                                                                                 |
 | `momo.VectorColumn.SetExcluded`           | method | SetExcluded assigns the value proposed for insertion in an upsert.                                                                                                                                                                                                                |
 | `momo.VectorColumn.SetExpr`               | method | SetExpr assigns an expression.                                                                                                                                                                                                                                                    |
-| `momo.VectorColumnOf`                     | func   | VectorColumnOf returns the VectorColumn behind any vector column descriptor that satisfies VectorSource: VectorColumn itself, its nullable variant and the permission variants.                                                                                                   |
+| `momo.VectorColumnOf`                     | func   | VectorColumnOf returns the VectorColumn behind any vector column descriptor that satisfies VectorSource.                                                                                                                                                                          |
 | `momo.VectorSource`                       | type   | VectorSource is any vector column descriptor a distance builder accepts: VectorColumn and its nullable and permission variants (ReadOnlyVectorColumn, NullReadOnlyVectorColumn, CreateOnlyVectorColumn, ImmutableVectorColumn).                                                   |
 | `momo.VectorValue`                        | type   | VectorValue is the set of Go types a vector column can hold.                                                                                                                                                                                                                      |
 | `momo.View`                               | type   | View is embedded next to Model in a struct that maps a database view or materialized view.                                                                                                                                                                                        |
@@ -15483,6 +15575,9 @@ Import path: `github.com/azrtydxb/momo/agg`
 | `agg.PercentileDisc`       | func   | PercentileDisc is percentile_disc(fraction) WITHIN GROUP (ORDER BY ...): the first input value whose position reaches fraction (0 to 1).                                 |
 | `agg.String`               | func   | String concatenates the non-NULL values of e, separated by sep, in the order given by OrderBy: string_agg on PostgreSQL, group_concat on SQLite and GROUP_CONCAT ...     |
 | `agg.ToJSONB`              | func   | ToJSONB converts a value to JSON: to_jsonb(e) on PostgreSQL (a table alias converts the whole row) and json_quote(e) on SQLite.                                          |
+| `agg.WindowExpr`           | type   | WindowExpr is an aggregate Call used as a window function: agg(...) \[FILTER (WHERE ...)\] OVER (...).                                                                   |
+| `agg.WindowExpr.AppendSQL` | method | AppendSQL renders the window function call.                                                                                                                              |
+| `agg.WindowExpr.As`        | method | As aliases the window function in a select list.                                                                                                                         |
 
 ## arrayop
 
@@ -15937,6 +16032,25 @@ schemas without being fooled by spelling differences.
   clock for tests.
 - Errors: one `Error` type and the `Err*` sentinels. Match them with
   `errors.Is`, never on message text.
+- The expression extension API: `Expr`, `Expression`, `Ops`, `NewOps`,
+  `Typed` and `Flagged`, with the `Builder` methods `Ident`, `Arg`, `momo.Builder.Dialect`,
+  `SetErr` and `WriteString`. This is all that code outside the module needs to
+  define a typed expression, and it is frozen; see the
+  [compatibility policy](compatibility.md#the-expression-extension-api).
+- Generated-code support: the `New*Column` constructors that the generated
+  descriptors call, with their `ColumnFlags` parameter. They are stable for
+  generated code and are not the way to declare a column by hand.
+
+The feature packages (`agg`, `arrayop`, `fts`, `jsonop`, `rangeop`, `sqlfn`,
+`timeop` and `vecop`) build their expressions on that same API and on a few
+root internals that are not public: binding a value with the sensitive-column
+mask, rendering an operand to learn whether it read a sensitive column, a
+`FILTER` clause and name validation. The root hands them over through a
+registry in `internal/bridge`, which the root fills from an `init` function and
+which imports nothing from the root, so the dependency arrow stays one-way. The
+feature packages call it through the typed functions of `internal/exprkit`.
+Both packages are under `internal/`, so nothing outside the module can reach
+the registry and no exported name in the root package is an escape hatch to it.
 
 ### `vector`
 

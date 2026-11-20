@@ -1685,7 +1685,25 @@ schemas without being fooled by spelling differences.</p>
   clock for tests.</li>
 <li>Errors: one <code>Error</code> type and the <code>Err*</code> sentinels. Match them with
   <code>errors.Is</code>, never on message text.</li>
+<li>The expression extension API: <code>Expr</code>, <code>Expression</code>, <code>Ops</code>, <code>NewOps</code>,
+  <code>Typed</code> and <code>Flagged</code>, with the <code>Builder</code> methods <code>Ident</code>, <code>Arg</code>, <code>momo.Builder.Dialect</code>,
+  <code>SetErr</code> and <code>WriteString</code>. This is all that code outside the module needs to
+  define a typed expression, and it is frozen; see the
+  <a href="../compatibility/#the-expression-extension-api">compatibility policy</a>.</li>
+<li>Generated-code support: the <code>New*Column</code> constructors that the generated
+  descriptors call, with their <code>ColumnFlags</code> parameter. They are stable for
+  generated code and are not the way to declare a column by hand.</li>
 </ul>
+<p>The feature packages (<code>agg</code>, <code>arrayop</code>, <code>fts</code>, <code>jsonop</code>, <code>rangeop</code>, <code>sqlfn</code>,
+<code>timeop</code> and <code>vecop</code>) build their expressions on that same API and on a few
+root internals that are not public: binding a value with the sensitive-column
+mask, rendering an operand to learn whether it read a sensitive column, a
+<code>FILTER</code> clause and name validation. The root hands them over through a
+registry in <code>internal/bridge</code>, which the root fills from an <code>init</code> function and
+which imports nothing from the root, so the dependency arrow stays one-way. The
+feature packages call it through the typed functions of <code>internal/exprkit</code>.
+Both packages are under <code>internal/</code>, so nothing outside the module can reach
+the registry and no exported name in the root package is an escape hatch to it.</p>
 <h3 id="vector"><code>vector</code><a class="headerlink" href="#vector" title="Permanent link">&para;</a></h3>
 <p>The pgvector value types <code>vector.Vector</code>, <code>vector.HalfVector</code>, <code>vector.SparseVector</code> and <code>vector.Bits</code>,
 each a <code>sql.Scanner</code> and <code>driver.Valuer</code> with a <code>Validate</code> method, and

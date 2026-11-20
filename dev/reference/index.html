@@ -1962,7 +1962,7 @@
 <tr>
 <td><code>momo.Builder.ArgFor</code></td>
 <td>method</td>
-<td>ArgFor binds v like Arg and records it as sensitive when flags carries FlagSensitive, so QueryEvent.Args shows RedactedArg instead of the value.</td>
+<td>ArgFor binds v like Arg and records it as sensitive when flags carries FlagSensitive.</td>
 </tr>
 <tr>
 <td><code>momo.Builder.Args</code></td>
@@ -1972,7 +1972,7 @@
 <tr>
 <td><code>momo.Builder.Dialect</code></td>
 <td>method</td>
-<td>Dialect returns the dialect being rendered.</td>
+<td>Dialect returns the dialect being rendered, so a custom expression can choose its SQL or refuse a dialect it cannot express.</td>
 </tr>
 <tr>
 <td><code>momo.Builder.Err</code></td>
@@ -1982,7 +1982,7 @@
 <tr>
 <td><code>momo.Builder.ExprFor</code></td>
 <td>method</td>
-<td>ExprFor renders e with every argument it binds recorded as sensitive when flags carries FlagSensitive, for an expression compared with or assigned to such a column.</td>
+<td>ExprFor renders e with every argument it binds recorded as sensitive when flags carries FlagSensitive.</td>
 </tr>
 <tr>
 <td><code>momo.Builder.Ident</code></td>
@@ -1992,7 +1992,7 @@
 <tr>
 <td><code>momo.Builder.MarkSensitive</code></td>
 <td>method</td>
-<td>MarkSensitive records that the expression being rendered read a sensitive column, so an enclosing predicate that compares it masks its other operands in hook events.</td>
+<td>MarkSensitive records that the expression being rendered read a sensitive column.</td>
 </tr>
 <tr>
 <td><code>momo.Builder.QualifiedIdent</code></td>
@@ -2027,7 +2027,7 @@
 <tr>
 <td><code>momo.Builder.WriteString</code></td>
 <td>method</td>
-<td>WriteString appends trusted SQL text.</td>
+<td>WriteString appends trusted SQL text: keywords, operators and punctuation that the expression itself fixes.</td>
 </tr>
 <tr>
 <td><code>momo.BulkUpdate</code></td>
@@ -2098,6 +2098,11 @@
 <td><code>momo.Column.SetExpr</code></td>
 <td>method</td>
 <td>SetExpr assigns an expression.</td>
+</tr>
+<tr>
+<td><code>momo.ColumnFlags</code></td>
+<td>type</td>
+<td>ColumnFlags is the set of Flag* bits a column descriptor carries.</td>
 </tr>
 <tr>
 <td><code>momo.ColumnMeta</code></td>
@@ -3687,7 +3692,7 @@
 <tr>
 <td><code>momo.NewColumn</code></td>
 <td>func</td>
-<td>NewColumn is used by generated code.</td>
+<td>NewColumn is generated-code support: the generated descriptors call it, and hand-written code should use the generated column variables instead.</td>
 </tr>
 <tr>
 <td><code>momo.NewCreateOnlyColumn</code></td>
@@ -3717,7 +3722,7 @@
 <tr>
 <td><code>momo.NewNullColumn</code></td>
 <td>func</td>
-<td>NewNullColumn is used by generated code.</td>
+<td>NewNullColumn is generated-code support; see NewColumn.</td>
 </tr>
 <tr>
 <td><code>momo.NewNullReadOnlyColumn</code></td>
@@ -5197,7 +5202,7 @@
 <tr>
 <td><code>momo.ValidTypeName</code></td>
 <td>func</td>
-<td>ValidTypeName checks a "word word(1,2)" shaped SQL type name: words of letters, digits and underscores separated by single spaces, with an optional (n) or (n,m) suffix, such as bigint, double precision or numeric(10,2).</td>
+<td>ValidTypeName checks a "word word(1,2)" shaped SQL type name, such as bigint, double precision or numeric(10,2).</td>
 </tr>
 <tr>
 <td><code>momo.Value</code></td>
@@ -5242,7 +5247,7 @@
 <tr>
 <td><code>momo.VectorColumnOf</code></td>
 <td>func</td>
-<td>VectorColumnOf returns the VectorColumn behind any vector column descriptor that satisfies VectorSource: VectorColumn itself, its nullable variant and the permission variants.</td>
+<td>VectorColumnOf returns the VectorColumn behind any vector column descriptor that satisfies VectorSource.</td>
 </tr>
 <tr>
 <td><code>momo.VectorSource</code></td>
@@ -7910,6 +7915,21 @@
 <td><code>agg.ToJSONB</code></td>
 <td>func</td>
 <td>ToJSONB converts a value to JSON: to_jsonb(e) on PostgreSQL (a table alias converts the whole row) and json_quote(e) on SQLite.</td>
+</tr>
+<tr>
+<td><code>agg.WindowExpr</code></td>
+<td>type</td>
+<td>WindowExpr is an aggregate Call used as a window function: agg(...) [FILTER (WHERE ...)] OVER (...).</td>
+</tr>
+<tr>
+<td><code>agg.WindowExpr.AppendSQL</code></td>
+<td>method</td>
+<td>AppendSQL renders the window function call.</td>
+</tr>
+<tr>
+<td><code>agg.WindowExpr.As</code></td>
+<td>method</td>
+<td>As aliases the window function in a select list.</td>
 </tr>
 </tbody>
 </table>

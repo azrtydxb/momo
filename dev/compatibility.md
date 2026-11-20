@@ -81,6 +81,53 @@ package to the excluded set is not allowed within `1.x`.
   exist only in a cgo build, such as those of `driver/sqlitedriver`, are not
   compared by it. A change to them is reviewed by hand.
 
+## The expression extension API
+
+Code outside Momo may define its own typed expressions, and the surface for
+that is deliberately small. These names are the extension API, covered like any
+other exported identifier, and nothing else in the root package is an
+extension point:
+
+| Name                          | Why a minimal external expression needs it                                                                                                                                  |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `momo.Expr`                   | the one method, `AppendSQL`, that every fragment implements                                                                                                                 |
+| `momo.Expression`             | the typed form: an `Expression[bool]` is a `momo.Predicate`, so the compiler checks operand types                                                                           |
+| `momo.Ops`                    | embedding `momo.Ops[T]` gives the host the comparison and ordering methods (`Eq`, `In`, `Between`, `Asc` and the rest) without writing them                                 |
+| `momo.NewOps`                 | binds the embedded `momo.Ops` to the finished host; there is no other way to build one                                                                                      |
+| `momo.Typed`                  | gives a plain `momo.Expr` a result type, for a fragment that needs no comparison methods of its own                                                                         |
+| `momo.Flagged`                | lets a wrapper forward the flags of the column it wraps, so a value compared with a sensitive column stays masked in hook events through the wrapper                        |
+| `momo.ColumnFlags`            | the result type of `momo.Flagged`                                                                                                                                           |
+| `(*momo.Builder).Ident`       | writes a quoted identifier; names never go into the SQL as text                                                                                                             |
+| `(*momo.Builder).Arg`         | binds a value as a parameter; values never go into the SQL as text                                                                                                          |
+| `(*momo.Builder).Dialect`     | lets the expression choose its SQL or refuse a dialect                                                                                                                      |
+| `(*momo.Builder).SetErr`      | reports a bad argument or an unsupported dialect, with a `*momo.Error` of kind `momo.ErrValidation` or `momo.ErrUnsupported`                                                |
+| `(*momo.Builder).WriteString` | writes the fixed SQL text of the expression (keywords, operators, punctuation); without it an expression could only write identifiers and parameters, never a function call |
+
+The example attached to `momo.NewOps` in the root package's tests is a worked
+expression built from these names alone, and CI compiles and runs it.
+
+Everything else that agg, arrayop, fts, jsonop, rangeop, sqlfn, timeop and
+vecop needed (binding a value with the sensitive-column mask, rendering an
+operand to learn whether it read a sensitive column, a FILTER clause, a
+bound-value check, name validation and a window wrapper) is behind an internal
+bridge that only the packages of this module can import. Those names are not
+promised, and a limit follows from that: a value that a custom expression binds
+with `Builder.Arg` itself is not masked when the expression compares with a
+sensitive column, so compare through the `momo.Ops` methods when an operand can
+be one. The names that left the extension API stay as deprecated forwarders for one
+release; [upgrading](upgrading.md) lists them.
+
+### Generated-code support
+
+`momo.NewColumn`, `momo.NewNullColumn`, `momo.NewReadOnlyColumn`,
+`momo.NewNullReadOnlyColumn`, `momo.NewCreateOnlyColumn`,
+`momo.NewImmutableColumn` and the six `momo.NewVectorColumn` variants exist for
+the code `momo generate` writes. Their flags parameter is a `momo.ColumnFlags`,
+built from the `momo.Flag*` constants, and `momo.ColumnMeta.Flags` has the same
+type. They are covered by the generated code shape promise above, so they stay
+stable even though application code should use the generated column variables
+instead of calling them.
+
 ## Deprecation
 
 An API leaves in two steps: it is deprecated, and much later it is removed.
