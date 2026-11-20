@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.20.0](https://github.com/azrtydxb/momo/compare/v0.19.0...v0.20.0) (2026-11-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* names that cannot be forwarded are gone from schema, tags, gen/typemap and migrate/sqlite, and migrate.MatchObject is removed; dialect.For returns a copy, so a caller can no longer change the shared built-in dialects. See docs/upgrading.md.
+* sqlitetest.New and sqlitetest.Template.New take momotest.Option instead of momo.Option; wrap momo options in momotest.WithMomoOptions. The renamed names are deprecated and removed in the release after this one.
+* momo.Flagged requires Flags() ColumnFlags, and agg.Call.Over returns agg.WindowExpr[T] instead of momo.WindowExpr[T]. The moved helpers are deprecated for the internal bridge; see docs/upgrading.md.
+* sqlitedriver.Open, sqlitepure.Open, mysqldriver.Open and mysqldriver.New change signature and no longer return a *sql.DB; the SQLite settings and the MySQL flavor move to options; sqlitedriver.Config and sqlitepure.Config are distinct types; pgxdriver.Open pings on ctx.
+* obs.NewSlowQuery, momolog.New and otelmomo.New return concrete types instead of momo.Hook; momo.NewNPlusOneHook, momo.WithQueryScope and momo.NPlusOneFinding are deprecated for obs.NewStatementNPlusOne, obs.WithScope and obs.StatementFinding.
+* momolog.Level, SlowOver and Values, advisory.Hash64, pgxdriver.OnReconnect and momo.WithDetail are renamed, and the 20 advisory lock functions are deprecated in favour of advisory.Acquire and advisory.Release.
+
+### Features
+
+* add PostgreSQL domains and composite types ([#283](https://github.com/azrtydxb/momo/issues/283)) ([fe0746b](https://github.com/azrtydxb/momo/commit/fe0746b35abdbf34e8114032317164062df7ee91)), closes [#253](https://github.com/azrtydxb/momo/issues/253)
+* **gen:** add per-model audit history tables ([#259](https://github.com/azrtydxb/momo/issues/259)) ([872ff39](https://github.com/azrtydxb/momo/commit/872ff396492a872de63deb626781a46aadad3687)), closes [#252](https://github.com/azrtydxb/momo/issues/252)
+* model PostgreSQL range types and exclusion constraints ([#258](https://github.com/azrtydxb/momo/issues/258)) ([ff9b9b6](https://github.com/azrtydxb/momo/commit/ff9b9b689df0cda226607c86502a22c17c1a273b))
+* **outbox:** add a transactional outbox and relay ([#260](https://github.com/azrtydxb/momo/issues/260)) ([ca6204b](https://github.com/azrtydxb/momo/commit/ca6204ba22b501c66151e76a85eab3098944b40d)), closes [#251](https://github.com/azrtydxb/momo/issues/251)
+* **vector:** keep embeddings in sync with their source ([#257](https://github.com/azrtydxb/momo/issues/257)) ([a26d799](https://github.com/azrtydxb/momo/commit/a26d79913c852daeec4ec75777f3bc8bb056a580)), closes [#250](https://github.com/azrtydxb/momo/issues/250)
+
+
+### Bug Fixes
+
+* **migrate:** create unique keys before FKs that reference them ([#282](https://github.com/azrtydxb/momo/issues/282)) ([95250cd](https://github.com/azrtydxb/momo/commit/95250cdb8962f61c5dd10efd6e13aa381c7d0271)), closes [#248](https://github.com/azrtydxb/momo/issues/248)
+
+
+### Code Refactoring
+
+* move internals of schema, migrate and gen to internal ([#281](https://github.com/azrtydxb/momo/issues/281)) ([cb4605a](https://github.com/azrtydxb/momo/commit/cb4605a1d1162ffc8dde066825b2e6b2e5f4b670)), closes [#271](https://github.com/azrtydxb/momo/issues/271)
+* name options With* and collapse advisory locks ([#276](https://github.com/azrtydxb/momo/issues/276)) ([b3fc81f](https://github.com/azrtydxb/momo/commit/b3fc81f1517f3b36ac737659f89b8ad0cf6713b2)), closes [#267](https://github.com/azrtydxb/momo/issues/267)
+* one constructor shape for every driver ([#277](https://github.com/azrtydxb/momo/issues/277)) ([7dc3489](https://github.com/azrtydxb/momo/commit/7dc348986cf047edc6da08e1380af652da3368ec)), closes [#268](https://github.com/azrtydxb/momo/issues/268)
+* one N+1 detector and one hook constructor shape ([#275](https://github.com/azrtydxb/momo/issues/275)) ([6bcee50](https://github.com/azrtydxb/momo/commit/6bcee50d8c3184c481c5b9441d3370ea71fc8434)), closes [#269](https://github.com/azrtydxb/momo/issues/269)
+* rename colliding and inconsistent API names ([#279](https://github.com/azrtydxb/momo/issues/279)) ([2c83bb2](https://github.com/azrtydxb/momo/commit/2c83bb2d8f9c329d3a593d8f6d17a25bc96d374c)), closes [#272](https://github.com/azrtydxb/momo/issues/272)
+* shrink the expression extension surface, type flags ([#280](https://github.com/azrtydxb/momo/issues/280)) ([0dcd8d2](https://github.com/azrtydxb/momo/commit/0dcd8d2add49d56b896730c18212341aa698bc91)), closes [#270](https://github.com/azrtydxb/momo/issues/270)
+
 ## [0.19.0](https://github.com/azrtydxb/momo/compare/v0.18.0...v0.19.0) (2026-11-18)
 
 _PostgreSQL `DEFERRABLE` and `INITIALLY DEFERRED` constraints survive `--from-db`, migrations, `Baseline` and drift. Upgrading needs no code change, but a database that already has a deferrable constraint its snapshot lacks now shows up in `drift` and `Baseline`; follow [docs/upgrading.md](https://github.com/azrtydxb/momo/blob/v0.19.0/docs/upgrading.md). [Changes since 0.18.0](https://github.com/azrtydxb/momo/compare/v0.18.0...v0.19.0)._
