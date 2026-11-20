@@ -1534,3 +1534,13 @@ Review round (coordinator, #280), decisions taken as directed:
 - The example no longer binds a caller value with a raw `Arg` beside a column: the comparison goes through an Ops method (`char_length(...).Gt`), the Typed predicate binds nothing, and the file header says `Arg` does not mask. `Builder.Arg` is unchanged.
 - `internal/bridge.Register` panics naming the first nil `Kit` field; `internal/exprkit/exprkit_test.go` calls every function once.
 - `Order.AppendOrder` moved behind the bridge (`exprkit.AppendOrder`, used by `agg`) and stays as a deprecated forwarder for one release, listed in the upgrading table. This replaces the earlier choice to keep it exported as non-extension API.
+
+## Foreign key ordered before its unique index (#248)
+
+Decision (2026-11-20, the implementing agent, no question to the user): `migrate.Order` moves a foreign key out of a `create_table` into an `add_fk` when the columns it references become unique only through a `create_index` (unique, plain, not partial), `add_unique` or `add_primary_key` of the same plan. `add_fk` already runs after all three.
+
+- Why not "order the unique index ahead of the table": for a table created in the same plan the index cannot exist before its table, so the only fix there is to split the foreign key out. Why not a dependency edge: the orderer is phase based, and `sortTables` only sorts create_table against create_table; the dependency is between a table's inline constraint and a change in a later phase, which an edge between changes cannot express without reordering the phases. The existing cycle breaker already splits a foreign key into an `add_fk`, so this reuses that mechanism and every renderer already handles an `add_fk` for a created table (SQLite folds it back into the `CREATE TABLE`).
+- Only a foreign key whose referenced column set equals a key made by the plan moves, compared as a set (PostgreSQL accepts any column order). A foreign key to a primary key or constraint written in the `create_table`, or already in the database, stays inline, so the DDL of existing schemas does not change.
+- Drops need no change: `drop_fk` is a phase before `drop_index`, `drop_unique` and `drop_primary_key`. A test now pins that, and the replaced-index case.
+- Dialects: PostgreSQL (SQLSTATE 42830) and MySQL/MariaDB (the referenced columns need an index) are fixed. SQLite does not check at DDL time and its renderer folds the `add_fk` back into the `CREATE TABLE`, so its output is unchanged.
+- Red first on `worktree-agent-a2e18e87a31e9d62a-red` (run 44768687067), then that branch was deleted.
