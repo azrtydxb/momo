@@ -114,6 +114,15 @@ func (Dialect) InspectWithInvalid(ctx context.Context, c momo.PinnedConn, opts m
 	if err := in.enums(ctx, out); err != nil {
 		return nil, nil, fmt.Errorf("postgres inspect: enums: %w", err)
 	}
+	if err := in.domains(ctx, out); err != nil {
+		return nil, nil, fmt.Errorf("postgres inspect: domains: %w", err)
+	}
+	if err := in.composites(ctx, out); err != nil {
+		return nil, nil, fmt.Errorf("postgres inspect: composite types: %w", err)
+	}
+	if err := checkComposites(out); err != nil {
+		return nil, nil, fmt.Errorf("postgres inspect: composite types: %w", err)
+	}
 	if err := in.tables(ctx, out); err != nil {
 		return nil, nil, err
 	}
@@ -398,6 +407,12 @@ func (in *inspector) column(ctx context.Context, rel uint32, x rawColumn) (schem
 		col.Enum = in.qualify(x.typns, x.typname)
 		// format_type quotes a mixed-case name; the enum name is the type.
 		col.Type = col.Enum
+	}
+	if x.typtype == "d" || x.typtype == "c" {
+		// A domain or composite column names the type as the declaration
+		// spells it, relative to the current schema: format_type leaves the
+		// schema out for any schema on the search_path.
+		col.Type = schema.NormalizeType(dialect.Postgres, in.qualify(x.typns, x.typname))
 	}
 	if x.coll != nil {
 		col.Collate = *x.coll

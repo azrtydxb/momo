@@ -160,7 +160,7 @@ func (e *Engine) AutoMigrate(ctx context.Context, desired *schema.Schema) (rep *
 func autoSkipReason(ch Change, desired *schema.Schema, created map[string]bool) string {
 	newTable := created[ch.Schema+"\x00"+ch.Table]
 	switch ch.Kind {
-	case CreateSchema, CreateExtension, CreateEnum, CreateSequence, CreateTable:
+	case CreateSchema, CreateExtension, CreateEnum, CreateSequence, CreateDomain, CreateComposite, CreateTable:
 		return ""
 	case AddColumn:
 		// Diff with Stage turns a NOT NULL column without default into a
@@ -198,7 +198,7 @@ func autoSkipReason(ch Change, desired *schema.Schema, created map[string]bool) 
 		return "column removed in models; AutoMigrate never drops"
 	case DropTable:
 		return "table removed in models; AutoMigrate never drops"
-	case DropEnum, DropSequence, DropIndex, DropUnique, DropExclude, DropCheck, DropFK, DropPrimaryKey, DropView, DropFunction, DropTrigger, DropPolicy:
+	case DropEnum, DropSequence, DropDomain, DropComposite, DropIndex, DropUnique, DropExclude, DropCheck, DropFK, DropPrimaryKey, DropView, DropFunction, DropTrigger, DropPolicy:
 		return "object removed in models; AutoMigrate never drops"
 	case RenameTable, RenameColumn:
 		return "rename requires a migration"

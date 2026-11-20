@@ -86,7 +86,9 @@ func TestStateFingerprintV1CoversEveryField(t *testing.T) {
 	// still proves, so the markers already written still verify.
 	// Updated again for the exclusion constraint fields (issue 253), omitted the
 	// same way, so the pinned test above still holds for ordinary schemas.
-	const want = "7fcf6dcfeb64483631a67be9a05d5f0fba80c1a9901badcba31c667fd9fd2f87"
+	// Updated again for the domain and composite type lists (issue 253), omitted
+	// the same way.
+	const want = "753111ea0130e8d9536a8914ac48dc6084364e2407791f5e3f82afacc52368f6"
 	if got := stateFingerprint(&s); got != want {
 		t.Fatalf("fingerprint v1 of the full fixture: got %s, want %s", got, want)
 	}

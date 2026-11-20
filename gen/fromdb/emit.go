@@ -28,6 +28,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/gen/tags"
@@ -168,6 +169,9 @@ type model struct {
 	used    map[string]bool
 	stmts   []string
 	imports map[string]bool
+	// decls are the Go declarations written after the struct: the structs of
+	// the composite types, on the first model.
+	decls []string
 }
 
 // field is one persisted column.
@@ -203,6 +207,10 @@ type generator struct {
 	used   map[string]bool
 	types  map[string]TypeRule
 	files  []File
+	// domains and composites index the PostgreSQL domains and composite types
+	// by the spelling a column uses for them (see typeRef).
+	domains    map[string]schema.Domain
+	composites map[string]*compositeInfo
 	// histTables and histBase are the tables of the recognised audit
 	// histories and of the tables they belong to, by tableKey; histFns and
 	// histTrgs are their functions and triggers, held out of the schema while
@@ -222,6 +230,7 @@ func (g *generator) run() error {
 	g.finds = append(g.finds, g.o.Extra...)
 	g.cleanGlobals()
 	g.collectTables()
+	g.typeDecls()
 	for _, m := range g.models {
 		g.columns(m)
 	}
@@ -504,6 +513,20 @@ func (g *generator) goType(col *schema.Column, rule ColumnRule) (GoType, error) 
 	}
 	if tr, ok := g.types[schema.NormalizeType(g.o.Dialect, col.Type)]; ok {
 		return custom(tr.Go, tr.Import), nil
+	}
+	if ci, ok := g.composite(col.Type); ok {
+		return GoType{Expr: "types.Composite[" + ci.goName + "]", Import: importTypes}, nil
+	}
+	if g.arrayOfComposite(col.Type) {
+		return GoType{}, fmt.Errorf("%w: the column type %q is an array of a composite type, which is not supported yet", momo.ErrUnsupported, col.Type)
+	}
+	if d, ok := g.domain(col.Type); ok {
+		// A column of a domain has the Go type of the base type of the domain.
+		gt, err := g.domainBase(d)
+		if err != nil {
+			return GoType{}, fmt.Errorf("%w: add an introspect.types rule for %q or an introspect.columns rule for the column", err, col.Type)
+		}
+		return gt, nil
 	}
 	gt, err := MapType(g.o.Dialect, col.Type)
 	if err != nil {
@@ -1291,9 +1314,14 @@ func (g *generator) globals() {
 			g.add(SevWarn, "", "the database has sequences but no table to model: a model declares them, so they are left out of the snapshot")
 			g.clean.Sequences = nil
 		}
+		if len(g.clean.Domains)+len(g.clean.Composites) > 0 {
+			g.add(SevWarn, "", "the database has domains or composite types but no table to model: a model declares them, so they are left out of the snapshot")
+			g.clean.Domains, g.clean.Composites = nil, nil
+		}
 		return
 	}
 	host := g.models[0]
+	g.declareTypes(host)
 	for _, e := range g.clean.Enums {
 		args := []string{strconv.Quote(e.Name)}
 		for _, v := range e.Values {
@@ -1414,6 +1442,9 @@ func (g *generator) render(m *model, names map[string]bool) (File, error) {
 		b.WriteString("\t" + r.name + " " + typ + " `momo:\"" + strings.Join(r.opts, ",") + "\"`\n")
 	}
 	b.WriteString("}\n")
+	for _, d := range m.decls {
+		b.WriteString("\n" + d)
+	}
 	if len(m.stmts) > 0 {
 		fmt.Fprintf(&b, "\n// MomoConfig declares what a tag cannot: the other indexes, constraints, enums and defaults.\nfunc (m *%s) MomoConfig(c *momo.Config) {\n", m.name)
 		for _, s := range m.stmts {

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
@@ -88,7 +89,7 @@ func textTables(s *schema.Schema) []migrate.ObjectRef {
 			out = append(out, migrate.ObjectRef{Kind: "table", Schema: t.Schema, Name: t.Name})
 		}
 	}
-	return out
+	return append(out, domainRefs(s)...)
 }
 
 // canonRound is the part of a schema canonicalized in one scratch schema:
@@ -97,10 +98,45 @@ func textTables(s *schema.Schema) []migrate.ObjectRef {
 type canonRound struct {
 	sub                               *schema.Schema
 	tables, views, funcs, trigs, pols []int
+	// domains is set on the one round that rewrites the text of the domains
+	// (their defaults and checks) from what PostgreSQL reads back. Every round
+	// creates the domains, because a table may use one.
+	domains bool
+	// domainsSkipped is set when the domains of a tolerant round could not be
+	// rewritten: they stay as declared and are reported as skipped.
+	domainsSkipped bool
+}
+
+// domainRefs lists the domains of s that carry text PostgreSQL rewrites, as the
+// objects a skipped canonicalization leaves as declared.
+func domainRefs(s *schema.Schema) []migrate.ObjectRef {
+	var out []migrate.ObjectRef
+	for _, d := range s.Domains {
+		if d.Default != "" || len(d.Checks) > 0 {
+			out = append(out, migrate.ObjectRef{Kind: "domain", Schema: d.Schema, Name: d.Name})
+		}
+	}
+	return out
 }
 
 func (r *canonRound) empty() bool {
-	return len(r.tables)+len(r.views)+len(r.funcs)+len(r.trigs)+len(r.pols) == 0
+	return len(r.tables)+len(r.views)+len(r.funcs)+len(r.trigs)+len(r.pols) == 0 && !r.domains
+}
+
+// domainsHaveText reports whether s declares a domain with a default or a
+// check, text PostgreSQL rewrites.
+func domainsHaveText(s *schema.Schema) bool {
+	return slices.ContainsFunc(s.Domains, func(d schema.Domain) bool { return d.Default != "" || len(d.Checks) > 0 })
+}
+
+// cloneDomains copies domains deeply enough for rewriteDomains to change them
+// without touching the caller's.
+func cloneDomains(in []schema.Domain) []schema.Domain {
+	out := slices.Clone(in)
+	for i := range out {
+		out[i].Checks = slices.Clone(out[i].Checks)
+	}
+	return out
 }
 
 // planRounds splits s into the rounds that are created in one scratch schema
@@ -114,9 +150,12 @@ func planRounds(s *schema.Schema, tablesOnly bool) []*canonRound {
 	var rounds []*canonRound
 	round := func(i int) *canonRound {
 		for len(rounds) <= i {
-			rounds = append(rounds, &canonRound{sub: &schema.Schema{Dialect: dialect.Postgres, Enums: s.Enums, Sequences: s.Sequences}})
+			rounds = append(rounds, &canonRound{sub: &schema.Schema{Dialect: dialect.Postgres, Enums: s.Enums, Sequences: s.Sequences, Domains: cloneDomains(s.Domains), Composites: s.Composites}})
 		}
 		return rounds[i]
+	}
+	if domainsHaveText(s) {
+		round(0).domains = true
 	}
 	needAll := !tablesOnly && len(s.Views)+len(s.Functions)+len(s.Triggers)+len(s.Policies) > 0
 	// used holds, per round, the relation names (tables, and the indexes and
@@ -221,6 +260,12 @@ func (d Dialect) canonicalize(ctx context.Context, c momo.PinnedConn, s *schema.
 		if err != nil {
 			return nil, err
 		}
+		if r.domains {
+			out.Domains = r.sub.Domains
+		}
+		if r.domainsSkipped {
+			skipped = append(skipped, domainRefs(s)...)
+		}
 		for k, i := range r.tables {
 			if slices.Contains(sk, k) {
 				t := s.Tables[i]
@@ -289,6 +334,14 @@ func (d Dialect) canonicalizeRound(ctx context.Context, c momo.PinnedConn, r *ca
 	if err != nil {
 		return nil, fmt.Errorf("postgres canonicalize: read back: %w", err)
 	}
+	if r.domains {
+		if err := rewriteDomains(r.sub, read); err != nil {
+			if !tolerant {
+				return nil, err
+			}
+			r.domainsSkipped = true
+		}
+	}
 	if !tolerant {
 		return nil, rewriteText(r.sub, read)
 	}
@@ -310,7 +363,7 @@ func (d Dialect) canonicalizeRound(ctx context.Context, c momo.PinnedConn, r *ca
 // a failure of one table's statements aborts the round.
 func (d Dialect) createEachTable(ctx context.Context, c momo.PinnedConn, sub *schema.Schema) ([]int, error) {
 	empty := &schema.Schema{Dialect: dialect.Postgres}
-	base, err := scratchModel(&schema.Schema{Dialect: dialect.Postgres, Enums: sub.Enums, Sequences: sub.Sequences})
+	base, err := scratchModel(&schema.Schema{Dialect: dialect.Postgres, Enums: sub.Enums, Sequences: sub.Sequences, Domains: sub.Domains, Composites: sub.Composites})
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +376,7 @@ func (d Dialect) createEachTable(ctx context.Context, c momo.PinnedConn, sub *sc
 	}
 	var failed []int
 	for k, t := range sub.Tables {
-		one, err := scratchModel(&schema.Schema{Dialect: dialect.Postgres, Enums: sub.Enums, Sequences: sub.Sequences, Tables: []schema.Table{t}})
+		one, err := scratchModel(&schema.Schema{Dialect: dialect.Postgres, Enums: sub.Enums, Sequences: sub.Sequences, Domains: sub.Domains, Composites: sub.Composites, Tables: []schema.Table{t}})
 		if err != nil {
 			return nil, err
 		}
@@ -438,6 +491,44 @@ func scratchModel(s *schema.Schema) (*schema.Schema, error) {
 			return nil, err
 		}
 	}
+	// A type declared in a schema is created in the scratch schema, so a column,
+	// an attribute or a domain that names it as "schema.name" names it as "name".
+	renamed := map[string]string{}
+	for i := range m.Domains {
+		if m.Domains[i].Schema != "" {
+			renamed[strings.ToLower(m.Domains[i].Ref())] = m.Domains[i].Name
+		}
+		m.Domains[i].Schema = ""
+		if err := dup("domain", m.Domains[i].Name); err != nil {
+			return nil, err
+		}
+	}
+	for i := range m.Composites {
+		if m.Composites[i].Schema != "" {
+			renamed[strings.ToLower(m.Composites[i].Ref())] = m.Composites[i].Name
+		}
+		m.Composites[i].Schema = ""
+		if err := dup("composite type", m.Composites[i].Name); err != nil {
+			return nil, err
+		}
+	}
+	if len(renamed) > 0 {
+		for i := range m.Domains {
+			m.Domains[i].Type = unqualifyType(m.Domains[i].Type, renamed)
+		}
+		for i := range m.Composites {
+			for j := range m.Composites[i].Attributes {
+				a := &m.Composites[i].Attributes[j]
+				a.Type = unqualifyType(a.Type, renamed)
+			}
+		}
+		for i := range m.Tables {
+			for j := range m.Tables[i].Columns {
+				c := &m.Tables[i].Columns[j]
+				c.Type = unqualifyType(c.Type, renamed)
+			}
+		}
+	}
 	for i := range m.Tables {
 		t := &m.Tables[i]
 		// Exclusion constraints carry no text and may need an extension
@@ -469,6 +560,20 @@ func scratchModel(s *schema.Schema) (*schema.Schema, error) {
 		m.Policies[i].Schema = ""
 	}
 	return &m, nil
+}
+
+// unqualifyType replaces the type t, or the element type of an array t, by its
+// entry in renamed (lower-case "schema.name" to "name"), and returns t as it is
+// when it names no renamed type.
+func unqualifyType(t string, renamed map[string]string) string {
+	base, array := strings.CutSuffix(t, "[]")
+	if n, ok := renamed[strings.ToLower(strings.TrimSpace(base))]; ok {
+		if array {
+			return n + "[]"
+		}
+		return n
+	}
+	return t
 }
 
 // scratchStatements renders the creation of every object of m that from lacks,
@@ -545,6 +650,44 @@ func rewriteText(s, read *schema.Schema) error {
 		s.Policies[i].Using, s.Policies[i].Check = p.Using, p.Check
 	}
 	return nil
+}
+
+// rewriteDomains replaces, in s, the default and the check expressions of each
+// domain with those of the domain of the same name in read. It changes s only
+// when every domain could be rewritten.
+func rewriteDomains(s, read *schema.Schema) error {
+	byName := map[string]schema.Domain{}
+	for _, d := range read.Domains {
+		byName[d.Name] = d
+	}
+	out := cloneDomains(s.Domains)
+	for i := range out {
+		r, ok := byName[out[i].Name]
+		if !ok {
+			return fmt.Errorf("postgres canonicalize: domain %q was not created in the scratch schema", out[i].Name)
+		}
+		if out[i].Default != "" {
+			out[i].Default = r.Default
+		}
+		for j := range out[i].Checks {
+			rc, ok := findDomainCheck(r.Checks, out[i].Checks[j].Name)
+			if !ok {
+				return fmt.Errorf("postgres canonicalize: check %q of the domain %q was not created in the scratch schema", out[i].Checks[j].Name, out[i].Name)
+			}
+			out[i].Checks[j].Expr = rc.Expr
+		}
+	}
+	s.Domains = out
+	return nil
+}
+
+func findDomainCheck(cs []schema.DomainCheck, name string) (schema.DomainCheck, bool) {
+	for _, c := range cs {
+		if c.Name == name {
+			return c, true
+		}
+	}
+	return schema.DomainCheck{}, false
 }
 
 // rewriteTables replaces, in s, the check expressions, column defaults,

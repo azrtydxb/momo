@@ -35,6 +35,13 @@ const (
 	CreateSequence    ChangeKind = "create_sequence"
 	AlterSequence     ChangeKind = "alter_sequence"
 	DropSequence      ChangeKind = "drop_sequence"
+	CreateDomain      ChangeKind = "create_domain"
+	AlterDomain       ChangeKind = "alter_domain"
+	RecreateDomain    ChangeKind = "recreate_domain"
+	DropDomain        ChangeKind = "drop_domain"
+	CreateComposite   ChangeKind = "create_composite"
+	AlterComposite    ChangeKind = "alter_composite"
+	DropComposite     ChangeKind = "drop_composite"
 	CreateTable       ChangeKind = "create_table"
 	DropTable         ChangeKind = "drop_table"
 	RenameTable       ChangeKind = "rename_table"
@@ -106,6 +113,26 @@ type Change struct {
 	// and a unique constraint carry theirs in the schema.ForeignKey and
 	// schema.Unique of the payload. Only PostgreSQL renders them.
 	Deferrable, InitiallyDeferred bool
+	// DomainColumns are the columns a RecreateDomain takes off the domain and
+	// puts back, in order. Before and After hold the whole schema.Domain on
+	// each side. See DomainColumn.
+	DomainColumns []DomainColumn
+}
+
+// DomainColumn is a column of a table that uses a domain whose base type
+// changes. PostgreSQL has no ALTER DOMAIN for the base type, so a
+// RecreateDomain change changes each such column to the old base type, drops
+// the domain, creates it with the new base type and, for a column with Reattach
+// set, changes the column back to the domain, which rewrites the table and can
+// fail on a value the new type rejects. A column without Reattach stays on the
+// old base type: the plan changes its type itself.
+type DomainColumn struct {
+	Schema, Table, Column string
+	Reattach              bool
+	// Array is set when the column is an array of the domain (email[]): the
+	// column keeps its dimension, so both ALTER COLUMN statements spell the type
+	// with [] after it.
+	Array bool
 }
 
 // Migration is one migration version.

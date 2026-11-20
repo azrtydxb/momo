@@ -37,7 +37,11 @@ type CompanionResult struct {
 	Enums    []schema.Enum
 	// Sequences are the standalone sequences declared with Config.Sequence.
 	Sequences []schema.Sequence
-	Defaults  map[string]string
+	// Domains and Composites are the PostgreSQL domains and composite types
+	// declared with Config.Domain and Config.Composite.
+	Domains    []schema.Domain
+	Composites []schema.Composite
+	Defaults   map[string]string
 	// Generated maps a column to the expression set by a Generated call.
 	Generated map[string]string
 	// GeneratedVirtual marks the columns declared with a GeneratedVirtual call;
@@ -110,6 +114,7 @@ func readCompanion(pkg *packages.Package, m *Model) (*CompanionResult, []Diagnos
 		enumAt:  map[string]string{},
 		fkAt:    map[string]string{},
 		seqAt:   map[string]string{},
+		typeAt:  map[string]string{},
 	}
 	for _, f := range m.Fields {
 		r.byPath[pathKey(f.Path)] = f
@@ -141,6 +146,9 @@ type companionReader struct {
 	// indexAt, checkAt and enumAt record where each name comes from: a tag
 	// description for tag-produced names, a file:line for companion names.
 	indexAt, checkAt, enumAt, fkAt, seqAt map[string]string
+	// typeAt records the domains and composite types, which share one name
+	// space in a schema.
+	typeAt map[string]string
 }
 
 func pathKey(p []int) string {
@@ -303,6 +311,10 @@ func (r *companionReader) readStmt(s ast.Stmt) {
 			want = "FullTextOpts"
 		case "Sequence":
 			want = "SequenceOpts"
+		case "Domain":
+			want = "DomainOpts"
+		case "Composite":
+			want = "CompositeOpts"
 		case "CheckIn":
 			want = "CheckInOpts"
 		}
@@ -333,6 +345,12 @@ func (r *companionReader) readStmt(s ast.Stmt) {
 		return
 	case "Sequence":
 		r.sequence(calls)
+		return
+	case "Domain":
+		r.domain(calls)
+		return
+	case "Composite":
+		r.composite(calls)
 		return
 	}
 	if len(calls) > 1 {
@@ -713,6 +731,133 @@ func (r *companionReader) sequence(calls []call) {
 		return
 	}
 	r.res.Sequences = append(r.res.Sequences, q)
+}
+
+// domain reads c.Domain(name).As(base) with its optional Schema, NotNull,
+// Default and one Check(name, expr) for each named CHECK constraint.
+func (r *companionReader) domain(calls []call) {
+	first := calls[0]
+	if len(first.expr.Args) != 1 {
+		r.unsupported(first.expr)
+		return
+	}
+	startDiags := len(r.diags)
+	name, _ := r.str(first.expr.Args[0])
+	d := schema.Domain{Name: name}
+	seen := map[string]bool{}
+	for _, c := range calls[1:] {
+		args := c.expr.Args
+		if c.name != "Check" {
+			if seen[c.name] {
+				r.diag(c.expr.Pos(), fmt.Sprintf("duplicate %s on domain %q", c.name, name))
+				continue
+			}
+			seen[c.name] = true
+		}
+		switch c.name {
+		case "NotNull":
+			if len(args) != 0 {
+				r.unsupported(c.expr)
+				continue
+			}
+			d.NotNull = true
+		case "Schema", "As", "Default":
+			if len(args) != 1 {
+				r.unsupported(c.expr)
+				continue
+			}
+			s, ok := r.str(args[0])
+			if !ok {
+				continue
+			}
+			switch c.name {
+			case "Schema":
+				d.Schema = s
+			case "As":
+				d.Type = s
+			default:
+				d.Default = s
+			}
+		case "Check":
+			if len(args) != 2 {
+				r.unsupported(c.expr)
+				continue
+			}
+			n, ok1 := r.str(args[0])
+			e, ok2 := r.str(args[1])
+			if ok1 && ok2 {
+				d.Checks = append(d.Checks, schema.DomainCheck{Name: n, Expr: e})
+			}
+		default:
+			r.unsupported(c.expr)
+		}
+	}
+	if len(r.diags) != startDiags {
+		return
+	}
+	if err := schema.ValidateDomain(d); err != nil {
+		r.diag(first.expr.Pos(), err.Error())
+		return
+	}
+	if !r.declare(r.typeAt, "type", d.Ref(), first.expr.Args[0].Pos()) {
+		return
+	}
+	r.res.Domains = append(r.res.Domains, d)
+}
+
+// composite reads c.Composite(name) with its optional Schema and one
+// Attr(name, type) for each attribute, in order.
+func (r *companionReader) composite(calls []call) {
+	first := calls[0]
+	if len(first.expr.Args) != 1 {
+		r.unsupported(first.expr)
+		return
+	}
+	startDiags := len(r.diags)
+	name, _ := r.str(first.expr.Args[0])
+	cp := schema.Composite{Name: name}
+	schemaSeen := false
+	for _, c := range calls[1:] {
+		args := c.expr.Args
+		switch c.name {
+		case "Schema":
+			if len(args) != 1 {
+				r.unsupported(c.expr)
+				continue
+			}
+			if schemaSeen {
+				r.diag(c.expr.Pos(), fmt.Sprintf("duplicate Schema on composite type %q", name))
+				continue
+			}
+			schemaSeen = true
+			if s, ok := r.str(args[0]); ok {
+				cp.Schema = s
+			}
+		case "Attr":
+			if len(args) != 2 {
+				r.unsupported(c.expr)
+				continue
+			}
+			n, ok1 := r.str(args[0])
+			t, ok2 := r.str(args[1])
+			if ok1 && ok2 {
+				cp.Attributes = append(cp.Attributes, schema.CompositeAttr{Name: n, Type: t})
+			}
+		default:
+			r.unsupported(c.expr)
+		}
+	}
+	if len(r.diags) != startDiags {
+		return
+	}
+	if err := schema.ValidateComposite(cp); err != nil {
+		r.diag(first.expr.Pos(), err.Error())
+		return
+	}
+	if !r.declare(r.typeAt, "type", cp.Ref(), first.expr.Args[0].Pos()) {
+		return
+	}
+	r.res.Composites = append(r.res.Composites, cp)
 }
 
 // int64Lit accepts an integer literal, optionally signed.

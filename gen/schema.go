@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/gen/tags"
@@ -51,6 +52,7 @@ func buildSchema(models []*Model, cfg LoadConfig) (*schema.Schema, map[*Model]*s
 		primary: dialect.Postgres,
 		index:   map[*Model]int{},
 		enums:   map[string]enumDecl{},
+		typePos: map[string]token.Position{},
 		jointab: map[string]bool{},
 		tableBy: map[string]*Model{},
 		seen:    map[string]any{},
@@ -158,6 +160,16 @@ type feature struct {
 	pos  token.Position
 }
 
+// typeUse is a column whose type tag may name a domain or a composite type, or
+// whose Go type is a types.Composite, checked once every model has contributed
+// its declarations.
+type typeUse struct {
+	typ    string // the type tag, empty when the field has none
+	goType string // the Go type without a pointer
+	field  string
+	pos    token.Position
+}
+
 type schemaBuilder struct {
 	s        *schema.Schema
 	namer    naming.Namer
@@ -168,10 +180,14 @@ type schemaBuilder struct {
 	index    map[*Model]int
 	enums    map[string]enumDecl
 	enumUses []enumUse
+	typeUses []typeUse
 	jointab  map[string]bool
 	tableBy  map[string]*Model
 	vector   bool
 	feats    []feature
+	// typePos is the position of the model that declares each domain and
+	// composite type, by Ref.
+	typePos map[string]token.Position
 	// names is the index and unique constraint namespace of the table being
 	// built, mapping a name to a description of its declarer.
 	names map[string]string
@@ -300,6 +316,9 @@ func (b *schemaBuilder) applyColumnTags(m *Model, f *Field) schema.Column {
 	if tg.Enum != "" {
 		col.Enum = tg.Enum
 		b.enumUses = append(b.enumUses, enumUse{name: tg.Enum, pos: f.Pos})
+	}
+	if goType := strings.TrimPrefix(core, "*"); tg.Type != "" || strings.HasPrefix(goType, "types.Composite[") {
+		b.typeUses = append(b.typeUses, typeUse{typ: tg.Type, goType: goType, field: f.GoName, pos: f.Pos})
 	}
 	return col
 }
@@ -953,7 +972,10 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 		t.PartitionOf = &p
 	}
 	b.checkSequences(m, c.Sequences)
+	b.checkTypeDecls(m, c)
 	mergeObjects(b, &b.s.Sequences, "sequence", c.Sequences, func(q schema.Sequence) string { return q.Schema + "." + q.Name }, m.Pos)
+	mergeObjects(b, &b.s.Domains, "domain", c.Domains, func(d schema.Domain) string { return d.Schema + "." + d.Name }, m.Pos)
+	mergeObjects(b, &b.s.Composites, "composite type", c.Composites, func(x schema.Composite) string { return x.Schema + "." + x.Name }, m.Pos)
 	mergeObjects(b, &b.s.Views, "view", c.Views, func(v schema.View) string { return v.Schema + "." + v.Name }, m.Pos)
 	mergeObjects(b, &b.s.Functions, "function", c.Functions, func(f schema.Function) string { return f.Schema + "." + f.Name + "(" + f.Args + ")" }, m.Pos)
 	mergeObjects(b, &b.s.Triggers, "trigger", c.Triggers, func(g schema.Trigger) string { return g.Schema + "." + g.Table + "." + g.Name }, m.Pos)
@@ -1011,6 +1033,67 @@ func (b *schemaBuilder) checkSequences(m *Model, seqs []schema.Sequence) {
 			if d != dialect.Postgres {
 				b.diag(m.Pos, fmt.Sprintf("sequence %q: a standalone sequence is not supported on %s (momo declares sequences for PostgreSQL only)", q.Name, d))
 			}
+		}
+	}
+}
+
+// unsupportedMsg is the text of a diagnostic that wraps momo.ErrUnsupported,
+// the way the type map reports a type a dialect cannot hold.
+func unsupportedMsg(format string, args ...any) string {
+	return fmt.Errorf("%w: "+format, append([]any{momo.ErrUnsupported}, args...)...).Error()
+}
+
+// checkTypeDecls reports each domain and composite type declared for a dialect
+// that has none: SQLite, MySQL and MariaDB are refused, because momo declares
+// them for PostgreSQL only, and records where each is declared.
+func (b *schemaBuilder) checkTypeDecls(m *Model, c *CompanionResult) {
+	for _, d := range c.Domains {
+		b.typePos[d.Ref()] = m.Pos
+	}
+	for _, x := range c.Composites {
+		b.typePos[x.Ref()] = m.Pos
+	}
+	for _, d := range append(slices.Clone(b.dialects), b.primary) {
+		if d == dialect.Postgres {
+			continue
+		}
+		for _, x := range c.Domains {
+			b.diag(m.Pos, unsupportedMsg("domain %q is not supported on %s (momo declares domains for PostgreSQL only)", x.Ref(), d))
+		}
+		for _, x := range c.Composites {
+			b.diag(m.Pos, unsupportedMsg("composite type %q is not supported on %s (momo declares composite types for PostgreSQL only)", x.Ref(), d))
+		}
+	}
+}
+
+// checkTypeUses checks every field that names a domain or a composite type,
+// or is a types.Composite, against the declarations of all models, and refuses
+// what momo does not model: a composite type inside a composite type, an array
+// of composite types, and a domain over a composite type.
+func (b *schemaBuilder) checkTypeUses() {
+	comps := map[string]bool{}
+	for _, x := range b.s.Composites {
+		comps[strings.ToLower(x.Ref())] = true
+		if name := schema.CompositeNesting(x, b.s.Composites); name != "" {
+			b.diag(b.typePos[x.Ref()], unsupportedMsg("composite type %q: attribute %q is a composite type or an array of one; nested composite types are not supported yet", x.Ref(), name))
+		}
+	}
+	for _, d := range b.s.Domains {
+		if schema.IsCompositeRef(d.Type, b.s.Composites) {
+			b.diag(b.typePos[d.Ref()], unsupportedMsg("domain %q is over a composite type, which is not supported yet", d.Ref()))
+		}
+	}
+	for _, u := range b.typeUses {
+		name := schema.NormalizeType(b.primary, u.typ)
+		base, array := strings.CutSuffix(name, "[]")
+		isGo := strings.HasPrefix(u.goType, "types.Composite[")
+		switch {
+		case comps[base] && array:
+			b.diag(u.pos, unsupportedMsg("field %s: %q is an array of a composite type, which is not supported yet", u.field, u.typ))
+		case comps[base] && !isGo:
+			b.diag(u.pos, fmt.Sprintf("field %s: the type tag names the composite type %q, so the field must be a types.Composite of a struct, not %s", u.field, u.typ, u.goType))
+		case isGo && !comps[base]:
+			b.diag(u.pos, fmt.Sprintf("field %s: a types.Composite field needs a type tag that names a composite type declared with Config.Composite", u.field))
 		}
 	}
 }
@@ -1594,6 +1677,7 @@ func (b *schemaBuilder) finish() {
 	}
 	b.checkDeferrable()
 	b.checkExcludes()
+	b.checkTypeUses()
 	for _, u := range b.enumUses {
 		if _, ok := b.enums[u.name]; !ok {
 			b.diag(u.pos, fmt.Sprintf("enum %q is not declared in any MomoConfig", u.name))

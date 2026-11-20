@@ -76,6 +76,20 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		return renderSequence(c)
 	case migrate.DropSequence:
 		return one("DROP SEQUENCE " + tableRef(c.Schema, c.Name)), nil
+	case migrate.CreateDomain:
+		return renderCreateDomain(c)
+	case migrate.AlterDomain:
+		return renderAlterDomain(c)
+	case migrate.RecreateDomain:
+		return renderRecreateDomain(c)
+	case migrate.DropDomain:
+		return one("DROP DOMAIN " + tableRef(c.Schema, c.Name)), nil
+	case migrate.CreateComposite:
+		return renderCreateComposite(c)
+	case migrate.AlterComposite:
+		return renderAlterComposite(c)
+	case migrate.DropComposite:
+		return one("DROP TYPE " + tableRef(c.Schema, c.Name)), nil
 	case migrate.CreateTable:
 		return renderCreateTable(c)
 	case migrate.DropTable:

@@ -147,6 +147,8 @@ func renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		return one("DROP INDEX " + ident(c.Name) + " ON " + t), nil
 	case migrate.CreateSequence, migrate.AlterSequence, migrate.DropSequence:
 		return nil, &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate/mysql", Err: errors.New("sequences are not supported on MySQL and MariaDB: momo models a standalone sequence on PostgreSQL only")}
+	case migrate.CreateDomain, migrate.AlterDomain, migrate.RecreateDomain, migrate.DropDomain, migrate.CreateComposite, migrate.AlterComposite, migrate.DropComposite:
+		return nil, &momo.Error{Kind: momo.ErrUnsupported, Op: "migrate/mysql", Err: errors.New("domains and composite types are not supported on MySQL and MariaDB: momo models them on PostgreSQL only")}
 	}
 	return nil, fmt.Errorf("the change kind %q has no MySQL rendering", c.Kind)
 }

@@ -63,7 +63,7 @@ func (e *Engine) hide(s *schema.Schema) *schema.Schema {
 }
 
 // applyExclude returns a copy of s without the tables, views, functions,
-// sequences, enums and extensions whose name matches a pattern of globs, and without the
+// sequences, domains, composite types, enums and extensions whose name matches a pattern of globs, and without the
 // triggers and policies of an excluded table or whose own name matches. s is
 // not modified. Patterns were validated by excludeMatcher.
 func applyExclude(s *schema.Schema, globs []string) *schema.Schema {
@@ -79,6 +79,8 @@ func applyExclude(s *schema.Schema, globs []string) *schema.Schema {
 	c.Functions = slices.DeleteFunc(slices.Clone(s.Functions), func(f schema.Function) bool { return match(f.Schema, f.Name) })
 	c.Enums = slices.DeleteFunc(slices.Clone(s.Enums), func(e schema.Enum) bool { return match("", e.Name) })
 	c.Sequences = slices.DeleteFunc(slices.Clone(s.Sequences), func(q schema.Sequence) bool { return match(q.Schema, q.Name) })
+	c.Domains = slices.DeleteFunc(slices.Clone(s.Domains), func(x schema.Domain) bool { return match(x.Schema, x.Name) })
+	c.Composites = slices.DeleteFunc(slices.Clone(s.Composites), func(x schema.Composite) bool { return match(x.Schema, x.Name) })
 	c.Extensions = slices.DeleteFunc(slices.Clone(s.Extensions), func(e schema.Extension) bool { return match("", e.Name) })
 	withoutTableObjects(c, gone, func(t schema.Trigger) bool { return match(t.Schema, t.Name) }, func(p schema.Policy) bool { return match(p.Schema, p.Name) })
 	return c
@@ -174,6 +176,12 @@ func flatten(s *schema.Schema, exact bool) map[string]object {
 	}
 	for _, x := range n.Sequences {
 		add(object{ref: ObjectRef{Kind: "sequence", Schema: x.Schema, Name: x.Name}, body: mustJSON(x)})
+	}
+	for _, x := range n.Domains {
+		add(object{ref: ObjectRef{Kind: "domain", Schema: x.Schema, Name: x.Name}, body: mustJSON(x)})
+	}
+	for _, x := range n.Composites {
+		add(object{ref: ObjectRef{Kind: "composite", Schema: x.Schema, Name: x.Name}, body: mustJSON(x)})
 	}
 	indexes := func(parent object, ns, owner string, ixs []schema.Index) {
 		for _, ix := range ixs {

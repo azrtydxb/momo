@@ -390,13 +390,15 @@ func (e *Engine) splitDestructive(live *schema.Schema, changes []Change, allow b
 // alter in place (a view, a trigger, a policy, an index, a constraint) is a drop
 // followed by a create of the same name.
 var dropsFor = map[ChangeKind][]ChangeKind{
-	CreateTable:    {DropTable},
-	CreateEnum:     {DropEnum},
-	CreateSequence: {DropSequence},
-	CreateView:     {DropView},
-	CreateFunction: {DropFunction},
-	CreateTrigger:  {DropTrigger},
-	CreatePolicy:   {DropPolicy},
+	CreateTable:     {DropTable},
+	CreateEnum:      {DropEnum},
+	CreateSequence:  {DropSequence},
+	CreateDomain:    {DropDomain},
+	CreateComposite: {DropComposite},
+	CreateView:      {DropView},
+	CreateFunction:  {DropFunction},
+	CreateTrigger:   {DropTrigger},
+	CreatePolicy:    {DropPolicy},
 	// An index, a unique constraint and a primary key are all backed by an index
 	// of their own name, so any of them can collide with any other.
 	CreateIndex:   {DropIndex, DropUnique, DropExclude, DropPrimaryKey},

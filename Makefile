@@ -38,6 +38,7 @@ FUZZ_TARGETS += ./gen/testdata/golden/descriptors/document:FuzzColumnByName
 FUZZ_TARGETS += .:FuzzEscapeLike
 FUZZ_TARGETS += ./types:FuzzUUIDScan
 FUZZ_TARGETS += ./types:FuzzRangeScan
+FUZZ_TARGETS += ./types:FuzzCompositeRecord
 FUZZ_TARGETS += ./types:FuzzTimeOfDayScan
 FUZZ_TARGETS += ./types:FuzzDateScan
 FUZZ_TARGETS += ./types:FuzzDateInfinityScan

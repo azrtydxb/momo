@@ -281,6 +281,72 @@ What the tools do on PostgreSQL:
   and the repair is the drop and add above, withheld without
   `--allow-destructive` like every drop. `AutoMigrate` never drops one.
 
+### Domains and composite types
+
+A PostgreSQL domain is a base type with `NOT NULL`, a default and named `CHECK`
+constraints; a composite type is a list of named, typed attributes. Both are
+schema objects like an enum or a sequence, kept in `schema.Schema.Domains`
+(each a `schema.Domain` with `schema.DomainCheck` constraints) and
+`schema.Schema.Composites` (each a `schema.Composite` with `schema.CompositeAttr`
+attributes). A snapshot written before they existed loads with none, so the
+snapshot format version stays 1.
+
+They are declared in `MomoConfig` like a standalone sequence, with
+`Config.Domain` (`DomainOpts.As`, `DomainOpts.Schema`, `DomainOpts.NotNull`,
+`DomainOpts.Default` and one `DomainOpts.Check` for each constraint) and
+`Config.Composite` (`CompositeOpts.Schema` and one `CompositeOpts.Attr` for each
+attribute, in order), and a field uses one through the `type` tag, `type:email`.
+The name of a domain or a composite type is a lower-case unquoted identifier, the
+way a column spells its type. A composite type is a Go struct read through
+`types.Composite`; see [type mapping](TYPE_MAPPING.md#composite-types).
+
+What the tools do on PostgreSQL:
+
+- `momo generate --from-db` writes the `c.Domain` and `c.Composite` calls, the Go
+  struct of each composite type, and each column of one of them with its `type`
+  tag and, for a domain, the Go type of the base type. A domain or a composite
+  type that no column of a table kept by `introspect.only` uses is left out of the
+  models and the snapshot, with a note; add it to `migrate.exclude` so the
+  baseline and drift ignore the live object. A composite type with an attribute
+  that is a composite type or an array of one is refused with an error that wraps
+  `momo.ErrUnsupported`, and so is a column that is an array of one; hide the
+  type with `migrate.exclude` to proceed.
+- `diff` creates a domain or a composite type before the tables that use it and
+  drops it after them. A change of the default, of `NOT NULL` or of a constraint
+  is one `ALTER DOMAIN` (the constraints that go or change are dropped first, the
+  new ones added last), and `diff` reports a new `NOT NULL` or `CHECK` as risky,
+  because it is validated against every stored value. PostgreSQL cannot alter the
+  base type of a domain, so a change of it is a recreation: each column that uses
+  the domain is changed to the old base type, the domain is dropped and created
+  again, and each column is changed back, which rewrites the column and fails on
+  a value the new type rejects; a column that is an array of the domain stays an
+  array. `diff` refuses the recreation, naming the object, when an attribute of a
+  composite type or another domain is of the domain, or when a view that the plan
+  leaves as it is reads a table with a column of the domain, because PostgreSQL
+  refuses those changes; write a custom migration for them. The recreation is destructive when a column uses
+  the domain, so `diff` refuses it without `--allow-destructive`. A domain that
+  the models no longer declare is dropped, which is destructive too.
+- A change of a composite type is one `ALTER TYPE` statement for each attribute
+  that is added, dropped or retyped, and a dropped attribute is destructive.
+  PostgreSQL appends a new attribute and cannot move one, so `diff` refuses, with
+  an error that says why, a plan that inserts an attribute before another or
+  reorders them. It also refuses to alter a composite type while a column uses
+  it, because PostgreSQL does: write a custom migration for that case.
+- `Baseline`, `drift` and `drift --fix-sql` compare each domain and each composite
+  type as an object. The check expressions and the default of a domain are
+  rewritten to the text PostgreSQL stores before the comparison, as the checks
+  of a table are. A type missing, extra or different is reported, and the repair
+  is the statements above, withheld without `--allow-destructive` where they drop
+  or recreate. `AutoMigrate` creates a domain or a composite type that is missing
+  and never alters or drops one.
+- SQLite, MySQL and MariaDB have neither: the generator reports a declaration
+  when the target dialect is not PostgreSQL, and the SQLite and MySQL renderers
+  return an error that wraps `momo.ErrUnsupported`.
+
+Inspection also stops for a domain whose name is not a lower-case unquoted
+identifier, and for a composite type that is not modelled; both errors name the
+object, and `migrate.exclude` hides it.
+
 ### Checksums
 
 Two independent checks, both SHA-256 of the file bytes:

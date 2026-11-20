@@ -382,7 +382,7 @@ An index name declared in `MomoConfig` must not collide with an auto-named
 yields `accounts_plan_idx`); the generator refuses the duplicate.
 
 Config methods: `Config.Index`, `Config.IndexExpr`, `Config.Unique`, `Config.ForeignKey`, `Config.Check`, `Config.CheckIn`, `Config.Enum`, `Config.Default`, `Config.Generated`,
-`Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.Exclude`, `Config.PrimaryKey`, `Config.PrimaryKeyDeferrable`, `Config.PrimaryKeyInitiallyDeferred`, `Config.History`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
+`Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.Exclude`, `Config.Domain`, `Config.Composite`, `Config.PrimaryKey`, `Config.PrimaryKeyDeferrable`, `Config.PrimaryKeyInitiallyDeferred`, `Config.History`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
 `Config.PartitionOf`. Index chain: `IndexOpts.Unique()` (on `Config.Index` or `Config.IndexExpr`), `Where(pred)`, `Method(m)`, `IndexOpts.With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
 `Concurrently()` (`diff` writes the index as `CREATE INDEX CONCURRENTLY` in its own no-transaction migration).
@@ -452,6 +452,17 @@ An exclusion constraint (PostgreSQL) is declared with `c.Exclude(name, &m.A,
 makes the generator add the `btree_gist` extension. It models plain columns only
 (no `WHERE`, expression or operator class); the other dialects refuse it. See
 [migrations](migrations.md#exclusion-constraints).
+
+A domain and a composite type (PostgreSQL) are schema objects declared in
+`MomoConfig`, as a standalone sequence is: `c.Domain("email").As("text").NotNull().Check("email_shape", "VALUE
+LIKE '%@%'")` and `c.Composite("address").Attr("street", "text").Attr("zip",
+"text")`. A field uses one through the `type` tag, `momo:"type:email"`, and
+the Go type is the one of the base type of a domain (a `string` for a domain over
+`text`), or a `types.Composite[T]` of a struct whose exported fields map to the
+attributes by position for a composite type. A composite inside a composite and an
+array of composites are refused. The other dialects refuse both. See
+[type mapping](TYPE_MAPPING.md#domains) and
+[migrations](migrations.md#domains-and-composite-types).
 
 A unique constraint, a foreign key and a primary key can be `DEFERRABLE` on
 PostgreSQL: `c.Unique(...).Deferrable()` or `.InitiallyDeferred()` (a unique
