@@ -147,6 +147,8 @@ func (d *differ) run(from, to *schema.Schema) {
 	d.namespaces(from, to)
 	d.enums()
 	d.tables(from, to)
+	d.domains(from, to)
+	d.composites(from, to)
 	d.objects(from, to)
 }
 

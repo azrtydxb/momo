@@ -22,8 +22,9 @@ type dependent interface{ dependsOn() []string }
 // Renames come first so that everything else sees the new names. Then the
 // dependents of altered or dropped objects go (triggers, policies, views,
 // foreign keys, indexes, constraints, columns, tables). Creates follow in
-// dependency order. Functions, sequences and enums that are no longer used go
-// last, after every statement that could still reference them.
+// dependency order. Functions, sequences, composite types, domains and enums
+// that are no longer used go last, after every statement that could still
+// reference them.
 var phases = [][]ChangeKind{
 	{RenameTable, RenameColumn},
 	{DropTrigger, DropPolicy},
@@ -34,6 +35,8 @@ var phases = [][]ChangeKind{
 	{CreateSchema},
 	{CreateExtension},
 	{CreateEnum, AlterEnumAddValue},
+	{CreateDomain, AlterDomain, RecreateDomain},
+	{CreateComposite, AlterComposite},
 	{CreateSequence, AlterSequence},
 	{CreateTable},
 	{AddColumn},
@@ -48,6 +51,8 @@ var phases = [][]ChangeKind{
 	{SetRLS},
 	{DropFunction},
 	{DropSequence},
+	{DropComposite},
+	{DropDomain},
 	{DropEnum},
 }
 

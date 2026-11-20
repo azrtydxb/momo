@@ -84,6 +84,14 @@ func splitObjects(s *schema.Schema) map[string]*schema.Schema {
 		o := one(objectKey("sequence", x.Schema, x.Name))
 		o.Sequences = append(o.Sequences, x)
 	}
+	for _, x := range s.Domains {
+		o := one(objectKey("domain", x.Schema, x.Name))
+		o.Domains = append(o.Domains, x)
+	}
+	for _, x := range s.Composites {
+		o := one(objectKey("composite", x.Schema, x.Name))
+		o.Composites = append(o.Composites, x)
+	}
 	for _, x := range s.Tables {
 		o := one(objectKey("table", x.Schema, x.Name))
 		o.Tables = append(o.Tables, x)
@@ -261,7 +269,7 @@ func impliedKeys(keys map[string]bool, srcs ...map[string]*schema.Schema) (out m
 // may use any of them. Adding one is safe.
 func removesShared(keys map[string]bool, base map[string]*schema.Schema) bool {
 	for k := range keys {
-		if slices.Contains([]string{"enum", "extension", "schema"}, keyKind(k)) && base[k] != nil {
+		if slices.Contains([]string{"enum", "domain", "composite", "extension", "schema"}, keyKind(k)) && base[k] != nil {
 			return true
 		}
 	}
@@ -391,6 +399,8 @@ func assemble(d *schema.Schema, objs map[string]*schema.Schema) (*schema.Schema,
 		out.Extensions = append(out.Extensions, o.Extensions...)
 		out.Enums = append(out.Enums, o.Enums...)
 		out.Sequences = append(out.Sequences, o.Sequences...)
+		out.Domains = append(out.Domains, o.Domains...)
+		out.Composites = append(out.Composites, o.Composites...)
 		out.Tables = append(out.Tables, o.Tables...)
 		out.Views = append(out.Views, o.Views...)
 		out.Functions = append(out.Functions, o.Functions...)

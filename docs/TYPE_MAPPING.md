@@ -199,6 +199,76 @@ Go type; `generate --from-db` reports such a column as unmapped, and an
 constraint over a range is declared with `Config.Exclude`; see
 [migrations](migrations.md#exclusion-constraints).
 
+## Domains
+
+A PostgreSQL domain is a base type with a `NOT NULL`, a default and named
+`CHECK` constraints. It is declared with `Config.Domain` in `MomoConfig`, for
+example `c.Domain("email").As("text").NotNull().Check("email_shape", "VALUE
+LIKE '%@%'")`, and a field uses it through the `type` tag, which names the
+domain as the column type:
+
+```go
+Email string `momo:"type:email"`
+```
+
+There is no Go type per domain. The field has the Go type of the base type of the
+domain: an `email` domain over `text` scans as a `string`, a domain over `bigint`
+as an `int64`, and a nullable column is a pointer as for any column. The same
+holds for `generate --from-db`, which writes the `c.Domain` call and gives each
+column of the domain the Go type of its base type and the `type` tag that names
+the domain. A domain over a type with no Go mapping needs an `introspect` types
+rule for that base type. A domain in another schema is named with the schema in
+the tag, `type:billing.email`, and declared with `.Schema("billing")`.
+
+The tag is the only link between the field and the domain, as it is for an enum
+(`enum`): the generator does not check the Go type against the base type, and the
+database refuses a value the domain's rules reject. See
+[migrations](migrations.md#domains-and-composite-types) for what `diff`,
+`Baseline` and `drift` do with a domain.
+
+## Composite types
+
+A PostgreSQL composite type, `CREATE TYPE address AS (street text, zip text)`, is
+declared with `Config.Composite`, for example
+`c.Composite("address").Attr("street", "text").Attr("zip", "text")`, and read
+into a Go struct through `types.Composite[T]`:
+
+```go
+type Address struct {
+	Street string
+	Zip    *string
+}
+
+Home types.Composite[Address] `momo:"type:address"`
+```
+
+The exported fields of the struct map to the attributes by position, in order,
+and the `type` tag names the composite type, as it names a domain. `Value` and
+`Scan` speak the record text PostgreSQL prints, such as `(Main St,"12 34")`, with
+its quoting, its NULL fields (nothing between the commas) and the difference
+between an empty string (`""`) and NULL, so the type works with the pgx driver
+and with `database/sql`. Every attribute may be NULL in PostgreSQL, so a field
+that can hold NULL is a pointer (or a `sql.NullString` and the other
+`sql.Null` types); a NULL attribute does not scan into a field that is not one.
+A field is a `bool`, an integer, a float, a `string`, a `[]byte` (bytea), a
+`time.Time` (a timestamp with a time zone), another codec of this package such
+as `types.UUID`, `types.Date` and `types.Numeric`, or a pointer to one of these.
+A nullable column is a `*types.Composite[T]` field.
+
+`generate --from-db` writes the struct, with a pointer field for each attribute,
+and the column with its tag. A composite type inside a composite type and an
+array of a composite type are not supported yet: the generator, `generate
+--from-db` and the inspector refuse them with a diagnostic that wraps
+`momo.ErrUnsupported`.
+
+Equality on the whole value works with the typed query API: `col.Eq(value)`
+compares the record. Access to one attribute is not part of the API; write it
+as a raw expression, `(home).street`.
+
+Domains and composite types exist on PostgreSQL alone. The generator reports a
+declaration when the target dialect is SQLite, MySQL or MariaDB, and the SQLite
+and MySQL renderers return an error that wraps `momo.ErrUnsupported`.
+
 ## Edge values and behavior
 
 Each statement below is asserted by a test against PostgreSQL, and the ones

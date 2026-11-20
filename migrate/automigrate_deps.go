@@ -63,6 +63,8 @@ func provided(ch Change) []string {
 		return []string{dkey("tbl", ch.Schema, ch.Name)}
 	case CreateEnum:
 		return []string{dkey("enum", ch.Name)}
+	case CreateDomain, CreateComposite:
+		return []string{dkey("type", strings.ToLower(qualified(ch.Schema, "", ch.Name)))}
 	case CreateSchema:
 		return []string{dkey("ns", ch.Name)}
 	case CreateExtension:
@@ -89,7 +91,7 @@ func columnTypeRefs(c *schema.Column) []string {
 		base = base[:i]
 	}
 	if base != "" {
-		out = append(out, dkey("enum", c.Type), dkey("ext", base))
+		out = append(out, dkey("enum", c.Type), dkey("ext", base), dkey("type", strings.TrimSuffix(base, "[]")))
 	}
 	return out
 }

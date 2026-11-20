@@ -29,10 +29,11 @@ assert to an interface or assign to a variable of another type, and
 this module that defines its own typed expressions or passes a bare `uint16` as
 column flags (the last section of this page). Separately,
 `momo migrate drift`, `momo migrate baseline` and `momo generate --from-db` now
-see exclusion constraints on PostgreSQL and write range columns as `types.Range`
-fields (the first two sections below); no edit is needed in your code for that,
-but inspection of a database that holds an exclusion constraint momo cannot
-model now stops with an error. One section lists the helpers of `schema`,
+see exclusion constraints, domains and composite types on PostgreSQL and write
+range columns as `types.Range` fields (the first three sections below); no edit
+is needed in your code for that, but inspection of a database that holds an
+exclusion constraint, a composite type or a domain momo cannot model now stops
+with an error. One section lists the helpers of `schema`,
 `migrate` and `gen` that left the public API and what to call instead.
 
 ### Exclusion constraints are part of the schema
@@ -63,6 +64,30 @@ named a Go type for it. The six built-in range types now map to
 `types.Range[types.Date]`, `tsrange` to `types.Range[types.Timestamp]` and
 `tstzrange` to `types.Range[time.Time]`. A rule you wrote for such a column still
 wins. See [type mapping](TYPE_MAPPING.md#range-types).
+
+### Domains and composite types are part of the schema
+
+Before, inspection read a column of a domain or of a composite type as a column
+of a type it did not know, and ignored the domain and the type themselves, so
+`generate --from-db` could not map the column and an init migration built from
+the models could not create the type. Inspection now reads each domain (with its
+`NOT NULL`, default and `CHECK` constraints) and each composite type of the
+managed schemas, and `momo generate --from-db` writes them as `Config.Domain` and
+`Config.Composite` declarations. A column of a domain gets the Go type of the
+base type of the domain and a `type` tag that names it, and a column of a
+composite type becomes a `types.Composite` field of a struct that the generator
+writes. A snapshot you already have loads with none, so the snapshot format
+version is unchanged and no snapshot needs rewriting.
+
+If your database has one, `drift` and `baseline` now report it as unmanaged until
+the snapshot says so: run `momo generate --from-db` again, or declare it in
+`MomoConfig` and run `momo migrate diff`. Types that an extension owns are left
+alone. A domain whose name is not a lower-case unquoted identifier, and a
+composite type with an attribute that is a composite type or an array of one,
+are not modelled: inspection stops with an error that names the object. Hide it
+with `migrate.exclude` and keep it in a migration written by hand. See
+[migrations](migrations.md#domains-and-composite-types) and
+[type mapping](TYPE_MAPPING.md#domains).
 
 ### One constructor shape for every driver
 

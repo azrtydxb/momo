@@ -38,11 +38,16 @@ type Schema struct {
 	// Sequences lists the PostgreSQL sequences no column owns. A serial or
 	// identity column owns its sequence and is declared by the column.
 	Sequences []Sequence `json:"sequences,omitempty"`
-	Tables    []Table    `json:"tables"`
-	Views     []View     `json:"views,omitempty"`
-	Functions []Function `json:"functions,omitempty"`
-	Triggers  []Trigger  `json:"triggers,omitempty"`
-	Policies  []Policy   `json:"policies,omitempty"`
+	// Domains lists the PostgreSQL domains and Composites the PostgreSQL
+	// composite types. A snapshot written before they existed loads with
+	// neither, so the snapshot format version stays 1.
+	Domains    []Domain    `json:"domains,omitempty"`
+	Composites []Composite `json:"composites,omitempty"`
+	Tables     []Table     `json:"tables"`
+	Views      []View      `json:"views,omitempty"`
+	Functions  []Function  `json:"functions,omitempty"`
+	Triggers   []Trigger   `json:"triggers,omitempty"`
+	Policies   []Policy    `json:"policies,omitempty"`
 }
 
 // Namespace is a PostgreSQL schema (namespace) managed by Momo.
@@ -391,6 +396,8 @@ func (s *Schema) Sort() {
 	slices.SortFunc(s.Extensions, func(a, b Extension) int { return byName(a.Name, b.Name) })
 	slices.SortFunc(s.Enums, func(a, b Enum) int { return byName(a.Name, b.Name) })
 	slices.SortFunc(s.Sequences, func(a, b Sequence) int { return byKey([]string{a.Schema, a.Name}, []string{b.Schema, b.Name}) })
+	slices.SortFunc(s.Domains, func(a, b Domain) int { return byKey([]string{a.Schema, a.Name}, []string{b.Schema, b.Name}) })
+	slices.SortFunc(s.Composites, func(a, b Composite) int { return byKey([]string{a.Schema, a.Name}, []string{b.Schema, b.Name}) })
 	slices.SortFunc(s.Tables, func(a, b Table) int { return byKey([]string{a.Schema, a.Name}, []string{b.Schema, b.Name}) })
 	slices.SortFunc(s.Views, func(a, b View) int { return byKey([]string{a.Schema, a.Name}, []string{b.Schema, b.Name}) })
 	slices.SortFunc(s.Functions, func(a, b Function) int {
@@ -412,6 +419,9 @@ func (s *Schema) Sort() {
 		v := &s.Views[i]
 		v.Depends = sortedSet(v.Depends)
 		slices.SortFunc(v.Indexes, func(a, b Index) int { return byName(a.Name, b.Name) })
+	}
+	for i := range s.Domains {
+		slices.SortFunc(s.Domains[i].Checks, func(a, b DomainCheck) int { return byName(a.Name, b.Name) })
 	}
 	for i := range s.Tables {
 		t := &s.Tables[i]

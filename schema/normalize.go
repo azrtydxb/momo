@@ -757,6 +757,20 @@ func normalizedCopy(s *Schema) (*Schema, error) {
 	for i := range c.Sequences {
 		c.Sequences[i] = NormalizeSequence(c.Sequences[i])
 	}
+	for i := range c.Domains {
+		x := &c.Domains[i]
+		x.Type = NormalizeType(d, x.Type)
+		x.Default = NormalizeExpr(d, x.Default)
+		for j := range x.Checks {
+			x.Checks[j].Expr = NormalizeExpr(d, x.Checks[j].Expr)
+		}
+	}
+	for i := range c.Composites {
+		for j := range c.Composites[i].Attributes {
+			a := &c.Composites[i].Attributes[j]
+			a.Type = NormalizeType(d, a.Type)
+		}
+	}
 	for i := range c.Tables {
 		t := &c.Tables[i]
 		for j := range t.Columns {

@@ -46,6 +46,36 @@ type SequenceOpts struct{}
 // effect.
 func (c *Config) Sequence(name string) *SequenceOpts { return &SequenceOpts{} }
 
+// DomainOpts carries the optional parts of a domain declaration. Its methods
+// are read statically by the generator and are no-ops at runtime.
+type DomainOpts struct{}
+
+// CompositeOpts carries the attributes of a composite type declaration. Its
+// methods are read statically by the generator and are no-ops at runtime.
+type CompositeOpts struct{}
+
+// Domain declares a PostgreSQL domain over a base type, such as
+// c.Domain("email").As("text").NotNull().Check("email_shape", "VALUE LIKE '%@%'").
+// Chain As (required), Schema, NotNull, Default and one Check call for each
+// named CHECK constraint, where VALUE stands for the checked value. A field
+// uses the domain with the type tag, `momo:"type:email"`, and its Go type is
+// the one of the base type: an email domain over text scans as a string. The
+// name and the check names are lower-case unquoted identifiers. It is a
+// PostgreSQL declaration: generating for SQLite, MySQL or MariaDB refuses it.
+// Read statically by the generator; never executed for its effect.
+func (c *Config) Domain(name string) *DomainOpts { return &DomainOpts{} }
+
+// Composite declares a PostgreSQL composite type, such as
+// c.Composite("address").Attr("street", "text").Attr("zip", "text"). Chain
+// Schema and one Attr call for each attribute, in order. A field uses the type
+// with the type tag, `momo:"type:address"`, and its Go type is a
+// types.Composite of a struct whose exported fields map to the attributes by
+// position. An attribute is not a composite type and not an array of one. The
+// name and the attribute names are lower-case unquoted identifiers. It is a
+// PostgreSQL declaration: generating for SQLite, MySQL or MariaDB refuses it.
+// Read statically by the generator; never executed for its effect.
+func (c *Config) Composite(name string) *CompositeOpts { return &CompositeOpts{} }
+
 // Index declares a non-unique index over the given field references. Read
 // statically by the generator; never executed for its effect.
 func (c *Config) Index(name string, cols ...any) *IndexOpts { return &IndexOpts{} }
@@ -309,6 +339,35 @@ func (o *SequenceOpts) Cache(n int64) *SequenceOpts { return o }
 // Cycle makes the sequence wrap around at its bound instead of failing. Read
 // statically; no-op at runtime.
 func (o *SequenceOpts) Cycle() *SequenceOpts { return o }
+
+// Schema places the domain in a PostgreSQL schema other than the current one.
+// Read statically; no-op at runtime.
+func (o *DomainOpts) Schema(name string) *DomainOpts { return o }
+
+// As sets the base type of the domain, such as "text", "character varying(255)"
+// or "numeric(10,2)". Every domain needs it. Read statically; no-op at runtime.
+func (o *DomainOpts) As(baseType string) *DomainOpts { return o }
+
+// NotNull makes the domain NOT NULL. Read statically; no-op at runtime.
+func (o *DomainOpts) NotNull() *DomainOpts { return o }
+
+// Default sets the default of the domain, a SQL expression. Read statically;
+// no-op at runtime.
+func (o *DomainOpts) Default(expr string) *DomainOpts { return o }
+
+// Check adds a named CHECK constraint to the domain. The expression says VALUE
+// for the checked value. Call it once for each constraint. Read statically;
+// no-op at runtime.
+func (o *DomainOpts) Check(name, expr string) *DomainOpts { return o }
+
+// Schema places the composite type in a PostgreSQL schema other than the
+// current one. Read statically; no-op at runtime.
+func (o *CompositeOpts) Schema(name string) *CompositeOpts { return o }
+
+// Attr adds an attribute to the composite type, in order. The type is a SQL
+// type that is not a composite type and not an array of one. Read statically;
+// no-op at runtime.
+func (o *CompositeOpts) Attr(name, sqlType string) *CompositeOpts { return o }
 
 // Name sets the constraint name of a CheckIn declaration, in place of
 // <table>_<column>_check. Read statically; no-op at runtime.

@@ -371,6 +371,8 @@ func (r *renderer) renderChange(c migrate.Change) ([]migrate.Statement, error) {
 		return nil, unsupported("SQLite has no stored functions")
 	case migrate.CreateSequence, migrate.AlterSequence, migrate.DropSequence:
 		return nil, unsupported("SQLite has no sequences; an INTEGER PRIMARY KEY is its own counter")
+	case migrate.CreateDomain, migrate.AlterDomain, migrate.RecreateDomain, migrate.DropDomain, migrate.CreateComposite, migrate.AlterComposite, migrate.DropComposite:
+		return nil, unsupported("SQLite has no domains or composite types; they are PostgreSQL only")
 	}
 	return nil, unsupported("the change kind %q has no SQLite rendering (a table change that needs a rebuild reached the native path)", c.Kind)
 }
