@@ -214,3 +214,40 @@ func TestPostgresDomainsAndCompositesDrift(t *testing.T) {
 		t.Errorf("an undeclared composite type and domain are not unmanaged: %+v", rep.Unmanaged)
 	}
 }
+
+// arrayDomainSchema is a table with a column of an array of the domain email,
+// whose base type is as given.
+func arrayDomainSchema(base string) *schema.Schema {
+	return &schema.Schema{
+		Dialect:    "postgres",
+		Extensions: []schema.Extension{{Name: "vector"}},
+		Domains:    []schema.Domain{{Name: "email", Type: base}},
+		Tables: []schema.Table{{
+			Name:       "lists",
+			Columns:    []schema.Column{{Name: "id", Type: "bigint"}, {Name: "tags", Type: "email[]", Nullable: true}},
+			PrimaryKey: []string{"id"},
+		}},
+	}
+}
+
+// Catches: a base type change of a domain that turns a column of an array of the
+// domain into a scalar: the column is taken off the domain with the base type
+// alone and put back with the domain alone, so an array of text becomes one text
+// value and the elements are lost.
+func TestPostgresDomainBaseTypeChangeKeepsArrayColumns(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	from, to := arrayDomainSchema("text"), arrayDomainSchema("character varying(50)")
+	roundTrip(t, db, from)
+	if _, err := db.Driver().Exec(ctx, `INSERT INTO lists (id, tags) VALUES (1, ARRAY['a@b.c', 'x@y.z']::email[])`, nil); err != nil {
+		t.Fatal(err)
+	}
+	applyStatements(t, db, planStatements(t, from, to, migrate.DiffOptions{AllowDestructive: true}))
+	if got := inspectNow(t, db); !schema.Equal(got, to) {
+		t.Fatalf("the column is not an array of the domain any more:\n%s", jsonDiff(got, to))
+	}
+	elems, err := momo.QueryScalars[string](ctx, db, "SELECT array_to_string(tags, ',') FROM lists WHERE id = 1")
+	if err != nil || len(elems) != 1 || elems[0] != "a@b.c,x@y.z" {
+		t.Fatalf("the elements of the array column: %v, %v", elems, err)
+	}
+}
