@@ -2070,6 +2070,20 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td><code>ErrUnsupported</code>: a declaration is a generator error and the renderer refuses it, because SQLite has no exclusion constraints</td>
 <td><code>ErrUnsupported</code>: a declaration is a generator error and the renderer refuses it, because MySQL and MariaDB have no exclusion constraints</td>
 </tr>
+<tr>
+<td>Domains</td>
+<td><code>schema.Domain</code>, <code>schema.DomainCheck</code>, <code>schema.Schema</code></td>
+<td>yes: <code>CREATE DOMAIN</code> with a base type, <code>NOT NULL</code>, a default and named <code>CHECK</code> constraints is declared with <code>Config.Domain</code>, read from <code>pg_type</code> and <code>pg_constraint</code>, written by <code>generate --from-db</code>, rendered, compared by <code>diff</code>, <code>Baseline</code> and <code>drift</code>, and kept by a snapshot; a column of a domain takes the Go type of the base type and names the domain in its <code>type</code> tag; a change of the default, <code>NOT NULL</code> or a constraint is an <code>ALTER DOMAIN</code>, and a change of the base type recreates the domain and rewrites the columns that use it, which <code>diff</code> treats as destructive</td>
+<td><code>ErrUnsupported</code>: a declaration is a generator error and the renderer refuses it, because SQLite has no domains</td>
+<td><code>ErrUnsupported</code>: a declaration is a generator error and the renderer refuses it, because MySQL and MariaDB have no domains</td>
+</tr>
+<tr>
+<td>Composite types on <code>types.Composite[T]</code></td>
+<td><code>types.Composite</code>, <code>compositeop.Equals</code>, <code>compositeop.NotEquals</code>, <code>schema.Composite</code>, <code>schema.CompositeAttr</code>, <code>schema.Schema</code></td>
+<td>yes: <code>CREATE TYPE ... AS (...)</code> is declared with <code>Config.Composite</code>, read from <code>pg_type</code> and <code>pg_attribute</code>, written by <code>generate --from-db</code> together with its Go struct, rendered, compared by <code>diff</code> (add, drop and retype an attribute with <code>ALTER TYPE</code>), <code>Baseline</code> and <code>drift</code>, and kept by a snapshot; a column is a <code>types.Composite</code> of the struct and names the type in its <code>type</code> tag, with the record text of PostgreSQL read and written through <code>Value</code> and <code>Scan</code>, and compared as a whole value with <code>compositeop.Equals</code> and <code>compositeop.NotEquals</code>; a nested composite type and an array of composite types are <code>ErrUnsupported</code></td>
+<td><code>ErrUnsupported</code>: a declaration is a generator error and the renderer refuses it, because SQLite has no composite types, and each <code>compositeop</code> builder fails the build</td>
+<td><code>ErrUnsupported</code>: a declaration is a generator error and the renderer refuses it, because MySQL and MariaDB have no composite types, and each <code>compositeop</code> builder fails the build</td>
+</tr>
 </tbody>
 </table>
 <!-- /generated:features -->

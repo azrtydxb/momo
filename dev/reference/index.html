@@ -1343,6 +1343,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#compositeop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        compositeop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#fts" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1664,6 +1675,17 @@
     <span class="md-ellipsis">
       
         cli
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#compositeop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        compositeop
       
     </span>
   </a>
@@ -2150,6 +2172,21 @@
 <td>String returns the SQL text.</td>
 </tr>
 <tr>
+<td><code>momo.CompositeOpts</code></td>
+<td>type</td>
+<td>CompositeOpts carries the attributes of a composite type declaration.</td>
+</tr>
+<tr>
+<td><code>momo.CompositeOpts.Attr</code></td>
+<td>method</td>
+<td>Attr adds an attribute to the composite type, in order.</td>
+</tr>
+<tr>
+<td><code>momo.CompositeOpts.Schema</code></td>
+<td>method</td>
+<td>Schema places the composite type in a PostgreSQL schema other than the current one.</td>
+</tr>
+<tr>
 <td><code>momo.Config</code></td>
 <td>type</td>
 <td>Config is the receiver of a model's MomoConfig companion method.</td>
@@ -2175,9 +2212,19 @@
 <td>Comment sets a column comment.</td>
 </tr>
 <tr>
+<td><code>momo.Config.Composite</code></td>
+<td>method</td>
+<td>Composite declares a PostgreSQL composite type, such as c.Composite("address").Attr("street", "text").Attr("zip", "text").</td>
+</tr>
+<tr>
 <td><code>momo.Config.Default</code></td>
 <td>method</td>
 <td>Default sets a column default expression.</td>
+</tr>
+<tr>
+<td><code>momo.Config.Domain</code></td>
+<td>method</td>
+<td>Domain declares a PostgreSQL domain over a base type, such as c.Domain("email").As("text").NotNull().Check("email_shape", "VALUE LIKE '%@%'").</td>
 </tr>
 <tr>
 <td><code>momo.Config.Enum</code></td>
@@ -2568,6 +2615,36 @@
 <td><code>momo.Discriminator</code></td>
 <td>type</td>
 <td>Discriminator restricts a polymorphic has-one/has-many to rows whose type column equals Value.</td>
+</tr>
+<tr>
+<td><code>momo.DomainOpts</code></td>
+<td>type</td>
+<td>DomainOpts carries the optional parts of a domain declaration.</td>
+</tr>
+<tr>
+<td><code>momo.DomainOpts.As</code></td>
+<td>method</td>
+<td>As sets the base type of the domain, such as "text", "character varying(255)" or "numeric(10,2)".</td>
+</tr>
+<tr>
+<td><code>momo.DomainOpts.Check</code></td>
+<td>method</td>
+<td>Check adds a named CHECK constraint to the domain.</td>
+</tr>
+<tr>
+<td><code>momo.DomainOpts.Default</code></td>
+<td>method</td>
+<td>Default sets the default of the domain, a SQL expression.</td>
+</tr>
+<tr>
+<td><code>momo.DomainOpts.NotNull</code></td>
+<td>method</td>
+<td>NotNull makes the domain NOT NULL.</td>
+</tr>
+<tr>
+<td><code>momo.DomainOpts.Schema</code></td>
+<td>method</td>
+<td>Schema places the domain in a PostgreSQL schema other than the current one.</td>
 </tr>
 <tr>
 <td><code>momo.Driver</code></td>
@@ -5576,6 +5653,41 @@
 <td>Column is a table column.</td>
 </tr>
 <tr>
+<td><code>schema.Composite</code></td>
+<td>type</td>
+<td>Composite is a PostgreSQL composite type, as in</td>
+</tr>
+<tr>
+<td><code>schema.Composite.Ref</code></td>
+<td>method</td>
+<td>Ref is how a column names the composite as its type: the bare name in the current schema, otherwise "schema.name".</td>
+</tr>
+<tr>
+<td><code>schema.CompositeAttr</code></td>
+<td>type</td>
+<td>CompositeAttr is one attribute of a Composite.</td>
+</tr>
+<tr>
+<td><code>schema.CompositeNesting</code></td>
+<td>func</td>
+<td>CompositeNesting reports the attribute of c whose type is another composite type of cs, or an array of one.</td>
+</tr>
+<tr>
+<td><code>schema.Domain</code></td>
+<td>type</td>
+<td>Domain is a PostgreSQL domain: a base type with an optional NOT NULL, a default and named CHECK constraints, as in</td>
+</tr>
+<tr>
+<td><code>schema.Domain.Ref</code></td>
+<td>method</td>
+<td>Ref is how a column names the domain as its type: the bare name in the current schema, otherwise "schema.name".</td>
+</tr>
+<tr>
+<td><code>schema.DomainCheck</code></td>
+<td>type</td>
+<td>DomainCheck is a named CHECK constraint of a Domain.</td>
+</tr>
+<tr>
 <td><code>schema.Enum</code></td>
 <td>type</td>
 <td>Enum is a PostgreSQL enum type.</td>
@@ -5726,6 +5838,11 @@
 <td>Int64 returns a pointer to v.</td>
 </tr>
 <tr>
+<td><code>schema.IsCompositeRef</code></td>
+<td>func</td>
+<td>IsCompositeRef reports whether the SQL type t names one of the composite types cs, or is an array of one.</td>
+</tr>
+<tr>
 <td><code>schema.KV</code></td>
 <td>type</td>
 <td>KV is an ordered key/value pair.</td>
@@ -5866,6 +5983,16 @@
 <td>Unique is a named UNIQUE constraint.</td>
 </tr>
 <tr>
+<td><code>schema.ValidateComposite</code></td>
+<td>func</td>
+<td>ValidateComposite reports why c cannot be created: a name that is not a lower-case unquoted identifier, no attribute, an attribute without a name or a type, or two attributes of one name.</td>
+</tr>
+<tr>
+<td><code>schema.ValidateDomain</code></td>
+<td>func</td>
+<td>ValidateDomain reports why d cannot be created: a name that is not a lower-case unquoted identifier, an empty base type, a check without a name or an expression, or two checks of one name.</td>
+</tr>
+<tr>
 <td><code>schema.ValidateSequence</code></td>
 <td>func</td>
 <td>ValidateSequence reports why PostgreSQL would refuse CREATE SEQUENCE for q: a data type other than smallint, integer or bigint, a bound outside the range of the type, a minimum above the maximum, or a start outside the bounds.</td>
@@ -5904,6 +6031,31 @@
 <td>Codec is the custom-type contract: database/sql scanning, driver value encoding and the SQL type per dialect.</td>
 </tr>
 <tr>
+<td><code>types.Composite</code></td>
+<td>type</td>
+<td>Composite is a PostgreSQL composite type, with the exported fields of the struct T as its attributes in declaration order:</td>
+</tr>
+<tr>
+<td><code>types.Composite.SQLType</code></td>
+<td>method</td>
+<td>SQLType returns the empty string: the name of a composite type is declared by the model (the type tag) and is not a property of the Go type.</td>
+</tr>
+<tr>
+<td><code>types.Composite.Scan</code></td>
+<td>method</td>
+<td>Scan decodes PostgreSQL record text (string or []byte) into V.</td>
+</tr>
+<tr>
+<td><code>types.Composite.String</code></td>
+<td>method</td>
+<td>String returns the record text Value writes, or the error text when V does not fit the rules of Composite.</td>
+</tr>
+<tr>
+<td><code>types.Composite.Value</code></td>
+<td>method</td>
+<td>Value encodes V as PostgreSQL record text.</td>
+</tr>
+<tr>
 <td><code>types.Date</code></td>
 <td>type</td>
 <td>Date is a calendar date (no time zone): date on PostgreSQL, TEXT 'YYYY-MM-DD' on SQLite and MySQL.</td>
@@ -5937,6 +6089,11 @@
 <td><code>types.Excl</code></td>
 <td>func</td>
 <td>Excl returns the finite exclusive bound v: the ( of a lower bound, the ) of an upper one.</td>
+</tr>
+<tr>
+<td><code>types.FormatRecord</code></td>
+<td>func</td>
+<td>FormatRecord writes the fields as PostgreSQL record text: a parenthesized, comma-separated list in which a nil field is NULL (nothing between the commas) and every other field is quoted only when the text would otherwise be misread: when it is empty (an empty string is "", not NULL) or contains a quote, a backslash, a parenthesis, a comma or white space.</td>
 </tr>
 <tr>
 <td><code>types.Hstore</code></td>
@@ -6072,6 +6229,11 @@
 <td><code>types.ParseNumeric</code></td>
 <td>func</td>
 <td>ParseNumeric parses PostgreSQL numeric text: an optionally signed decimal ("12", "-1.5", ".5", "7."), or NaN, Infinity or -Infinity (also written inf, any case).</td>
+</tr>
+<tr>
+<td><code>types.ParseRecord</code></td>
+<td>func</td>
+<td>ParseRecord reads PostgreSQL record text into its fields, with nil for a NULL one: an unquoted empty field.</td>
 </tr>
 <tr>
 <td><code>types.ParseUUID</code></td>
@@ -6425,6 +6587,16 @@
 <td>Change kinds produced by Diff.</td>
 </tr>
 <tr>
+<td><code>migrate.AlterComposite</code></td>
+<td>const</td>
+<td>Change kinds produced by Diff.</td>
+</tr>
+<tr>
+<td><code>migrate.AlterDomain</code></td>
+<td>const</td>
+<td>Change kinds produced by Diff.</td>
+</tr>
+<tr>
 <td><code>migrate.AlterEnumAddValue</code></td>
 <td>const</td>
 <td>Change kinds produced by Diff.</td>
@@ -6515,6 +6687,16 @@
 <td>ConfigFromFile reads the momo.yaml at path in fsys, for example an embedded one, and returns the engine options its migrate: section and introspect.only describe: schemas, exclude, external_extensions, lock_timeout, statement_timeout and only.</td>
 </tr>
 <tr>
+<td><code>migrate.CreateComposite</code></td>
+<td>const</td>
+<td>Change kinds produced by Diff.</td>
+</tr>
+<tr>
+<td><code>migrate.CreateDomain</code></td>
+<td>const</td>
+<td>Change kinds produced by Diff.</td>
+</tr>
+<tr>
 <td><code>migrate.CreateEnum</code></td>
 <td>const</td>
 <td>Change kinds produced by Diff.</td>
@@ -6590,6 +6772,11 @@
 <td>Discover lists the migration files in fsys.</td>
 </tr>
 <tr>
+<td><code>migrate.DomainColumn</code></td>
+<td>type</td>
+<td>DomainColumn is a column of a table that uses a domain whose base type changes.</td>
+</tr>
+<tr>
 <td><code>migrate.DriftOptions</code></td>
 <td>type</td>
 <td>DriftOptions controls DriftWith.</td>
@@ -6616,6 +6803,16 @@
 </tr>
 <tr>
 <td><code>migrate.DropColumn</code></td>
+<td>const</td>
+<td>Change kinds produced by Diff.</td>
+</tr>
+<tr>
+<td><code>migrate.DropComposite</code></td>
+<td>const</td>
+<td>Change kinds produced by Diff.</td>
+</tr>
+<tr>
+<td><code>migrate.DropDomain</code></td>
 <td>const</td>
 <td>Change kinds produced by Diff.</td>
 </tr>
@@ -7043,6 +7240,11 @@
 <td><code>migrate.RebuildDetector</code></td>
 <td>type</td>
 <td>RebuildDetector is implemented by dialects that change some tables by rebuilding them from the desired definition (SQLite).</td>
+</tr>
+<tr>
+<td><code>migrate.RecreateDomain</code></td>
+<td>const</td>
+<td>Change kinds produced by Diff.</td>
 </tr>
 <tr>
 <td><code>migrate.RedactURLs</code></td>
@@ -8006,6 +8208,29 @@
 <td><code>cli.Run</code></td>
 <td>func</td>
 <td>Run executes the momo CLI with args (without the program name), writes its output to stdout and its diagnostics to stderr, and returns the process exit code: 0 for success or current generated code, 1 for stale generated files or generator diagnostics, 2 for a usage, configuration or infrastructure error, and 3 for a database, lock or execution error (momo migrate).</td>
+</tr>
+</tbody>
+</table>
+<h2 id="compositeop">compositeop<a class="headerlink" href="#compositeop" title="Permanent link">&para;</a></h2>
+<p>Import path: <code>github.com/azrtydxb/momo/compositeop</code></p>
+<table>
+<thead>
+<tr>
+<th>Identifier</th>
+<th>Kind</th>
+<th>Synopsis</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>compositeop.Equals</code></td>
+<td>func</td>
+<td>Equals is true when the composite column col equals v.</td>
+</tr>
+<tr>
+<td><code>compositeop.NotEquals</code></td>
+<td>func</td>
+<td>NotEquals is true when the composite column col differs from v; see Equals.</td>
 </tr>
 </tbody>
 </table>

@@ -2290,7 +2290,7 @@ string literals only.</p>
 <code>&lt;table&gt;_&lt;col&gt;_idx</code> produced by an <code>index</code> tag (the <code>Plan</code> field above already
 yields <code>accounts_plan_idx</code>); the generator refuses the duplicate.</p>
 <p>Config methods: <code>Config.Index</code>, <code>Config.IndexExpr</code>, <code>Config.Unique</code>, <code>Config.ForeignKey</code>, <code>Config.Check</code>, <code>Config.CheckIn</code>, <code>Config.Enum</code>, <code>Config.Default</code>, <code>Config.Generated</code>,
-<code>Config.Comment</code>, <code>Config.Collate</code>, <code>Config.IDGen</code>, <code>Config.FKName</code>, <code>Config.Exclude</code>, <code>Config.PrimaryKey</code>, <code>Config.PrimaryKeyDeferrable</code>, <code>Config.PrimaryKeyInitiallyDeferred</code>, <code>Config.History</code>, <code>Config.View</code>, <code>Config.Function</code>, <code>Config.Trigger</code>, <code>Config.Policy</code>, <code>Config.RLS</code>, <code>Config.Partition</code>,
+<code>Config.Comment</code>, <code>Config.Collate</code>, <code>Config.IDGen</code>, <code>Config.FKName</code>, <code>Config.Exclude</code>, <code>Config.Domain</code>, <code>Config.Composite</code>, <code>Config.PrimaryKey</code>, <code>Config.PrimaryKeyDeferrable</code>, <code>Config.PrimaryKeyInitiallyDeferred</code>, <code>Config.History</code>, <code>Config.View</code>, <code>Config.Function</code>, <code>Config.Trigger</code>, <code>Config.Policy</code>, <code>Config.RLS</code>, <code>Config.Partition</code>,
 <code>Config.PartitionOf</code>. Index chain: <code>IndexOpts.Unique()</code> (on <code>Config.Index</code> or <code>Config.IndexExpr</code>), <code>Where(pred)</code>, <code>Method(m)</code>, <code>IndexOpts.With(k, v)</code>,
 <code>Opclass(field, op)</code>, <code>Desc(field)</code>, <code>Nulls(field, "first"|"last")</code>,
 <code>Concurrently()</code> (<code>diff</code> writes the index as <code>CREATE INDEX CONCURRENTLY</code> in its own no-transaction migration).</p>
@@ -2353,6 +2353,16 @@ composite key; the relation still needs a single-column key.</p>
 makes the generator add the <code>btree_gist</code> extension. It models plain columns only
 (no <code>WHERE</code>, expression or operator class); the other dialects refuse it. See
 <a href="../migrations/#exclusion-constraints">migrations</a>.</p>
+<p>A domain and a composite type (PostgreSQL) are schema objects declared in
+<code>MomoConfig</code>, as a standalone sequence is: <code>c.Domain("email").As("text").NotNull().Check("email_shape", "VALUE
+LIKE '%@%'")</code> and <code>c.Composite("address").Attr("street", "text").Attr("zip",
+"text")</code>. A field uses one through the <code>type</code> tag, <code>momo:"type:email"</code>, and
+the Go type is the one of the base type of a domain (a <code>string</code> for a domain over
+<code>text</code>), or a <code>types.Composite[T]</code> of a struct whose exported fields map to the
+attributes by position for a composite type. A composite inside a composite and an
+array of composites are refused. The other dialects refuse both. See
+<a href="../TYPE_MAPPING/#domains">type mapping</a> and
+<a href="../migrations/#domains-and-composite-types">migrations</a>.</p>
 <p>A unique constraint, a foreign key and a primary key can be <code>DEFERRABLE</code> on
 PostgreSQL: <code>c.Unique(...).Deferrable()</code> or <code>.InitiallyDeferred()</code> (a unique
 with any other option is an index, which cannot be deferred),

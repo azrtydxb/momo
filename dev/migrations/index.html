@@ -726,6 +726,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#domains-and-composite-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Domains and composite types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#checksums" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1950,6 +1961,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#domains-and-composite-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Domains and composite types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#checksums" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2759,6 +2781,68 @@ migration written by hand.</p>
   and the repair is the drop and add above, withheld without
   <code>--allow-destructive</code> like every drop. <code>AutoMigrate</code> never drops one.</li>
 </ul>
+<h3 id="domains-and-composite-types">Domains and composite types<a class="headerlink" href="#domains-and-composite-types" title="Permanent link">&para;</a></h3>
+<p>A PostgreSQL domain is a base type with <code>NOT NULL</code>, a default and named <code>CHECK</code>
+constraints; a composite type is a list of named, typed attributes. Both are
+schema objects like an enum or a sequence, kept in <code>schema.Schema.Domains</code>
+(each a <code>schema.Domain</code> with <code>schema.DomainCheck</code> constraints) and
+<code>schema.Schema.Composites</code> (each a <code>schema.Composite</code> with <code>schema.CompositeAttr</code>
+attributes). A snapshot written before they existed loads with none, so the
+snapshot format version stays 1.</p>
+<p>They are declared in <code>MomoConfig</code> like a standalone sequence, with
+<code>Config.Domain</code> (<code>DomainOpts.As</code>, <code>DomainOpts.Schema</code>, <code>DomainOpts.NotNull</code>,
+<code>DomainOpts.Default</code> and one <code>DomainOpts.Check</code> for each constraint) and
+<code>Config.Composite</code> (<code>CompositeOpts.Schema</code> and one <code>CompositeOpts.Attr</code> for each
+attribute, in order), and a field uses one through the <code>type</code> tag, <code>type:email</code>.
+The name of a domain or a composite type is a lower-case unquoted identifier, the
+way a column spells its type. A composite type is a Go struct read through
+<code>types.Composite</code>; see <a href="../TYPE_MAPPING/#composite-types">type mapping</a>.</p>
+<p>What the tools do on PostgreSQL:</p>
+<ul>
+<li><code>momo generate --from-db</code> writes the <code>c.Domain</code> and <code>c.Composite</code> calls, the Go
+  struct of each composite type, and each column of one of them with its <code>type</code>
+  tag and, for a domain, the Go type of the base type. A domain or a composite
+  type that no column of a table kept by <code>introspect.only</code> uses is left out of the
+  models and the snapshot, with a note; add it to <code>migrate.exclude</code> so the
+  baseline and drift ignore the live object. A composite type with an attribute
+  that is a composite type or an array of one is refused with an error that wraps
+  <code>momo.ErrUnsupported</code>, and so is a column that is an array of one; hide the
+  type with <code>migrate.exclude</code> to proceed.</li>
+<li><code>diff</code> creates a domain or a composite type before the tables that use it and
+  drops it after them. A change of the default, of <code>NOT NULL</code> or of a constraint
+  is one <code>ALTER DOMAIN</code> (the constraints that go or change are dropped first, the
+  new ones added last), and <code>diff</code> reports a new <code>NOT NULL</code> or <code>CHECK</code> as risky,
+  because it is validated against every stored value. PostgreSQL cannot alter the
+  base type of a domain, so a change of it is a recreation: each column that uses
+  the domain is changed to the old base type, the domain is dropped and created
+  again, and each column is changed back, which rewrites the column and fails on
+  a value the new type rejects; a column that is an array of the domain stays an
+  array. <code>diff</code> refuses the recreation, naming the object, when an attribute of a
+  composite type or another domain is of the domain, or when a view that the plan
+  leaves as it is reads a table with a column of the domain, because PostgreSQL
+  refuses those changes; write a custom migration for them. The recreation is destructive when a column uses
+  the domain, so <code>diff</code> refuses it without <code>--allow-destructive</code>. A domain that
+  the models no longer declare is dropped, which is destructive too.</li>
+<li>A change of a composite type is one <code>ALTER TYPE</code> statement for each attribute
+  that is added, dropped or retyped, and a dropped attribute is destructive.
+  PostgreSQL appends a new attribute and cannot move one, so <code>diff</code> refuses, with
+  an error that says why, a plan that inserts an attribute before another or
+  reorders them. It also refuses to alter a composite type while a column uses
+  it, because PostgreSQL does: write a custom migration for that case.</li>
+<li><code>Baseline</code>, <code>drift</code> and <code>drift --fix-sql</code> compare each domain and each composite
+  type as an object. The check expressions and the default of a domain are
+  rewritten to the text PostgreSQL stores before the comparison, as the checks
+  of a table are. A type missing, extra or different is reported, and the repair
+  is the statements above, withheld without <code>--allow-destructive</code> where they drop
+  or recreate. <code>AutoMigrate</code> creates a domain or a composite type that is missing
+  and never alters or drops one.</li>
+<li>SQLite, MySQL and MariaDB have neither: the generator reports a declaration
+  when the target dialect is not PostgreSQL, and the SQLite and MySQL renderers
+  return an error that wraps <code>momo.ErrUnsupported</code>.</li>
+</ul>
+<p>Inspection also stops for a domain whose name is not a lower-case unquoted
+identifier, and for a composite type that is not modelled; both errors name the
+object, and <code>migrate.exclude</code> hides it.</p>
 <h3 id="checksums">Checksums<a class="headerlink" href="#checksums" title="Permanent link">&para;</a></h3>
 <p>Two independent checks, both SHA-256 of the file bytes:</p>
 <ol>

@@ -535,6 +535,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#domains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Domains
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#composite-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Composite types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#edge-values-and-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1462,6 +1484,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#domains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Domains
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#composite-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Composite types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#edge-values-and-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1947,6 +1991,65 @@ Go type; <code>generate --from-db</code> reports such a column as unmapped, and 
 <code>introspect</code> types rule or a <code>type</code> tag declares it. A GiST exclusion
 constraint over a range is declared with <code>Config.Exclude</code>; see
 <a href="../migrations/#exclusion-constraints">migrations</a>.</p>
+<h2 id="domains">Domains<a class="headerlink" href="#domains" title="Permanent link">&para;</a></h2>
+<p>A PostgreSQL domain is a base type with a <code>NOT NULL</code>, a default and named
+<code>CHECK</code> constraints. It is declared with <code>Config.Domain</code> in <code>MomoConfig</code>, for
+example <code>c.Domain("email").As("text").NotNull().Check("email_shape", "VALUE
+LIKE '%@%'")</code>, and a field uses it through the <code>type</code> tag, which names the
+domain as the column type:</p>
+<div class="highlight"><pre><span></span><code>Email string `momo:"type:email"`
+</code></pre></div>
+<p>There is no Go type per domain. The field has the Go type of the base type of the
+domain: an <code>email</code> domain over <code>text</code> scans as a <code>string</code>, a domain over <code>bigint</code>
+as an <code>int64</code>, and a nullable column is a pointer as for any column. The same
+holds for <code>generate --from-db</code>, which writes the <code>c.Domain</code> call and gives each
+column of the domain the Go type of its base type and the <code>type</code> tag that names
+the domain. A domain over a type with no Go mapping needs an <code>introspect</code> types
+rule for that base type. A domain in another schema is named with the schema in
+the tag, <code>type:billing.email</code>, and declared with <code>.Schema("billing")</code>.</p>
+<p>The tag is the only link between the field and the domain, as it is for an enum
+(<code>enum</code>): the generator does not check the Go type against the base type, and the
+database refuses a value the domain's rules reject. See
+<a href="../migrations/#domains-and-composite-types">migrations</a> for what <code>diff</code>,
+<code>Baseline</code> and <code>drift</code> do with a domain.</p>
+<h2 id="composite-types">Composite types<a class="headerlink" href="#composite-types" title="Permanent link">&para;</a></h2>
+<p>A PostgreSQL composite type, <code>CREATE TYPE address AS (street text, zip text)</code>, is
+declared with <code>Config.Composite</code>, for example
+<code>c.Composite("address").Attr("street", "text").Attr("zip", "text")</code>, and read
+into a Go struct through <code>types.Composite[T]</code>:</p>
+<div class="highlight"><pre><span></span><code>type Address struct {
+    Street string
+    Zip    *string
+}
+
+Home types.Composite[Address] `momo:"type:address"`
+</code></pre></div>
+<p>The exported fields of the struct map to the attributes by position, in order,
+and the <code>type</code> tag names the composite type, as it names a domain. <code>Value</code> and
+<code>Scan</code> speak the record text PostgreSQL prints, such as <code>(Main St,"12 34")</code>, with
+its quoting, its NULL fields (nothing between the commas) and the difference
+between an empty string (<code>""</code>) and NULL, so the type works with the pgx driver
+and with <code>database/sql</code>. Every attribute may be NULL in PostgreSQL, so a field
+that can hold NULL is a pointer (or a <code>sql.NullString</code> and the other
+<code>sql.Null</code> types); a NULL attribute does not scan into a field that is not one.
+A field is a <code>bool</code>, an integer, a float, a <code>string</code>, a <code>[]byte</code> (bytea), a
+<code>time.Time</code> (a timestamp with a time zone), another codec of this package such
+as <code>types.UUID</code>, <code>types.Date</code> and <code>types.Numeric</code>, or a pointer to one of these.
+A nullable column is a <code>*types.Composite[T]</code> field.</p>
+<p><code>generate --from-db</code> writes the struct, with a pointer field for each attribute,
+and the column with its tag. A composite type inside a composite type and an
+array of a composite type are not supported yet: the generator, <code>generate
+--from-db</code> and the inspector refuse them with a diagnostic that wraps
+<code>momo.ErrUnsupported</code>.</p>
+<p>Equality on the whole value is <code>compositeop.Equals(col, "address", value)</code> and
+<code>compositeop.NotEquals</code>: the type name casts the bound value, because PostgreSQL reads
+the parameter of a plain <code>col.Eq(value)</code> as an anonymous record and refuses it.
+Access to one attribute is not part of the API; write it as a raw expression,
+<code>(home).street</code>.</p>
+<p>Domains and composite types exist on PostgreSQL alone. The generator reports a
+declaration when the target dialect is SQLite, MySQL or MariaDB, the SQLite
+and MySQL renderers return an error that wraps <code>momo.ErrUnsupported</code>, and a
+<code>compositeop</code> builder fails the build with it.</p>
 <h2 id="edge-values-and-behavior">Edge values and behavior<a class="headerlink" href="#edge-values-and-behavior" title="Permanent link">&para;</a></h2>
 <p>Each statement below is asserted by a test against PostgreSQL, and the ones
 about SQLite or MySQL and MariaDB by the SQLite and MySQL tests named at the
