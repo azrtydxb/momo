@@ -244,7 +244,7 @@ func TestDiffUnsupportedAlterations(t *testing.T) {
 
 func TestDiffSchemaExtensionRemovalIsHintOnly(t *testing.T) {
 	from := base()
-	from.Schemas = []schema.SchemaNamespace{{Name: "app"}}
+	from.Schemas = []schema.Namespace{{Name: "app"}}
 	from.Extensions = []schema.Extension{{Name: "vector"}}
 	changes, hints, err := Diff(from, base(), DiffOptions{})
 	if err != nil || len(changes) != 0 {

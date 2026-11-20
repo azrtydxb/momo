@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo/gen/naming"
+	"github.com/azrtydxb/momo/internal/genutil"
 )
 
 const momoImportPath = "github.com/azrtydxb/momo"
@@ -60,7 +61,7 @@ func (e *descEmitter) modelImportPath(m *Model) string {
 	if m.ModulePath == "" {
 		return m.PkgPath
 	}
-	p, err := ImportPath(m.ModulePath, m.ModuleDir, m.PkgDir)
+	p, err := genutil.ImportPath(m.ModulePath, m.ModuleDir, m.PkgDir)
 	if err != nil {
 		e.diags = append(e.diags, Diagnostic{Pos: m.Pos, Msg: err.Error()})
 		return m.PkgPath
@@ -221,7 +222,7 @@ func newDescEmitter(m *Model, g *Graph) (*descEmitter, map[string]bool) {
 // relation names are chosen: the reserved names, the import aliases and the
 // field identifiers.
 func usedIdents(aliases map[string]bool, fieldIDs []string) map[string]bool {
-	used := DescriptorReserved()
+	used := genutil.DescriptorReserved()
 	for alias := range aliases {
 		used[alias] = true
 	}
@@ -242,17 +243,17 @@ func DescriptorIdents(m *Model, g *Graph) (fields, relations []string) {
 	fields = fieldIdents(m, aliases)
 	used := usedIdents(aliases, fields)
 	for _, r := range m.Relations {
-		name := Identifier(r.GoName, used)
+		name := genutil.Identifier(r.GoName, used)
 		used[name] = true
 		relations = append(relations, name)
 	}
 	return fields, relations
 }
 
-// EmitDescriptors returns the source of the per-model descriptor subpackage:
+// emitDescriptors returns the source of the per-model descriptor subpackage:
 // typed columns, the alias-aware As constructor and one descriptor per
 // relation. The result is gofmt-formatted and starts with Header().
-func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
+func emitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 	e, aliases := newDescEmitter(m, g)
 	ids := fieldIdents(m, aliases)
 	used := usedIdents(aliases, ids)
@@ -272,7 +273,7 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 		} else {
 			elem = strings.TrimPrefix(f.GoType, "*")
 		}
-		typeName, ctor := DescriptorType(f.Access, f.Nullable || f.Tags.Nullable)
+		typeName, ctor := descriptorType(f.Access, f.Nullable || f.Tags.Nullable)
 		c := col{
 			name:    name,
 			typ:     "momo." + typeName + "[" + elem + "]",
@@ -281,7 +282,7 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 			flags:   flagExpr(f),
 		}
 		if v != nil && isVectorType(v.Type()) {
-			tn, cn := VectorDescriptorType(f.Access, f.Nullable || f.Tags.Nullable)
+			tn, cn := vectorDescriptorType(f.Access, f.Nullable || f.Tags.Nullable)
 			c.typ = "momo." + tn + "[" + elem + "]"
 			c.ctor = "momo." + cn + "[" + elem + "]"
 			c.dim = vectorDim(f)
@@ -317,12 +318,12 @@ func EmitDescriptors(m *Model, g *Graph) ([]byte, []Diagnostic) {
 		}
 		w(")\n")
 	}
-	lookup, lds := emitLookup(m, ids)
+	lookup, lds := emitLookupIDs(m, ids)
 	e.diags = append(e.diags, lds...)
 	e.use("fmt", "fmt")
 	body.Write(lookup)
 	for _, r := range m.Relations {
-		name := Identifier(r.GoName, used)
+		name := genutil.Identifier(r.GoName, used)
 		used[name] = true
 		e.emitRelation(&body, m, r, name)
 	}

@@ -7,11 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/sqlerr"
 )
 
 // History row statuses. Dirty means StatusRunning or StatusFailed; a
@@ -164,19 +164,7 @@ func isUndefinedTable(err error) bool {
 	if errors.As(err, &s) && (s.SQLState() == undefinedTable || s.SQLState() == undefinedTableMySQL) {
 		return true
 	}
-	return IsNoSuchTable(err, historyTable)
-}
-
-// IsNoSuchTable reports whether err is SQLite's "no such table" error for the
-// named table. SQLite has no SQLSTATE; its message names the table, and SQLite
-// may spell it main.<name>. Only the named table counts, not any other table a
-// statement named.
-func IsNoSuchTable(err error, name string) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "no such table: "+name) || strings.Contains(msg, "no such table: main."+name)
+	return sqlerr.IsNoSuchTable(err, historyTable)
 }
 
 // ReadHistory returns the migration rows of the history table ordered by

@@ -130,7 +130,7 @@ func (e *Engine) Renumber(applied []string) (removed []string, files map[string]
 		slices.Sort(stuck)
 		return nil, nil, nil, fmt.Errorf("migrate: pending Go migration(s) %s sort before the newest applied version %s and cannot be renumbered, because their version is set in code; change the Version of each in the code", strings.Join(stuck, ", "), newest)
 	}
-	all, err := Discover(e.dir)
+	all, err := discover(e.dir)
 	if err != nil {
 		return nil, nil, nil, err
 	}

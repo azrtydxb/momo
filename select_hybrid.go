@@ -11,6 +11,7 @@ import (
 
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/ftsquery"
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/schema"
 	"github.com/azrtydxb/momo/vector"
 )
@@ -246,7 +247,7 @@ func (h HybridQuery[T]) SQL() (Compiled, error) {
 			return Compiled{}, err
 		}
 		sql, args = buildHybridPortable(d, hybridPortable{
-			ident: ident, table: table, ftsTable: ident(schema.FTS5Table(h.meta.Table)), pk: pk,
+			ident: ident, table: table, ftsTable: ident(schemautil.FTS5Table(h.meta.Table)), pk: pk,
 			vec: ident(s.Vector.ColumnName()), cols: cols, soft: softText, ft: ft,
 		}, s)
 	}

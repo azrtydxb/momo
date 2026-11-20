@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/azrtydxb/momo"
+	iredact "github.com/azrtydxb/momo/internal/redact"
 )
 
 // RunEnv is what RunMigration needs: the pinned connection every statement and
@@ -122,7 +123,7 @@ func runTransactional(ctx context.Context, env RunEnv, h historyWriter, rec Hist
 		if rbErr := tx.Rollback(fctx); rbErr != nil {
 			cause = errors.Join(cause, fmt.Errorf("rollback: %w", rbErr))
 		}
-		rec.Status, rec.Error = StatusRolledBack, RedactURLs(cause.Error())
+		rec.Status, rec.Error = StatusRolledBack, iredact.RedactURLs(cause.Error())
 		if err := env.recordOnFailure(fctx, func(x execer) error { return h.upsert(fctx, x, rec) }); err != nil {
 			cause = errors.Join(cause, fmt.Errorf("record rolled_back: %w", err))
 		}
@@ -191,7 +192,7 @@ func failNonTx(ctx context.Context, env RunEnv, h historyWriter, p Pending, n in
 	fctx, cancel := failureContext(ctx)
 	defer cancel()
 	if herr := env.recordOnFailure(fctx, func(x execer) error {
-		return h.finish(fctx, x, p.Version, StatusFailed, n, RedactURLs(cause.Error()), ms)
+		return h.finish(fctx, x, p.Version, StatusFailed, n, iredact.RedactURLs(cause.Error()), ms)
 	}); herr != nil {
 		cause = errors.Join(cause, fmt.Errorf("record failed: %w", herr))
 	}

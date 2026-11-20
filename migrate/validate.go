@@ -37,7 +37,7 @@ func ValidateOffline(fsys fs.FS, goMigrations ...GoMigration) (*ValidateReport, 
 	if _, err := fs.ReadDir(fsys, "."); err != nil {
 		return nil, fmt.Errorf("migrate: read migration directory: %w", err)
 	}
-	files, err := Discover(fsys)
+	files, err := discover(fsys)
 	if err != nil {
 		return &ValidateReport{Problems: []string{err.Error()}}, nil
 	}
@@ -56,7 +56,7 @@ func validateFiles(fsys fs.FS, files []File, goMigrations []GoMigration) *Valida
 		if f.Kind == "snapshot" {
 			continue
 		}
-		d, err := ParseDirectives(f.Body)
+		d, err := readDirectives(f.Body)
 		if err != nil {
 			add("%s: %v", f.Path, err)
 			continue

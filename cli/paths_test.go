@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/azrtydxb/momo/gen"
+	"github.com/azrtydxb/momo/internal/genutil"
 	"github.com/azrtydxb/momo/migrate"
 )
 
@@ -17,7 +17,7 @@ func TestWindowsPaths(t *testing.T) {
 	t.Run("generated import path", func(t *testing.T) {
 		root := t.TempDir()
 		// filepath.Join uses backslashes on Windows, so this genuinely tests the conversion to slashes.
-		got, err := gen.ImportPath("example.com/app", root, filepath.Join(root, "internal", "models", "user"))
+		got, err := genutil.ImportPath("example.com/app", root, filepath.Join(root, "internal", "models", "user"))
 		if err != nil {
 			t.Fatal(err)
 		}

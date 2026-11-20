@@ -7,6 +7,7 @@
 package dialect
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -74,17 +75,28 @@ type Dialect struct {
 	Vector VectorCaps
 }
 
-// For returns the built-in dialect description for name.
+// For returns the built-in dialect description for name, or nil for an
+// unknown name. Every call returns a fresh copy, slices included, so a caller
+// may change what it gets without touching the built-in description or any
+// other caller's copy.
 func For(n Name) *Dialect {
 	switch n {
 	case Postgres:
-		return &postgres
+		return clone(&postgres)
 	case SQLite:
-		return &sqlite
+		return clone(&sqlite)
 	case MySQL:
 		return MySQLFlavor(FlavorMySQL)
 	}
 	return nil
+}
+
+// clone returns a copy of d that shares no memory with it.
+func clone(d *Dialect) *Dialect {
+	c := *d
+	c.Vector.Metrics = slices.Clone(d.Vector.Metrics)
+	c.Vector.Indexes = slices.Clone(d.Vector.Indexes)
+	return &c
 }
 
 var postgres = Dialect{

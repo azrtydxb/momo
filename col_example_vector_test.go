@@ -11,6 +11,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/internal/schemaops"
 	"github.com/azrtydxb/momo/internal/testmodels/example"
 	"github.com/azrtydxb/momo/internal/testmodels/example/document"
 	"github.com/azrtydxb/momo/migrate"
@@ -94,13 +95,13 @@ func ExampleValidateVectorIndex() {
 		Parts: []schema.IndexPart{{Column: "embedding", OpClass: "vector_cosine_ops"}},
 		With:  []schema.KV{{Key: "m", Value: "16"}, {Key: "ef_construction", Value: "64"}},
 	}
-	fmt.Println(schema.ValidateVectorIndex(dialect.Postgres, tbl, good))
+	fmt.Println(schemaops.ValidateVectorIndex(dialect.Postgres, tbl, good))
 
 	noOpClass := good
 	noOpClass.Parts = []schema.IndexPart{{Column: "embedding"}}
-	fmt.Println(schema.ValidateVectorIndex(dialect.Postgres, tbl, noOpClass))
+	fmt.Println(schemaops.ValidateVectorIndex(dialect.Postgres, tbl, noOpClass))
 
-	op, _ := schema.VectorIndexOpClass("halfvec(8)", dialect.MetricL1)
+	op, _ := schemaops.VectorIndexOpClass("halfvec(8)", dialect.MetricL1)
 	fmt.Println(op)
 	// Output:
 	// <nil>

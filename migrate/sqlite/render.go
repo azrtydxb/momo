@@ -10,6 +10,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
 )
@@ -54,7 +55,7 @@ const rebuildHint = "rebuild"
 // statement per table, with Hint "rebuild" and no SQL, at the position of the
 // table's first such change, and folds every other change to that table into
 // it. A marker is not executable; RenderSchema, which Engine.Diff and
-// AutoMigrate call, writes the rebuild out in full, and Rebuild writes it from
+// AutoMigrate call, writes the rebuild out in full, and rebuildLive writes it from
 // a live connection.
 //
 // Render returns an error wrapping momo.ErrUnsupported for the kinds SQLite has
@@ -279,7 +280,7 @@ func (r *renderer) renderChange(c migrate.Change) ([]migrate.Statement, error) {
 			if _, ok := t.FullTextIndex(); ok {
 				// The FTS5 table is a table of its own: it does not go with its
 				// content table.
-				return []migrate.Statement{{SQL: dropFTS5SQL(schema.FTS5Table(c.Table), true)}, drop}, nil
+				return []migrate.Statement{{SQL: dropFTS5SQL(schemautil.FTS5Table(c.Table), true)}, drop}, nil
 			}
 		}
 		return []migrate.Statement{drop}, nil

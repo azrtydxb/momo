@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/sqlerr"
 	"github.com/azrtydxb/momo/migrate"
 )
 
@@ -49,7 +50,7 @@ func (Dialect) Lock(ctx context.Context, c momo.PinnedConn, _ string) (unlock fu
 	// The table is created on first use: try the insert, and only when the
 	// table is missing create it and try once more.
 	err = insert()
-	if migrate.IsNoSuchTable(err, lockTable) {
+	if sqlerr.IsNoSuchTable(err, lockTable) {
 		if _, cerr := c.Exec(ctx, `CREATE TABLE IF NOT EXISTS `+lockTable+` (
 id INTEGER PRIMARY KEY CHECK (id = 1),
 holder TEXT NOT NULL,
@@ -119,7 +120,7 @@ func lockHolder(ctx context.Context, c momo.PinnedConn) (string, error) {
 func ForceUnlock(ctx context.Context, c momo.PinnedConn) (previousHolder string, err error) {
 	previousHolder, err = lockHolder(ctx, c)
 	if err != nil {
-		if migrate.IsNoSuchTable(err, lockTable) {
+		if sqlerr.IsNoSuchTable(err, lockTable) {
 			return "", nil
 		}
 		return "", fmt.Errorf("migrate/sqlite: read the migration lock: %w", err)

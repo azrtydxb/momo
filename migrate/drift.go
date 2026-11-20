@@ -13,20 +13,12 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/schemaops"
 	"github.com/azrtydxb/momo/schema"
 )
 
 // invalidIndexDetail is the Detail of an index PostgreSQL marks invalid.
 const invalidIndexDetail = "invalid index (failed CONCURRENTLY build)"
-
-// MatchObject reports whether any glob matches the object name, or
-// schema.name when schemaName is not empty (the current schema is spelled with
-// an empty one). Config.Exclude, Config.OnlyTables and the dialects' inspection
-// all match this way, so one glob selects the same objects everywhere. A
-// malformed glob never matches; excludeMatcher reports it.
-func MatchObject(globs []string, schemaName, name string) bool {
-	return schema.MatchObject(globs, schemaName, name)
-}
 
 // excludeMatcher validates the glob patterns of the Config field named by
 // field (Config.Exclude, Config.OnlyTables) and returns a function reporting
@@ -37,7 +29,7 @@ func excludeMatcher(field string, globs []string) (func(schemaName, name string)
 			return nil, fmt.Errorf("migrate: %s pattern %q: %w", field, g, err)
 		}
 	}
-	return func(ns, name string) bool { return MatchObject(globs, ns, name) }, nil
+	return func(ns, name string) bool { return schema.MatchObject(globs, ns, name) }, nil
 }
 
 // checkOnlyTables validates Config.OnlyTables: every glob well formed, and no
@@ -365,7 +357,7 @@ func reconcileCheckLists(a, b *schema.Schema) {
 				ca := &ta.Checks[x]
 				for y := range tb.Checks {
 					cb := &tb.Checks[y]
-					if cb.Name == ca.Name && schema.SameCheck(*ca, *cb) {
+					if cb.Name == ca.Name && schemaops.SameCheck(*ca, *cb) {
 						cb.Expr = ca.Expr
 					}
 				}
@@ -497,7 +489,7 @@ func (d *DriftReport) kinds() []string {
 // snapshotAt returns the snapshot recorded for exactly version, or
 // ErrNoSnapshot.
 func snapshotAt(dir fs.FS, version string) (*SnapshotFile, error) {
-	files, err := Discover(dir)
+	files, err := discover(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -518,7 +510,7 @@ func snapshotAt(dir fs.FS, version string) (*SnapshotFile, error) {
 // version, or nil when there is none. A migration without a snapshot of its own
 // (custom SQL) leaves the state of the one before it.
 func snapshotUpTo(dir fs.FS, version string) (*SnapshotFile, error) {
-	files, err := Discover(dir)
+	files, err := discover(dir)
 	if err != nil {
 		return nil, err
 	}

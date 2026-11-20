@@ -44,7 +44,7 @@ func joinColumns(t *testing.T, namer naming.Namer) (desc string, tbl []string) {
 			doc = m
 		}
 	}
-	src, ds := EmitDescriptors(doc, g)
+	src, ds := emitDescriptors(doc, g)
 	if len(ds) != 0 {
 		t.Fatal(ds)
 	}

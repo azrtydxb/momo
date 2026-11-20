@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/migrate"
 	mpg "github.com/azrtydxb/momo/migrate/postgres"
 	"github.com/azrtydxb/momo/schema"
@@ -24,12 +25,12 @@ func TestRenderCreateSequence(t *testing.T) {
 		},
 		{
 			"options",
-			schema.Sequence{Schema: "app", Name: "ids", AsType: "integer", Start: schema.Int64(100), Increment: 10, MinValue: schema.Int64(100), MaxValue: schema.Int64(1000), Cache: 5, Cycle: true},
+			schema.Sequence{Schema: "app", Name: "ids", AsType: "integer", Start: schemautil.Int64(100), Increment: 10, MinValue: schemautil.Int64(100), MaxValue: schemautil.Int64(1000), Cache: 5, Cycle: true},
 			`CREATE SEQUENCE "app"."ids" AS integer INCREMENT BY 10 MINVALUE 100 MAXVALUE 1000 START WITH 100 CACHE 5 CYCLE`,
 		},
 		{
 			"zero start",
-			schema.Sequence{Name: "counter", Start: schema.Int64(0), MinValue: schema.Int64(0)},
+			schema.Sequence{Name: "counter", Start: schemautil.Int64(0), MinValue: schemautil.Int64(0)},
 			`CREATE SEQUENCE "counter" AS bigint INCREMENT BY 1 MINVALUE 0 MAXVALUE 9223372036854775807 START WITH 0 CACHE 1 NO CYCLE`,
 		},
 		{

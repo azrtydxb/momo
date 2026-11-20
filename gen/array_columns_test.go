@@ -37,7 +37,7 @@ func TestSliceFieldsMapToArrayColumns(t *testing.T) {
 	if c, _ := tbl.Column("aliases"); !c.Nullable {
 		t.Error("aliases must be nullable: it carries the nullable tag")
 	}
-	src, ds := EmitDescriptors(g.Models[0], g)
+	src, ds := emitDescriptors(g.Models[0], g)
 	if len(ds) != 0 {
 		t.Fatalf("emit diagnostics: %v", ds)
 	}

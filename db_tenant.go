@@ -47,7 +47,7 @@ func (p tenantPredicate[T]) AppendSQL(b *Builder) {
 // isolation in the database with row-level security. That is configured by
 // your own WithTxSetup function, which reads whatever your code put in the
 // context; to drive both from WithTenant, read the tenant there and call
-// SetConfigLocal. Without WithImplicitTx, non-transactional queries get no
+// Tx.SetLocal. Without WithImplicitTx, non-transactional queries get no
 // setting.
 func TenantFilter[T any](ctx context.Context, col Column[T]) Predicate {
 	v, ok := ctx.Value(tenantKey{}).(T)

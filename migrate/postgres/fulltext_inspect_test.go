@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -79,7 +80,7 @@ func TestFoldFullTextEqualsExpansion(t *testing.T) {
 			ix.Parts = []schema.IndexPart{{Expr: `to_tsvector('english', coalesce(title, '') || ' ' || coalesce(body, ''))`}}
 		} else {
 			for i := range read.Columns {
-				if read.Columns[i].Name == schema.TSVectorColumn("articles_search") {
+				if read.Columns[i].Name == schemautil.TSVectorColumn("articles_search") {
 					read.Columns[i].Generated = pgPrinted(ft)
 				}
 			}

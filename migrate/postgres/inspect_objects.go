@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo"
-	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -126,7 +125,7 @@ func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.
 // An excluded object is skipped before it is read, so one the model cannot
 // represent does not fail the whole inspection.
 func (in *inspector) excluded(ns, name string) bool {
-	return migrate.MatchObject(in.exclude, in.optSchema(ns), name)
+	return schema.MatchObject(in.exclude, in.optSchema(ns), name)
 }
 
 // outsideOnly reports whether Config.OnlyTables is set and no glob of it
@@ -135,7 +134,7 @@ func (in *inspector) outsideOnly(ns, name string) bool {
 	if len(in.only) == 0 {
 		return false
 	}
-	return !migrate.MatchObject(in.only, in.optSchema(ns), name)
+	return !schema.MatchObject(in.only, in.optSchema(ns), name)
 }
 
 // optSchema is the Schema field value for a namespace: empty for the current one.

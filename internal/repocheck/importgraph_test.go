@@ -28,6 +28,12 @@ var coreAllowed = map[string]bool{
 	modPath + "/internal/snake":    true,
 	modPath + "/internal/floatfmt": true,
 
+	// The naming helpers of the schema and the full-text and check-constraint
+	// rules the root and schema share (SortedValues, CheckInExpr,
+	// ParseCheckIn, FTS5Table, TSVectorColumn); it imports only the standard
+	// library and dialect.
+	modPath + "/internal/schemautil": true,
+
 	// The scope and counting rules both N+1 detectors share, so the deprecated
 	// root forwarders and obs count alike; it imports only the standard library.
 	modPath + "/internal/nplusone": true,

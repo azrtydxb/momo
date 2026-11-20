@@ -53,7 +53,7 @@ type FieldNamer interface {
 // name, so under naming.Prisma{} the field NextAttemptAt reads the column
 // nextAttemptAt. Use the same preset as the naming: key of momo.yaml. Without
 // the option, or with a nil n, the column is the snake_case of the field name
-// (naming.ToSnake). Models, projections and tuple rows carry the names the
+// (snake.ToSnake of the internal snake package). Models, projections and tuple rows carry the names the
 // generator derived, so they are not affected.
 //
 // The preset may be any value, comparable or not, a preset or your own type,

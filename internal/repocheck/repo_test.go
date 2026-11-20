@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/azrtydxb/momo/gen"
+	"github.com/azrtydxb/momo/internal/genutil"
 )
 
 const spdxTag = "SPDX-License-Identifier: Apache-2.0"
@@ -211,7 +211,7 @@ func TestRepoFiles(t *testing.T) {
 			}
 			return err
 		}
-		if strings.HasPrefix(string(b), gen.HeaderPrefix) {
+		if strings.HasPrefix(string(b), genutil.HeaderPrefix) {
 			return nil
 		}
 		head := string(b)

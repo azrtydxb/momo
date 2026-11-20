@@ -17,6 +17,7 @@ import (
 
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/naming"
+	"github.com/azrtydxb/momo/internal/genutil"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -152,7 +153,7 @@ func isGeneratedFile(name, dir string) bool {
 	}
 	defer func() { _ = f.Close() }()
 	line, _ := bufio.NewReader(f).ReadString('\n')
-	_, ok := ParseHeader(line)
+	_, ok := genutil.ParseHeader(line)
 	return ok
 }
 

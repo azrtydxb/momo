@@ -68,7 +68,7 @@ func FuzzSchemaSort(f *testing.F) {
 
 func TestSortCoversManagedObjects(t *testing.T) {
 	s := &Schema{
-		Schemas:   []SchemaNamespace{{Name: "b"}, {Name: "a"}},
+		Schemas:   []Namespace{{Name: "b"}, {Name: "a"}},
 		Tables:    []Table{{Schema: "b", Name: "t"}, {Schema: "a", Name: "t"}},
 		Views:     []View{{Name: "v2", Depends: []string{"z", "a", "z"}, Indexes: []Index{{Name: "i2"}, {Name: "i1"}}}, {Name: "v1"}},
 		Functions: []Function{{Name: "f", Args: "b"}, {Name: "f", Args: "a"}},

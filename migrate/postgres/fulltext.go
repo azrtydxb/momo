@@ -8,6 +8,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
 )
@@ -62,7 +63,7 @@ func expandTable(t *schema.Table, ix *schema.Index) error {
 		ix.Parts = []schema.IndexPart{{Expr: expressionIndexExpr(ft)}}
 		return nil
 	}
-	name := schema.TSVectorColumn(ix.Name)
+	name := schemautil.TSVectorColumn(ix.Name)
 	if len(name) > maxIdentBytes {
 		return ftError(t.Name, "table %q index %q: the generated column %q is %d bytes, over PostgreSQL's %d-byte identifier limit; shorten the index name", t.Name, ix.Name, name, len(name), maxIdentBytes)
 	}

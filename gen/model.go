@@ -14,6 +14,8 @@ import (
 
 	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/gen/tags"
+	"github.com/azrtydxb/momo/internal/genutil"
+	"github.com/azrtydxb/momo/internal/tagparse"
 )
 
 const (
@@ -247,7 +249,7 @@ func (d *discovery) parseTags(lit *ast.BasicLit, label string) tags.Tags {
 		}
 		return tags.Tags{}
 	}
-	t, probs := tags.Parse(raw)
+	t, probs := tagparse.Parse(raw)
 	for _, p := range probs {
 		d.diag(lit.Pos(), label+": "+p.Msg)
 	}
@@ -277,7 +279,7 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 		PkgDir:  dirOf(pos.Filename),
 		File:    pos.Filename,
 		Pos:     pos,
-		SubPkg:  SubPkgName(obj.Name(), d.pkg.Name),
+		SubPkg:  genutil.SubPkgName(obj.Name(), d.pkg.Name),
 		named:   named,
 
 		Projection: projection,
@@ -356,11 +358,11 @@ func (d *discovery) build(obj *types.TypeName, named *types.Named, strct *types.
 	m.Indexes, idiags = mixinIndexes(m)
 	d.diags = append(d.diags, idiags...)
 	var cdiags []Diagnostic
-	m.Config, cdiags = ReadCompanion(d.pkg, m)
+	m.Config, cdiags = readCompanion(d.pkg, m)
 	d.diags = append(d.diags, cdiags...)
 	d.companionBad = d.companionBad || len(cdiags) > 0
 	var hdiags []Diagnostic
-	m.Hooks, hdiags = DetectHooks(named, d.pkg.Fset)
+	m.Hooks, hdiags = detectHooks(named, d.pkg.Fset)
 	d.diags = append(d.diags, hdiags...)
 	d.companionBad = d.companionBad || len(hdiags) > 0
 	return m

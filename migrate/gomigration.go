@@ -179,7 +179,7 @@ func (e *Engine) checkGoSnapshots() error {
 	if len(e.opts.goMigrations) == 0 {
 		return nil
 	}
-	files, err := Discover(e.dir)
+	files, err := discover(e.dir)
 	if err != nil {
 		return err
 	}
@@ -191,11 +191,11 @@ func (e *Engine) checkGoSnapshots() error {
 	return nil
 }
 
-// RefuseGoRollback returns ErrGoMigrationNotReversible, naming the first
-// version, when any of the history rows to be rolled back has kind "go". A
-// rollback (Engine.Rollback, when it exists) calls it before it runs any down
-// step, because a Go migration has none.
-func RefuseGoRollback(rows []HistoryRow) error {
+// refuseGoRollback returns ErrGoMigrationNotReversible, naming the first
+// version, when any of the history rows to be rolled back has kind "go".
+// Engine.Rollback calls it before it runs any down step, because a Go
+// migration has none.
+func refuseGoRollback(rows []HistoryRow) error {
 	for _, r := range rows {
 		if r.Kind == "go" {
 			return fmt.Errorf("%w: version %s (%s)", ErrGoMigrationNotReversible, r.Version, r.Name)
@@ -227,7 +227,7 @@ func (e *Engine) unregisteredGo(files []File, done map[string]bool) []File {
 // checkGoRunnable refuses with ErrGoMigrationUnregistered when a pending SQL
 // migration would run past a Go migration this engine cannot run.
 func (e *Engine) checkGoRunnable(pending []Pending, hist []HistoryRow, to string) error {
-	files, err := Discover(e.dir)
+	files, err := discover(e.dir)
 	if err != nil {
 		return err
 	}

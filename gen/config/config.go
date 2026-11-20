@@ -15,6 +15,7 @@ import (
 	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/gen/fromdb"
 	"github.com/azrtydxb/momo/gen/naming"
+	"github.com/azrtydxb/momo/internal/genutil"
 	"github.com/azrtydxb/momo/internal/migratecfg"
 )
 
@@ -104,13 +105,13 @@ func Load(path string) (*File, error) {
 
 // validateTypes checks the types: section. Only the default of time.Time can
 // be overridden, and the replacement must be a date/time SQL type that
-// gen.ValidTimeType accepts, because it is written into DDL.
+// genutil.ValidTimeType accepts, because it is written into DDL.
 func validateTypes(types map[string]string) error {
 	for k, v := range types {
 		if k != "time.Time" {
 			return fmt.Errorf("types: %q cannot be overridden; only time.Time is supported", k)
 		}
-		if !gen.ValidTimeType(v) {
+		if !genutil.ValidTimeType(v) {
 			return fmt.Errorf("types: %s: %q is not a timestamp type; use timestamp, timestamptz, time or timetz with an optional precision 0-6 and an optional with/without time zone", k, v)
 		}
 	}

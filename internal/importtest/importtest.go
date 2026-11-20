@@ -14,6 +14,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/importer/history"
+	"github.com/azrtydxb/momo/internal/sqlsplit"
 	"github.com/azrtydxb/momo/internal/testdb"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
@@ -67,7 +68,7 @@ func CheckImport(t *testing.T, live *momo.DB, in Input) {
 	}
 	defer func() { _ = conn.Release() }()
 	for _, cv := range conv {
-		stmts, err := migrate.SplitStatements(cv.Up, "postgres")
+		stmts, err := sqlsplit.Split(cv.Up, "postgres")
 		if err != nil {
 			t.Fatalf("split %s: %v", cv.Version, err)
 		}

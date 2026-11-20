@@ -14,8 +14,11 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/gen/tags"
-	"github.com/azrtydxb/momo/gen/typemap"
 	"github.com/azrtydxb/momo/internal/deferkey"
+	"github.com/azrtydxb/momo/internal/genutil"
+	"github.com/azrtydxb/momo/internal/schemaops"
+	"github.com/azrtydxb/momo/internal/schemautil"
+	"github.com/azrtydxb/momo/internal/typemap"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -502,7 +505,7 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 		def = b.typeDef["time.Time"]
 	}
 	if def != "" && b.primary == dialect.Postgres {
-		if ValidTimeType(def) {
+		if genutil.ValidTimeType(def) {
 			return strings.TrimSpace(def)
 		}
 		b.diag(f.Pos, fmt.Sprintf("field %s: type default %q for %s is not a timestamp type; use timestamp, timestamptz, time or timetz with an optional precision 0-6", f.GoName, def, goType))
@@ -647,7 +650,7 @@ func (b *schemaBuilder) addIndex(t *schema.Table, ix schema.Index, pos token.Pos
 		b.vector = true
 		b.feats = append(b.feats, feature{ix.Method, pos})
 		if b.primary == dialect.Postgres {
-			if err := schema.ValidateVectorIndex(b.primary, t, ix); err != nil {
+			if err := schemaops.ValidateVectorIndex(b.primary, t, ix); err != nil {
 				b.diag(pos, err.Error())
 			}
 		}
@@ -913,13 +916,13 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 			b.diag(m.Pos, fmt.Sprintf("MomoConfig: CheckIn %q: column %q is %s, not a text column", ci.Name, ci.Column, typ))
 			continue
 		}
-		in := schema.CheckIn{Column: ci.Column, Values: schema.SortedValues(ci.Values)}
+		in := schema.CheckIn{Column: ci.Column, Values: schemautil.SortedValues(ci.Values)}
 		if err := in.Validate(); err != nil {
 			b.diag(m.Pos, fmt.Sprintf("MomoConfig: CheckIn %q: %v", ci.Name, err))
 			continue
 		}
 		checks[ci.Name] = "MomoConfig"
-		t.Checks = append(t.Checks, schema.Check{Name: ci.Name, Expr: schema.CheckInExpr(b.primary, in.Column, in.Values), In: &in})
+		t.Checks = append(t.Checks, schema.Check{Name: ci.Name, Expr: schemautil.CheckInExpr(b.primary, in.Column, in.Values), In: &in})
 	}
 	b.columnText(m, t, "default", c.Defaults, func(c *schema.Column) *string { return &c.Default })
 	b.columnText(m, t, "generated", c.Generated, func(c *schema.Column) *string { return &c.Generated })

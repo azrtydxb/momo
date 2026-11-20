@@ -22,6 +22,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/importer"
+	"github.com/azrtydxb/momo/internal/sqlsplit"
 	"github.com/azrtydxb/momo/migrate"
 )
 
@@ -155,7 +156,7 @@ func fileName(name string) string {
 }
 
 // Baseline applies each converted migration to the scratch database in order
-// (statements split by migrate.SplitStatements; a migration that is not NoTx
+// (statements split by sqlsplit.Split; a migration that is not NoTx
 // runs in one transaction, a NoTx one statement by statement in autocommit) and
 // inspects the database with d after each one. It returns one SnapshotFile per
 // migration: Version is the migration's version, ParentVersion the previous
@@ -176,7 +177,7 @@ func Baseline(ctx context.Context, scratch *momo.DB, d migrate.Dialect, conv []C
 	var snaps []migrate.SnapshotFile
 	parent := ""
 	for _, c := range conv {
-		stmts, err := migrate.SplitStatements(c.Up, string(d.Dialect().Name))
+		stmts, err := sqlsplit.Split(c.Up, string(d.Dialect().Name))
 		if err != nil {
 			return nil, fmt.Errorf("history: %s: %w", c.Origin, err)
 		}

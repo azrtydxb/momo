@@ -234,7 +234,7 @@ func TestPostgresInspectMixedCaseForeignKeyRoundTrip(t *testing.T) {
 	}
 	want := &schema.Schema{
 		FormatVersion: schema.FormatVersion, Dialect: "postgres",
-		Schemas:    []schema.SchemaNamespace{{Name: aux}},
+		Schemas:    []schema.Namespace{{Name: aux}},
 		Extensions: got.Extensions,
 		Tables: []schema.Table{
 			{Schema: aux, Name: "Orgs", PrimaryKey: []string{"id"},

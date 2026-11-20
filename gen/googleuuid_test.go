@@ -38,7 +38,7 @@ func TestGoogleUUIDFieldsMapWithoutTypeTag(t *testing.T) {
 			t.Errorf("column %s = %q, want %q", col, c.Type, want)
 		}
 	}
-	src, ds := EmitDescriptors(g.Models[0], g)
+	src, ds := emitDescriptors(g.Models[0], g)
 	if len(ds) != 0 {
 		t.Fatalf("emit diagnostics: %v", ds)
 	}

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -197,7 +198,7 @@ func foldFullText(t *schema.Table) {
 		}
 		switch {
 		case p.Column != "":
-			if p.Column != schema.TSVectorColumn(ix.Name) {
+			if p.Column != schemautil.TSVectorColumn(ix.Name) {
 				continue
 			}
 			for j := range t.Columns {
@@ -228,7 +229,7 @@ func foldFullText(t *schema.Table) {
 // a stored-form full-text index of t.
 func fullTextGenerated(t *schema.Table, column string) bool {
 	for _, ix := range t.Indexes {
-		if ix.FullText != nil && !ix.FullText.Expression && schema.TSVectorColumn(ix.Name) == column {
+		if ix.FullText != nil && !ix.FullText.Expression && schemautil.TSVectorColumn(ix.Name) == column {
 			return true
 		}
 	}

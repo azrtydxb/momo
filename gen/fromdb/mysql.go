@@ -9,8 +9,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/azrtydxb/momo/dialect"
-	"github.com/azrtydxb/momo/gen/tags"
 	"github.com/azrtydxb/momo/internal/dbdefault"
+	"github.com/azrtydxb/momo/internal/tagparse"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -91,7 +91,7 @@ func typeTagSafe(v string) bool {
 			return false
 		}
 	}
-	return len(tags.SplitOptions("type:"+v)) == 1
+	return len(tagparse.SplitOptions("type:"+v)) == 1
 }
 
 // mysqlTypeTags spells the column type of a MySQL or MariaDB column. The

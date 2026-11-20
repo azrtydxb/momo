@@ -17,7 +17,7 @@ import (
 
 	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/gen/config"
-	"github.com/azrtydxb/momo/migrate"
+	"github.com/azrtydxb/momo/internal/redact"
 )
 
 const generateUsage = `Usage: momo generate [-c momo.yaml | --config momo.yaml] [--check] [patterns...]
@@ -195,7 +195,7 @@ func runGenerate(args []string, stdout, stderr io.Writer, available ...gen.Plugi
 	}
 	changed, err := w.Commit()
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "momo: %s\n", migrate.RedactURLs(err.Error()))
+		_, _ = fmt.Fprintf(stderr, "momo: %s\n", redact.RedactURLs(err.Error()))
 		if errors.Is(err, gen.ErrHandwritten) || errors.Is(err, gen.ErrCollision) {
 			return exitFindings
 		}
@@ -222,7 +222,7 @@ func runGenerate(args []string, stdout, stderr io.Writer, available ...gen.Plugi
 }
 
 func fail(stderr io.Writer, err error) int {
-	_, _ = fmt.Fprintf(stderr, "momo: %s\n", migrate.RedactURLs(err.Error()))
+	_, _ = fmt.Fprintf(stderr, "momo: %s\n", redact.RedactURLs(err.Error()))
 	return exitUsage
 }
 
@@ -358,7 +358,7 @@ func relPath(p, cwd string) string {
 func printDiagnostics(w io.Writer, diags []gen.Diagnostic, cwd string) {
 	for _, d := range diags {
 		d.Pos = token.Position{Filename: filepath.ToSlash(relPath(d.Pos.Filename, cwd)), Line: d.Pos.Line, Column: d.Pos.Column}
-		_, _ = fmt.Fprintln(w, migrate.RedactURLs(d.String()))
+		_, _ = fmt.Fprintln(w, redact.RedactURLs(d.String()))
 	}
 }
 
@@ -367,7 +367,7 @@ func printDiagnostics(w io.Writer, diags []gen.Diagnostic, cwd string) {
 func printWarnings(w io.Writer, warns []gen.Diagnostic, cwd string) {
 	for _, d := range warns {
 		d.Pos = token.Position{Filename: filepath.ToSlash(relPath(d.Pos.Filename, cwd)), Line: d.Pos.Line, Column: d.Pos.Column}
-		_, _ = fmt.Fprintln(w, "warning: "+migrate.RedactURLs(d.String()))
+		_, _ = fmt.Fprintln(w, "warning: "+redact.RedactURLs(d.String()))
 	}
 }
 

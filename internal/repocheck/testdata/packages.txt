@@ -42,9 +42,16 @@ internal-leaf internal/nplusone
 internal-leaf internal/dbdefault
 internal-leaf internal/deferkey
 internal-leaf internal/redact
+internal-leaf internal/genutil
+internal-leaf internal/pluralize
+internal-leaf internal/schemaops
+internal-leaf internal/schemautil
 internal-leaf internal/snake
+internal-leaf internal/sqlerr
 internal-leaf internal/sqlscan
+internal-leaf internal/sqlsplit
 internal-leaf internal/sqlstub
+internal-leaf internal/tagparse
 
 internal-fixture internal/compat/...
 internal-fixture internal/importtest
@@ -61,7 +68,9 @@ internal-fixture internal/sqlshared
 internal-fixture internal/suite
 internal-fixture internal/testdb/...
 internal-fixture internal/testmodels/...
+internal-fixture internal/typemap
 internal-fixture internal/vectorparity
+internal-fixture internal/vectortype
 
 other cli
 other cmd/...

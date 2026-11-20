@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -281,7 +282,7 @@ func isFTS5SyncTrigger(desired *schema.Schema, ch Change) bool {
 		if _, ok := t.FullTextIndex(); !ok {
 			return false
 		}
-		fts := schema.FTS5Table(t.Name)
+		fts := schemautil.FTS5Table(t.Name)
 		return ch.Name == fts+"_ai" || ch.Name == fts+"_ad" || ch.Name == fts+"_au"
 	}
 	return false

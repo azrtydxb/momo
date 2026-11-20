@@ -52,7 +52,7 @@ func TestEmbedFromAddsHashColumn(t *testing.T) {
 // whether a source is named by column or by Go name).
 func TestEmbedFromEmitsMetaDeclaration(t *testing.T) {
 	g := loadEmbedFrom(t)
-	src, diags := EmitMeta(g.Models, g)
+	src, diags := emitMeta(g.Models, g)
 	if len(diags) != 0 {
 		t.Fatalf("emit diagnostics: %v", diags)
 	}

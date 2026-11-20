@@ -19,9 +19,9 @@ import (
 // minor or major version fails at Open, because the set of distance functions
 // may differ. The test TestSQLiteVecLoaded compares vec_version() with this
 // constant exactly, so a change of the bindings version in go.mod is noticed.
-// Vector columns are BLOB columns with a length CHECK; see momo.SQLiteVectorType
-// and momo.SQLiteBitsType. A build without cgo declares the constant too, as
-// the empty string.
+// Vector columns are BLOB columns with a length CHECK, such as
+// BLOB CHECK (length("emb") = 12) for three float32 elements. A build without
+// cgo declares the constant too, as the empty string.
 const VecVersion = "v0.1.6"
 
 // SQLiteVecVersion is the old name of VecVersion.

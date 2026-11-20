@@ -14,7 +14,7 @@ func TestDiscoverRejectsMalformedNames(t *testing.T) {
 		"20260101120000_init.snapshot.json": {Data: []byte("{}")},
 		"20260101120000_bad name.up.sql":    {Data: []byte("")},
 	}
-	if _, err := Discover(fsys); err == nil || !strings.Contains(err.Error(), "bad name") {
+	if _, err := discover(fsys); err == nil || !strings.Contains(err.Error(), "bad name") {
 		t.Fatalf("want error naming the malformed file, got %v", err)
 	}
 }
@@ -29,7 +29,7 @@ func TestDiscoverHostile(t *testing.T) {
 		"two names":         {"20260101120000_a.up.sql": {}, "20260101120000_b.down.sql": {}},
 	}
 	for name, fsys := range bad {
-		_, err := Discover(fsys)
+		_, err := discover(fsys)
 		if err == nil || !strings.Contains(err.Error(), "migrate: ") || !strings.Contains(err.Error(), "2026") {
 			t.Errorf("%s: want error naming the file, got %v", name, err)
 		}
@@ -46,7 +46,7 @@ func TestDiscoverSortedAndIgnores(t *testing.T) {
 		"README.md":                      {Data: []byte("x")},
 		"sub/notes.txt":                  {Data: []byte("x")},
 	}
-	got, err := Discover(fsys)
+	got, err := discover(fsys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestDiscoverWalksNestedDirectoriesOrderedByVersion(t *testing.T) {
 		"archive/momo.sum":                            {Data: []byte("x")},
 		"archive/README.md":                           {Data: []byte("x")},
 	}
-	got, err := Discover(fsys)
+	got, err := discover(fsys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestDiscoverRejectsVersionInTwoDirectories(t *testing.T) {
 		"20260101000000_a.up.sql":         {Data: []byte("A")},
 		"archive/20260101000000_a.up.sql": {Data: []byte("A")},
 	}
-	_, err := Discover(fsys)
+	_, err := discover(fsys)
 	if err == nil || !strings.Contains(err.Error(), "archive/20260101000000_a.up.sql") || !strings.Contains(err.Error(), " 20260101000000_a.up.sql") {
 		t.Fatalf("want error naming both paths, got %v", err)
 	}
@@ -107,7 +107,7 @@ func TestDiscoverRejectsVersionInTwoDirectories(t *testing.T) {
 		"20260101000000_a.up.sql":                {Data: []byte("A")},
 		"archive/20260101000000_a.snapshot.json": {Data: []byte("{}")},
 	}
-	if _, err := Discover(split); err == nil || !strings.Contains(err.Error(), "archive/20260101000000_a.snapshot.json") {
+	if _, err := discover(split); err == nil || !strings.Contains(err.Error(), "archive/20260101000000_a.snapshot.json") {
 		t.Fatalf("one version split across directories must be refused, got %v", err)
 	}
 }

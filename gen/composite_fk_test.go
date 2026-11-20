@@ -51,7 +51,7 @@ func TestBelongsToOnCompositePKColumn(t *testing.T) {
 func TestDescriptorsForCompositePKReferencer(t *testing.T) {
 	g := loadCompositeFK(t)
 	for _, m := range g.Models {
-		src, ds := EmitDescriptors(m, g)
+		src, ds := emitDescriptors(m, g)
 		if len(ds) != 0 {
 			t.Fatalf("%s: %v", m.GoName, ds)
 		}

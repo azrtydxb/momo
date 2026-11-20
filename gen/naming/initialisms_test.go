@@ -2,7 +2,11 @@
 
 package naming
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/azrtydxb/momo/internal/snake"
+)
 
 func TestTitleASCIIEmpty(t *testing.T) {
 	if got := titleASCII(""); got != "" {
@@ -46,7 +50,7 @@ func TestToSnakeInitialisms(t *testing.T) {
 		"ABs":             "a_bs", // AB is not an initialism of the list
 	}
 	for in, want := range cases {
-		if got := ToSnake(in); got != want {
+		if got := snake.ToSnake(in); got != want {
 			t.Errorf("ToSnake(%q) = %q, want %q", in, got, want)
 		}
 	}

@@ -55,9 +55,9 @@ func TestApplyDDLDirectiveRefuses(t *testing.T) {
 }
 
 // The directive is a statement comment, so a file may carry it right after the
-// header without ParseDirectives rejecting it.
+// header without readDirectives rejecting it.
 func TestParseDirectivesAcceptsDDL(t *testing.T) {
-	d, err := ParseDirectives([]byte("-- momo:ddl ALGORITHM=INSTANT\nALTER TABLE t ADD c int;\n"))
+	d, err := readDirectives([]byte("-- momo:ddl ALGORITHM=INSTANT\nALTER TABLE t ADD c int;\n"))
 	if err != nil {
 		t.Fatal(err)
 	}

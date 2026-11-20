@@ -31,7 +31,7 @@ func (e *Engine) NewCustom(name string) (*Migration, error) {
 	if !migrationName.MatchString(name) {
 		return nil, fmt.Errorf("%w: %q must match %s", ErrInvalidName, name, migrationName)
 	}
-	files, err := Discover(e.dir)
+	files, err := discover(e.dir)
 	if err != nil {
 		return nil, err
 	}

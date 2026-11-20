@@ -15,7 +15,7 @@ import (
 	"github.com/azrtydxb/momo/schema"
 )
 
-// EmitMeta returns the source of momo_gen.go for the models of one package:
+// emitMeta returns the source of momo_gen.go for the models of one package:
 // per model a MomoMeta method, the package-level momo.Meta value with its
 // scan and bind functions, and the literal schema.Table. models must belong
 // to a single package; the result is gofmt-formatted and starts with
@@ -23,7 +23,7 @@ import (
 //
 // Structs that embed momo.Projection in the same package (g.Projections) get
 // a MomoMeta with no table and every derived index set to -1.
-func EmitMeta(models []*Model, g *Graph) ([]byte, []Diagnostic) {
+func emitMeta(models []*Model, g *Graph) ([]byte, []Diagnostic) {
 	if len(models) == 0 {
 		return nil, nil
 	}
@@ -38,7 +38,7 @@ func EmitMeta(models []*Model, g *Graph) ([]byte, []Diagnostic) {
 	return emitPackageMeta(models, projs, g)
 }
 
-// emitPackageMeta is EmitMeta for the models and projections of one package.
+// emitPackageMeta is emitMeta for the models and projections of one package.
 func emitPackageMeta(models, projections []*Model, g *Graph) ([]byte, []Diagnostic) {
 	if len(models)+len(projections) == 0 {
 		return nil, nil

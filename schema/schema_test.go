@@ -16,7 +16,7 @@ func populated() *Schema {
 	return &Schema{
 		FormatVersion: FormatVersion,
 		Dialect:       dialect.Postgres,
-		Schemas:       []SchemaNamespace{{Name: "audit"}},
+		Schemas:       []Namespace{{Name: "audit"}},
 		Extensions:    []Extension{{Name: "vector", Version: "0.8.7"}},
 		Enums:         []Enum{{Name: "status", Values: []string{"open", "closed"}}},
 		Tables: []Table{{

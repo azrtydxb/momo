@@ -5,10 +5,10 @@ package fromdb
 import (
 	"testing"
 
-	"github.com/azrtydxb/momo/gen/naming"
+	"github.com/azrtydxb/momo/internal/snake"
 )
 
-// Catches: the --from-db field name and naming.ToSnake using different word
+// Catches: the --from-db field name and snake.ToSnake using different word
 // lists, so a column does not come back as itself: role_ids must give RoleIDs
 // and RoleIDs must give role_ids, and the same for the singular initialisms.
 func TestFieldNameRoundTripsThroughToSnake(t *testing.T) {
@@ -27,7 +27,7 @@ func TestFieldNameRoundTripsThroughToSnake(t *testing.T) {
 		if got := pascal(splitWords(column), "F"); got != field {
 			t.Errorf("pascal(%q) = %q, want %q", column, got, field)
 		}
-		if got := naming.ToSnake(field); got != column {
+		if got := snake.ToSnake(field); got != column {
 			t.Errorf("ToSnake(%q) = %q, want %q", field, got, column)
 		}
 	}

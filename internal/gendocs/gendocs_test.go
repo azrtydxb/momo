@@ -142,7 +142,7 @@ func TestDependencyRowsMatchGoMod(t *testing.T) {
 	}
 }
 
-// Catches: the type table in docs/TYPE_MAPPING.md drifting from gen/typemap:
+// Catches: the type table in docs/TYPE_MAPPING.md drifting from internal/typemap:
 // the block must equal the generator's output, and it must name every Go type
 // of the generator's list with one column per dialect.
 func TestTypeTableMatchesTypemap(t *testing.T) {

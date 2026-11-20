@@ -19,7 +19,7 @@ import (
 // all, stays quiet. require and verify-ca stay quiet too, but the warning
 // recommends verify-full, the only mode that checks the server's name.
 // It names the hosts only, never the URL, so it carries no credentials.
-// Redaction lives in migrate.RedactURLs; this file adds no second copy.
+// Redaction lives in redact.RedactURLs; this file adds no second copy.
 func tlsWarning(raw string, env func(string) string) string {
 	host, hostaddr, mode, ok := connHostsAndMode(raw)
 	if !ok {

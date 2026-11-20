@@ -40,7 +40,7 @@ func TestFieldPermissions(t *testing.T) {
 	}
 }
 
-func TestAccessFor(t *testing.T) {
+func TestaccessFor(t *testing.T) {
 	cases := []struct {
 		name    string
 		tg      tags.Tags
@@ -60,7 +60,7 @@ func TestAccessFor(t *testing.T) {
 		{"conflict", tags.Tags{ReadOnly: true, Immutable: true}, false, Writable, "conflicting write permissions on F", ""},
 	}
 	for _, c := range cases {
-		got, diags := AccessFor(c.tg, "F", c.pointer)
+		got, diags := accessFor(c.tg, "F", c.pointer)
 		if got != c.want {
 			t.Errorf("%s: access=%v want %v", c.name, got, c.want)
 		}
@@ -68,7 +68,7 @@ func TestAccessFor(t *testing.T) {
 			t.Errorf("%s: diags=%v want %q", c.name, diags, c.diag)
 		}
 		if c.typ != "" {
-			if typ, ctor := DescriptorType(got, c.pointer); typ != c.typ || ctor != "New"+c.typ {
+			if typ, ctor := descriptorType(got, c.pointer); typ != c.typ || ctor != "New"+c.typ {
 				t.Errorf("%s: descriptor %s/%s want %s", c.name, typ, ctor, c.typ)
 			}
 		}
@@ -76,7 +76,7 @@ func TestAccessFor(t *testing.T) {
 }
 
 // TestVectorDescriptorTypeReadOnlyNullable pins that a nullable read-only
-// vector keeps its null surface, as DescriptorType does for plain columns.
+// vector keeps its null surface, as descriptorType does for plain columns.
 func TestVectorDescriptorTypeReadOnlyNullable(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -92,7 +92,7 @@ func TestVectorDescriptorTypeReadOnlyNullable(t *testing.T) {
 		{"plain pointer", Writable, true, "NullVectorColumn"},
 	}
 	for _, c := range cases {
-		typ, ctor := VectorDescriptorType(c.a, c.pointer)
+		typ, ctor := vectorDescriptorType(c.a, c.pointer)
 		if typ != c.typ || ctor != "New"+c.typ {
 			t.Errorf("%s: got %s/%s want %s", c.name, typ, ctor, c.typ)
 		}

@@ -28,6 +28,37 @@ func TestDialectCapabilities(t *testing.T) {
 	}
 }
 
+// Catches: For handing out a pointer to the built-in description, so one
+// caller that edits a capability flag or a vector slice changes the dialect
+// for every other caller.
+func TestForReturnsACopy(t *testing.T) {
+	for _, n := range []Name{Postgres, SQLite, MySQL} {
+		a, b := For(n), For(n)
+		if a == b {
+			t.Fatalf("For(%s) returned the same pointer twice", n)
+		}
+		a.Returning = !a.Returning
+		a.MaxParams = -1
+		if b.MaxParams == -1 || For(n).MaxParams == -1 {
+			t.Fatalf("For(%s): a change to one copy reached another", n)
+		}
+	}
+	a, b := For(Postgres), For(Postgres)
+	a.Vector.Metrics[0] = "changed"
+	a.Vector.Indexes[0] = "changed"
+	if b.Vector.Metrics[0] != MetricL2 || b.Vector.Indexes[0] != "hnsw" {
+		t.Fatalf("a change to the vector slices of one copy reached another: %+v", b.Vector)
+	}
+	if got := For(Postgres).Vector; got.Metrics[0] != MetricL2 || got.Indexes[0] != "hnsw" {
+		t.Fatalf("a change to a copy reached the built-in dialect: %+v", got)
+	}
+	s := For(SQLite)
+	s.Vector.Metrics[0] = "changed"
+	if For(SQLite).Vector.Metrics[0] != MetricL2 {
+		t.Fatal("a change to a SQLite copy reached the built-in dialect")
+	}
+}
+
 func TestAppendIdentQuoting(t *testing.T) {
 	cases := []struct {
 		d    *Dialect

@@ -13,7 +13,7 @@ import (
 
 	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/gen/internal/gosrc"
-	"github.com/azrtydxb/momo/gen/naming"
+	"github.com/azrtydxb/momo/internal/pluralize"
 )
 
 // nameRE is the GraphQL Name production; names starting with two
@@ -217,7 +217,7 @@ func analyze(g *gen.Graph) (keep []keptModel, byModel map[*gen.Model]bool, diags
 			continue
 		}
 		single := gosrc.LowerFirst(m.GoName)
-		plural := gosrc.LowerFirst(naming.Plural(m.GoName))
+		plural := gosrc.LowerFirst(pluralize.Plural(m.GoName))
 		pk := singleIntPK(g, m, cols)
 		qnames := []string{plural}
 		if pk != "" {

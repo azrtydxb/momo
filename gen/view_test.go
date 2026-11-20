@@ -23,7 +23,7 @@ func TestViewMarkerEmission(t *testing.T) {
 	if len(diags) != 0 {
 		t.Fatalf("diagnostics: %v", diags)
 	}
-	src, ds := EmitMeta(g.Models, g)
+	src, ds := emitMeta(g.Models, g)
 	if len(ds) != 0 {
 		t.Fatalf("emit diagnostics: %v", ds)
 	}

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo/gen"
+	"github.com/azrtydxb/momo/internal/genutil"
 )
 
 // Imports renders an import block for the packages of candidates (alias to
@@ -68,7 +69,7 @@ func ModelImport(m *gen.Model) (string, error) {
 	if m.ModulePath == "" {
 		return m.PkgPath, nil
 	}
-	return gen.ImportPath(m.ModulePath, m.ModuleDir, m.PkgDir)
+	return genutil.ImportPath(m.ModulePath, m.ModuleDir, m.PkgDir)
 }
 
 // DescImport returns the import path of m's descriptor subpackage.

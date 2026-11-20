@@ -2,7 +2,7 @@
 
 //go:build integration && cgo && !windows
 
-package sqlite_test
+package sqlite
 
 import (
 	"context"
@@ -11,10 +11,71 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
-	msqlite "github.com/azrtydxb/momo/migrate/sqlite"
 	"github.com/azrtydxb/momo/schema"
 )
+
+// rebuildPinned pins one connection of db and releases it when the test ends.
+func rebuildPinned(t *testing.T, db *momo.DB) momo.PinnedConn {
+	t.Helper()
+	pn, ok := db.Driver().(momo.Pinner)
+	if !ok {
+		t.Fatal("driver does not implement momo.Pinner")
+	}
+	c, err := pn.Pin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Release() }) // Cleanup has no error channel; Release failures do not affect the assertions
+	return c
+}
+
+func mustExec(t *testing.T, c momo.PinnedConn, sql string) {
+	t.Helper()
+	if _, err := c.Exec(context.Background(), sql, nil); err != nil {
+		t.Fatalf("exec %q: %v", sql, err)
+	}
+}
+
+// scanOne runs a query on c, requires one row and scans it into dest.
+func scanOne(t *testing.T, c momo.PinnedConn, sql string, dest ...any) {
+	t.Helper()
+	rows, err := c.Query(context.Background(), sql, nil)
+	if err != nil {
+		t.Fatalf("query %q: %v", sql, err)
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		t.Fatalf("no rows for %q", sql)
+	}
+	if err := rows.Scan(dest...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// newRebuildFixture returns a pinned connection with foreign_keys ON, a parent
+// table items with an index, a view, a trigger on items, a child table links
+// with an FK to items and a trigger on links that updates items, and three
+// parent rows and two child rows.
+func newRebuildFixture(t *testing.T) momo.PinnedConn {
+	t.Helper()
+	db := testopen.SQLite(t)
+	c := rebuildPinned(t, db)
+	mustExec(t, c, `PRAGMA foreign_keys = ON`)
+	mustExec(t, c, `CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, qty INTEGER)`)
+	mustExec(t, c, `CREATE INDEX items_name ON items(name)`)
+	mustExec(t, c, `CREATE TRIGGER items_audit AFTER UPDATE ON items BEGIN SELECT 1; END`)
+	mustExec(t, c, `CREATE VIEW items_v AS SELECT id, name FROM items`)
+	mustExec(t, c, `CREATE TABLE links (id INTEGER PRIMARY KEY, item_id INTEGER NOT NULL REFERENCES items(id))`)
+	mustExec(t, c, `CREATE TRIGGER links_touch AFTER INSERT ON links BEGIN UPDATE items SET qty = qty WHERE id = NEW.item_id; END`)
+	mustExec(t, c, `INSERT INTO items (name, qty) VALUES ('a', 1), ('b', 2), ('c', 3)`)
+	mustExec(t, c, `INSERT INTO links (item_id) VALUES (1), (2)`)
+	return c
+}
 
 var itemsDesired = schema.Table{Name: "items", Columns: []schema.Column{
 	{Name: "id", Type: "INTEGER"}, {Name: "name", Type: "TEXT", Nullable: true},
@@ -26,11 +87,11 @@ var itemsIndex = []schema.Index{{Name: "items_name", Parts: []schema.IndexPart{{
 func TestSQLiteRebuild(t *testing.T) {
 	ctx := context.Background()
 	c := newRebuildFixture(t)
-	reset, err := msqlite.New().Setup(ctx, c, migrate.SessionOptions{ForeignKeysOff: true})
+	reset, err := New().Setup(ctx, c, migrate.SessionOptions{ForeignKeysOff: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	stmts, err := msqlite.Rebuild(ctx, c, "items", itemsDesired, itemsIndex)
+	stmts, err := rebuildLive(ctx, c, "items", itemsDesired, itemsIndex)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,11 +143,11 @@ func TestSQLiteRebuild(t *testing.T) {
 func TestSQLiteRebuildFKStillEnforced(t *testing.T) {
 	ctx := context.Background()
 	c := newRebuildFixture(t)
-	reset, err := msqlite.New().Setup(ctx, c, migrate.SessionOptions{ForeignKeysOff: true})
+	reset, err := New().Setup(ctx, c, migrate.SessionOptions{ForeignKeysOff: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	stmts, err := msqlite.Rebuild(ctx, c, "items", itemsDesired, nil)
+	stmts, err := rebuildLive(ctx, c, "items", itemsDesired, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +169,7 @@ func TestSQLiteRebuildFKStillEnforced(t *testing.T) {
 func TestSQLiteRebuildOrphanRollsBack(t *testing.T) {
 	ctx := context.Background()
 	c := newRebuildFixture(t)
-	reset, err := msqlite.New().Setup(ctx, c, migrate.SessionOptions{ForeignKeysOff: true})
+	reset, err := New().Setup(ctx, c, migrate.SessionOptions{ForeignKeysOff: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +180,7 @@ func TestSQLiteRebuildOrphanRollsBack(t *testing.T) {
 	}()
 	// An orphan that the rebuild would carry forward (FKs are off while the orphan is inserted).
 	mustExec(t, c, `INSERT INTO links (id, item_id) VALUES (99, 404)`)
-	stmts, err := msqlite.Rebuild(ctx, c, "items", itemsDesired, itemsIndex)
+	stmts, err := rebuildLive(ctx, c, "items", itemsDesired, itemsIndex)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +216,7 @@ func TestSQLiteRebuildBlocked(t *testing.T) {
 	mustExec(t, c, `CREATE TABLE a (id INTEGER PRIMARY KEY, x TEXT)`)
 	mustExec(t, c, `CREATE VIEW a_v AS SELECT x FROM a`)
 	desired := schema.Table{Name: "a", Columns: []schema.Column{{Name: "id", Type: "INTEGER"}}, PrimaryKey: []string{"id"}}
-	stmts, err := msqlite.Rebuild(ctx, c, "a", desired, nil)
+	stmts, err := rebuildLive(ctx, c, "a", desired, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +238,7 @@ func TestSQLiteCaptureFollowsViews(t *testing.T) {
 	c := newRebuildFixture(t)
 	mustExec(t, c, `CREATE VIEW items_v2 AS SELECT name FROM items_v`)
 	mustExec(t, c, `CREATE VIEW other AS SELECT 'items' AS label`)
-	deps, err := msqlite.Capture(ctx, c, "items")
+	deps, err := captureDependents(ctx, c, "items")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -113,7 +113,7 @@ func TestValidateOfflineChecksGoMigrationSnapshot(t *testing.T) {
 }
 
 func TestGoCollisionsNamesTheFile(t *testing.T) {
-	files, err := Discover(goDir())
+	files, err := discover(goDir())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/azrtydxb/momo/internal/testdb"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/internal/vectorparity"
+	"github.com/azrtydxb/momo/internal/vectortype"
 	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
@@ -70,7 +71,7 @@ func TestSQLiteVectorParity(t *testing.T) {
 		}
 	})
 	db := momo.New(drv)
-	typ, err := momo.SQLiteVectorType("emb", vectorparity.Dim)
+	typ, err := vectortype.SQLite("emb", vectorparity.Dim)
 	if err != nil {
 		t.Fatal(err)
 	}

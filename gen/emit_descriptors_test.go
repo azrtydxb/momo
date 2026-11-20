@@ -36,7 +36,7 @@ func TestEmitDescriptorsGolden(t *testing.T) {
 	if doc == nil {
 		t.Fatal("Document model missing")
 	}
-	src, ds := EmitDescriptors(doc, g)
+	src, ds := emitDescriptors(doc, g)
 	if len(ds) != 0 {
 		t.Fatalf("emit diagnostics: %v", ds)
 	}
@@ -66,7 +66,7 @@ func emitFixtureModel(t *testing.T, pkg, name string) []byte {
 		if m.GoName != name {
 			continue
 		}
-		src, ds := EmitDescriptors(m, g)
+		src, ds := emitDescriptors(m, g)
 		if len(ds) != 0 {
 			t.Fatalf("emit diagnostics: %v", ds)
 		}
@@ -162,7 +162,7 @@ func emitAndBuild(t *testing.T, src string, mutate func(*Graph)) map[string]stri
 	out := map[string]string{}
 	w := NewWriter(WriterOptions{ModuleRoot: dir})
 	for _, m := range g.Models {
-		b, ds := EmitDescriptors(m, g)
+		b, ds := emitDescriptors(m, g)
 		if len(ds) != 0 {
 			t.Fatalf("%s: %v", m.GoName, ds)
 		}
@@ -207,8 +207,8 @@ func TestEmitDeterministic(t *testing.T) {
 		t.Fatalf("load: %v %v", err, diags)
 	}
 	for _, m := range g.Models {
-		a, d1 := EmitDescriptors(m, g)
-		b, d2 := EmitDescriptors(m, g)
+		a, d1 := emitDescriptors(m, g)
+		b, d2 := emitDescriptors(m, g)
 		if len(d1) != 0 || len(d2) != 0 {
 			t.Fatalf("%s: %v %v", m.GoName, d1, d2)
 		}
