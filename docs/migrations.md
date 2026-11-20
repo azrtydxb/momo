@@ -446,7 +446,7 @@ unmanaged. Exit 0 and `no drift`, or exit 1 and one line per finding:
   `public.users`, when `public` is the current schema. Inspection does not read it
   (`migrate.InspectOptions.Only`, honoured by the PostgreSQL inspector), and
   drift, baseline and diff hide it, with its triggers and policies, like an
-  excluded table. `migrate.MatchObject(globs, schemaName, name)` is the matching
+  excluded table. `schema.MatchObject(globs, schemaName, name)` is the matching
   rule `Exclude`, `OnlyTables` and the inspector share. An empty entry is an
   error. `diff` filters both sides: a snapshot table outside `OnlyTables` never
   plans `DROP TABLE`, and a model for one never plans `CREATE TABLE`: a model
@@ -933,17 +933,17 @@ Limits of the rebuild:
 
 - After each recreated view the file runs `SELECT 1 FROM "view" LIMIT 0`,
   because `CREATE VIEW` does not check the names in its query. A view that names
-  a dropped column therefore fails the migration. `sqlite.Rebuild` with
-  `migrate.RunStatements` reports that as `migrate.ErrRebuildBlocked` naming the
-  view; a migration read back from a file has lost the statement hints, so the
-  engine reports the failing statement number instead.
+  a dropped column therefore fails the migration. The engine reports that as
+  `migrate.ErrRebuildBlocked` naming the view; a migration read back from a file
+  has lost the statement hints, so the engine reports the failing statement
+  number instead.
 - A trigger body is resolved only when the trigger fires, so a trigger that names
   a dropped column is recreated and fails later.
 - A table can be rebuilt only if it has columns in common with the new
   definition; `INSERT` is skipped otherwise.
-- `sqlite.Rebuild` and `sqlite.Capture` rebuild from a live connection
-  (captured views and triggers are recreated verbatim); the engine path rebuilds
-  from the snapshot instead.
+- A rebuild through `AutoMigrate` reads the views and triggers from the live
+  connection (captured views and triggers are recreated verbatim); the engine
+  path rebuilds from the snapshot instead.
 - A model declares `WITHOUT ROWID`, `STRICT` and `AUTOINCREMENT` with the
   `without_rowid`, `strict` and `autoincrement` options of its `momo.Model` tag;
   `momo generate --from-db` writes them from an existing database, and
@@ -1444,7 +1444,7 @@ engine, err := migrate.NewEngine(drv, dir, migrate.WithDialect(pg), migrate.With
   matches.
 - **Forward only.** A Go migration has no down step. A rollback of the group
   that contains one refuses it: `Engine.Rollback` calls
-  `migrate.RefuseGoRollback` with the history rows to roll back, before any down
+  its Go-rollback check on the history rows to roll back, before any down
   runs, and that returns `ErrGoMigrationNotReversible` for the first row of
   kind `go`; fix forward with a new migration.
 - **Baseline.** `Baseline` through a version records a `go` row (checksum =

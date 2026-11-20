@@ -1445,3 +1445,28 @@ Question B: does `pgxdriver.Open` ping?
 - Stay lazy like `pgxpool` and `NewPool`.
 
 Decision (2026-11-19, the user, via AskUserQuestion): `pgxdriver.Open` and `OpenSQL` ping by default; `NewPool` stays lazy.
+
+## Exported internals of schema, migrate and gen (#271)
+
+Question: how do the exported internals of `schema`, `migrate`, `migrate/sqlite` and `gen` leave the public API, and what does each leave behind?
+
+Decisions (2026-11-20, the maintainer, in the brief of #271):
+
+- `momo.NewOffline` is renamed `momo.MustNewOffline(d dialect.Name) *DB` and keeps its panic for an unknown name; `NewOffline` stays one release as a deprecated forwarder.
+- `dialect.For` returns a fresh copy on every call, copies of `Vector.Metrics` and `Vector.Indexes` included, made with the plainest copy (`slices.Clone`); there is no accessor API.
+- `momo.SetConfigLocal` is deprecated this release in favor of `Tx.SetLocal` and not removed.
+- `MySQLVectorType`, `SQLiteVectorType` and `SQLiteBitsType` leave the root package for schema-side internals.
+- A moved name keeps a deprecated forwarder for one release only when that is cheap; a forwarder that would keep an internal type exported is dropped and listed in `docs/upgrading.md`.
+- `schema.SchemaNamespace` becomes `schema.Namespace` and the old name stays as a deprecated alias.
+- `migrate.MatchObject` was a one-line forwarder of `schema.MatchObject`; it is removed.
+
+Decisions made while implementing (2026-11-20, the implementer), with the reason:
+
+- An internal package cannot import a public package that imports it, so a helper that the public package itself calls and that takes the public package's types cannot move into `internal/`. Where that applies the name is either unexported in place (no caller outside the package, or only tests that become in-package tests) or, when another package outside it still needs it, kept exported.
+- The nine names `migrate.RunMigration`, `RunEnv`, `RunStatements`, `LintSQL`, `Order`, `OrderErr`, `OrderWithViews`, `EnsureHistory` and `ReadHistory` stay exported. The Engine calls all of them and they take `migrate.Change`, `Statement`, `Dialect` or `HistoryRow`; moving them means moving those types behind an exported alias, the pattern the API review criticizes for `sqlitedriver.Config`. The dialect packages and their tests call them, and the `Render` contract of `migrate.Dialect` tells its caller to order changes with `OrderErr` or `OrderWithViews`, so whoever renders a plan needs them. They are listed in `docs/upgrading.md` as kept.
+- `gen.Header` stays exported although the issue lists it: `gen.Writer` refuses plugin output that lacks the header, so a plugin author needs it. `gen.DescriptorIdents` stays too: its doc comment promises that generated code which refers to a descriptor uses these names, and `gen/graphql`, `gen/grpc` and `gen/openapi` do. `gen.HeaderPrefix` and `gen.ParseHeader` move.
+- `gen/tags` keeps the `Tags` struct because it is the type of `gen.Field.Tags`; the parser, `Problem` and `SplitOptions` move to `internal/tagparse`. `gen/typemap` moves whole because `Map` is its only export. `naming.ToSnake` is removed (it forwarded `internal/snake`), `naming.Plural` moves to `internal/pluralize`.
+- `ErrInvalidVectorIndex` stays in `schema`: the validation functions that wrap it move, but callers match the error.
+- The vector column type helpers keep their behavior and move to `internal/vectortype` as `MySQL`, `SQLite` and `SQLiteBits`; the package imports `momo` for `momo.Error`, so it is an internal-fixture, not an internal-leaf.
+- `schema` keeps an unexported `sameCheck` beside `internal/schemaops.SameCheck`: `Equal` needs it and the internal package cannot be imported back. Both are a few lines over `Check.ValueList`.
+- `SplitStatements` moves to `internal/sqlsplit`; its `-- momo:split` header scan is its own copy of the part of the directive parser that reads that one directive, so the splitter has no dependency on `migrate`.

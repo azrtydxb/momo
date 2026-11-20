@@ -25,7 +25,8 @@ variable of another type. Separately,
 see exclusion constraints on PostgreSQL and write range columns as `types.Range`
 fields (the first two sections below); no edit is needed in your code for that,
 but inspection of a database that holds an exclusion constraint momo cannot
-model now stops with an error.
+model now stops with an error. The last section lists the helpers of `schema`,
+`migrate` and `gen` that left the public API and what to call instead.
 
 ### Exclusion constraints are part of the schema
 
@@ -224,6 +225,53 @@ refuse any other option with `ErrValidation`. Two differences to know:
   with `ErrValidation` where the old transaction functions failed to compile.
 - `advisory.Acquire` returns `(bool, error)` for the blocking form too, so
   assign or discard the boolean.
+
+### Internal helpers left `schema`, `migrate` and `gen`
+
+`schema`, `migrate`, `migrate/sqlite`, `gen` and its `tags`, `typemap` and
+`naming` subpackages exported helpers that only momo's own migration dialects,
+generator and command line use. They are now unexported or live in `internal/`
+packages, which an application cannot import, so a call to one stops compiling.
+The data model, the engine and the generator plugin contract did not change.
+The table names what to call instead; "no replacement" means the behavior is
+part of the engine or of `gen.Emit` and was never meant as an entry point.
+
+| Old name                                                                                                                                                           | New                                                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema.SchemaNamespace`                                                                                                                                           | `schema.Namespace`; the old name stays one release as a deprecated alias                                                                        |
+| `schema.Int64`                                                                                                                                                     | no replacement: take the address of a local `int64`                                                                                             |
+| `schema.FTS5Table`, `schema.TSVectorColumn`                                                                                                                        | no replacement: the names are `<table>_fts` and `<index>_tsv`                                                                                   |
+| `schema.SortedValues`, `schema.CheckInExpr`, `schema.ParseCheckIn`, `schema.SameCheck`                                                                             | `schema.Check.ExprFor` renders a value-list check and `schema.Check.ValueList` reads one                                                        |
+| `schema.ValidateVectorIndex`, `schema.ValidateMariaDBVectorIndex`, `schema.MariaDBVectorIndexClause`, `schema.VectorIndexOpClass`                                  | no replacement: the engine and the generator validate vector indexes, and their errors still wrap `schema.ErrInvalidVectorIndex`                |
+| `migrate.MatchObject`                                                                                                                                              | `schema.MatchObject`                                                                                                                            |
+| `migrate.RedactURLs`, `migrate.SplitStatements`, `migrate.IsNoSuchTable`                                                                                           | no replacement                                                                                                                                  |
+| `migrate.ParseDirectives`, `migrate.Discover`, `migrate.NextVersion`, `migrate.Chain`, `migrate.RefuseGoRollback`                                                  | no replacement; `migrate.ValidateOffline` checks a migration directory and `migrate.LatestSnapshot` reads its newest snapshot                   |
+| `sqlite.Capture`, `sqlite.Dependent`, `sqlite.Rebuild`, `sqlite.RebuildStatements`                                                                                 | no replacement; the engine rebuilds a SQLite table when a change needs it                                                                       |
+| `gen.EmitLookup`, `gen.EmitMeta`, `gen.EmitDescriptors`, `gen.DescriptorType`, `gen.VectorDescriptorType`, `gen.AccessFor`, `gen.DetectHooks`, `gen.ReadCompanion` | no replacement: `gen.Emit` runs the emitters                                                                                                    |
+| `gen.Identifier`, `gen.DescriptorReserved`, `gen.SubPkgName`, `gen.ValidTimeType`, `gen.ImportPath`, `gen.ParseHeader`, `gen.HeaderPrefix`                         | no replacement                                                                                                                                  |
+| `tags.Parse`, `tags.SplitOptions`, `tags.Problem`                                                                                                                  | no replacement; `tags.Tags`, the type of a parsed tag, stays                                                                                    |
+| `typemap.Map`                                                                                                                                                      | no replacement; the package `gen/typemap` is gone                                                                                               |
+| `naming.ToSnake`, `naming.Plural`                                                                                                                                  | no replacement; `naming.Namer`, `naming.ByName` and the presets stay                                                                            |
+| `momo.MySQLVectorType`, `momo.SQLiteVectorType`, `momo.SQLiteBitsType`                                                                                             | no replacement: write `VECTOR(N)` for MySQL and MariaDB, and `BLOB CHECK (length("col") = 4 * N)` for SQLite (`(N+7)/8` bytes for a bit vector) |
+| `momo.NewOffline`                                                                                                                                                  | `momo.MustNewOffline`, which panics for an unknown dialect as `momo.NewOffline` did; the old name is a deprecated forwarder for one release     |
+| `momo.SetConfigLocal`                                                                                                                                              | `Tx.SetLocal`; the old function is a deprecated forwarder for one release                                                                       |
+
+Some names stay on purpose. `migrate.RunMigration`, `migrate.RunEnv`,
+`migrate.RunStatements`, `migrate.LintSQL`, `migrate.Order`, `migrate.OrderErr`,
+`migrate.OrderWithViews`, `migrate.EnsureHistory` and `migrate.ReadHistory` are
+called by `migrate.Engine` and take its own types, which an internal package
+could not import without a cycle, and whoever renders a plan through a dialect
+has to order the changes with `migrate.OrderErr` first. `gen.Header` stays because
+`gen.Writer` refuses a plugin's output that lacks the header, and
+`gen.DescriptorIdents` stays because generated code that names a descriptor
+must use it. `sqlite.ForceUnlock` stays as the documented operator tool.
+
+`dialect.For` now returns a fresh copy of the dialect on every call, with its
+`Vector.Metrics` and `Vector.Indexes` slices copied too. Code that changed a
+capability flag through the pointer to change the dialect for the whole process
+no longer does: build your own `dialect.Dialect` value and give it to your
+driver. Two calls no longer return the same pointer, so a comparison of the
+results with `==` is false.
 
 ## Upgrading to 0.19.0
 
