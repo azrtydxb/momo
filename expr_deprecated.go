@@ -76,7 +76,8 @@ func (b *Builder) Unsupported(feature string) { b.unsupported(feature) }
 //
 // Deprecated: assert Flagged on the expression. FlagsOf is removed in the next
 // release. A type that implemented the old Flags() uint16 no longer satisfies
-// Flagged, and FlagsOf then returns 0 for it.
+// Flagged, but its flags are still honoured for this release, so a sensitive
+// column stays masked.
 func FlagsOf(e Expr) uint16 { return uint16(flagsOf(e)) }
 
 // IsBound reports whether e is a Go value bound as a parameter by Value,

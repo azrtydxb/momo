@@ -60,6 +60,10 @@ func MarkSensitive(b *momo.Builder) { bridge.Get().MarkSensitive(b) }
 // no FILTER clause and fails with momo.ErrUnsupported.
 func AppendFilter(b *momo.Builder, p momo.Predicate) { bridge.Get().AppendFilter(b, p) }
 
+// AppendOrder renders the order item as "expr ASC|DESC [NULLS FIRST|LAST]",
+// emulating the NULLS clause where the dialect lacks it.
+func AppendOrder(b *momo.Builder, o momo.Order) { bridge.Get().AppendOrder(b, o) }
+
 // Unsupported records a momo.ErrUnsupported build error for feature, naming
 // the dialect being rendered.
 func Unsupported(b *momo.Builder, feature string) { bridge.Get().Unsupported(b, feature) }
@@ -69,6 +73,11 @@ func Unsupported(b *momo.Builder, feature string) { bridge.Get().Unsupported(b, 
 func FlagsOf(e momo.Expr) momo.ColumnFlags {
 	if f, ok := e.(momo.Flagged); ok {
 		return f.Flags()
+	}
+	// A wrapper written before the flags had a type returns a uint16. Honour it,
+	// or its sensitive flag would be dropped and a value bound in plaintext.
+	if f, ok := e.(interface{ Flags() uint16 }); ok {
+		return momo.ColumnFlags(f.Flags())
 	}
 	return 0
 }

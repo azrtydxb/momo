@@ -274,9 +274,11 @@ func (o Order) NullsLast() Order { o.Nulls = NullsLast; return o }
 // the dialect has no NULLS clause (MySQL and MariaDB) an explicit NullsFirst
 // or NullsLast renders as "(expr IS NULL) DESC|ASC, expr ASC|DESC", which
 // orders exactly as PostgreSQL does. The expression is rendered twice, so any
-// argument it binds appears twice in the statement, in order. The agg package
-// renders the ORDER BY inside an ordered aggregate with it. It is not part of
-// the frozen extension API; see Ops.
+// argument it binds appears twice in the statement, in order.
+//
+// Deprecated: AppendOrder is not part of the extension API; see Ops. The agg
+// package renders the ORDER BY of an ordered aggregate through internal/exprkit
+// instead. AppendOrder is removed in the next release.
 func (o Order) AppendOrder(b *Builder) { o.appendSQL(b) }
 
 func (o Order) appendSQL(b *Builder) {
@@ -392,8 +394,19 @@ func flagsOf(e Expr) ColumnFlags {
 	if f, ok := e.(Flagged); ok {
 		return f.Flags()
 	}
+	if f, ok := e.(legacyFlagged); ok {
+		return ColumnFlags(f.Flags())
+	}
 	return 0
 }
+
+// legacyFlagged is the shape of Flagged before the flags had a type. A wrapper
+// written against it still compiles, so flagsOf honours it rather than
+// dropping its flags and binding a value compared with a sensitive column in
+// plaintext.
+//
+// Deprecated: implement Flagged. This path is removed in the next release.
+type legacyFlagged interface{ Flags() uint16 }
 
 // Value wraps a Go value as a typed bound parameter.
 func Value[T any](v T) Expression[T] { return typed[T]{argExpr{v: v}} }

@@ -254,6 +254,7 @@ move off them before the next release, which removes them.
 | `momo.WindowOf`                           | no replacement; `agg.Call.Over` builds the window function of an aggregate, and its result is now `agg.WindowExpr[T]` instead of `momo.WindowExpr[T]` |
 | `momo.VectorColumnOf`                     | call `Table`, `ColumnName`, `Dim` and `Flags` on the vector column itself                                                                             |
 | `momo.MetaTableSchema`                    | read `TableSchema` from the model's `MomoMeta()`                                                                                                      |
+| `momo.Order.AppendOrder`                  | no replacement outside the module; `agg.Call.OrderBy` renders the ORDER BY of an ordered aggregate                                                    |
 
 Two changes cannot keep their old shape. `agg.Call.Over` returns an
 `agg.WindowExpr[T]`, a type of its own with `As` and the `momo.Ops` methods, so
@@ -265,8 +266,9 @@ type: `momo.ColumnFlags` replaces `uint16` in `momo.ColumnMeta.Flags`, in the
 an untyped number compiles unchanged, so run `momo generate` only if you want
 to; a variable or parameter of type `uint16` that holds flags must become
 `momo.ColumnFlags`. A type that implements `Flags() uint16` no longer satisfies
-`momo.Flagged`: change its result type, or `momo.Ops` stops masking values
-compared with the column it wraps.
+`momo.Flagged`, but for this release `momo.Ops` and keyset pagination still
+read its flags, so a sensitive column it wraps stays masked. Change its result
+type to `momo.ColumnFlags` before the next release, which drops that path.
 
 The `momo.NewColumn` family (`NewNullColumn`, `NewReadOnlyColumn`,
 `NewNullReadOnlyColumn`, `NewCreateOnlyColumn`, `NewImmutableColumn` and the six

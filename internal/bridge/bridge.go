@@ -39,6 +39,8 @@ type Kit struct {
 	// WindowCall returns the momo.Expr "call OVER (w)" for a momo.Expr call and
 	// a momo.WindowSpec w.
 	WindowCall func(call, w any) any
+	// AppendOrder renders the momo.Order o as an ORDER BY item.
+	AppendOrder func(b, o any)
 	// ValidName and ValidTypeName check an identifier and a SQL type name.
 	ValidName     func(s string) error
 	ValidTypeName func(s string) error
@@ -47,7 +49,29 @@ type Kit struct {
 var kit *Kit
 
 // Register installs the root package's Kit. The root calls it once from init.
-func Register(k *Kit) { kit = k }
+// It panics naming the first field that is nil, so a function added to Kit but
+// not registered fails at start-up instead of at the first call.
+func Register(k *Kit) {
+	for name, set := range map[string]bool{
+		"NewBuilder":      k.NewBuilder != nil,
+		"ArgFor":          k.ArgFor != nil,
+		"RenderSensitive": k.RenderSensitive != nil,
+		"ExprFor":         k.ExprFor != nil,
+		"MarkSensitive":   k.MarkSensitive != nil,
+		"AppendFilter":    k.AppendFilter != nil,
+		"Unsupported":     k.Unsupported != nil,
+		"IsBound":         k.IsBound != nil,
+		"WindowCall":      k.WindowCall != nil,
+		"AppendOrder":     k.AppendOrder != nil,
+		"ValidName":       k.ValidName != nil,
+		"ValidTypeName":   k.ValidTypeName != nil,
+	} {
+		if !set {
+			panic("bridge: Kit." + name + " is not registered")
+		}
+	}
+	kit = k
+}
 
 // Get returns the registered Kit. It is set by the time any code outside the
 // root package runs, because every user of the registry imports the root.

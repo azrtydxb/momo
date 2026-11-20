@@ -38,6 +38,7 @@ func init() {
 		WindowCall: func(call, w any) any {
 			return newWindowExpr[any](call.(Expr), "", false, false, w.(WindowSpec))
 		},
+		AppendOrder:   func(b, o any) { o.(Order).appendSQL(b.(*Builder)) },
 		ValidName:     validName,
 		ValidTypeName: validTypeName,
 	})

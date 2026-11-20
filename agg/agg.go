@@ -140,7 +140,7 @@ func appendOrders(b *momo.Builder, orders []momo.Order) {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		o.AppendOrder(b)
+		exprkit.AppendOrder(b, o)
 	}
 }
 

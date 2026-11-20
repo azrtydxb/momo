@@ -145,3 +145,12 @@ func TestDeprecatedWindowVectorAndMeta(t *testing.T) {
 		t.Errorf("MetaTableSchema = %v, want the documents table", tbl)
 	}
 }
+
+// Catches: the deprecated Order.AppendOrder forwarder dropping the direction.
+func TestDeprecatedOrderAppendOrder(t *testing.T) {
+	b := momo.NewBuilder(dialect.For(dialect.Postgres))
+	momo.NewColumn[string]("docs", "title", 0).Desc().AppendOrder(b)
+	if b.String() != `"docs"."title" DESC` {
+		t.Errorf("AppendOrder wrote %q", b.String())
+	}
+}
