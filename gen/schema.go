@@ -200,6 +200,7 @@ func (b *schemaBuilder) addModel(m *Model) {
 		}
 		t.Columns = append(t.Columns, col)
 	}
+	b.applyEmbeddings(m, &t)
 	b.names = map[string]string{}
 	b.applyIndexTags(m, &t)
 	b.applyCompanion(m, &t)
@@ -849,6 +850,19 @@ func (b *schemaBuilder) applyCompanion(m *Model, t *schema.Table) {
 			t.Uniques = append(t.Uniques, schema.Unique{Name: u.Name, Columns: slices.Clone(u.Columns), Deferrable: u.Deferrable, InitiallyDeferred: u.InitiallyDeferred})
 		}
 	}
+	for _, x := range c.Excludes {
+		cols := make([]string, len(x.Elements))
+		for i, e := range x.Elements {
+			cols[i] = e.Column
+		}
+		if missing("exclusion constraint", x.Name, cols) {
+			continue
+		}
+		if b.claimName(x.Name, m.Pos, "MomoConfig") {
+			x.Elements = slices.Clone(x.Elements)
+			t.Excludes = append(t.Excludes, x)
+		}
+	}
 	if len(c.PrimaryKey) > 0 {
 		have := slices.Clone(t.PrimaryKey)
 		want := slices.Clone(c.PrimaryKey)
@@ -1040,6 +1054,63 @@ func (b *schemaBuilder) checkDeferrable() {
 			}
 		}
 	}
+}
+
+// checkExcludes finishes the exclusion constraints: each is a diagnostic for a
+// dialect that has none (only PostgreSQL has them), and a GiST constraint over a
+// scalar column adds the btree_gist extension that provides the operator class
+// (a range column needs none). It is the second part of finish.
+func (b *schemaBuilder) checkExcludes() {
+	targets := slices.Clone(b.dialects)
+	if !slices.Contains(targets, b.primary) {
+		targets = append(targets, b.primary)
+	}
+	needGist := false
+	for _, t := range b.s.Tables {
+		if len(t.Excludes) == 0 {
+			continue
+		}
+		var pos token.Position
+		if m := b.tableBy[t.Schema+"\x00"+t.Name]; m != nil {
+			pos = m.Pos
+		}
+		for _, d := range targets {
+			if d != dialect.Postgres {
+				b.diag(pos, fmt.Sprintf("table %s: exclusion constraint %s is not supported on %s (exclusion constraints are PostgreSQL only)", t.Name, t.Excludes[0].Name, d))
+			}
+		}
+		for _, x := range t.Excludes {
+			if x.Method != "" && x.Method != "gist" {
+				continue
+			}
+			for _, e := range x.Elements {
+				if col, ok := t.Column(e.Column); ok && gistNeedsBtreeGist(col.Type) {
+					needGist = true
+				}
+			}
+		}
+	}
+	if needGist && b.primary == dialect.Postgres && !slices.ContainsFunc(b.s.Extensions, func(e schema.Extension) bool { return e.Name == "btree_gist" }) {
+		b.s.Extensions = append(b.s.Extensions, schema.Extension{Name: "btree_gist"})
+	}
+}
+
+// gistNeedsBtreeGist reports whether a GiST index over a column of the SQL type
+// typ needs the btree_gist extension: a scalar type with a btree ordering but no
+// GiST operator class of its own. Range and multirange types, the geometric
+// types, network address and text search types have one in core, and an array
+// has none the extension supplies.
+func gistNeedsBtreeGist(typ string) bool {
+	base, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(typ)), "(")
+	base = strings.TrimSpace(base)
+	if strings.HasSuffix(base, "[]") || strings.HasSuffix(base, "range") || strings.HasSuffix(base, "multirange") {
+		return false
+	}
+	switch base {
+	case "point", "box", "circle", "polygon", "inet", "cidr", "tsvector", "tsquery":
+		return false
+	}
+	return base != ""
 }
 
 // checkReferencedDeferrable reports each foreign key that references a
@@ -1519,6 +1590,7 @@ func (b *schemaBuilder) finish() {
 		b.checkMySQLKeys()
 	}
 	b.checkDeferrable()
+	b.checkExcludes()
 	for _, u := range b.enumUses {
 		if _, ok := b.enums[u.name]; !ok {
 			b.diag(u.pos, fmt.Sprintf("enum %q is not declared in any MomoConfig", u.name))

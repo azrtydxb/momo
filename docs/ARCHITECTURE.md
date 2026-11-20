@@ -96,7 +96,10 @@ schemas without being fooled by spelling differences.
 The pgvector value types `vector.Vector`, `vector.HalfVector`, `vector.SparseVector` and `vector.Bits`,
 each a `sql.Scanner` and `driver.Valuer` with a `Validate` method, and
 `ErrInvalidVector`. A vector field declares its dimension with the tag
-`dim:<n>`; the Go type selects the SQL type. See [vectors](vectors.md).
+`dim:<n>`; the Go type selects the SQL type. It also holds the `vector.Embedder`
+interface an application implements for its embedding provider and
+`vector.SourceHash`, the hash that tells whether a stored embedding is still
+current (`momo.SyncEmbeddings` uses both). See [vectors](vectors.md).
 
 ### `types`
 

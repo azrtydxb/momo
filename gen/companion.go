@@ -11,6 +11,7 @@ import (
 	"go/types"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -28,7 +29,9 @@ type CompanionResult struct {
 	Uniques []schema.Unique
 	// ForeignKeys are the foreign keys declared with Config.ForeignKey.
 	ForeignKeys []schema.ForeignKey
-	Checks      []schema.Check
+	// Excludes are the exclusion constraints declared with Config.Exclude.
+	Excludes []schema.Exclude
+	Checks   []schema.Check
 	// CheckIns are the value-list checks declared with Config.CheckIn.
 	CheckIns []CheckInDecl
 	Enums    []schema.Enum
@@ -294,6 +297,8 @@ func (r *companionReader) readStmt(s ast.Stmt) {
 		switch calls[0].name {
 		case "ForeignKey":
 			want = "ForeignKeyOpts"
+		case "Exclude":
+			want = "ExcludeOpts"
 		case "FullText":
 			want = "FullTextOpts"
 		case "Sequence":
@@ -322,6 +327,9 @@ func (r *companionReader) readStmt(s ast.Stmt) {
 		return
 	case "ForeignKey":
 		r.foreignKey(calls)
+		return
+	case "Exclude":
+		r.exclude(calls)
 		return
 	case "Sequence":
 		r.sequence(calls)
@@ -881,6 +889,80 @@ func (r *companionReader) foreignKey(calls []call) {
 		return
 	}
 	r.res.ForeignKeys = append(r.res.ForeignKeys, fk)
+}
+
+// excludeOperator matches the spelling of an operator name; it reaches the DDL
+// unquoted, so nothing else is accepted.
+var excludeOperator = regexp.MustCompile("^[-+*/<>=~!@#%^&|`?]+$")
+
+// excludeMethods are the access methods an exclusion constraint can use.
+var excludeMethods = map[string]bool{"gist": true, "spgist": true, "btree": true, "hash": true}
+
+// exclude reads c.Exclude(name, &m.A, "=", &m.B, "&&") with its optional Using,
+// Deferrable and InitiallyDeferred.
+func (r *companionReader) exclude(calls []call) {
+	first := calls[0]
+	args := first.expr.Args
+	if len(args) < 3 || len(args)%2 == 0 || first.expr.Ellipsis.IsValid() {
+		r.diag(first.expr.Pos(), "Exclude takes a name followed by pairs of a field reference and an operator, such as c.Exclude(\"name\", &m.RoomID, \"=\", &m.During, \"&&\")")
+		return
+	}
+	startDiags := len(r.diags)
+	name, _ := r.str(args[0])
+	x := schema.Exclude{Name: name}
+	for i := 1; i < len(args); i += 2 {
+		f, okField := r.field(args[i])
+		op, okOp := r.str(args[i+1])
+		if okOp && !excludeOperator.MatchString(op) {
+			r.diag(args[i+1].Pos(), fmt.Sprintf("exclusion constraint %q: %q is not an operator", name, op))
+			okOp = false
+		}
+		if okField && okOp {
+			x.Elements = append(x.Elements, schema.ExcludeElement{Column: f.Column, Operator: op})
+		}
+	}
+	seen := map[string]bool{}
+	for _, c := range calls[1:] {
+		if seen[c.name] {
+			r.diag(c.expr.Pos(), fmt.Sprintf("duplicate %s on exclusion constraint %q", c.name, name))
+			continue
+		}
+		seen[c.name] = true
+		switch c.name {
+		case "Using":
+			if len(c.expr.Args) != 1 {
+				r.unsupported(c.expr)
+				continue
+			}
+			m, ok := r.str(c.expr.Args[0])
+			if !ok {
+				continue
+			}
+			if !excludeMethods[m] {
+				r.diag(c.expr.Args[0].Pos(), fmt.Sprintf("exclusion constraint %q: access method %q is not one of gist, spgist, btree, hash", name, m))
+				continue
+			}
+			x.Method = m
+		case "Deferrable", "InitiallyDeferred":
+			if len(c.expr.Args) != 0 {
+				r.unsupported(c.expr)
+				continue
+			}
+			x.Deferrable = true
+			x.InitiallyDeferred = x.InitiallyDeferred || c.name == "InitiallyDeferred"
+		default:
+			r.unsupported(c.expr)
+		}
+	}
+	if len(r.diags) != startDiags {
+		return
+	}
+	// The constraint is backed by an index of its own name, so it shares the
+	// index namespace.
+	if !r.declare(r.indexAt, "index", name, args[0].Pos()) {
+		return
+	}
+	r.res.Excludes = append(r.res.Excludes, x)
 }
 
 // isAnySlice reports whether the composite literal is a []any.

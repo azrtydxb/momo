@@ -341,6 +341,7 @@ Tag reference (all lower case):
 | `size:<n>`                                                                | `varchar(n)`; strings only                                                                                                                                                                                                                                                                                                                                    |
 | `precision:<p>`, `scale:<s>`                                              | numeric precision (float, decimal, or a string without `size` that carries a numeric); `scale` needs `precision`                                                                                                                                                                                                                                              |
 | `dim:<n>`                                                                 | vector dimension; optional on vector and halfvec (none: dimensionless column), required on sparsevec and bit, invalid elsewhere                                                                                                                                                                                                                               |
+| `embed_from:<a>\|<b>`                                                     | names the string source columns or fields (separated by `\|`) of the embedding of a `*vector.Vector` field. The generator adds a nullable `varchar(64)` hash column `<column>_hash` beside it, and `momo.StaleEmbeddings` and `momo.SyncEmbeddings` keep the embedding current (see Keeping embeddings in sync). Refused on MySQL                             |
 | `default:<sql>`                                                           | column default, raw SQL (`default:now()`, `default:'free'`, `default:0`)                                                                                                                                                                                                                                                                                      |
 | `unique` / `unique:<name>`                                                | unique index (single column)                                                                                                                                                                                                                                                                                                                                  |
 | `index` / `index:<name>`                                                  | index; modifiers `sort:asc\|desc`, `nulls:first\|last`, `method:<m>` need `index` or `unique`                                                                                                                                                                                                                                                                 |
@@ -381,7 +382,7 @@ An index name declared in `MomoConfig` must not collide with an auto-named
 yields `accounts_plan_idx`); the generator refuses the duplicate.
 
 Config methods: `Config.Index`, `Config.IndexExpr`, `Config.Unique`, `Config.ForeignKey`, `Config.Check`, `Config.CheckIn`, `Config.Enum`, `Config.Default`, `Config.Generated`,
-`Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.PrimaryKey`, `Config.PrimaryKeyDeferrable`, `Config.PrimaryKeyInitiallyDeferred`, `Config.History`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
+`Config.Comment`, `Config.Collate`, `Config.IDGen`, `Config.FKName`, `Config.Exclude`, `Config.PrimaryKey`, `Config.PrimaryKeyDeferrable`, `Config.PrimaryKeyInitiallyDeferred`, `Config.History`, `Config.View`, `Config.Function`, `Config.Trigger`, `Config.Policy`, `Config.RLS`, `Config.Partition`,
 `Config.PartitionOf`. Index chain: `IndexOpts.Unique()` (on `Config.Index` or `Config.IndexExpr`), `Where(pred)`, `Method(m)`, `IndexOpts.With(k, v)`,
 `Opclass(field, op)`, `Desc(field)`, `Nulls(field, "first"|"last")`,
 `Concurrently()` (`diff` writes the index as `CREATE INDEX CONCURRENTLY` in its own no-transaction migration).
@@ -442,6 +443,15 @@ columns; otherwise the generator reports a diagnostic. The key is a plain
 constraint: `diff` adds, replaces and drops it like a single-column key, and
 `generate --from-db` writes it back. There is no `belongs_to` form for a
 composite key; the relation still needs a single-column key.
+
+An exclusion constraint (PostgreSQL) is declared with `c.Exclude(name, &m.A,
+"=", &m.B, "&&")`: pairs of a field and an operator, so `&m.RoomID, "=", &m.During,
+"&&"` forbids two rows of one room with overlapping `During` ranges. Chain
+`.Using("gist")` (the default; `spgist`, `btree` and `hash` also work),
+`.Deferrable()` or `.InitiallyDeferred()`. A GiST constraint over a scalar column
+makes the generator add the `btree_gist` extension. It models plain columns only
+(no `WHERE`, expression or operator class); the other dialects refuse it. See
+[migrations](migrations.md#exclusion-constraints).
 
 A unique constraint, a foreign key and a primary key can be `DEFERRABLE` on
 PostgreSQL: `c.Unique(...).Deferrable()` or `.InitiallyDeferred()` (a unique
@@ -1061,6 +1071,25 @@ column, call or `momo.Value` elements (an empty list is `ErrValidation`), and
 `momo.ArraySubquery[T]` renders `ARRAY(subquery)` for a one-column
 `SelectQuery` or `momo.Union`. Both are `Expression[[]T]`, so they scan into
 a `[]T` field and feed `arrayop` predicates; PostgreSQL only.
+
+Range columns (a PostgreSQL type). A `types.Range[T]` field is generated as the
+range type of its element: `int32` is `int4range`, `int64` is `int8range`,
+`types.Numeric` is `numrange`, `types.Date` is `daterange`, `time.Time` is
+`tstzrange` and `types.Timestamp` (a timestamp without a zone) is `tsrange`.
+Build a value with `types.ClosedOpen(lower, upper)` (`[lower,upper)`),
+`types.NewRange(types.Incl(a), types.NoBound[T]())` for any other shape, or
+`types.EmptyRange[T]()`; a bound is a `types.Bound` with `Value`, `Inclusive` and
+`Infinite`. The predicates are generic functions over the typed column, in the
+package `github.com/azrtydxb/momo/rangeop`: `rangeop.Contains(col, element)`
+(`@>`), `rangeop.ContainsRange`, `rangeop.ContainedBy` (`<@`),
+`rangeop.Overlaps` (`&&`), `rangeop.Adjacent` (`-|-`), `rangeop.StrictlyLeft`
+(`<<`), `rangeop.StrictlyRight` (`>>`), `rangeop.IsEmpty`,
+`rangeop.LowerInfinite`, `rangeop.UpperInfinite`, and `rangeop.Lower` and
+`rangeop.Upper`, which are scalar expressions (`rangeop.Lower(during).Ge(start)`).
+Each binds its operand with a cast to the range or element type. PostgreSQL
+stores the discrete ranges as `[lower,upper)`, so `(0,9]` reads back as
+`[1,10)`. On other dialects the generator refuses the field and the builders fail
+the build with `ErrUnsupported`. Multiranges are not mapped.
 
 Searching with user input safely. `Like` and `ILike` always render
 `ESCAPE '!'` on every dialect, matching `EscapeLike`. Wildcards (`%`, `_`) in
@@ -2251,6 +2280,37 @@ sequential, so keep it short and dedicated), `HNSWEfSearch`,
 `IVFFlatMaxProbes`. Zero leaves the server default. Out of range:
 `ErrValidation`. Iterative/max-scan/scan-mem/max-probes fields on pgvector older than 0.8.0
 or a missing extension: `ErrUnsupported`.
+
+Keeping embeddings in sync with their source text:
+
+- Tag the field `*vector.Vector` with `embed_from:title|body` (column or Go
+  names of string fields, in the order that is hashed). `momo generate` adds a
+  nullable `varchar(64)` column `<column>_hash` after the vector; it is not a
+  field of the model, so do not declare it yourself and do not name a column
+  that. `momo migrate diff` adds it; on a table that already holds embeddings
+  every row then counts as stale.
+- Implement `vector.Embedder` for your provider: its one method returns one
+  `vector.Vector` per text. Momo ships none and makes no network call. Call
+  `momo.SyncEmbeddings[T]` from a worker or job with the `*momo.DB`, the
+  embedder and a `momo.EmbedOptions`, not with a `*momo.Tx`: no transaction or
+  statement is open while the embedder runs. `momo.StaleEmbeddings[T]` lists the
+  stale rows without embedding them.
+- Concurrent runners are safe. Each row is written by one compare-and-set
+  `UPDATE` on its source columns and stored hash, so a row edited while the
+  provider worked stays stale (`EmbedResult.Conflicts`) and is picked up by the
+  next run. Runners do not split the work, so two of them embed the same stale
+  rows twice. Rerun after an error: a run keeps no state.
+- The hash is `vector.SourceHash` (SHA-256 over a length-prefixed encoding of the
+  sources, hex). To force a re-embed after changing the model, set the hash
+  column to NULL with raw SQL.
+- A row with no source text gets a NULL vector, never a call to the provider.
+  Tag the vector field `read_only` so ordinary inserts and updates cannot write
+  an old embedding over a fresh one.
+- The handle's interceptors apply to both the stale read (kind `select`) and the
+  write-back (kind `update`), so a tenant-scoped handle only sees and writes its
+  own rows; the write still skips hooks, `updated_at` and version columns.
+- PostgreSQL and SQLite only: the generator refuses `embed_from` for MySQL or
+  MariaDB and both functions return `ErrUnsupported` there.
 
 Pitfalls:
 

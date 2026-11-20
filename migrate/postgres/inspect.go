@@ -446,6 +446,12 @@ func (in *inspector) constraints(ctx context.Context, b tableBatch) error {
 			t.PrimaryKeyDeferrable, t.PrimaryKeyInitiallyDeferred = deferrable, deferred
 		case "u":
 			t.Uniques = append(t.Uniques, schema.Unique{Name: name, Columns: cols, Deferrable: deferrable, InitiallyDeferred: deferred})
+		case "x":
+			x, err := excludeFromDef(t.Name, name, def, deferrable, deferred)
+			if err != nil {
+				return b.rowErr("constraints", rel, err)
+			}
+			t.Excludes = append(t.Excludes, x)
 		case "c":
 			expr := def
 			if m := checkBody.FindStringSubmatch(def); m != nil {

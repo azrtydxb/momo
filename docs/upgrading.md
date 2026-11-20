@@ -20,7 +20,41 @@ forwarders for this release and run the same statements, so that code keeps
 compiling and behaving as before; move to the new names before the forwarders
 go. Beyond the driver constructors, the one change that can stop code compiling
 is a hook constructor result that you assert to an interface or assign to a
-variable of another type.
+variable of another type. Separately,
+`momo migrate drift`, `momo migrate baseline` and `momo generate --from-db` now
+see exclusion constraints on PostgreSQL and write range columns as `types.Range`
+fields (the first two sections below); no edit is needed in your code for that,
+but inspection of a database that holds an exclusion constraint momo cannot
+model now stops with an error.
+
+### Exclusion constraints are part of the schema
+
+Before, inspection skipped the constraints of kind `x` in `pg_constraint`, so a
+database with `EXCLUDE USING gist (room_id WITH =, during WITH &&)` read as a
+table without it, and the init migration that `generate --from-db` produced
+built the table without the rule. Inspection now reads each one, and `momo
+generate --from-db` writes it as a `Config.Exclude` declaration. A snapshot you
+already have loads with no exclusion constraints, so the snapshot format version
+is unchanged and no snapshot needs rewriting.
+
+If your database has one, `drift` and `baseline` now report it as missing from
+the snapshot until the snapshot says so. Run `momo generate --from-db` again, or
+declare it in `MomoConfig` and run `momo migrate diff`. A constraint with a
+`WHERE` predicate, an expression, an operator class or an ordering is not
+modelled: inspection stops with an error that names it and its table. Hide the
+table with `migrate.exclude`, and keep the constraint in a migration written by
+hand. See [migrations](migrations.md#exclusion-constraints).
+
+### Range columns map to `types.Range`
+
+`generate --from-db` mapped no range type before, so a table with an `int4range`
+or `tstzrange` column stopped the generation until an `introspect` types rule
+named a Go type for it. The six built-in range types now map to
+`types.Range[T]`: `int4range` to `types.Range[int32]`, `int8range` to
+`types.Range[int64]`, `numrange` to `types.Range[types.Numeric]`, `daterange` to
+`types.Range[types.Date]`, `tsrange` to `types.Range[types.Timestamp]` and
+`tstzrange` to `types.Range[time.Time]`. A rule you wrote for such a column still
+wins. See [type mapping](TYPE_MAPPING.md#range-types).
 
 ### One constructor shape for every driver
 
