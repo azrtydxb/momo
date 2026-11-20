@@ -261,15 +261,16 @@ array of a composite type are not supported yet: the generator, `generate
 --from-db` and the inspector refuse them with a diagnostic that wraps
 `momo.ErrUnsupported`.
 
-Equality on the whole value is `momo.CompositeEq(col, "address", value)` and
-`momo.CompositeNe`: the type name casts the bound value, because PostgreSQL reads
+Equality on the whole value is `compositeop.Eq(col, "address", value)` and
+`compositeop.Ne`: the type name casts the bound value, because PostgreSQL reads
 the parameter of a plain `col.Eq(value)` as an anonymous record and refuses it.
 Access to one attribute is not part of the API; write it as a raw expression,
 `(home).street`.
 
 Domains and composite types exist on PostgreSQL alone. The generator reports a
-declaration when the target dialect is SQLite, MySQL or MariaDB, and the SQLite
-and MySQL renderers return an error that wraps `momo.ErrUnsupported`.
+declaration when the target dialect is SQLite, MySQL or MariaDB, the SQLite
+and MySQL renderers return an error that wraps `momo.ErrUnsupported`, and a
+`compositeop` builder fails the build with it.
 
 ## Edge values and behavior
 

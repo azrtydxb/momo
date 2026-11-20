@@ -22,6 +22,7 @@ leaf vector
 feature agg
 feature arrayop
 feature rangeop
+feature compositeop
 feature timeop
 feature fts
 feature sqlfn
