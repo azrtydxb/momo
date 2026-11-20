@@ -2920,7 +2920,7 @@ session advisory lock.</p>
 </tr>
 <tr>
 <td>Tenant filter</td>
-<td>application-side convenience, NOT a security boundary; a missing or mistyped tenant fails the build with <code>ErrValidation</code>; not applied automatically to Update, Delete, Insert, Preload, Load, LoadCounts, joins, subqueries or raw SQL; reads its tenant only from <code>WithTenant</code>; row-level security is configured by your own <code>WithTxSetup</code> function (call <code>SetConfigLocal</code> there with the tenant), and without <code>WithImplicitTx</code> non-transactional queries get no setting</td>
+<td>application-side convenience, NOT a security boundary; a missing or mistyped tenant fails the build with <code>ErrValidation</code>; not applied automatically to Update, Delete, Insert, Preload, Load, LoadCounts, joins, subqueries or raw SQL; reads its tenant only from <code>WithTenant</code>; row-level security is configured by your own <code>WithTxSetup</code> function (call <code>Tx.SetLocal</code> there with the tenant id), and without <code>WithImplicitTx</code> non-transactional queries get no setting</td>
 <td><code>WithTenant</code>, <code>TenantFilter</code></td>
 </tr>
 </tbody>
@@ -2945,7 +2945,7 @@ setting at the start of every transaction from a scope carried in the
 <span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="o">!</span><span class="nx">ok</span><span class="w"> </span><span class="p">{</span>
 <span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="c1">// no scope: nothing is set, the policy matches no rows</span>
 <span class="w">        </span><span class="p">}</span>
-<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">SetConfigLocal</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">tx</span><span class="p">,</span><span class="w"> </span><span class="s">"app.tenant_id"</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">tx</span><span class="p">.</span><span class="nx">SetLocal</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="s">"app.tenant_id"</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="p">)</span>
 <span class="w">    </span><span class="p">}),</span>
 <span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">WithImplicitTx</span><span class="p">(),</span>
 <span class="p">)</span>
@@ -2975,8 +2975,8 @@ setting at the start of every transaction from a scope carried in the
 <td>Auto-commit statements on a <code>*DB</code> (<code>Select</code>, <code>Insert</code>, <code>Update</code>, <code>Delete</code>, <code>Exec</code>, <code>QueryScalars</code>, relation loads) each run in a short transaction, so setup applies. <code>Iter</code>, <code>Each</code> and <code>Rows</code> hold the transaction until exhausted or closed, then commit; a scan or driver error rolls back, and so does a canceled context for a write or a read abandoned early (a fully drained read still commits). Close early-abandoned rows to free the connection.</td>
 </tr>
 <tr>
-<td><code>SetConfigLocal</code></td>
-<td><code>set_config(key, value, true)</code>: the setting ends with the transaction. The same as <code>Tx.SetLocal</code>.</td>
+<td><code>Tx.SetLocal</code></td>
+<td><code>set_config(key, value, true)</code>: the setting ends with the transaction. <code>momo.SetConfigLocal</code> is the deprecated name.</td>
 </tr>
 <tr>
 <td>Not used on an implicit <code>*DB</code></td>
@@ -3008,7 +3008,7 @@ in an <code>Each</code> or <code>Iter</code> callback rolls back the implicit tr
 context is cancelled before a streaming implicit write is closed, the write is
 rolled back and <code>Close</code> and <code>Err</code> return the context error.</p>
 <p>Behind PgBouncer in transaction mode use only transaction-local settings
-(<code>SetConfigLocal</code>), never a session-level <code>SET</code>: the session belongs to
+(<code>Tx.SetLocal</code>), never a session-level <code>SET</code>: the session belongs to
 whichever client PgBouncer hands the backend to next. <code>TestImplicitTxPgBouncer</code>
 runs concurrent tenants through PgBouncer and checks no scope leaks.</p>
 <h2 id="pgbouncer-and-tls">PgBouncer and TLS<a class="headerlink" href="#pgbouncer-and-tls" title="Permanent link">&para;</a></h2>
@@ -3122,7 +3122,7 @@ runs concurrent tenants through PgBouncer and checks no scope leaks.</p>
 </tr>
 <tr>
 <td>Generator type mapping</td>
-<td>Go type with no SQL mapping on the dialect (<code>gen/typemap</code>)</td>
+<td>Go type with no SQL mapping on the dialect (type mappings)</td>
 </tr>
 <tr>
 <td>Batch, <code>COPY</code></td>

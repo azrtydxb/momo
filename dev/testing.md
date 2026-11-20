@@ -277,8 +277,9 @@ example `momo.WithHook`; the options that configure a server (`momotest.WithEnv`
 `momotest.WithMigrations`, `momotest.WithExtensions`, `momotest.WithMaxConns`,
 `momotest.WithTemplateClone`) have no effect. `momotest.LoadFixtures` fills the
 database like any other. The database starts empty: create the tables with your
-own DDL, for example `momo.SQLiteVectorType` for a vector column (see
-[Vector search](vectors.md)); `momotest.WithMigrations` and `momotest.NewTx` are
+own DDL, for example `BLOB CHECK (length("emb") = 12)` for a three-element
+vector column (see [Vector search](vectors.md)); `momotest.WithMigrations` and
+`momotest.NewTx` are
 PostgreSQL features and do not apply.
 
 A schema with many tables costs DDL on every test. `sqlitetest.NewTemplate`
@@ -350,7 +351,7 @@ dialect.
 `momo.RegisterQuery(name, build)` adds a query to the process-wide registry
 (`momo.DefaultQueries`); `momo.NewQueryRegistry` makes an isolated one for a
 test. `build` receives a `momo.Querier` that compiles but never executes (see
-`momo.NewOffline`) and returns anything with an `SQL()` method: a `Select`,
+`momo.MustNewOffline`) and returns anything with an `SQL()` method: a `Select`,
 `Insert`, `Update`, `Delete` or `Merge` query, or `momo.CompilableSQL` for a
 hand-written statement. Registering a name twice panics, naming the query. The
 values you bind in `build` are placeholders and never appear in the listing.

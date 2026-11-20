@@ -1910,8 +1910,9 @@ example <code>momo.WithHook</code>; the options that configure a server (<code>m
 <code>momotest.WithMigrations</code>, <code>momotest.WithExtensions</code>, <code>momotest.WithMaxConns</code>,
 <code>momotest.WithTemplateClone</code>) have no effect. <code>momotest.LoadFixtures</code> fills the
 database like any other. The database starts empty: create the tables with your
-own DDL, for example <code>momo.SQLiteVectorType</code> for a vector column (see
-<a href="../vectors/">Vector search</a>); <code>momotest.WithMigrations</code> and <code>momotest.NewTx</code> are
+own DDL, for example <code>BLOB CHECK (length("emb") = 12)</code> for a three-element
+vector column (see <a href="../vectors/">Vector search</a>); <code>momotest.WithMigrations</code> and
+<code>momotest.NewTx</code> are
 PostgreSQL features and do not apply.</p>
 <p>A schema with many tables costs DDL on every test. <code>sqlitetest.NewTemplate</code>
 takes a function that creates the tables through a <code>*momo.DB</code>; keep the
@@ -1971,7 +1972,7 @@ dialect.</p>
 <p><code>momo.RegisterQuery(name, build)</code> adds a query to the process-wide registry
 (<code>momo.DefaultQueries</code>); <code>momo.NewQueryRegistry</code> makes an isolated one for a
 test. <code>build</code> receives a <code>momo.Querier</code> that compiles but never executes (see
-<code>momo.NewOffline</code>) and returns anything with an <code>SQL()</code> method: a <code>Select</code>,
+<code>momo.MustNewOffline</code>) and returns anything with an <code>SQL()</code> method: a <code>Select</code>,
 <code>Insert</code>, <code>Update</code>, <code>Delete</code> or <code>Merge</code> query, or <code>momo.CompilableSQL</code> for a
 hand-written statement. Registering a name twice panics, naming the query. The
 values you bind in <code>build</code> are placeholders and never appear in the listing.

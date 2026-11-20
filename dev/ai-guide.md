@@ -2578,7 +2578,7 @@ Examples: every `examples/*/example_test.go`, harness
   with PostgreSQL row-level security: it is configured by your own
   `WithTxSetup` function, which reads whatever your code put in the context. To
   drive both from `WithTenant`, read the tenant there and call
-  `SetConfigLocal`. Without `WithImplicitTx`, non-transactional queries get no
+  `Tx.SetLocal`. Without `WithImplicitTx`, non-transactional queries get no
   setting.
 - `WithImplicitTx` and RETURNING writes: on an unpinned `*DB` configured with
   `WithImplicitTx`, read the rows of `Insert`, `Update` or `Delete` with

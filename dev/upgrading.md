@@ -32,7 +32,8 @@ column flags (the last section of this page). Separately,
 see exclusion constraints on PostgreSQL and write range columns as `types.Range`
 fields (the first two sections below); no edit is needed in your code for that,
 but inspection of a database that holds an exclusion constraint momo cannot
-model now stops with an error.
+model now stops with an error. One section lists the helpers of `schema`,
+`migrate` and `gen` that left the public API and what to call instead.
 
 ### Exclusion constraints are part of the schema
 
@@ -231,6 +232,53 @@ refuse any other option with `ErrValidation`. Two differences to know:
   with `ErrValidation` where the old transaction functions failed to compile.
 - `advisory.Acquire` returns `(bool, error)` for the blocking form too, so
   assign or discard the boolean.
+
+### Internal helpers left `schema`, `migrate` and `gen`
+
+`schema`, `migrate`, `migrate/sqlite`, `gen` and its `tags`, `typemap` and
+`naming` subpackages exported helpers that only momo's own migration dialects,
+generator and command line use. They are now unexported or live in `internal/`
+packages, which an application cannot import. Where a forwarder costs nothing,
+the old name stays for this release as a function marked Deprecated that calls
+the internal one, so your code keeps compiling and behaving as before; the
+forwarders are removed in the next release. Where a forwarder would be an
+import cycle, the name is gone and the table says why. The data model, the
+engine and the generator plugin contract did not change.
+
+| Old name                                                                                                                                                                                    | New                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema.SchemaNamespace`                                                                                                                                                                    | `schema.Namespace`; the old name is a deprecated alias, removed next release                                                                                                                        |
+| `schema.Int64`, `schema.FTS5Table`, `schema.TSVectorColumn`, `schema.SortedValues`, `schema.CheckInExpr`, `schema.ParseCheckIn`, `schema.SameCheck`                                         | deprecated forwarders, removed next release; take the address of a local `int64`, write `<table>_fts` and `<index>_tsv`, and use `schema.Check.ExprFor` and `schema.Check.ValueList` for checks     |
+| `schema.ValidateVectorIndex`, `schema.ValidateMariaDBVectorIndex`, `schema.MariaDBVectorIndexClause`, `schema.VectorIndexOpClass`                                                           | no forwarder: they moved to an internal package that imports `schema`, so `schema` cannot import it back; the generator validates vector indexes and its errors wrap `schema.ErrInvalidVectorIndex` |
+| `migrate.MatchObject`                                                                                                                                                                       | `schema.MatchObject`; no forwarder, the old function only called it                                                                                                                                 |
+| `migrate.RedactURLs`, `migrate.SplitStatements`, `migrate.IsNoSuchTable`, `migrate.ParseDirectives`, `migrate.Discover`, `migrate.NextVersion`, `migrate.Chain`, `migrate.RefuseGoRollback` | deprecated forwarders, removed next release; `migrate.ValidateOffline` checks a migration directory and `migrate.LatestSnapshot` reads its newest snapshot                                          |
+| `sqlite.Capture`, `sqlite.Dependent`, `sqlite.Rebuild`, `sqlite.RebuildStatements`                                                                                                          | no forwarder: they use the unexported renderer helpers of `migrate/sqlite`, which an internal package could not reach; the engine rebuilds a SQLite table when a change needs it                    |
+| `gen.EmitLookup`, `gen.EmitMeta`, `gen.EmitDescriptors`, `gen.DescriptorType`, `gen.VectorDescriptorType`, `gen.AccessFor`, `gen.DetectHooks`, `gen.ReadCompanion`                          | deprecated forwarders, removed next release; `gen.Emit` runs the emitters                                                                                                                           |
+| `gen.Identifier`, `gen.DescriptorReserved`, `gen.SubPkgName`, `gen.ValidTimeType`, `gen.ImportPath`, `gen.ParseHeader`, `gen.HeaderPrefix`                                                  | deprecated forwarders, removed next release                                                                                                                                                         |
+| `tags.Parse`, `tags.SplitOptions`, `tags.Problem`                                                                                                                                           | no forwarder: the parser imports `tags` for `tags.Tags`, which stays, so `tags` cannot import the parser back                                                                                       |
+| `typemap.Map`                                                                                                                                                                               | no forwarder: the package `gen/typemap` is gone, and a forwarding package would keep its import path public                                                                                         |
+| `naming.ToSnake`, `naming.Plural`                                                                                                                                                           | deprecated forwarders, removed next release                                                                                                                                                         |
+| `momo.MySQLVectorType`, `momo.SQLiteVectorType`, `momo.SQLiteBitsType`                                                                                                                      | no forwarder: the internal package that renders them imports `momo`; write `VECTOR(N)` for MySQL and MariaDB, and `BLOB CHECK (length("col") = 4 * N)` for SQLite (`(N+7)/8` bytes for bits)        |
+| `momo.NewOffline`                                                                                                                                                                           | `momo.MustNewOffline`, which panics for an unknown dialect as `momo.NewOffline` did; the old name is a deprecated forwarder, removed next release                                                   |
+| `momo.SetConfigLocal`                                                                                                                                                                       | `Tx.SetLocal`; the old function is a deprecated forwarder, removed next release                                                                                                                     |
+
+Some names stay on purpose, which differs from the plan of moving them in
+#271. `migrate.RunMigration`, `migrate.RunEnv`,
+`migrate.RunStatements`, `migrate.LintSQL`, `migrate.Order`, `migrate.OrderErr`,
+`migrate.OrderWithViews`, `migrate.EnsureHistory` and `migrate.ReadHistory` are
+called by `migrate.Engine` and take its own types, which an internal package
+could not import without a cycle, and whoever renders a plan through a dialect
+has to order the changes with `migrate.OrderErr` first. `gen.Header` stays because
+`gen.Writer` refuses a plugin's output that lacks the header, and
+`gen.DescriptorIdents` stays because generated code that names a descriptor
+must use it. `sqlite.ForceUnlock` stays as the documented operator tool.
+
+`dialect.For` now returns a fresh copy of the dialect on every call, with its
+`Vector.Metrics` and `Vector.Indexes` slices copied too. Code that changed a
+capability flag through the pointer to change the dialect for the whole process
+no longer does: build your own `dialect.Dialect` value and give it to your
+driver. Two calls no longer return the same pointer, so a comparison of the
+results with `==` is false.
 
 ### Colliding and inconsistent names are renamed
 
@@ -2093,7 +2141,7 @@ empty, a table that matches none of its globs is hidden from drift, baseline
 and diff, with its triggers and policies, and the PostgreSQL inspector does not
 read it. The MySQL and SQLite inspectors ignore `migrate.InspectOptions.Only` and read
 every table, which is filtered afterwards, so a table they cannot represent can
-still fail inspection. `migrate.MatchObject` is the glob rule shared by
+still fail inspection. `schema.MatchObject` is the glob rule shared by
 `Exclude`, `OnlyTables` and the inspector. An empty or malformed entry is an
 error that names `migrate.Settings.OnlyTables`.
 

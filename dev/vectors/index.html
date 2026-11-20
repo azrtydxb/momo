@@ -1968,10 +1968,12 @@ reference model is <code>internal/testmodels/example/models.go</code>):</p>
 <span class="w">        </span><span class="nx">With</span><span class="p">(</span><span class="s">"ef_construction"</span><span class="p">,</span><span class="w"> </span><span class="s">"64"</span><span class="p">)</span>
 <span class="p">}</span>
 </code></pre></div>
-<p>The generator and <code>schema.ValidateVectorIndex</code> reject an index that
-pgvector would refuse, before any SQL runs. The error wraps
-<code>schema.ErrInvalidVectorIndex</code>. <code>schema.VectorIndexOpClass(type, metric)</code>
-returns the opclass for a column type and metric (<code>ExampleValidateVectorIndex</code>).</p>
+<p>The generator and the migration engine reject an index that pgvector would
+refuse, before any SQL runs. The error wraps <code>schema.ErrInvalidVectorIndex</code>.
+The opclass for a column type and metric is the type name, the metric suffix
+and <code>_ops</code>, for example <code>vector_cosine_ops</code> for a <code>vector(1536)</code> column and
+<code>dialect.MetricCosine</code>; the validation rejects a metric that pgvector has no
+opclass for on that type.</p>
 <h3 id="index-limits">Index limits<a class="headerlink" href="#index-limits" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -2004,7 +2006,7 @@ returns the opclass for a column type and metric (<code>ExampleValidateVectorInd
 <li>ivfflat requires an explicit <code>lists</code> parameter (1 to 32768). Momo does not
   rely on the server default of 100.</li>
 <li>An index covers one plain column. Expression parts are rejected.</li>
-<li>The hnsw and ivfflat methods are pgvector's. <code>schema.ValidateVectorIndex</code>
+<li>The hnsw and ivfflat methods are pgvector's. The validation
   rejects them for another dialect, with an error that wraps
   <code>schema.ErrInvalidVectorIndex</code>. MariaDB has its own <code>VECTOR INDEX</code>; see
   "MariaDB and MySQL" below.</li>
@@ -2360,10 +2362,10 @@ does not build on Windows. The generator reports vector fields and vector
 indexes as unsupported when SQLite is a target dialect, so you create the table
 with your own DDL.</p>
 <p><strong>Columns.</strong> A vector is a plain <code>BLOB</code> column; sqlite-vec has no declared
-dimension, so the length is guarded by a <code>CHECK</code>. <code>momo.SQLiteVectorType</code> and
-<code>momo.SQLiteBitsType</code> return the definition to put after the column name:
-<code>BLOB CHECK (length("emb") = 12)</code> for three float32 elements and
-<code>BLOB CHECK (length("bits") = 1)</code> for eight bits. A vector of the wrong size
+dimension, so the length is guarded by a <code>CHECK</code> that you write after the
+column name: <code>BLOB CHECK (length("emb") = 12)</code> for three float32 elements (four
+bytes each) and <code>BLOB CHECK (length("bits") = 1)</code> for eight bits (packed, so
+<code>(n+7)/8</code> bytes). A vector of the wrong size
 is then refused by the database as <code>ErrCheckViolation</code>. A dimensionless column
 is <code>ErrUnsupported</code>, because there is no length to check.</p>
 <p><strong>Values.</strong> <code>vector.Vector</code> is stored as a little-endian float32 blob and read
@@ -2429,7 +2431,7 @@ for cosine, and when a PostgreSQL URL is set <code>TestSQLiteVectorParity</code>
 the same vectors into pgvector and requires the same ids for cosine, L2 and L1.</p>
 <p><strong>Indexes.</strong> sqlite-vec compares every row, so it has no approximate index and
 <code>dialect.For(dialect.SQLite).Vector.Indexes</code> is empty, and
-<code>schema.ValidateVectorIndex</code> rejects an index for SQLite with
+the validation rejects an index for SQLite with
 <code>schema.ErrInvalidVectorIndex</code>. The SQLite migration dialect in <code>migrate/sqlite</code>
 refuses a <code>CREATE INDEX</code> that names any access method other than <code>btree</code>
 (<code>hnsw</code> and <code>ivfflat</code> included) with <code>ErrUnsupported</code>, because SQLite itself
@@ -2508,10 +2510,10 @@ hook events exactly as on PostgreSQL.</p>
 the metric it was built with, and an <code>ORDER BY</code> distance with <code>LIMIT</code> uses
 it. To get the exact nearest neighbours from the same table, add <code>+ 0</code> to the
 distance in a raw query, which keeps the server from using the index.
-<code>schema.ValidateMariaDBVectorIndex</code> checks a declaration and
-<code>schema.MariaDBVectorIndexClause</code> renders it. <code>momo.MySQLVectorType</code> gives the
-column type for a server version and refuses MySQL 8.4 and MariaDB before
-11.7 with a diagnostic that names the version.</p>
+The migration engine for MySQL checks a declaration and renders the
+<code>VECTOR INDEX</code> clause, and it renders the <code>VECTOR(N)</code> column type for the
+server version: it refuses MySQL 8.4 and MariaDB before 11.7 with a diagnostic
+that names the version.</p>
 
 
 

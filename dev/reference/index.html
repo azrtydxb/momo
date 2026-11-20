@@ -3660,9 +3660,9 @@
 <td>Modeler is implemented (by generated code) on pointers to model and projection types.</td>
 </tr>
 <tr>
-<td><code>momo.MySQLVectorType</code></td>
+<td><code>momo.MustNewOffline</code></td>
 <td>func</td>
-<td>MySQLVectorType returns the column type for a vector of dim elements on a MySQL or MariaDB server: "VECTOR(N)".</td>
+<td>MustNewOffline returns a *DB for dialect d that compiles statements but never reaches a database: every execution returns an error matching ErrUnsupported.</td>
 </tr>
 <tr>
 <td><code>momo.NPlusOneFinding</code></td>
@@ -3747,7 +3747,7 @@
 <tr>
 <td><code>momo.NewOffline</code></td>
 <td>func</td>
-<td>NewOffline returns a *DB for dialect d that compiles statements but never reaches a database: every execution returns an error matching ErrUnsupported.</td>
+<td>NewOffline is MustNewOffline.</td>
 </tr>
 <tr>
 <td><code>momo.NewOps</code></td>
@@ -4513,16 +4513,6 @@
 <td><code>momo.SQL</code></td>
 <td>func</td>
 <td>SQL is an explicit escape hatch: a raw SQL fragment usable anywhere an expression or predicate is accepted.</td>
-</tr>
-<tr>
-<td><code>momo.SQLiteBitsType</code></td>
-<td>func</td>
-<td>SQLiteBitsType is SQLiteVectorType for a bit vector of n bits: a BLOB whose length is the packed size, (n+7)/8 bytes.</td>
-</tr>
-<tr>
-<td><code>momo.SQLiteVectorType</code></td>
-<td>func</td>
-<td>SQLiteVectorType returns the column definition of a float32 vector of dim elements on SQLite: a BLOB whose length is checked, for example BLOB CHECK (length("emb") = 12) for dim 3.</td>
 </tr>
 <tr>
 <td><code>momo.Scalars</code></td>
@@ -5470,7 +5460,7 @@
 <tr>
 <td><code>dialect.For</code></td>
 <td>func</td>
-<td>For returns the built-in dialect description for name.</td>
+<td>For returns the built-in dialect description for name, or nil for an unknown name.</td>
 </tr>
 <tr>
 <td><code>dialect.Metric</code></td>
@@ -5578,7 +5568,7 @@
 <tr>
 <td><code>schema.CheckInExpr</code></td>
 <td>func</td>
-<td>CheckInExpr renders the expression of a value-list check for dialect d: the column quoted the way d quotes identifiers, then IN and the sorted, de-duplicated values as single-quoted literals separated by a comma, with no space after it (the spelling MySQL and MariaDB report back).</td>
+<td>CheckInExpr renders the expression of a value-list check for dialect d.</td>
 </tr>
 <tr>
 <td><code>schema.Column</code></td>
@@ -5598,7 +5588,7 @@
 <tr>
 <td><code>schema.ErrInvalidVectorIndex</code></td>
 <td>var</td>
-<td>ErrInvalidVectorIndex is wrapped by every ValidateVectorIndex and VectorIndexOpClass error.</td>
+<td>ErrInvalidVectorIndex is wrapped by the vector index validation errors of the migration engines.</td>
 </tr>
 <tr>
 <td><code>schema.ErrMissingFormatVersion</code></td>
@@ -5733,7 +5723,7 @@
 <tr>
 <td><code>schema.Int64</code></td>
 <td>func</td>
-<td>Int64 returns a pointer to v, for the optional numeric fields of Sequence.</td>
+<td>Int64 returns a pointer to v.</td>
 </tr>
 <tr>
 <td><code>schema.KV</code></td>
@@ -5746,14 +5736,14 @@
 <td>Load reads a schema snapshot of any supported format version.</td>
 </tr>
 <tr>
-<td><code>schema.MariaDBVectorIndexClause</code></td>
-<td>func</td>
-<td>MariaDBVectorIndexClause renders a validated index as the clause MariaDB accepts inside CREATE TABLE and ALTER TABLE ...</td>
-</tr>
-<tr>
 <td><code>schema.MatchObject</code></td>
 <td>func</td>
 <td>MatchObject reports whether any glob matches the object name, or schema.name when schemaName is not empty (the current schema is spelled with an empty one, so a glob such as public.users never matches a table in the current schema: use its bare name).</td>
+</tr>
+<tr>
+<td><code>schema.Namespace</code></td>
+<td>type</td>
+<td>Namespace is a PostgreSQL schema (namespace) managed by Momo.</td>
 </tr>
 <tr>
 <td><code>schema.NormalizeExpr</code></td>
@@ -5778,7 +5768,7 @@
 <tr>
 <td><code>schema.ParseCheckIn</code></td>
 <td>func</td>
-<td>ParseCheckIn reads the expression of a CHECK constraint that restricts one column to a list of string literals and returns the column and the values in the order written.</td>
+<td>ParseCheckIn reads the expression of a CHECK constraint that restricts one column to a list of string literals.</td>
 </tr>
 <tr>
 <td><code>schema.Partition</code></td>
@@ -5828,7 +5818,7 @@
 <tr>
 <td><code>schema.SchemaNamespace</code></td>
 <td>type</td>
-<td>SchemaNamespace is a PostgreSQL schema (namespace) managed by Momo.</td>
+<td>SchemaNamespace is the former name of Namespace.</td>
 </tr>
 <tr>
 <td><code>schema.Sequence</code></td>
@@ -5876,24 +5866,9 @@
 <td>Unique is a named UNIQUE constraint.</td>
 </tr>
 <tr>
-<td><code>schema.ValidateMariaDBVectorIndex</code></td>
-<td>func</td>
-<td>ValidateMariaDBVectorIndex checks an index whose Method is "vector" against the column.</td>
-</tr>
-<tr>
 <td><code>schema.ValidateSequence</code></td>
 <td>func</td>
 <td>ValidateSequence reports why PostgreSQL would refuse CREATE SEQUENCE for q: a data type other than smallint, integer or bigint, a bound outside the range of the type, a minimum above the maximum, or a start outside the bounds.</td>
-</tr>
-<tr>
-<td><code>schema.ValidateVectorIndex</code></td>
-<td>func</td>
-<td>ValidateVectorIndex checks an index whose Method is "hnsw" or "ivfflat" against the column type, the opclass and the dialect.</td>
-</tr>
-<tr>
-<td><code>schema.VectorIndexOpClass</code></td>
-<td>func</td>
-<td>VectorIndexOpClass returns the opclass for a column type and metric, e.g.</td>
 </tr>
 <tr>
 <td><code>schema.View</code></td>
@@ -6512,7 +6487,7 @@
 <tr>
 <td><code>migrate.Chain</code></td>
 <td>func</td>
-<td>Chain returns the snapshots in fsys ordered by version.</td>
+<td>Chain returns the snapshot chain of fsys, oldest first.</td>
 </tr>
 <tr>
 <td><code>migrate.Change</code></td>
@@ -6612,7 +6587,7 @@
 <tr>
 <td><code>migrate.Discover</code></td>
 <td>func</td>
-<td>Discover lists the migration files in fsys, walking nested directories (for example an archive/2026 folder), ordered by version and then by path, so an archived old migration still sorts before a newer top-level one.</td>
+<td>Discover lists the migration files in fsys.</td>
 </tr>
 <tr>
 <td><code>migrate.DriftOptions</code></td>
@@ -6985,11 +6960,6 @@
 <td>LiveValidator is implemented by dialects that refuse a declaration because of what the live database holds, which a desired schema alone cannot show (a full-text index on a MySQL table that is not InnoDB).</td>
 </tr>
 <tr>
-<td><code>migrate.MatchObject</code></td>
-<td>func</td>
-<td>MatchObject reports whether any glob matches the object name, or schema.name when schemaName is not empty (the current schema is spelled with an empty one).</td>
-</tr>
-<tr>
 <td><code>migrate.MetaVersion</code></td>
 <td>const</td>
 <td>MetaVersion is the version of the history table's metadata row.</td>
@@ -7007,7 +6977,7 @@
 <tr>
 <td><code>migrate.NextVersion</code></td>
 <td>func</td>
-<td>NextVersion returns the version for a new migration: the UTC time from now formatted as YYYYMMDDHHMMSS.</td>
+<td>NextVersion returns the version a new migration in fsys gets.</td>
 </tr>
 <tr>
 <td><code>migrate.ObjectDiff</code></td>
@@ -7047,7 +7017,7 @@
 <tr>
 <td><code>migrate.ParseDirectives</code></td>
 <td>func</td>
-<td>ParseDirectives reads the directives in the leading comment block of body, that is, the comment and blank lines before the first statement.</td>
+<td>ParseDirectives reads the directives in the leading comment block of body.</td>
 </tr>
 <tr>
 <td><code>migrate.ParseSum</code></td>
@@ -7082,7 +7052,7 @@
 <tr>
 <td><code>migrate.RefuseGoRollback</code></td>
 <td>func</td>
-<td>RefuseGoRollback returns ErrGoMigrationNotReversible, naming the first version, when any of the history rows to be rolled back has kind "go".</td>
+<td>RefuseGoRollback returns ErrGoMigrationNotReversible for the first row of kind go in rows.</td>
 </tr>
 <tr>
 <td><code>migrate.RehashResult</code></td>

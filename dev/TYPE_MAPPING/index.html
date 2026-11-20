@@ -1542,10 +1542,10 @@ unsigned types and the MySQL limits.</p>
    <code>Value</code> and <code>SQLType</code>) uses its own <code>SQLType</code>. This is how <code>types.TimeOfDay</code>
    and <code>types.Hstore</code> get their columns.</li>
 <li>Otherwise the generator maps the Go type with its built-in table
-   (package <code>gen/typemap</code>). A pointer and the <code>sql.Null*</code> wrappers map like the
+   (the generator's type map). A pointer and the <code>sql.Null*</code> wrappers map like the
    type they wrap: nullability is a column property, not a type property.</li>
 <li>A Go type with no mapping (for example <code>uint64</code> or <code>map</code>) makes
-   <code>typemap.Map</code> return an error wrapping <code>momo.ErrUnsupported</code>, which the
+   the type map return an error wrapping <code>momo.ErrUnsupported</code>, which the
    generator reports at the field. Give the type a codec or declare the column
    yourself.</li>
 </ol>
@@ -1804,7 +1804,7 @@ has no array columns, so the generator rejects them there.</p>
 </table>
 <!-- /generated:typemap -->
 
-<p>The MySQL column is what <code>typemap.Map</code> returns for MySQL and MariaDB, which share
+<p>The MySQL column is what the type map returns for MySQL and MariaDB, which share
 it. Unsigned Go integers map to the unsigned column types: <code>uint8</code> to
 <code>tinyint unsigned</code>, <code>uint16</code> to <code>smallint unsigned</code>, <code>uint32</code> to <code>int unsigned</code>,
 <code>uint</code> to <code>bigint unsigned</code> and <code>uint64</code> to <code>bigint unsigned</code>. <code>int8</code> maps to
@@ -1821,7 +1821,7 @@ refuses text, blob and json in a primary key, unique key, index or foreign key
 on MySQL and MariaDB, naming the column and asking for <code>size:N</code>. <code>types.Date</code> stays text, as its codec
 stores it. <code>text</code> and <code>blob</code> hold 64 KiB, so use a <code>type</code> tag for more. Only an
 error that wraps <code>momo.ErrUnsupported</code> shows as <code>unsupported</code>; any other error
-from <code>typemap.Map</code> fails the generation of this table.</p>
+from the type map fails the generation of this table.</p>
 <p>The PostgreSQL type of <code>time.Time</code> can be changed for the whole project with the
 <code>types:</code> section of <code>momo.yaml</code>, for example <code>types: {time.Time: timestamp(3)}</code>
 for a database created by Prisma (see <code>naming: prisma</code> in ai-guide.md). Only

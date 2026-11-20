@@ -183,10 +183,12 @@ func (d *Document) MomoConfig(c *momo.Config) {
 }
 ```
 
-The generator and `schema.ValidateVectorIndex` reject an index that
-pgvector would refuse, before any SQL runs. The error wraps
-`schema.ErrInvalidVectorIndex`. `schema.VectorIndexOpClass(type, metric)`
-returns the opclass for a column type and metric (`ExampleValidateVectorIndex`).
+The generator and the migration engine reject an index that pgvector would
+refuse, before any SQL runs. The error wraps `schema.ErrInvalidVectorIndex`.
+The opclass for a column type and metric is the type name, the metric suffix
+and `_ops`, for example `vector_cosine_ops` for a `vector(1536)` column and
+`dialect.MetricCosine`; the validation rejects a metric that pgvector has no
+opclass for on that type.
 
 ### Index limits
 
@@ -201,7 +203,7 @@ returns the opclass for a column type and metric (`ExampleValidateVectorIndex`).
 - ivfflat requires an explicit `lists` parameter (1 to 32768). Momo does not
   rely on the server default of 100.
 - An index covers one plain column. Expression parts are rejected.
-- The hnsw and ivfflat methods are pgvector's. `schema.ValidateVectorIndex`
+- The hnsw and ivfflat methods are pgvector's. The validation
   rejects them for another dialect, with an error that wraps
   `schema.ErrInvalidVectorIndex`. MariaDB has its own `VECTOR INDEX`; see
   "MariaDB and MySQL" below.
@@ -562,10 +564,10 @@ indexes as unsupported when SQLite is a target dialect, so you create the table
 with your own DDL.
 
 **Columns.** A vector is a plain `BLOB` column; sqlite-vec has no declared
-dimension, so the length is guarded by a `CHECK`. `momo.SQLiteVectorType` and
-`momo.SQLiteBitsType` return the definition to put after the column name:
-`BLOB CHECK (length("emb") = 12)` for three float32 elements and
-`BLOB CHECK (length("bits") = 1)` for eight bits. A vector of the wrong size
+dimension, so the length is guarded by a `CHECK` that you write after the
+column name: `BLOB CHECK (length("emb") = 12)` for three float32 elements (four
+bytes each) and `BLOB CHECK (length("bits") = 1)` for eight bits (packed, so
+`(n+7)/8` bytes). A vector of the wrong size
 is then refused by the database as `ErrCheckViolation`. A dimensionless column
 is `ErrUnsupported`, because there is no length to check.
 
@@ -603,7 +605,7 @@ the same vectors into pgvector and requires the same ids for cosine, L2 and L1.
 
 **Indexes.** sqlite-vec compares every row, so it has no approximate index and
 `dialect.For(dialect.SQLite).Vector.Indexes` is empty, and
-`schema.ValidateVectorIndex` rejects an index for SQLite with
+the validation rejects an index for SQLite with
 `schema.ErrInvalidVectorIndex`. The SQLite migration dialect in `migrate/sqlite`
 refuses a `CREATE INDEX` that names any access method other than `btree`
 (`hnsw` and `ivfflat` included) with `ErrUnsupported`, because SQLite itself
@@ -644,7 +646,7 @@ A MariaDB `VECTOR INDEX` needs a `NOT NULL` `vector(N)` column and accepts
 the metric it was built with, and an `ORDER BY` distance with `LIMIT` uses
 it. To get the exact nearest neighbours from the same table, add `+ 0` to the
 distance in a raw query, which keeps the server from using the index.
-`schema.ValidateMariaDBVectorIndex` checks a declaration and
-`schema.MariaDBVectorIndexClause` renders it. `momo.MySQLVectorType` gives the
-column type for a server version and refuses MySQL 8.4 and MariaDB before
-11.7 with a diagnostic that names the version.
+The migration engine for MySQL checks a declaration and renders the
+`VECTOR INDEX` clause, and it renders the `VECTOR(N)` column type for the
+server version: it refuses MySQL 8.4 and MariaDB before 11.7 with a diagnostic
+that names the version.

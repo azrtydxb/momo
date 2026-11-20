@@ -2988,7 +2988,7 @@ unmanaged. Exit 0 and <code>no drift</code>, or exit 1 and one line per finding:
   <code>public.users</code>, when <code>public</code> is the current schema. Inspection does not read it
   (<code>migrate.InspectOptions.Only</code>, honoured by the PostgreSQL inspector), and
   drift, baseline and diff hide it, with its triggers and policies, like an
-  excluded table. <code>migrate.MatchObject(globs, schemaName, name)</code> is the matching
+  excluded table. <code>schema.MatchObject(globs, schemaName, name)</code> is the matching
   rule <code>Exclude</code>, <code>OnlyTables</code> and the inspector share. An empty entry is an
   error. <code>diff</code> filters both sides: a snapshot table outside <code>OnlyTables</code> never
   plans <code>DROP TABLE</code>, and a model for one never plans <code>CREATE TABLE</code>: a model
@@ -3543,17 +3543,17 @@ and foreign keys are enforced again afterwards (<code>TestSQLiteRebuildFKStillEn
 <ul>
 <li>After each recreated view the file runs <code>SELECT 1 FROM "view" LIMIT 0</code>,
   because <code>CREATE VIEW</code> does not check the names in its query. A view that names
-  a dropped column therefore fails the migration. <code>sqlite.Rebuild</code> with
-  <code>migrate.RunStatements</code> reports that as <code>migrate.ErrRebuildBlocked</code> naming the
-  view; a migration read back from a file has lost the statement hints, so the
-  engine reports the failing statement number instead.</li>
+  a dropped column therefore fails the migration. The engine reports that as
+  <code>migrate.ErrRebuildBlocked</code> naming the view; a migration read back from a file
+  has lost the statement hints, so the engine reports the failing statement
+  number instead.</li>
 <li>A trigger body is resolved only when the trigger fires, so a trigger that names
   a dropped column is recreated and fails later.</li>
 <li>A table can be rebuilt only if it has columns in common with the new
   definition; <code>INSERT</code> is skipped otherwise.</li>
-<li><code>sqlite.Rebuild</code> and <code>sqlite.Capture</code> rebuild from a live connection
-  (captured views and triggers are recreated verbatim); the engine path rebuilds
-  from the snapshot instead.</li>
+<li>A rebuild through <code>AutoMigrate</code> reads the views and triggers from the live
+  connection (captured views and triggers are recreated verbatim); the engine
+  path rebuilds from the snapshot instead.</li>
 <li>A model declares <code>WITHOUT ROWID</code>, <code>STRICT</code> and <code>AUTOINCREMENT</code> with the
   <code>without_rowid</code>, <code>strict</code> and <code>autoincrement</code> options of its <code>momo.Model</code> tag;
   <code>momo generate --from-db</code> writes them from an existing database, and
@@ -4093,7 +4093,7 @@ SQL files by version, so it runs once, under the same lock, with a history row
   matches.</li>
 <li><strong>Forward only.</strong> A Go migration has no down step. A rollback of the group
   that contains one refuses it: <code>Engine.Rollback</code> calls
-  <code>migrate.RefuseGoRollback</code> with the history rows to roll back, before any down
+  its Go-rollback check on the history rows to roll back, before any down
   runs, and that returns <code>ErrGoMigrationNotReversible</code> for the first row of
   kind <code>go</code>; fix forward with a new migration.</li>
 <li><strong>Baseline.</strong> <code>Baseline</code> through a version records a <code>go</code> row (checksum =

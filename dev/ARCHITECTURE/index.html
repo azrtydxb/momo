@@ -1650,8 +1650,9 @@ checks.</p>
 limit <code>MaxParams</code> and a set of capability flags such as <code>Returning</code>,
 <code>OnConflict</code>, <code>OnDuplicateKey</code>, <code>Locking</code>, <code>RowValues</code>, <code>Savepoints</code>,
 <code>ILike</code> and <code>Merge</code>. It also quotes identifiers and writes placeholders.
-<code>dialect.For</code> returns the dialect for a name and <code>dialect.MySQLFlavor</code> the
-MySQL or MariaDB variant. The query builder consults these flags and returns
+<code>dialect.For</code> returns a fresh copy of the dialect for a name, slices included,
+so a caller that changes it cannot change the built-in description, and
+<code>dialect.MySQLFlavor</code> the MySQL or MariaDB variant. The query builder consults these flags and returns
 <code>ErrUnsupported</code> for what a dialect cannot do.</p>
 <h3 id="schema"><code>schema</code><a class="headerlink" href="#schema" title="Permanent link">&para;</a></h3>
 <p>The neutral description of a database schema: tables, columns, indexes,
@@ -1803,8 +1804,8 @@ carries the format number and no release version.</p>
 <td>OpenAPI 3.1 document and handlers, a <code>gen.Plugin</code></td>
 </tr>
 <tr>
-<td><code>gen/naming</code>, <code>gen/tags</code>, <code>gen/typemap</code></td>
-<td>naming presets, tag parsing, Go type to SQL type</td>
+<td><code>gen/naming</code>, <code>gen/tags</code></td>
+<td>naming presets and the parsed form of a <code>momo</code> tag</td>
 </tr>
 </tbody>
 </table>
@@ -1814,6 +1815,16 @@ carries the format number and no release version.</p>
   <code>cli.Main(plugins...)</code> builds a momo binary with your own generator
   plugins; <code>cmd/momo</code> is a thin caller of it with the built-in <code>graphql</code>,
   <code>grpc</code>, <code>openapi</code> and <code>viz</code> plugins.</li>
+<li><code>internal/*</code>: helpers that are not API, which <code>schema</code>, <code>migrate</code> and <code>gen</code>
+  share with the packages built on them. <code>internal/schemautil</code> and
+  <code>internal/schemaops</code> hold the value-list check, full-text naming and vector
+  index rules of <code>schema</code>; <code>internal/sqlsplit</code>, <code>internal/sqlerr</code> and
+  <code>internal/redact</code> split migration files, match driver errors and redact URLs
+  for <code>migrate</code>, <code>importer</code> and the CLI; <code>internal/genutil</code>,
+  <code>internal/tagparse</code>, <code>internal/typemap</code> and <code>internal/pluralize</code> hold the
+  generator's identifier, tag grammar, Go type to SQL type and pluralization
+  rules; <code>internal/vectortype</code> renders the vector column types of MySQL and
+  SQLite. <code>internal/repocheck/testdata/packages.txt</code> gives each one a role.</li>
 <li><code>momovet</code> and <code>cmd/momovet</code>: the analyzer for non-constant raw SQL; see
   <a href="../momovet/">momovet</a>.</li>
 <li><code>momotest</code>: a schema or a rolled-back transaction per test with your

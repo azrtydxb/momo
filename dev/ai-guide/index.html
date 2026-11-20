@@ -4585,7 +4585,7 @@ steps.</p>
   with PostgreSQL row-level security: it is configured by your own
   <code>WithTxSetup</code> function, which reads whatever your code put in the context. To
   drive both from <code>WithTenant</code>, read the tenant there and call
-  <code>SetConfigLocal</code>. Without <code>WithImplicitTx</code>, non-transactional queries get no
+  <code>Tx.SetLocal</code>. Without <code>WithImplicitTx</code>, non-transactional queries get no
   setting.</li>
 <li><code>WithImplicitTx</code> and RETURNING writes: on an unpinned <code>*DB</code> configured with
   <code>WithImplicitTx</code>, read the rows of <code>Insert</code>, <code>Update</code> or <code>Delete</code> with
