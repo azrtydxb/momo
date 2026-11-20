@@ -247,6 +247,13 @@ var features = []feature{
 		MySQL:  "`ErrUnsupported`: a declaration is a generator error, and `momo.SetActor`, `momo.HistoryOf` and `momo.HistoryAsOf` return `ErrUnsupported`, because MySQL and MariaDB have no transaction-local setting to carry the actor",
 	},
 	{
+		Name:   "Transactional outbox",
+		API:    []string{"outbox.New", "outbox.Outbox", "outbox.Relay", "outbox.Publisher", "outbox.WithListen"},
+		PG:     "yes: `outbox.Outbox.Add` writes the event in the caller's transaction and sends `NOTIFY`; `outbox.Relay` claims batches with `FOR UPDATE SKIP LOCKED` and a lease, publishes with no lock held, retries with backoff up to a maximum of attempts, keeps the order of each key, and wakes on `NOTIFY` through `outbox.WithListen` with polling as the fallback; several relays in several processes share one table",
+		SQLite: "yes: the same table, `outbox.Outbox.Add` and `outbox.Relay`, polling only; the single writer serializes the claims, and `outbox.WithListen` is `ErrUnsupported`",
+		MySQL:  "yes on MySQL 8.4, MySQL 9.7 and MariaDB 11.8: the claim is one short `READ COMMITTED` transaction that selects with `FOR UPDATE SKIP LOCKED`, leases the rows and commits before anything is published; polling only, `outbox.WithListen` is `ErrUnsupported`; a server before MySQL 8.0 or MariaDB 10.6 makes `outbox.Relay.Run` return `ErrUnsupported`",
+	},
+	{
 		Name:   "Embeddings kept in sync with their source columns (`embed_from`)",
 		API:    []string{"vector.Embedder", "vector.SourceHash"},
 		PG:     "yes: the generator adds a `varchar(64)` hash column beside the `*vector.Vector` field, `momo.StaleEmbeddings` finds the rows whose source hash or NULL vector says they are out of date, and `momo.SyncEmbeddings` embeds them in batches with a compare-and-set write, no transaction held during the `vector.Embedder` call",

@@ -1348,6 +1348,30 @@ Issue #225: the adopt refusal gave only counts, `drift` on a database without hi
 - Not done: no `repair` command that applies the statements. A caller reviews and runs the script.
 - Review round: a create that replaces a withheld drop (same kind, schema, table, name: a changed view, trigger, policy, index or constraint) is withheld with it, so the script never prints an "already exists" create. `drift --version N` and `DriftOptions.Version` / `RepairOptions.Version` compare with the snapshot of exactly version N (the one `baseline --version N` checks), and `DriftReport.SnapshotVersion` names the one compared. A repair is complete only when nothing is withheld, unsupported or uncovered (a report entry no change touches: invalid index, unmanaged extension or schema) and no NOT NULL column was staged nullable; `Unverified` entries do not count, as in `drift`. `--fix-sql` keeps standard output SQL only (`no drift`, notes and reasons go to stderr) and notes that MySQL and MariaDB do not roll DDL back.
 
+## Outbox design (#251)
+
+Issue #251, PR #260: the transactional outbox (`outbox` package) with a relay.
+
+Decision (2026-11-18, the user, via AskUserQuestion): the outbox table is a model that users copy from docs/outbox.md; the package ships no importable model.
+
+Decision (2026-11-18, the user, via AskUserQuestion): a dead event keeps blocking the later events of its key until `Requeue` or a delete.
+
+Decision (2026-11-18, the user, via AskUserQuestion): MySQL and MariaDB are supported in this PR. The claim is a short READ COMMITTED transaction (`SELECT ... FOR UPDATE SKIP LOCKED`, `UPDATE` with the lease, commit) before anything is published, the server version is checked on the first claim (MySQL 8.0, MariaDB 10.6; older is `ErrUnsupported`), and the relay polls because there is no LISTEN.
+
+Integrator notes, decided and not asked:
+
+- Delivery is at least once: an event is published again after a relay crashes between the publish and the mark, or when a publish outlives the lease. `Event.ID` is stable and is the deduplication key.
+- Order per key is the id order, and an event is claimed only when no earlier event of its key is unpublished. PostgreSQL assigns the id at insert, not at commit, so writers of one key must be serialized by the application (documented in docs/outbox.md).
+- Lease and backoff use the clock of the process that claims, so relay hosts need agreeing clocks.
+- The table has two plain indexes instead of partial ones, because MySQL and MariaDB have no partial indexes.
+- Times are bound as UTC `time.Time` on PostgreSQL and as fixed-width UTC text on SQLite, MySQL and MariaDB.
+- `Event.Attempt` is the number of the attempt that is starting, 1 for the first, on every database. PostgreSQL and SQLite return the row from the claiming UPDATE; the MySQL claim selects before it leases, so the relay adds the counted attempt to the selected value.
+- The MySQL and MariaDB `payload` column stays `blob` (65,535 bytes): momo maps `[]byte` to `blob` there and the model's `type:` tag is one string for every database, so `longblob` would break PostgreSQL and SQLite. docs/outbox.md states the limit and gives the `ALTER TABLE ... MODIFY payload longblob` migration for larger events. Changing the global `[]byte` mapping on MySQL was not done: it is outside this PR.
+- Review round (the outcome fence): published, retry, dead and release match `attempts` as the claim counted it, and retry and dead also require the row pending, so a relay whose lease ended cannot overwrite the relay that holds the event. Zero rows affected is reported through `WithOnError` as an error wrapping the new `outbox.ErrLeaseLost` and sets `Outcome.LeaseLost` (Dead is then false). The stale event may be published twice, which at-least-once already allows. A `Requeue` resets attempts to 0, so a stale outcome of attempt 1 could match a requeued event that was claimed once more; requeue only touches dead events, so this was accepted.
+- A claim counts the attempt before the publish, so a crash during a publish consumes it. A claim that counts more attempts than the maximum marks the event dead without publishing it (last_error says the last attempt never ended) and reports it, so a poison event that kills the process stops after the maximum. A publish that outlives its lease on the last allowed attempt can leave a delivered event dead; documented.
+- Retry delays get 20 percent jitter either way, capped at the maximum, from an injectable random source (`export_test.go`), so tests stay deterministic. Unparsable headers and publisher panics (with the stack) go to `WithOnError`.
+- The Cleanup subselect has no ORDER BY on PostgreSQL and SQLite (the order only decides which rows a chunk takes); MySQL keeps it, where `DELETE ... ORDER BY ... LIMIT` needs it for the oldest-first chunk.
+
 ## Embedding sync design (#250)
 
 PR #257 keeps embeddings in sync with their source columns (`embed_from`). Four design points were put to the maintainer.

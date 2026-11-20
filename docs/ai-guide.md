@@ -2011,6 +2011,15 @@ func retrySerializable(ctx context.Context, db *momo.DB, fn func(tx *momo.Tx) er
 - Several momo helpers open their own transaction on a `*DB` and a savepoint on a
   `*Tx`: `Replace`, `CreateGraph`, chunked `InsertQuery.Models`, `vecsearch.With`.
 
+- Publish an event together with a data change through the transactional
+  outbox (which databases it runs on, and how the relay wakes on each, is in
+  [outbox](outbox.md) and the generated [capabilities](capabilities.md)):
+  declare the outbox table as a model, call `outbox.Outbox.Add(ctx, tx, event)` with the
+  `tx` that writes the data, and run `outbox.Relay.Run` with a `outbox.Publisher`
+  you implement. Delivery is at least once, so consumers deduplicate on
+  `outbox.Event.ID`; events with the same key keep their order. See
+  [outbox](outbox.md).
+
 Details: README section 8. Example: [transactions](../examples/transactions/).
 
 ## 8. Relations
