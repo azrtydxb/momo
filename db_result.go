@@ -21,7 +21,7 @@ const (
 // columnAssignable reports whether a write of the given kind may assign a
 // column with flags f. Identity and read-only columns are never written;
 // create-only and immutable columns are written by INSERT only.
-func columnAssignable(kind writeKind, f uint16) bool {
+func columnAssignable(kind writeKind, f ColumnFlags) bool {
 	if f&(FlagIdentity|FlagReadOnly) != 0 {
 		return false
 	}

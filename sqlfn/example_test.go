@@ -8,6 +8,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/sqlfn"
 )
 
@@ -17,7 +18,7 @@ func Example() {
 	title := momo.NewColumn[string]("docs", "title", 0)
 	pred := sqlfn.Lower(title).Eq("go")
 
-	b := momo.NewBuilder(dialect.For(dialect.Postgres))
+	b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	pred.AppendSQL(b)
 	fmt.Println(b.String(), b.Args())
 	// Output:
@@ -32,7 +33,7 @@ func ExampleCase() {
 		When(hits.Gt(100), "big").
 		Else("small")
 
-	b := momo.NewBuilder(dialect.For(dialect.Postgres))
+	b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	size.AppendSQL(b)
 	fmt.Println(b.String(), b.Args())
 	// Output:
@@ -43,7 +44,7 @@ func ExampleCase() {
 func ExampleAdd() {
 	hits := momo.NewColumn[int64]("docs", "hits", 0)
 
-	b := momo.NewBuilder(dialect.For(dialect.SQLite))
+	b := exprkit.NewBuilder(dialect.For(dialect.SQLite))
 	sqlfn.Add(hits, 5).AppendSQL(b)
 	fmt.Println(b.String(), b.Args())
 	// Output:
@@ -53,11 +54,11 @@ func ExampleAdd() {
 // CurrentSchema is current_schema() on PostgreSQL and fails the build with
 // ErrUnsupported on SQLite, which has no schemas.
 func ExampleCurrentSchema() {
-	pg := momo.NewBuilder(dialect.For(dialect.Postgres))
+	pg := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	sqlfn.CurrentSchema().AppendSQL(pg)
 	fmt.Println(pg.String())
 
-	lite := momo.NewBuilder(dialect.For(dialect.SQLite))
+	lite := exprkit.NewBuilder(dialect.For(dialect.SQLite))
 	sqlfn.CurrentSchema().AppendSQL(lite)
 	fmt.Println(errors.Is(lite.Err(), momo.ErrUnsupported))
 	// Output:
@@ -69,11 +70,11 @@ func ExampleCurrentSchema() {
 func ExampleCast() {
 	n := momo.NewColumn[int64]("docs", "n", 0)
 
-	ok := momo.NewBuilder(dialect.For(dialect.Postgres))
+	ok := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	sqlfn.Cast[float64](n, "numeric(10,2)").AppendSQL(ok)
 	fmt.Println(ok.String())
 
-	bad := momo.NewBuilder(dialect.For(dialect.Postgres))
+	bad := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	sqlfn.Cast[float64](n, "int); DROP TABLE docs; --").AppendSQL(bad)
 	fmt.Println(errors.Is(bad.Err(), momo.ErrValidation))
 	// Output:

@@ -8,6 +8,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -70,7 +71,7 @@ func (x DaysExpr) AppendSQL(b *momo.Builder) {
 // appendDate renders a date operand. On PostgreSQL a bound date is cast to
 // date, because the server cannot type a bare parameter next to + or -.
 func appendDate(b *momo.Builder, e momo.Expression[types.Date]) {
-	if b.Dialect().Name == dialect.Postgres && momo.IsBound(e) {
+	if b.Dialect().Name == dialect.Postgres && exprkit.IsBound(e) {
 		b.WriteString("CAST(")
 		e.AppendSQL(b)
 		b.WriteString(" AS date)")
@@ -83,10 +84,10 @@ func appendDate(b *momo.Builder, e momo.Expression[types.Date]) {
 // dialect without special dates, where the database would turn it into NULL
 // or a zero date instead of an error.
 func checkFinite(b *momo.Builder, e momo.Expression[types.Date]) {
-	if b.Dialect().Name == dialect.Postgres || !momo.IsBound(e) {
+	if b.Dialect().Name == dialect.Postgres || !exprkit.IsBound(e) {
 		return
 	}
-	probe := momo.NewBuilder(b.Dialect())
+	probe := exprkit.NewBuilder(b.Dialect())
 	e.AppendSQL(probe)
 	for _, a := range probe.Args() {
 		if d, ok := a.(types.Date); ok && !d.IsFinite() {
@@ -143,7 +144,7 @@ func addDays(d momo.Expression[types.Date], n momo.Expression[int32], lit *int32
 			b.WriteString("(")
 			appendDate(b, d)
 			b.WriteString(" + ")
-			if momo.IsBound(n) {
+			if exprkit.IsBound(n) {
 				// An untyped parameter next to a date is ambiguous between
 				// integer and interval.
 				b.WriteString("CAST(")
@@ -178,7 +179,7 @@ func addDays(d momo.Expression[types.Date], n momo.Expression[int32], lit *int32
 			n.AppendSQL(b)
 			b.WriteString(" AS INTEGER) || ' days')")
 		default:
-			b.Unsupported("AddDays")
+			exprkit.Unsupported(b, "AddDays")
 		}
 	})
 }
@@ -221,7 +222,7 @@ func DaysBetween(a, b momo.Expression[types.Date]) DaysExpr {
 			b.AppendSQL(bld)
 			bld.WriteString(") AS INTEGER)")
 		default:
-			bld.Unsupported("DaysBetween")
+			exprkit.Unsupported(bld, "DaysBetween")
 		}
 	})
 }
@@ -237,7 +238,7 @@ func CurrentDate() Expr {
 func Infinity() Expr {
 	return newExpr(func(b *momo.Builder) {
 		if b.Dialect().Name != dialect.Postgres {
-			b.Unsupported("infinity timestamps")
+			exprkit.Unsupported(b, "infinity timestamps")
 			return
 		}
 		b.WriteString("'infinity'::timestamptz")
@@ -249,7 +250,7 @@ func Infinity() Expr {
 func NegInfinity() Expr {
 	return newExpr(func(b *momo.Builder) {
 		if b.Dialect().Name != dialect.Postgres {
-			b.Unsupported("infinity timestamps")
+			exprkit.Unsupported(b, "infinity timestamps")
 			return
 		}
 		b.WriteString("'-infinity'::timestamptz")

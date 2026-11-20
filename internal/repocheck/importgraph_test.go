@@ -35,6 +35,10 @@ var coreAllowed = map[string]bool{
 	// The search-text parser of hybrid search; it imports only the standard
 	// library.
 	modPath + "/internal/ftsquery": true,
+
+	// The registry through which the root hands its extension internals to the
+	// feature packages; it imports only the standard library and dialect.
+	modPath + "/internal/bridge": true,
 }
 
 func TestImportGraph(t *testing.T) {

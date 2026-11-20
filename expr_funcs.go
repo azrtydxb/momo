@@ -67,16 +67,11 @@ type intLit int
 
 func (n intLit) AppendSQL(b *Builder) { b.WriteString(strconv.Itoa(int(n))) }
 
-// validTypeName is the in-package spelling of ValidTypeName.
-func validTypeName(s string) error { return ValidTypeName(s) }
-
-// ValidTypeName checks a "word word(1,2)" shaped SQL type name: words of
+// validTypeName checks a "word word(1,2)" shaped SQL type name: words of
 // letters, digits and underscores separated by single spaces, with an
 // optional (n) or (n,m) suffix, such as bigint, double precision or
-// numeric(10,2). It returns a descriptive error otherwise. Code outside the
-// package uses it to check a type name before writing it into a CAST.
-// ValidTypeName is an extension point; see Ops.
-func ValidTypeName(s string) error {
+// numeric(10,2). It returns a descriptive error otherwise.
+func validTypeName(s string) error {
 	base, suffix, hasParen := strings.Cut(s, "(")
 	if hasParen {
 		nums, ok := strings.CutSuffix(suffix, ")")

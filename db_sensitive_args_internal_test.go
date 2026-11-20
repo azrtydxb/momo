@@ -14,8 +14,8 @@ func TestSensitiveTupleInAndPKPredicateMarkArgs(t *testing.T) {
 		p    Predicate
 		want []int
 	}{
-		"single column tuple": {inTuple{table: "t", cols: []string{"k"}, keys: [][]any{{"s1"}, {"s2"}}, flags: []uint16{FlagSensitive}}, []int{0, 1}},
-		"composite row value": {inTuple{table: "t", cols: []string{"a", "k"}, keys: [][]any{{1, "s1"}, {2, "s2"}}, flags: []uint16{0, FlagSensitive}}, []int{1, 3}},
+		"single column tuple": {inTuple{table: "t", cols: []string{"k"}, keys: [][]any{{"s1"}, {"s2"}}, flags: []ColumnFlags{FlagSensitive}}, []int{0, 1}},
+		"composite row value": {inTuple{table: "t", cols: []string{"a", "k"}, keys: [][]any{{1, "s1"}, {2, "s2"}}, flags: []ColumnFlags{0, FlagSensitive}}, []int{1, 3}},
 		"unflagged tuple":     {inTuple{table: "t", cols: []string{"k"}, keys: [][]any{{"s1"}}}, nil},
 		"primary key":         {updPKEq{"t", "id", "s1", FlagPK | FlagSensitive}, []int{0}},
 		"plain primary key":   {updPKEq{"t", "id", 1, FlagPK}, nil},

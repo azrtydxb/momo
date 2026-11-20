@@ -59,7 +59,7 @@ func TestDistanceArgMaskedForSensitiveColumn(t *testing.T) {
 		},
 	}
 	for name, newDriver := range drivers {
-		for _, flags := range []uint16{momo.FlagSensitive, 0} {
+		for _, flags := range []momo.ColumnFlags{momo.FlagSensitive, 0} {
 			masked := flags&momo.FlagSensitive != 0
 			t.Run(name, func(t *testing.T) {
 				col := momo.NewVectorColumn[vector.Vector]("documents", "emb", 3, flags)
@@ -77,7 +77,7 @@ func TestDistanceArgMaskedForSensitiveColumn(t *testing.T) {
 // TestSQLiteHammingArgMasked covers the sqlite-vec bit-vector path that wraps
 // both operands in vec_bit.
 func TestSQLiteHammingArgMasked(t *testing.T) {
-	for _, flags := range []uint16{momo.FlagSensitive, 0} {
+	for _, flags := range []momo.ColumnFlags{momo.FlagSensitive, 0} {
 		masked := flags&momo.FlagSensitive != 0
 		col := momo.NewVectorColumn[vector.Bits]("documents", "bits", 8, flags)
 		seen, sent := hookArgs(t, fakedriver.New(dialect.SQLite), func(db *momo.DB) momo.SelectQuery[suite.Document] {
@@ -104,7 +104,7 @@ func TestPostgresHammingArgMasked(t *testing.T) {
 // column in a WHERE clause shows its query vector as RedactedArg when either
 // the vector column or the compared column is sensitive.
 func TestDistanceInPredicateMasksWithSensitiveColumn(t *testing.T) {
-	for name, c := range map[string]struct{ vecFlags, scalarFlags uint16 }{
+	for name, c := range map[string]struct{ vecFlags, scalarFlags momo.ColumnFlags }{
 		"sensitive vector column": {momo.FlagSensitive, 0},
 		"sensitive scalar column": {0, momo.FlagSensitive},
 	} {

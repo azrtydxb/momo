@@ -13,15 +13,29 @@ import (
 // the sqlfn package (CaseExpr, ArithExpr, CastExpr, ConcatExpr, LengthExpr)
 // embed it, so each method exists once.
 //
-// Ops is an extension point. Embedding momo.Ops[T] in your own struct makes
-// that struct an Expression[T] (an Expression[bool] is a Predicate), which is
-// how code outside this package defines custom expressions. Build the Ops
-// value with NewOps and give it the finished host, then write the host's
-// AppendSQL with Builder.Ident for identifiers and Builder.Arg (or ArgFor) for
-// values, never by concatenating text into the SQL.
+// Ops is the center of the frozen extension API, the small surface that code
+// outside this module may build custom expressions on. It is Expr,
+// Expression[T], Ops, NewOps, Typed, Flagged and the Builder methods Ident,
+// Arg, Dialect, SetErr and WriteString; nothing else is promised. Embedding
+// momo.Ops[T] in your own struct makes that struct an Expression[T] (an
+// Expression[bool] is a Predicate). Build the Ops value with NewOps and give it
+// the finished host, then write the host's AppendSQL with Builder.WriteString
+// for the fixed SQL text, Builder.Ident for identifiers and Builder.Arg for
+// values, never by concatenating text into the SQL. Report a bad argument or a
+// dialect the expression cannot express with Builder.SetErr, using an *Error
+// of kind ErrValidation or ErrUnsupported, and read Builder.Dialect to choose
+// the SQL.
+//
+// A host that wraps a column implements Flagged, returning the wrapped
+// column's flags, so the comparison methods of Ops mask a value compared with
+// a sensitive column in hook events. A value that a custom AppendSQL binds
+// with Arg itself is not masked; compare through the Ops methods when the
+// operand can be a sensitive column.
 //
 // The zero value is not bound to a host: rendering a comparison made from it
-// fails the build with ErrValidation.
+// fails the build with ErrValidation. The packages of this module (agg, fts,
+// jsonop, sqlfn, timeop, vecop and the others) use the same API plus an
+// internal bridge that is not part of the promise.
 type Ops[T any] struct{ self Expr }
 
 // exprOps is the in-package spelling of Ops, kept so the embedding sites read
@@ -35,7 +49,7 @@ type exprOps[T any] = Ops[T]
 //	u := upper{src: src}
 //	u.Ops = momo.NewOps[string](u)
 //
-// NewOps is an extension point; see Ops.
+// NewOps is part of the frozen extension API; see Ops.
 func NewOps[T any](host Expr) Ops[T] { return Ops[T]{host} }
 
 // selfOps binds the embedded methods to the host expression e.

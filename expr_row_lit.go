@@ -57,14 +57,14 @@ func (r RowExpr) Gt(other RowExpr) Predicate { return r.cmp(" > ", other) }
 func (r RowExpr) Ge(other RowExpr) Predicate { return r.cmp(" >= ", other) }
 
 func (r RowExpr) cmp(op string, other RowExpr) Predicate {
-	return PredicateFunc(func(b *Builder) {
+	return predicateFunc(func(b *Builder) {
 		if len(r.elems) < 2 || len(r.elems) != len(other.elems) {
 			b.SetErr(&Error{Kind: ErrValidation, Op: "build", Err: fmt.Errorf("row comparison needs two rows of the same length of at least 2, got %d and %d", len(r.elems), len(other.elems))})
 			b.WriteString("1 = 0")
 			return
 		}
 		if !b.Dialect().RowValues {
-			b.Unsupported("row-value comparison")
+			b.unsupported("row-value comparison")
 			return
 		}
 		r.AppendSQL(b)

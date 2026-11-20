@@ -34,9 +34,15 @@ type View struct{}
 // projections. Its fields are scanned positionally from the select list.
 type Projection struct{}
 
+// ColumnFlags is the set of Flag* bits a column descriptor carries. Generated
+// code passes them to the New*Column constructors and in ColumnMeta; an
+// expression that wraps a column reports them through Flagged. The zero value
+// is no flag.
+type ColumnFlags uint16
+
 // Column flags carried by generated column descriptors and ColumnMeta.
 const (
-	FlagPK uint16 = 1 << iota
+	FlagPK ColumnFlags = 1 << iota
 	FlagUnique
 	FlagNullable
 	FlagIdentity // generated identity; omitted from inserts
@@ -58,7 +64,7 @@ const (
 // ColumnMeta describes one mapped field.
 type ColumnMeta struct {
 	Name  string
-	Flags uint16
+	Flags ColumnFlags
 }
 
 // Meta is the generated, reflection-free description of a model or
@@ -128,17 +134,6 @@ type Modeler[T any] interface {
 func metaOf[T any, PT Modeler[T]]() *Meta[T] {
 	var p PT // nil pointer; generated MomoMeta never dereferences its receiver
 	return p.MomoMeta()
-}
-
-// MetaTableSchema returns the normalized table definition of model T from its
-// generated metadata, or nil for a projection. Package fts reads the model's
-// full-text declaration through it.
-func MetaTableSchema[T any, PT Modeler[T]]() *schema.Table {
-	m := metaOf[T, PT]()
-	if m == nil {
-		return nil
-	}
-	return m.TableSchema
 }
 
 // TableRef names a table source in FROM and JOIN clauses, optionally

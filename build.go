@@ -116,24 +116,26 @@ func (b *Builder) popScope() {
 	}
 }
 
-// NewBuilder returns a builder for the dialect.
-func NewBuilder(d *dialect.Dialect) *Builder { return &Builder{d: d} }
+// newBuilder returns a builder for the dialect.
+func newBuilder(d *dialect.Dialect) *Builder { return &Builder{d: d} }
 
-// Dialect returns the dialect being rendered.
+// Dialect returns the dialect being rendered, so a custom expression can
+// choose its SQL or refuse a dialect it cannot express. Part of the frozen
+// extension API; see Ops.
 func (b *Builder) Dialect() *dialect.Dialect { return b.d }
 
-// WriteString appends trusted SQL text.
+// WriteString appends trusted SQL text: keywords, operators and punctuation
+// that the expression itself fixes. Never pass a caller's string through it;
+// names go through Ident and values through Arg. Part of the frozen extension
+// API; see Ops.
 func (b *Builder) WriteString(s string) { b.buf = append(b.buf, s...) }
-
-// WriteByte appends a trusted SQL byte. It always returns nil; the error
-// result exists only so Builder satisfies io.ByteWriter.
-func (b *Builder) WriteByte(c byte) error { b.buf = append(b.buf, c); return nil }
 
 // writeByte appends a trusted SQL byte; internal renderers use it so no
 // always-nil error is discarded.
 func (b *Builder) writeByte(c byte) { b.buf = append(b.buf, c) }
 
-// Ident appends a quoted identifier.
+// Ident appends a quoted identifier. Part of the frozen extension API; see
+// Ops.
 func (b *Builder) Ident(name string) { b.buf = b.d.AppendIdent(b.buf, name) }
 
 // QualifiedIdent appends qualifier.name, both quoted. An empty qualifier
@@ -167,7 +169,8 @@ type DialectValuer interface {
 	DialectValue(d dialect.Name) (any, error)
 }
 
-// Arg appends a bind placeholder and records v as its argument.
+// Arg appends a bind placeholder and records v as its argument. Part of the
+// frozen extension API; see Ops.
 func (b *Builder) Arg(v any) {
 	if isNilVectorPointer(v) {
 		v = nil // a nil pointer would panic in the promoted DialectValue
@@ -199,11 +202,11 @@ func (b *Builder) Arg(v any) {
 	b.buf = b.d.AppendPlaceholder(b.buf, len(b.args))
 }
 
-// ArgFor binds v like Arg and records it as sensitive when flags carries
+// argFor binds v like Arg and records it as sensitive when flags carries
 // FlagSensitive, so QueryEvent.Args shows RedactedArg instead of the value.
-// Take flags from FlagsOf of the column the value is compared with, or from
-// RenderSensitive. ArgFor is an extension point; see Ops.
-func (b *Builder) ArgFor(flags uint16, v any) {
+// Take flags from flagsOf of the column the value is compared with, or from
+// renderSens.
+func (b *Builder) argFor(flags ColumnFlags, v any) {
 	prev := b.argSens
 	b.argSens = prev || flags&FlagSensitive != 0
 	if !bindMySQLVector(b, v) {
@@ -212,11 +215,10 @@ func (b *Builder) ArgFor(flags uint16, v any) {
 	b.argSens = prev
 }
 
-// RenderSensitive renders e and returns flags with FlagSensitive added when e
+// renderSens renders e and returns flags with FlagSensitive added when e
 // read a sensitive column. The result is the flag to bind the other operands
-// of the predicate with, through ArgFor or ExprFor. RenderSensitive is an
-// extension point; see Ops.
-func (b *Builder) RenderSensitive(e Expr, flags uint16) uint16 {
+// of the predicate with, through argFor or exprFor.
+func (b *Builder) renderSens(e Expr, flags ColumnFlags) ColumnFlags {
 	n := b.sensSeen
 	e.AppendSQL(b)
 	if b.sensSeen != n {
@@ -225,18 +227,18 @@ func (b *Builder) RenderSensitive(e Expr, flags uint16) uint16 {
 	return flags
 }
 
-// MarkSensitive records that the expression being rendered read a sensitive
+// markSensitive records that the expression being rendered read a sensitive
 // column, so an enclosing predicate that compares it masks its other operands
-// in hook events. A column reference does this by itself; call MarkSensitive
-// from a custom expression that writes a sensitive column's identifier
-// directly with Ident or QualifiedIdent instead of rendering the column. It
-// does not change the SQL. MarkSensitive is an extension point; see Ops.
-func (b *Builder) MarkSensitive() { b.sensSeen++ }
+// in hook events. A column reference does this by itself; call markSensitive
+// from an expression that writes a sensitive column's identifier directly
+// with Ident or QualifiedIdent instead of rendering the column. It does not
+// change the SQL.
+func (b *Builder) markSensitive() { b.sensSeen++ }
 
-// ExprFor renders e with every argument it binds recorded as sensitive when
+// exprFor renders e with every argument it binds recorded as sensitive when
 // flags carries FlagSensitive, for an expression compared with or assigned to
-// such a column. ExprFor is an extension point; see Ops.
-func (b *Builder) ExprFor(flags uint16, e Expr) {
+// such a column.
+func (b *Builder) exprFor(flags ColumnFlags, e Expr) {
 	prev := b.argSens
 	b.argSens = prev || flags&FlagSensitive != 0
 	e.AppendSQL(b)
@@ -244,7 +246,9 @@ func (b *Builder) ExprFor(flags uint16, e Expr) {
 }
 
 // SetErr records the first build error; rendering continues but the
-// statement will not be executed.
+// statement will not be executed. A custom expression reports a bad argument
+// or a dialect it cannot express through it, with an *Error of kind
+// ErrValidation or ErrUnsupported. Part of the frozen extension API; see Ops.
 func (b *Builder) SetErr(err error) {
 	if b.err == nil {
 		b.err = err
@@ -275,31 +279,12 @@ func (b *Builder) checkBindCap(n int, what string) bool {
 	return false
 }
 
-// Unsupported records an ErrUnsupported build error for feature, naming the
-// dialect being rendered. Call it from a custom expression that the dialect
-// cannot express, instead of rendering SQL that would fail at the database.
-// Unsupported is an extension point; see Ops.
-func (b *Builder) Unsupported(feature string) {
+// unsupported records an ErrUnsupported build error for feature, naming the
+// dialect being rendered, instead of rendering SQL that would fail at the
+// database.
+func (b *Builder) unsupported(feature string) {
 	b.SetErr(newError(ErrUnsupported, "build", "", fmt.Errorf("%s is not supported by %s", feature, b.d.Name)))
 }
-
-// AppendFilter writes " FILTER (WHERE p)" for an aggregate call that was just
-// rendered. A nil predicate fails the build with ErrValidation instead of
-// silently leaving the aggregate unfiltered; MySQL has no FILTER clause and
-// fails with ErrUnsupported, so an aggregate that wants MySQL support rewrites
-// its own arguments to CASE WHEN p THEN x END instead of calling this.
-// AppendFilter is an extension point; see Ops.
-func (b *Builder) AppendFilter(p Predicate) { appendFilter(b, p) }
-
-// The unexported spellings below are the in-package names of the extension
-// methods above; they only forward, so each behaviour has one implementation.
-func (b *Builder) argFor(flags uint16, v any) { b.ArgFor(flags, v) }
-
-func (b *Builder) renderSens(e Expr, flags uint16) uint16 { return b.RenderSensitive(e, flags) }
-
-func (b *Builder) exprFor(flags uint16, e Expr) { b.ExprFor(flags, e) }
-
-func (b *Builder) unsupported(feature string) { b.Unsupported(feature) }
 
 // Compiled is a rendered statement ready for inspection or execution.
 type Compiled struct {

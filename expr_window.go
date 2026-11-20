@@ -358,15 +358,6 @@ func newWindowExpr[T any](call Expr, name string, needOrder, noFrame bool, w Win
 	return e
 }
 
-// WindowOf turns the aggregate call into a window function: call OVER (...).
-// Code outside this package that defines its own aggregate type (agg.Call)
-// builds its Over method on it; call must write identifiers through
-// Builder.Ident and values through Builder.Arg. WindowOf is an extension
-// point; see Ops.
-func WindowOf[T any](call Expr, w WindowSpec) WindowExpr[T] {
-	return newWindowExpr[T](call, "", false, false, w)
-}
-
 // Over turns an aggregate into a window function: SUM(x) OVER (...).
 func (a Agg[T]) Over(w WindowSpec) WindowExpr[T] { return newWindowExpr[T](a, "", false, false, w) }
 

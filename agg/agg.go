@@ -7,9 +7,8 @@
 // core: it is aliased with As, compared in HAVING through the embedded Ops,
 // and turned into a window function with Over.
 //
-// The package builds on the exported extension API of the root package (Ops,
-// Order.AppendOrder, Builder.AppendFilter, WindowOf, ValidName and the Builder
-// methods) and no unexported name.
+// The package builds on the frozen extension API of the root package plus
+// internal/exprkit, and no unexported name.
 package agg
 
 import (
@@ -22,6 +21,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -147,7 +147,7 @@ func appendOrders(b *momo.Builder, orders []momo.Order) {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		o.AppendOrder(b)
+		exprkit.AppendOrder(b, o)
 	}
 }
 
@@ -198,18 +198,18 @@ func (s spec) checkEmulatedFilter(b *momo.Builder) bool {
 	case s.ordered || len(s.within) > 0 || s.kind == kindArray:
 		return true // appendCall reports these as unsupported on MySQL
 	case s.kind == kindJSON:
-		b.Unsupported("aggregate FILTER on a JSON array aggregate (JSON_ARRAYAGG keeps NULLs, so the CASE WHEN rewrite would add a null element per filtered-out row; filter in a subquery or WHERE instead)")
+		exprkit.Unsupported(b, "aggregate FILTER on a JSON array aggregate (JSON_ARRAYAGG keeps NULLs, so the CASE WHEN rewrite would add a null element per filtered-out row; filter in a subquery or WHERE instead)")
 		return false
 	case s.kind == kindGeneric && !filterSkipsNull[strings.ToLower(s.name)]:
-		b.Unsupported("aggregate FILTER on " + s.name + " (only COUNT, SUM, AVG, MIN, MAX and the STD and VAR family are known to skip NULLs, which the CASE WHEN rewrite needs; filter in a subquery or WHERE instead)")
+		exprkit.Unsupported(b, "aggregate FILTER on "+s.name+" (only COUNT, SUM, AVG, MIN, MAX and the STD and VAR family are known to skip NULLs, which the CASE WHEN rewrite needs; filter in a subquery or WHERE instead)")
 		return false
 	case len(s.args) == 0:
-		b.Unsupported("aggregate FILTER on a call with no argument")
+		exprkit.Unsupported(b, "aggregate FILTER on a call with no argument")
 		return false
 	}
 	for _, a := range s.args {
 		if renderOne(b, a) == "*" {
-			b.Unsupported("aggregate FILTER on " + s.name + "(*) (the CASE WHEN rewrite cannot wrap *; use momo.CountAll().Filter(p) for COUNT(*))")
+			exprkit.Unsupported(b, "aggregate FILTER on "+s.name+"(*) (the CASE WHEN rewrite cannot wrap *; use momo.CountAll().Filter(p) for COUNT(*))")
 			return false
 		}
 	}
@@ -222,7 +222,7 @@ func (s spec) appendSQL(b *momo.Builder) {
 	}
 	s.appendCall(b)
 	if s.filtered && !s.emulateFilter(b) {
-		b.AppendFilter(s.filter)
+		exprkit.AppendFilter(b, s.filter)
 	}
 }
 
@@ -243,7 +243,7 @@ func (s spec) appendCall(b *momo.Builder) {
 		fail(b, errors.New("WithinGroup applies only to ordered-set aggregates (PercentileCont, PercentileDisc); use OrderBy for the order inside the call"))
 		return
 	case len(s.within) > 0 && dn != dialect.Postgres:
-		b.Unsupported("WITHIN GROUP")
+		exprkit.Unsupported(b, "WITHIN GROUP")
 		return
 	}
 	if s.distinct && !s.checkDistinct(b) {
@@ -255,30 +255,30 @@ func (s spec) appendCall(b *momo.Builder) {
 		return
 	case kindArray:
 		if dn != dialect.Postgres {
-			b.Unsupported("array_agg")
+			exprkit.Unsupported(b, "array_agg")
 			return
 		}
 		name = "array_agg"
 	case kindJSON:
 		if s.distinct && dn == dialect.MySQL {
-			b.Unsupported("JSON_ARRAYAGG(DISTINCT ...)")
+			exprkit.Unsupported(b, "JSON_ARRAYAGG(DISTINCT ...)")
 			return
 		}
 		name = map[dialect.Name]string{dialect.Postgres: "jsonb_agg", dialect.SQLite: "json_group_array", dialect.MySQL: "JSON_ARRAYAGG"}[dn]
 	default:
 		for _, part := range strings.Split(name, ".") {
-			if err := momo.ValidName(part); err != nil {
+			if err := exprkit.ValidName(part); err != nil {
 				fail(b, fmt.Errorf("aggregate name %q: %w", name, err))
 				return
 			}
 		}
 	}
 	if len(s.orderBy) > 0 && dn == dialect.MySQL {
-		b.Unsupported("aggregate ORDER BY")
+		exprkit.Unsupported(b, "aggregate ORDER BY")
 		return
 	}
 	b.WriteString(name)
-	_ = b.WriteByte('(')
+	b.WriteString("(")
 	if s.distinct {
 		b.WriteString("DISTINCT ")
 	}
@@ -291,11 +291,11 @@ func (s spec) appendCall(b *momo.Builder) {
 		b.WriteString(" ORDER BY ")
 		appendOrders(b, s.orderBy)
 	}
-	_ = b.WriteByte(')')
+	b.WriteString(")")
 	if len(s.within) > 0 {
 		b.WriteString(" WITHIN GROUP (ORDER BY ")
 		appendOrders(b, s.within)
-		_ = b.WriteByte(')')
+		b.WriteString(")")
 	}
 }
 
@@ -326,7 +326,7 @@ func (s spec) checkDistinct(b *momo.Builder) bool {
 // renderOne renders v (an expression, or a value bound as a parameter) on its
 // own, to compare two expressions by their SQL.
 func renderOne(b *momo.Builder, v any) string {
-	t := momo.NewBuilder(b.Dialect())
+	t := exprkit.NewBuilder(b.Dialect())
 	if e, ok := v.(momo.Expr); ok {
 		e.AppendSQL(t)
 	} else {
@@ -355,7 +355,7 @@ func (s spec) appendString(b *momo.Builder) {
 		return
 	case dialect.SQLite:
 		if s.distinct {
-			b.Unsupported("group_concat(DISTINCT ..., separator)")
+			exprkit.Unsupported(b, "group_concat(DISTINCT ..., separator)")
 			return
 		}
 		b.WriteString("group_concat(")
@@ -371,7 +371,7 @@ func (s spec) appendString(b *momo.Builder) {
 		b.WriteString(" ORDER BY ")
 		appendOrders(b, s.orderBy)
 	}
-	_ = b.WriteByte(')')
+	b.WriteString(")")
 }
 
 // stringLiteral quotes s as a SQL string literal. It is a literal and not a

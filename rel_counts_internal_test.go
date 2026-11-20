@@ -210,7 +210,7 @@ func TestCountQueriesMaskOnlyTheKeyHoldingSide(t *testing.T) {
 	cases := []struct {
 		name                  string
 		kind                  RelationKind
-		parentFlag, childFlag uint16
+		parentFlag, childFlag ColumnFlags
 		masked                bool
 	}{
 		{"has many sensitive child", HasMany, 0, FlagSensitive, true},

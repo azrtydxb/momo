@@ -36,7 +36,7 @@ func TestTimeExpressionsMaskComparedArgs(t *testing.T) {
 					label = "sensitive"
 				}
 				t.Run(string(d)+"/"+name+"/"+label, func(t *testing.T) {
-					var flags uint16
+					var flags momo.ColumnFlags
 					if sensitive {
 						flags = momo.FlagSensitive
 					}

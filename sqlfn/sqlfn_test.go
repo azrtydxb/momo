@@ -261,7 +261,7 @@ func TestCastTypeValidation(t *testing.T) {
 // column through the plain argument path, leaking it into hook events.
 func TestComparisonsMaskSensitiveColumn(t *testing.T) {
 	for _, sensitive := range []bool{true, false} {
-		var fl uint16
+		var fl momo.ColumnFlags
 		if sensitive {
 			fl = momo.FlagSensitive
 		}
