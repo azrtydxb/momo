@@ -91,7 +91,7 @@ schemas without being fooled by spelling differences.
 - Errors: one `Error` type and the `Err*` sentinels. Match them with
   `errors.Is`, never on message text.
 - The expression extension API: `Expr`, `Expression`, `Ops`, `NewOps`,
-  `Typed` and `Flagged`, with the `Builder` methods `Ident`, `Arg`, `Dialect`,
+  `Typed` and `Flagged`, with the `Builder` methods `Ident`, `Arg`, `momo.Builder.Dialect`,
   `SetErr` and `WriteString`. This is all that code outside the module needs to
   define a typed expression, and it is frozen; see the
   [compatibility policy](compatibility.md#the-expression-extension-api).

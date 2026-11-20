@@ -31,7 +31,10 @@ func init() {
 			appendFilter(b.(*Builder), pred)
 		},
 		Unsupported: func(b any, feature string) { b.(*Builder).unsupported(feature) },
-		IsBound:     func(e any) bool { return isBound(e.(Expr)) },
+		IsBound: func(e any) bool {
+			x, _ := e.(Expr) // a nil expression is not bound
+			return isBound(x)
+		},
 		WindowCall: func(call, w any) any {
 			return newWindowExpr[any](call.(Expr), "", false, false, w.(WindowSpec))
 		},

@@ -230,7 +230,7 @@ refuse any other option with `ErrValidation`. Two differences to know:
 Code outside this module may define its own typed expressions, and the surface
 for that is now frozen and small: `momo.Expr`, `momo.Expression`, `momo.Ops`,
 `momo.NewOps`, `momo.Typed` and `momo.Flagged`, and on `*momo.Builder` the
-methods `Ident`, `Arg`, `Dialect`, `SetErr` and `WriteString`. The other names
+methods `Ident`, `Arg`, `momo.Builder.Dialect`, `SetErr` and `WriteString`. The other names
 that the docs called extension points moved behind an internal bridge that only
 the packages of this module (`agg`, `arrayop`, `fts`, `jsonop`, `rangeop`,
 `sqlfn`, `timeop` and `vecop`) can import. They stay as deprecated forwarders
@@ -246,7 +246,7 @@ move off them before the next release, which removes them.
 | `(*momo.Builder).ExprFor`                 | no replacement; `momo.Ops` comparisons do this for the host                                                                                           |
 | `(*momo.Builder).MarkSensitive`           | no replacement; a column reference records itself when it renders                                                                                     |
 | `(*momo.Builder).AppendFilter`            | no replacement outside the module; `agg.Call.Filter` and `momo.FilteredAgg` write the clause                                                          |
-| `(*momo.Builder).Unsupported`             | `SetErr` with a `*momo.Error` whose `Kind` is `momo.ErrUnsupported`                                                                                   |
+| `(*momo.Builder).Unsupported`             | `SetErr` with a `*momo.Error` carrying a kind `momo.ErrUnsupported`                                                                                   |
 | `momo.FlagsOf`                            | assert `momo.Flagged` on the expression                                                                                                               |
 | `momo.IsBound`                            | no replacement                                                                                                                                        |
 | `momo.PredicateFunc`                      | a type that embeds `momo.Ops[bool]`, or `momo.Typed[bool]` around an `momo.Expr`                                                                      |
