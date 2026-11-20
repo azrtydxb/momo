@@ -79,7 +79,7 @@ func TestStringFunctionsGolden(t *testing.T) {
 		e    momo.Expr
 		want string
 	}{
-		{dialect.Postgres, sqlfn.SubstrFrom(docTitle, 4), `substr("documents"."title", 4)`},
+		{dialect.Postgres, sqlfn.SubstrToEnd(docTitle, 4), `substr("documents"."title", 4)`},
 		{dialect.Postgres, sqlfn.Lower(docTitle), `lower("documents"."title")`},
 		{dialect.SQLite, sqlfn.Upper(docTitle), `upper("documents"."title")`},
 		{dialect.Postgres, sqlfn.Length(docTitle), `length("documents"."title")`},

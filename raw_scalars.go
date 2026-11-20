@@ -4,12 +4,19 @@ package momo
 
 import "context"
 
-// Scalars renders sql through the raw path (see Exec: '?' binds, "??" is a
+// Scalars is QueryScalars.
+//
+// Deprecated: use QueryScalars. Scalars is removed in the next release.
+func Scalars[V any](ctx context.Context, q Querier, sql string, args ...any) ([]V, error) {
+	return QueryScalars[V](ctx, q, sql, args...)
+}
+
+// QueryScalars renders sql through the raw path (see Exec: '?' binds, "??" is a
 // literal '?', Expr arguments render inline, an argument-count mismatch is a
 // build error; on PostgreSQL native $n placeholders bind argument n, see
 // SQL) and returns the first column of every row as V. An empty
 // result returns a nil slice and a nil error.
-func Scalars[V any](ctx context.Context, q Querier, sql string, args ...any) ([]V, error) {
+func QueryScalars[V any](ctx context.Context, q Querier, sql string, args ...any) ([]V, error) {
 	c, err := compile(q.Dialect(), func(b *Builder) { b.appendRaw(sql, args) })
 	if err != nil {
 		return nil, err

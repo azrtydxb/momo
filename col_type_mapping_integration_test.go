@@ -56,7 +56,7 @@ func roundTripAll[T any](eq func(got, want T) bool, wants ...T) liveCase {
 				t.Fatalf("insert %#v into %s: %v", w, colType, err)
 			}
 		}
-		got, err := momo.Scalars[T](ctx, db, "SELECT v FROM "+tbl+" ORDER BY id")
+		got, err := momo.QueryScalars[T](ctx, db, "SELECT v FROM "+tbl+" ORDER BY id")
 		if err != nil {
 			t.Fatalf("select %s: %v", colType, err)
 		}
@@ -257,7 +257,7 @@ func TestTypeMappingTimestamps(t *testing.T) {
 	if _, err := momo.Exec(ctx, db, "INSERT INTO tm_ts VALUES (?, ?)", ist, ist.UTC()); err != nil {
 		t.Fatal(err)
 	}
-	txt, err := momo.Scalars[string](ctx, db, "SELECT to_char(tz AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') || ' | ' || to_char(ts, 'YYYY-MM-DD HH24:MI:SS.US') FROM tm_ts")
+	txt, err := momo.QueryScalars[string](ctx, db, "SELECT to_char(tz AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') || ' | ' || to_char(ts, 'YYYY-MM-DD HH24:MI:SS.US') FROM tm_ts")
 	if err != nil || len(txt) != 1 {
 		t.Fatalf("select: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestTypeMappingTimestamps(t *testing.T) {
 	if want := "2026-01-01 06:30:00.123456 | 2026-01-01 06:30:00.123456"; txt[0] != want {
 		t.Fatalf("stored %q, want %q", txt[0], want)
 	}
-	got, err := momo.Scalars[time.Time](ctx, db, "SELECT tz FROM tm_ts")
+	got, err := momo.QueryScalars[time.Time](ctx, db, "SELECT tz FROM tm_ts")
 	if err != nil || len(got) != 1 || !got[0].Equal(ist.Truncate(time.Microsecond)) {
 		t.Fatalf("timestamptz read back %v, %v", got, err)
 	}
@@ -276,11 +276,11 @@ func TestTypeMappingTimestamps(t *testing.T) {
 func TestTypeMappingNaN(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
-	got, err := momo.Scalars[float64](ctx, db, "SELECT 'NaN'::float8")
+	got, err := momo.QueryScalars[float64](ctx, db, "SELECT 'NaN'::float8")
 	if err != nil || len(got) != 1 || !math.IsNaN(got[0]) {
 		t.Fatalf("SELECT 'NaN'::float8 = %v, %v", got, err)
 	}
-	back, err := momo.Scalars[float64](ctx, db, "SELECT ?::float8", math.NaN())
+	back, err := momo.QueryScalars[float64](ctx, db, "SELECT ?::float8", math.NaN())
 	if err != nil || len(back) != 1 || !math.IsNaN(back[0]) {
 		t.Fatalf("bound NaN = %v, %v", back, err)
 	}
@@ -313,7 +313,7 @@ func TestTypeMappingNaNSQLite(t *testing.T) {
 			t.Fatalf("insert %v: %v", v, err)
 		}
 	}
-	got, err := momo.Scalars[float64](ctx, db, "SELECT v FROM tm_nan ORDER BY id")
+	got, err := momo.QueryScalars[float64](ctx, db, "SELECT v FROM tm_nan ORDER BY id")
 	if err != nil || len(got) != 2 || !math.IsInf(got[0], 1) || !math.IsInf(got[1], -1) {
 		t.Fatalf("rows = %v, %v; want only +Inf and -Inf", got, err)
 	}
@@ -334,19 +334,19 @@ func TestTypeMappingNullable(t *testing.T) {
 		np, sql.NullString{}, sql.NullTime{}, int64(math.MaxInt64), sql.NullString{String: "x", Valid: true}, sql.NullTime{Time: now, Valid: true}); err != nil {
 		t.Fatal(err)
 	}
-	ptrs, err := momo.Scalars[*int64](ctx, db, "SELECT i FROM tm_null ORDER BY id")
+	ptrs, err := momo.QueryScalars[*int64](ctx, db, "SELECT i FROM tm_null ORDER BY id")
 	if err != nil || len(ptrs) != 2 || ptrs[0] != nil || ptrs[1] == nil || *ptrs[1] != math.MaxInt64 {
 		t.Fatalf("*int64 = %v, %v", ptrs, err)
 	}
-	ns, err := momo.Scalars[sql.NullString](ctx, db, "SELECT s FROM tm_null ORDER BY id")
+	ns, err := momo.QueryScalars[sql.NullString](ctx, db, "SELECT s FROM tm_null ORDER BY id")
 	if err != nil || ns[0].Valid || ns[1] != (sql.NullString{String: "x", Valid: true}) {
 		t.Fatalf("sql.NullString = %v, %v", ns, err)
 	}
-	nt, err := momo.Scalars[sql.NullTime](ctx, db, "SELECT t FROM tm_null ORDER BY id")
+	nt, err := momo.QueryScalars[sql.NullTime](ctx, db, "SELECT t FROM tm_null ORDER BY id")
 	if err != nil || nt[0].Valid || !nt[1].Valid || !nt[1].Time.Equal(now) {
 		t.Fatalf("sql.NullTime = %v, %v", nt, err)
 	}
-	if _, err := momo.Scalars[int64](ctx, db, "SELECT i FROM tm_null WHERE id = 1"); err == nil {
+	if _, err := momo.QueryScalars[int64](ctx, db, "SELECT i FROM tm_null WHERE id = 1"); err == nil {
 		t.Fatal("scanning NULL into int64 succeeded; want an error")
 	}
 }

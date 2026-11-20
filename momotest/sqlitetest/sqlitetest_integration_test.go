@@ -77,7 +77,7 @@ func TestMomotestSQLiteEphemeral(t *testing.T) {
 // and LoadFixtures fills the database.
 func TestSQLiteOptionsAndFixtures(t *testing.T) {
 	rec := &obstest.Recorder{}
-	db := sqlitetest.New(t, momo.WithHook(rec))
+	db := sqlitetest.New(t, momotest.WithMomoOptions(momo.WithHook(rec)))
 	for _, ddl := range []string{
 		`CREATE TABLE tags (id BIGINT PRIMARY KEY, name TEXT NOT NULL)`,
 		`CREATE TABLE authors (id BIGINT PRIMARY KEY, name TEXT NOT NULL)`,
@@ -91,11 +91,11 @@ func TestSQLiteOptionsAndFixtures(t *testing.T) {
 		t.Fatal("the hook given to sqlitetest.New saw no statement")
 	}
 	momotest.LoadFixtures(t, db, "../testdata/fixtures.yaml")
-	titles, err := momo.Scalars[string](t.Context(), db, "SELECT title FROM documents ORDER BY id")
+	titles, err := momo.QueryScalars[string](t.Context(), db, "SELECT title FROM documents ORDER BY id")
 	if err != nil || len(titles) != 2 || titles[0] != "A1" || titles[1] != "Orphan" {
 		t.Fatalf("titles = %v, %v", titles, err)
 	}
-	version, err := momo.Scalars[string](t.Context(), db, "SELECT vec_version()")
+	version, err := momo.QueryScalars[string](t.Context(), db, "SELECT vec_version()")
 	if err != nil || len(version) != 1 || version[0] == "" {
 		t.Fatalf("vec_version() = %v, %v, want sqlite-vec loaded", version, err)
 	}

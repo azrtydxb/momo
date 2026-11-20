@@ -74,7 +74,7 @@ func TestUUIDSliceBindsToAnyArray(t *testing.T) {
 
 	t.Run("google uuid shape", func(t *testing.T) {
 		ids := []googleUUID{googleUUID(parse(bindingIDs[0])), googleUUID(parse(bindingIDs[2]))}
-		got, err := momo.Scalars[string](ctx, db, query, ids)
+		got, err := momo.QueryScalars[string](ctx, db, query, ids)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -85,7 +85,7 @@ func TestUUIDSliceBindsToAnyArray(t *testing.T) {
 
 	t.Run("types uuid", func(t *testing.T) {
 		ids := []types.UUID{parse(bindingIDs[1]), parse(bindingIDs[2])}
-		got, err := momo.Scalars[string](ctx, db, query, ids)
+		got, err := momo.QueryScalars[string](ctx, db, query, ids)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -93,7 +93,7 @@ func TestUUIDSliceBindsToAnyArray(t *testing.T) {
 			t.Errorf("[]types.UUID = %v, want %v", got, want)
 		}
 		// The server infers uuid[] with no cast, too.
-		got, err = momo.Scalars[string](ctx, db, uncast, ids)
+		got, err = momo.QueryScalars[string](ctx, db, uncast, ids)
 		if err != nil || !slices.Equal(got, []string{bindingIDs[1], bindingIDs[2]}) {
 			t.Errorf("[]types.UUID without a cast = %v, %v", got, err)
 		}
@@ -101,7 +101,7 @@ func TestUUIDSliceBindsToAnyArray(t *testing.T) {
 
 	t.Run("empty and nil slices match nothing", func(t *testing.T) {
 		for name, ids := range map[string][]types.UUID{"empty": {}, "nil": nil} {
-			got, err := momo.Scalars[string](ctx, db, query, ids)
+			got, err := momo.QueryScalars[string](ctx, db, query, ids)
 			if err != nil {
 				t.Fatalf("%s: %v", name, err)
 			}
@@ -131,7 +131,7 @@ func TestJSONBBinding(t *testing.T) {
 			t.Errorf("%s into jsonb: %v", name, err)
 			continue
 		}
-		got, err := momo.Scalars[string](ctx, db, "SELECT doc::text FROM "+table+" WHERE id = ?::uuid", bindingIDs[0])
+		got, err := momo.QueryScalars[string](ctx, db, "SELECT doc::text FROM "+table+" WHERE id = ?::uuid", bindingIDs[0])
 		if err != nil || !slices.Equal(got, []string{doc}) {
 			t.Errorf("%s round trip = %v, %v; want %s", name, got, err, doc)
 		}
@@ -144,7 +144,7 @@ func TestJSONBBinding(t *testing.T) {
 	if _, err := momo.Exec(ctx, db, "INSERT INTO "+table+" (id, n, doc) VALUES (?::uuid, 1, convert_from(?::bytea, 'UTF8')::jsonb)", bindingIDs[1], []byte(doc)); err != nil {
 		t.Fatalf("[]byte through convert_from: %v", err)
 	}
-	got, err := momo.Scalars[string](ctx, db, "SELECT doc::text FROM "+table+" WHERE id = ?::uuid", bindingIDs[1])
+	got, err := momo.QueryScalars[string](ctx, db, "SELECT doc::text FROM "+table+" WHERE id = ?::uuid", bindingIDs[1])
 	if err != nil || !slices.Equal(got, []string{doc}) {
 		t.Errorf("[]byte round trip = %v, %v; want %s", got, err, doc)
 	}

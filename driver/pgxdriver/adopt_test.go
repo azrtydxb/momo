@@ -46,7 +46,7 @@ func adoptPgxDB(t *testing.T) (*pgxpool.Pool, *momo.DB) {
 
 func countRows(t *testing.T, q momo.Querier) int {
 	t.Helper()
-	v, err := momo.Scalars[int](context.Background(), q, "SELECT count(*)::int FROM adopt_t")
+	v, err := momo.QueryScalars[int](context.Background(), q, "SELECT count(*)::int FROM adopt_t")
 	if err != nil || len(v) != 1 {
 		t.Fatalf("count: %v %v", v, err)
 	}
@@ -76,7 +76,7 @@ func TestAdoptSQLTxMixedLegacyAndMomo(t *testing.T) {
 		t.Fatalf("legacy read after momo = %q, %v", name, err)
 	}
 	// And momo can lock a row legacy inserted.
-	if got, err := momo.Scalars[string](ctx, mtx, "SELECT name FROM adopt_t WHERE id = 1 FOR UPDATE"); err != nil || len(got) != 1 || got[0] != "legacy" {
+	if got, err := momo.QueryScalars[string](ctx, mtx, "SELECT name FROM adopt_t WHERE id = 1 FOR UPDATE"); err != nil || len(got) != 1 || got[0] != "legacy" {
 		t.Fatalf("momo FOR UPDATE = %v, %v", got, err)
 	}
 	if err := mtx.Commit(ctx); !errors.Is(err, momo.ErrAdoptedTx) {
@@ -172,7 +172,7 @@ func TestAdoptPgxTxMixedLegacyAndMomo(t *testing.T) {
 	if err := ptx.QueryRow(ctx, "SELECT name FROM adopt_t WHERE id = 2 FOR UPDATE").Scan(&name); err != nil || name != "momo" {
 		t.Fatalf("legacy read after momo = %q, %v", name, err)
 	}
-	if got, err := momo.Scalars[string](ctx, mtx, "SELECT name FROM adopt_t WHERE id = 1 FOR UPDATE"); err != nil || len(got) != 1 || got[0] != "legacy" {
+	if got, err := momo.QueryScalars[string](ctx, mtx, "SELECT name FROM adopt_t WHERE id = 1 FOR UPDATE"); err != nil || len(got) != 1 || got[0] != "legacy" {
 		t.Fatalf("momo FOR UPDATE = %v, %v", got, err)
 	}
 	if err := mtx.Commit(ctx); !errors.Is(err, momo.ErrAdoptedTx) {
@@ -257,7 +257,7 @@ func TestUnwrapMomoBegunTxThenLegacyStatement(t *testing.T) {
 		if _, err := stx.ExecContext(ctx, "INSERT INTO adopt_t VALUES (1, 'legacy')"); err != nil {
 			return err
 		}
-		got, err := momo.Scalars[string](ctx, tx, "SELECT name FROM adopt_t WHERE id = 1 FOR UPDATE")
+		got, err := momo.QueryScalars[string](ctx, tx, "SELECT name FROM adopt_t WHERE id = 1 FOR UPDATE")
 		if err != nil || len(got) != 1 {
 			t.Fatalf("momo sees legacy row: %v %v", got, err)
 		}
@@ -288,7 +288,7 @@ func TestUnwrapMomoBegunPgxTxThenLegacyStatement(t *testing.T) {
 		if _, err := ptx.Exec(ctx, "INSERT INTO adopt_t VALUES (1, 'legacy')"); err != nil {
 			return err
 		}
-		got, err := momo.Scalars[string](ctx, tx, "SELECT name FROM adopt_t WHERE id = 1 FOR UPDATE")
+		got, err := momo.QueryScalars[string](ctx, tx, "SELECT name FROM adopt_t WHERE id = 1 FOR UPDATE")
 		if err != nil || len(got) != 1 {
 			t.Fatalf("momo sees legacy row: %v %v", got, err)
 		}
@@ -317,7 +317,7 @@ func TestAdoptPgxTxVectorRoundTripTextMode(t *testing.T) {
 	if _, err := momo.Exec(ctx, mtx, "INSERT INTO adopt_vec VALUES (?, ?)", 1, vector.Vector{1, 2, 3}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := momo.Scalars[string](ctx, mtx, "SELECT emb::text FROM adopt_vec WHERE id = 1")
+	got, err := momo.QueryScalars[string](ctx, mtx, "SELECT emb::text FROM adopt_vec WHERE id = 1")
 	if err != nil || len(got) != 1 || got[0] != "[1,2,3]" {
 		t.Fatalf("vector round trip = %v, %v", got, err)
 	}
@@ -339,7 +339,7 @@ func TestAdoptPgxTxVectorBinaryDescribeExecOptions(t *testing.T) {
 	if _, err := momo.Exec(ctx, mtx, "INSERT INTO adopt_vecb VALUES (?, ?)", 1, vector.Vector{1, 2, 3}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := momo.Scalars[vector.Vector](ctx, mtx, "SELECT emb FROM adopt_vecb WHERE id = 1")
+	got, err := momo.QueryScalars[vector.Vector](ctx, mtx, "SELECT emb FROM adopt_vecb WHERE id = 1")
 	if err != nil || len(got) != 1 || len(got[0]) != 3 || got[0][2] != 3 {
 		t.Fatalf("binary vector round trip = %v, %v", got, err)
 	}

@@ -13,7 +13,7 @@ Testing application code against a real PostgreSQL database with
   savepoint, so the test can look at the balances afterwards.
 - `momotest.New` gives a schema of its own, dropped when the test ends, for code
   that opens and commits its own transactions.
-- `momotest.Seed` with `momotest.Insert` writes the fixtures in order and reads
+- `momotest.Seed` with `momotest.Rows` writes the fixtures in order and reads
   the generated ids back into the rows.
 - The migrations are embedded with `go:embed`, so the binary and its tests carry
   the same schema.

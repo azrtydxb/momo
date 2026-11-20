@@ -14,7 +14,7 @@ import (
 // Would fail if the subquery's args were dropped or mis-numbered.
 func TestRawSubqueryAsTypedComparisonOperand(t *testing.T) {
 	version := NewColumn[int64]("documents", "version", 0)
-	sub := RawSubquery(`SELECT MAX(version) FROM documents WHERE tenant_id = ?`, int64(7))
+	sub := SubquerySQL(`SELECT MAX(version) FROM documents WHERE tenant_id = ?`, int64(7))
 	q := Select[scopeRow](nil).From(TableRef{Name: "documents"}).Columns(version).
 		Where(version.GtExpr(TypedSQL[int64]("?", sub)), version.Lt(100))
 

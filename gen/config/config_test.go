@@ -82,7 +82,7 @@ func TestNamingOverridesFromConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, diags, err := gen.Load([]string{"./"}, gen.Config{Dir: dir, Naming: naming.GORM{}})
+	g, diags, err := gen.Load([]string{"./"}, gen.LoadConfig{Dir: dir, Naming: naming.GORM{}})
 	if err != nil {
 		t.Fatal(err)
 	}

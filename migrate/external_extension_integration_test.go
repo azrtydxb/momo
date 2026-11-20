@@ -173,7 +173,7 @@ func noVectorSnapshot() *schema.Schema {
 }
 
 // TestExternalExtensionsHiddenFromBaselineAndDrift: an extension created outside
-// momo and listed in Config.ExternalExtensions is neither a baseline mismatch
+// momo and listed in Settings.ExternalExtensions is neither a baseline mismatch
 // nor drift, and without the setting it is both.
 func TestExternalExtensionsHiddenFromBaselineAndDrift(t *testing.T) {
 	db := testopen.Postgres(t)
@@ -186,7 +186,7 @@ func TestExternalExtensionsHiddenFromBaselineAndDrift(t *testing.T) {
 		t.Fatalf("without the setting the live vector extension is unmanaged: %v", err)
 	}
 
-	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithConfig(migrate.Config{ExternalExtensions: []string{"vector"}}))
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithSettings(migrate.Settings{ExternalExtensions: []string{"vector"}}))
 	if err := e.Baseline(ctx, initVersion, false); err != nil {
 		t.Fatalf("baseline with vector external: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestAutoMigrateSkipsExternalExtension(t *testing.T) {
 		db := testopen.PostgresIn(t, testdb.ScratchDatabase(t, "momo_autoext_"))
 		var opts []migrate.Option
 		if external {
-			opts = append(opts, migrate.WithConfig(migrate.Config{ExternalExtensions: []string{"hstore"}}))
+			opts = append(opts, migrate.WithSettings(migrate.Settings{ExternalExtensions: []string{"hstore"}}))
 		}
 		e := migratetest.NewEngine(t, mpg.New(), db.Driver(), migratetest.EmptyFS(), opts...)
 		if _, err := e.AutoMigrate(context.Background(), desired()); err != nil {

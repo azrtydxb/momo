@@ -126,7 +126,7 @@ func SubqueriesCTEsRecursive(t *testing.T, db *momo.DB, caps Caps) {
 
 	seqN := momo.ColumnOf[int64]("seq", "n")
 	body := momo.Union(true,
-		momo.RawSubquery(`SELECT 1 AS n`),
+		momo.SubquerySQL(`SELECT 1 AS n`),
 		momo.Select[intRow](db).From(momo.CTE("seq")).
 			Columns(momo.TypedSQL[int64](`seq.n + 1`)).Where(seqN.Lt(5)),
 	)
@@ -143,9 +143,9 @@ func SubqueriesCTEsRecursive(t *testing.T, db *momo.DB, caps Caps) {
 		t.Fatalf("recursive CTE returned %+v", rows)
 	}
 
-	ints, err := momo.Scalars[int64](ctx, db, `WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 5) SELECT n FROM seq ORDER BY n`)
+	ints, err := momo.QueryScalars[int64](ctx, db, `WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 5) SELECT n FROM seq ORDER BY n`)
 	if err != nil || len(ints) != 5 || ints[4] != 5 {
-		t.Fatalf("Scalars over recursive CTE = %v, %v", ints, err)
+		t.Fatalf("QueryScalars over recursive CTE = %v, %v", ints, err)
 	}
 }
 
@@ -206,13 +206,13 @@ func RawArgs(t *testing.T, db *momo.DB, caps Caps) {
 	}
 
 	// A ? inside a string literal and a comment is data, not a placeholder.
-	got, err := momo.Scalars[string](ctx, db,
+	got, err := momo.QueryScalars[string](ctx, db,
 		"SELECT 'what?' /* why ? */ FROM documents WHERE title = ? -- ?\n", "c")
 	if err != nil || len(got) != 1 || got[0] != "what?" {
 		t.Fatalf("literal ? = %v, %v", got, err)
 	}
 
-	secrets, err := momo.Scalars[string](ctx, db,
+	secrets, err := momo.QueryScalars[string](ctx, db,
 		"SELECT secret FROM documents WHERE title NOT IN (?) ORDER BY title", momo.In([]string{"a", "b"}))
 	if err != nil || len(secrets) != 1 || secrets[0] != "" {
 		t.Fatalf("NOT IN expansion = %v, %v", secrets, err)
@@ -237,13 +237,13 @@ func rawDollarPlaceholders(t *testing.T, db *momo.DB, caps Caps) {
 	t.Helper()
 	ctx := context.Background()
 	if caps.Dialect != dialect.Postgres {
-		_, err := momo.Scalars[string](ctx, db, "SELECT title FROM documents WHERE title = $1", "a")
+		_, err := momo.QueryScalars[string](ctx, db, "SELECT title FROM documents WHERE title = $1", "a")
 		if !errors.Is(err, momo.ErrUnsupported) {
 			t.Fatalf("$n off PostgreSQL: err = %v, want ErrUnsupported", err)
 		}
 		return
 	}
-	got, err := momo.Scalars[string](ctx, db,
+	got, err := momo.QueryScalars[string](ctx, db,
 		"SELECT title FROM documents WHERE title = $2 OR title = $1 OR title = $2 ORDER BY title", "a", "c")
 	if err != nil || len(got) != 2 || got[0] != "a" || got[1] != "c" {
 		t.Fatalf("$n reused = %v, %v", got, err)
@@ -256,7 +256,7 @@ func rawDollarPlaceholders(t *testing.T, db *momo.DB, caps Caps) {
 	if err != nil || len(rows) != 2 {
 		t.Fatalf("$n after a bind: rows=%d err=%v", len(rows), err)
 	}
-	n, err := momo.Scalars[int64](ctx, db,
+	n, err := momo.QueryScalars[int64](ctx, db,
 		"SELECT count(*) FROM documents WHERE title IN (SELECT title FROM documents WHERE tenant_id = $1) AND tenant_id = $1", int64(1))
 	if err != nil || len(n) != 1 || n[0] != 3 {
 		t.Fatalf("$n reused in a subquery = %v, %v", n, err)

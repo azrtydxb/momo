@@ -111,7 +111,7 @@ func TestMomotestSQLAssertInsert(t *testing.T) {
 		t.Fatalf("insert mismatch: %v", bad.errs)
 	}
 
-	sub := momo.RawSubquery("SELECT id FROM authors WHERE name = ?", "hunter2")
+	sub := momo.SubquerySQL("SELECT id FROM authors WHERE name = ?", "hunter2")
 	c, err := momo.Select[models.Author](db).From(momo.FromSubquery(sub, "a")).SQL()
 	if err != nil {
 		t.Fatal(err)

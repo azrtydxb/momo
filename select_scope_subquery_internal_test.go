@@ -20,7 +20,7 @@ func TestScopeAcceptsSubqueryAndCTEShapes(t *testing.T) {
 	row := func() SelectQuery[scopeRow] { return Select[scopeRow](nil) }
 
 	recursive := Union(true,
-		RawSubquery(`SELECT 1 AS n`),
+		SubquerySQL(`SELECT 1 AS n`),
 		row().From(CTE("seq")).Columns(TypedSQL[int64](`"seq"."n" + 1`)).Where(seqN.Lt(5)),
 	)
 	cteBody := row().From(docs).Columns(tenant).Where(tenant.Ge(2))

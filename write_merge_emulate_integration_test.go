@@ -182,7 +182,7 @@ func TestMergeEmulationMatchesPostgresIntegration(t *testing.T) {
 			src:    [][]any{{int64(10), "b", "s_b", int64(0)}, {int64(11), "a", "s_a", int64(0)}},
 			after:  "UPDATE mrg_rows SET n = 5 WHERE id = 2",
 			build: func(q momo.Querier) momo.MergeQuery[mrgRow] {
-				src := momo.RawSubquery("SELECT id, k, val, n FROM mrg_src WHERE id >= ?", int64(0))
+				src := momo.SubquerySQL("SELECT id, k, val, n FROM mrg_src WHERE id >= ?", int64(0))
 				return mrgInsertClause(momo.Merge[mrgRow](q, src).On(mrgOn(), mrgN.Eq(0)).
 					WhenMatchedUpdate(mrgVal.SetExpr(momo.TypedSQL[string]("src.val"))))
 			},

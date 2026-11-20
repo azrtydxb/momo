@@ -21,7 +21,7 @@ import (
 // explain returns the EXPLAIN plan text of query inside tx.
 func explain(ctx context.Context, t *testing.T, tx *momo.Tx, query string) string {
 	t.Helper()
-	lines, err := momo.Scalars[string](ctx, tx, "EXPLAIN "+query)
+	lines, err := momo.QueryScalars[string](ctx, tx, "EXPLAIN "+query)
 	if err != nil {
 		t.Fatalf("explain: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestSearchSettingsPgBouncer(t *testing.T) {
 		t.Fatalf("inside the transaction: %v", err)
 	}
 	for i := 0; i < 20; i++ {
-		got, err := momo.Scalars[string](ctx, db, "SELECT coalesce(current_setting('hnsw.ef_search', true), '')")
+		got, err := momo.QueryScalars[string](ctx, db, "SELECT coalesce(current_setting('hnsw.ef_search', true), '')")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -137,10 +137,10 @@ func TestSearchScanMemMultiplierScoped(t *testing.T) {
 	mustExecPG(t, db, "CREATE EXTENSION IF NOT EXISTS vector")
 	// pgvector registers its settings when the library loads, which a vector
 	// expression triggers; before that current_setting has no such parameter.
-	if _, err := momo.Scalars[string](ctx, db, "SELECT '[1]'::vector::text"); err != nil {
+	if _, err := momo.QueryScalars[string](ctx, db, "SELECT '[1]'::vector::text"); err != nil {
 		t.Fatal(err)
 	}
-	before, err := momo.Scalars[string](ctx, db, "SELECT current_setting('hnsw.scan_mem_multiplier')")
+	before, err := momo.QueryScalars[string](ctx, db, "SELECT current_setting('hnsw.scan_mem_multiplier')")
 	if err != nil || len(before) != 1 {
 		t.Fatalf("reading the default: %v %v", before, err)
 	}

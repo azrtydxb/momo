@@ -14,7 +14,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
-	"github.com/azrtydxb/momo/sqlfn"
+	"github.com/azrtydxb/momo/timeop"
 )
 
 // Catches: row-value comparison, CURRENT_DATE and the Explain and infinity
@@ -80,7 +80,7 @@ func TestRowValuesAndDatesOnMySQLFamily(t *testing.T) {
 		// clock is read on both sides of the query to tolerate midnight.
 		const dayLayout = "2006-01-02"
 		before := time.Now().UTC().Format(dayLayout)
-		day, err := momo.Select[anT](db).From(anDocs).Columns(sqlfn.CurrentDate()).Limit(1).One(ctx)
+		day, err := momo.Select[anT](db).From(anDocs).Columns(timeop.CurrentDate()).Limit(1).One(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -88,7 +88,7 @@ func TestRowValuesAndDatesOnMySQLFamily(t *testing.T) {
 		if got := day.T.UTC().Format(dayLayout); (got != before && got != after) || day.T.UTC().Hour() != 0 {
 			t.Errorf("CURRENT_DATE = %v, want the UTC date %s (or %s) at midnight", day.T, before, after)
 		}
-		if _, err := momo.Select[anT](db).From(anDocs).Columns(sqlfn.Infinity()).Limit(1).All(ctx); !errors.Is(err, momo.ErrUnsupported) {
+		if _, err := momo.Select[anT](db).From(anDocs).Columns(timeop.Infinity()).Limit(1).All(ctx); !errors.Is(err, momo.ErrUnsupported) {
 			t.Errorf("Infinity = %v, want ErrUnsupported", err)
 		}
 		if _, err := momo.Select[suite.Document](db).Explain(ctx); !errors.Is(err, momo.ErrUnsupported) {

@@ -22,6 +22,20 @@ func Scalars[V any](ctx context.Context, q Querier, sql string, args ...any) ([]
 	return nil, nil
 }
 
+func QueryScalars[V any](ctx context.Context, q Querier, sql string, args ...any) ([]V, error) {
+	return nil, nil
+}
+
+type ColumnRows interface{}
+
+func QueryCursor(ctx context.Context, q Querier, sql string, args ...any) (ColumnRows, error) {
+	return nil, nil
+}
+
+func RawRows(ctx context.Context, q Querier, sql string, args ...any) (ColumnRows, error) {
+	return nil, nil
+}
+
 func MapRows(ctx context.Context, q Querier, sql string, args ...any) ([]map[string]any, error) {
 	return nil, nil
 }
@@ -38,8 +52,12 @@ type Compilable interface{}
 
 func RawQuery(q Querier, sql string, args ...any) Compilable { return nil }
 
+func CompilableSQL(q Querier, sql string, args ...any) Compilable { return nil }
+
 func SQL(sql string, args ...any) Predicate { return nil }
 
 func TypedSQL[T any](sql string, args ...any) Expression[T] { return nil }
 
 func RawSubquery(sql string, args ...any) Subquery { return nil }
+
+func SubquerySQL(sql string, args ...any) Subquery { return nil }

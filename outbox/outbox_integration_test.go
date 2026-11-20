@@ -155,7 +155,7 @@ func states(t *testing.T, db *momo.DB) []state {
 
 func count(t *testing.T, db *momo.DB) int64 {
 	t.Helper()
-	got, err := momo.Scalars[int64](context.Background(), db, `SELECT count(*) FROM outbox_events`)
+	got, err := momo.QueryScalars[int64](context.Background(), db, `SELECT count(*) FROM outbox_events`)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("count: %v %v", got, err)
 	}

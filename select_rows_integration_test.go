@@ -166,7 +166,7 @@ func TestTupleRowWithRecursive(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
 		seqN := momo.ColumnOf[int64]("seq", "n")
 		body := momo.Union(true,
-			momo.RawSubquery(`SELECT 1 AS n`),
+			momo.SubquerySQL(`SELECT 1 AS n`),
 			momo.Select[momo.Row1[int64]](db).From(momo.CTE("seq")).
 				Columns(momo.TypedSQL[int64](`"seq"."n" + 1`)).Where(seqN.Lt(5)),
 		)

@@ -131,7 +131,7 @@ func TestArrayOperatorsBindHostileValues(t *testing.T) {
 	if err != nil || n != 1 {
 		t.Fatalf("count = %d, %v", n, err)
 	}
-	left, err := momo.Scalars[int64](ctx, db, "SELECT count(*) FROM arr_docs")
+	left, err := momo.QueryScalars[int64](ctx, db, "SELECT count(*) FROM arr_docs")
 	if err != nil || len(left) != 1 || left[0] != 1 {
 		t.Fatalf("table damaged: %v, %v", left, err)
 	}

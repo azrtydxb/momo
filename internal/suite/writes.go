@@ -414,7 +414,7 @@ func AutoTimestamps(t *testing.T, db *momo.DB, caps Caps) {
 // statusOf reads documents.status for one title. Every error is checked.
 func statusOf(t *testing.T, db *momo.DB, title string) sql.NullString {
 	t.Helper()
-	vals, err := momo.Scalars[sql.NullString](context.Background(), db, "SELECT status FROM documents WHERE title = ?", title)
+	vals, err := momo.QueryScalars[sql.NullString](context.Background(), db, "SELECT status FROM documents WHERE title = ?", title)
 	if err != nil || len(vals) != 1 {
 		t.Fatalf("status of %q: err=%v rows=%d", title, err, len(vals))
 	}

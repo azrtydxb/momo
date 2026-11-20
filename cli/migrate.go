@@ -381,10 +381,10 @@ func (l *cli) engineOptions(d migrate.Dialect, extra ...migrate.Option) ([]migra
 	if err != nil {
 		return nil, err
 	}
-	// The same three constructors as migrate.ConfigFromFile; migrate.Config(c)
+	// The same three constructors as migrate.ConfigFromFile; migrate.Settings(c)
 	// compiles only while migratecfg.EngineConfig has exactly its fields.
 	cfgOpts := migratecfg.Build(r, migratecfg.Builders[migrate.Option]{
-		Config:           func(c migratecfg.EngineConfig) migrate.Option { return migrate.WithConfig(migrate.Config(c)) },
+		Config:           func(c migratecfg.EngineConfig) migrate.Option { return migrate.WithSettings(migrate.Settings(c)) },
 		LockTimeout:      migrate.WithLockTimeout,
 		StatementTimeout: migrate.WithStatementTimeout,
 	})

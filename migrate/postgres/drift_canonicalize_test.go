@@ -47,7 +47,7 @@ func canonEngine(t *testing.T, drv momo.Driver, fsys fs.FS, schemas ...string) *
 	if len(schemas) == 0 {
 		schemas = []string{testdb.Schema(t)}
 	}
-	return migratetest.NewEngine(t, mpg.New(), drv, fsys, migrate.WithConfig(migrate.Config{Schemas: schemas}))
+	return migratetest.NewEngine(t, mpg.New(), drv, fsys, migrate.WithSettings(migrate.Settings{Schemas: schemas}))
 }
 
 func skippedNames(rep *migrate.DriftReport) []string {

@@ -57,7 +57,7 @@ func Emitted(t testing.TB, moduleDir, pkg string, models []importer.Model, rep *
 	if _, err := w.Commit(); err != nil {
 		t.Fatalf("write the imported models: %v", err)
 	}
-	g, diags, err := gen.Load([]string{"./" + pkg}, gen.Config{Dir: moduleDir, Dialects: []dialect.Name{dialect.Postgres}})
+	g, diags, err := gen.Load([]string{"./" + pkg}, gen.LoadConfig{Dir: moduleDir, Dialects: []dialect.Name{dialect.Postgres}})
 	if err != nil {
 		t.Fatalf("load the imported models: %v", err)
 	}

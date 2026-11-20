@@ -15,7 +15,7 @@ import (
 
 func countRows(t *testing.T, q momo.Querier, table string) int64 {
 	t.Helper()
-	got, err := momo.Scalars[int64](context.Background(), q, "SELECT count(*) FROM "+table)
+	got, err := momo.QueryScalars[int64](context.Background(), q, "SELECT count(*) FROM "+table)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("count(%s) = %v, %v", table, got, err)
 	}
@@ -122,11 +122,11 @@ func TestMySQLLockSyntax(t *testing.T) {
 			mustExecMySQL(t, db, "CREATE TABLE locks_t (id bigint PRIMARY KEY)")
 			mustExecMySQL(t, db, "INSERT INTO locks_t VALUES (1), (2)")
 			if err := db.Tx(ctx, momo.TxOptions{}, func(holder *momo.Tx) error {
-				if _, err := momo.Scalars[int64](ctx, holder, "SELECT id FROM locks_t WHERE id = 1 FOR UPDATE"); err != nil {
+				if _, err := momo.QueryScalars[int64](ctx, holder, "SELECT id FROM locks_t WHERE id = 1 FOR UPDATE"); err != nil {
 					return err
 				}
 				return db.Tx(ctx, momo.TxOptions{}, func(other *momo.Tx) error {
-					if _, err := momo.Scalars[int64](ctx, other, "SELECT id FROM locks_t WHERE id = 1 FOR UPDATE NOWAIT"); err == nil {
+					if _, err := momo.QueryScalars[int64](ctx, other, "SELECT id FROM locks_t WHERE id = 1 FOR UPDATE NOWAIT"); err == nil {
 						t.Error("NOWAIT on a locked row succeeded")
 					}
 					return nil
@@ -135,11 +135,11 @@ func TestMySQLLockSyntax(t *testing.T) {
 				t.Fatal(err)
 			}
 			if err := db.Tx(ctx, momo.TxOptions{}, func(holder *momo.Tx) error {
-				if _, err := momo.Scalars[int64](ctx, holder, "SELECT id FROM locks_t WHERE id = 1 FOR UPDATE"); err != nil {
+				if _, err := momo.QueryScalars[int64](ctx, holder, "SELECT id FROM locks_t WHERE id = 1 FOR UPDATE"); err != nil {
 					return err
 				}
 				return db.Tx(ctx, momo.TxOptions{}, func(other *momo.Tx) error {
-					got, err := momo.Scalars[int64](ctx, other, "SELECT id FROM locks_t ORDER BY id FOR UPDATE SKIP LOCKED")
+					got, err := momo.QueryScalars[int64](ctx, other, "SELECT id FROM locks_t ORDER BY id FOR UPDATE SKIP LOCKED")
 					if err != nil || len(got) != 1 || got[0] != 2 {
 						t.Errorf("SKIP LOCKED = %v, %v, want [2]", got, err)
 					}

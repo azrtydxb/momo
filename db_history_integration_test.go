@@ -87,7 +87,7 @@ func TestHistoryRecordsEveryChangeWithItsActor(t *testing.T) {
 
 	dbNow := func() time.Time {
 		t.Helper()
-		ts, err := momo.Scalars[time.Time](ctx, db, "SELECT clock_timestamp()")
+		ts, err := momo.QueryScalars[time.Time](ctx, db, "SELECT clock_timestamp()")
 		if err != nil || len(ts) != 1 {
 			t.Fatalf("clock: %v %v", ts, err)
 		}
@@ -206,7 +206,7 @@ func TestPrimaryKeyChangeClosesTheOldKeysTimeline(t *testing.T) {
 	execAll(ctx, t,
 		db, "INSERT INTO audit_notes (id, title) VALUES (1, 'moving')",
 		"UPDATE audit_notes SET id = 2 WHERE id = 1")
-	after, err := momo.Scalars[time.Time](ctx, db, "SELECT clock_timestamp()")
+	after, err := momo.QueryScalars[time.Time](ctx, db, "SELECT clock_timestamp()")
 	if err != nil || len(after) != 1 {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestActorDoesNotOutliveItsTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	left, err := momo.Scalars[string](ctx, db, "SELECT coalesce(current_setting('momo.actor', true), '')")
+	left, err := momo.QueryScalars[string](ctx, db, "SELECT coalesce(current_setting('momo.actor', true), '')")
 	if err != nil || len(left) != 1 || left[0] != "" {
 		t.Fatalf("momo.actor after the commit = %q (%v), want empty", left, err)
 	}
@@ -307,7 +307,7 @@ func TestSoftDeleteIsRecordedAsAnUpdate(t *testing.T) {
 	if err != nil || len(got) != 2 || got[1].Operation != momo.HistoryUpdate {
 		t.Fatalf("history = %+v (%v), want an INSERT then an UPDATE", got, err)
 	}
-	now, err := momo.Scalars[time.Time](ctx, db, "SELECT clock_timestamp()")
+	now, err := momo.QueryScalars[time.Time](ctx, db, "SELECT clock_timestamp()")
 	if err != nil || len(now) != 1 {
 		t.Fatal(err)
 	}

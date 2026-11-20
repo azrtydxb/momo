@@ -133,7 +133,7 @@ from using one transaction per test:
   every other parallel test using the same template until this one ends. Run
   such tests with `New`.
 - Identity and sequence values are consumed by a rolled-back transaction, so
-  never assert a literal generated id; compare with the id that `Insert` read
+  never assert a literal generated id; compare with the id that `momotest.Rows` read
   back.
 
 ## Migrations must stay in their schema
@@ -215,18 +215,19 @@ drops a schema or database it did not create in the current test.
 ```go
 org := &models.Org{Name: "acme"}
 momotest.Seed(t, tx,
-	momotest.Insert(org),
-	momotest.Insert(&models.User{OrgID: org.ID, Email: "ada@acme.test"}),
+	momotest.Rows(org),
+	momotest.Rows(&models.User{OrgID: org.ID, Email: "ada@acme.test"}),
 )
 ```
 
 `momotest.Seed` runs its steps in the order given, so list a table before the tables that
 reference it. All steps run in one transaction (a savepoint when the querier is
-a `*momo.Tx`); if one fails, nothing is kept and the test fails. `Insert` reads
+a `*momo.Tx`); if one fails, nothing is kept and the test fails. `momotest.Rows` reads
 generated columns, such as identity keys, back into the rows you pass, so later
-steps can use them. `momotest.Graph` inserts a root with the related rows it includes, as
+steps can use them. `momotest.GraphOf` inserts a root with the related rows it includes, as
 `momo.CreateGraph` does. A step is any `func(ctx, momo.Querier) error`, so
-custom fixtures fit too.
+custom fixtures fit too. The older names `momotest.Insert` and `momotest.Graph`
+still work as deprecated forwarders to `momotest.Rows` and `momotest.GraphOf`.
 
 ## Fixtures from a file: LoadFixtures
 
@@ -269,17 +270,21 @@ with sqlite-vec loaded, without a server and without an environment variable:
 `sqlitetest.New(t, opts...)` returns a `*momo.DB` on a new file in the test's
 own temporary directory. Every call opens a file of its own, so two databases in
 one test never see each other's tables and parallel tests do not collide. The
-database is closed and the file removed when the test ends. The options go to
-`momo.New`, for example `momo.WithHook`, and `momotest.LoadFixtures` fills it like any
-other database. The database starts empty: create the tables with your own DDL,
-for example `momo.SQLiteVectorType` for a vector column (see
+database is closed and the file removed when the test ends. `sqlitetest.New`
+takes the same options as `momotest.New`, of type `momotest.Option`.
+`momotest.WithMomoOptions` is honored and its options go to `momo.New`, for
+example `momo.WithHook`; the options that configure a server (`momotest.WithEnv`,
+`momotest.WithMigrations`, `momotest.WithExtensions`, `momotest.WithMaxConns`,
+`momotest.WithTemplateClone`) have no effect. `momotest.LoadFixtures` fills the
+database like any other. The database starts empty: create the tables with your
+own DDL, for example `momo.SQLiteVectorType` for a vector column (see
 [Vector search](vectors.md)); `momotest.WithMigrations` and `momotest.NewTx` are
 PostgreSQL features and do not apply.
 
 A schema with many tables costs DDL on every test. `sqlitetest.NewTemplate`
 takes a function that creates the tables through a `*momo.DB`; keep the
 `*sqlitetest.Template` it returns in a package variable and call its `New(t,
-opts...)` method in each test. The function runs once per test binary, on the
+opts...)` method in each test, with the same `momotest.Option` values. The function runs once per test binary, on the
 first call, and the result is kept as a snapshot made with `VACUUM INTO`; every
 `New` then writes that snapshot to a file of its own in the test's temporary
 directory and opens it, so no DDL runs again. A copy is independent of the
@@ -346,7 +351,7 @@ dialect.
 (`momo.DefaultQueries`); `momo.NewQueryRegistry` makes an isolated one for a
 test. `build` receives a `momo.Querier` that compiles but never executes (see
 `momo.NewOffline`) and returns anything with an `SQL()` method: a `Select`,
-`Insert`, `Update`, `Delete` or `Merge` query, or `momo.RawQuery` for a
+`Insert`, `Update`, `Delete` or `Merge` query, or `momo.CompilableSQL` for a
 hand-written statement. Registering a name twice panics, naming the query. The
 values you bind in `build` are placeholders and never appear in the listing.
 `Registry.Compile(dialect.Postgres)` returns every query sorted by name with
@@ -400,7 +405,7 @@ import (
 
 func init() {
 	momo.RegisterQuery("open_tasks", func(q momo.Querier) momo.Compilable {
-		return momo.RawQuery(q, "SELECT id, title FROM tasks WHERE owner = $1 AND NOT done", 0)
+		return momo.CompilableSQL(q, "SELECT id, title FROM tasks WHERE owner = $1 AND NOT done", 0)
 	})
 }
 

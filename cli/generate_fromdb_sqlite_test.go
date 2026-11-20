@@ -129,7 +129,7 @@ func TestGenerateFromDBSQLiteRoundTrip(t *testing.T) {
 	if code := Run([]string{"generate"}, &out, &errb); code != 0 {
 		t.Fatalf("generate: exit %d\n%s%s", code, out.String(), errb.String())
 	}
-	g, diags, err := gen.Load([]string{"./models"}, gen.Config{
+	g, diags, err := gen.Load([]string{"./models"}, gen.LoadConfig{
 		Dir: root, Naming: naming.Momo{}, Dialects: []dialect.Name{dialect.SQLite},
 	})
 	if err != nil {

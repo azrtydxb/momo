@@ -45,7 +45,7 @@ func MergeAndBulkUpdate(t *testing.T, db *momo.DB, caps Caps) {
 		return momo.BulkUpdate[Document](db, DocID, []momo.ColumnRef{DocTitle}, rows)
 	}
 	merged := func(id int64, title string) momo.MergeQuery[Document] {
-		src := momo.RawSubquery("SELECT ?::bigint AS id, 1 AS tenant_id, ?::text AS title", id, title)
+		src := momo.SubquerySQL("SELECT ?::bigint AS id, 1 AS tenant_id, ?::text AS title", id, title)
 		return momo.Merge[Document](db, src).
 			On(DocID.EqExpr(momo.TypedSQL[int64]("src.id"))).
 			WhenNotMatchedInsert([]momo.ColumnRef{DocID, DocTenantID, DocTitle},
@@ -100,7 +100,7 @@ func MergeAndBulkUpdate(t *testing.T, db *momo.DB, caps Caps) {
 	if n := countTitle(t, db, "merged"); n != 1 {
 		t.Fatalf("suite: %d rows titled merged, want 1", n)
 	}
-	src := momo.RawSubquery("SELECT 1 AS id, 'matched' AS title")
+	src := momo.SubquerySQL("SELECT 1 AS id, 'matched' AS title")
 	res, err = momo.Merge[Document](db, src).
 		On(DocID.EqExpr(momo.TypedSQL[int64]("src.id"))).
 		WhenMatchedUpdate(DocTitle.SetExpr(momo.TypedSQL[string]("src.title"))).

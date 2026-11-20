@@ -89,7 +89,7 @@ func TestDiffExternalExtensionsNeverEmitted(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	ext := migratetest.NewEngine(t, mpg.New(), nil, fstest.MapFS{}, migrate.WithClock(func() time.Time { return now }),
-		migrate.WithConfig(migrate.Config{ExternalExtensions: []string{"vector"}}))
+		migrate.WithSettings(migrate.Settings{ExternalExtensions: []string{"vector"}}))
 	m, err := ext.Diff(ctx, docsSchema(), "init", migrate.DiffOptions{})
 	if err != nil || m == nil {
 		t.Fatalf("diff: %v %v", m, err)
@@ -103,7 +103,7 @@ func TestDiffExternalExtensionsNeverEmitted(t *testing.T) {
 	}
 	// A second diff against the same models finds nothing to do.
 	again := migratetest.NewEngine(t, mpg.New(), nil, mapFS(m.Files), migrate.WithClock(func() time.Time { return now.Add(time.Hour) }),
-		migrate.WithConfig(migrate.Config{ExternalExtensions: []string{"vector"}}))
+		migrate.WithSettings(migrate.Settings{ExternalExtensions: []string{"vector"}}))
 	if m2, err := again.Diff(ctx, docsSchema(), "again", migrate.DiffOptions{}); err != nil || m2 != nil {
 		t.Fatalf("second diff = %v, %v", m2, err)
 	}

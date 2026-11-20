@@ -143,7 +143,7 @@ func TestEagerLoadTopNPerParent(t *testing.T) {
 func TestWindowFunctions(t *testing.T) {
 	relfixture.EachWithMySQL(t, func(t *testing.T, db *momo.DB, h *relfixture.Hook) {
 		relfixture.SeedBasic(t, db)
-		ranks, err := momo.Scalars[int64](context.Background(), db,
+		ranks, err := momo.QueryScalars[int64](context.Background(), db,
 			`SELECT ROW_NUMBER() OVER (PARTITION BY document_id ORDER BY id DESC) FROM comments ORDER BY document_id, id DESC`)
 		if err != nil {
 			t.Fatal(err)

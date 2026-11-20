@@ -17,7 +17,7 @@ import (
 func TestInterceptorKindOfEveryWritePath(t *testing.T) {
 	ctx := t.Context()
 	doc := func() *suite.Document { return &suite.Document{TenantID: 1, Title: "t"} }
-	src := momo.RawSubquery("SELECT 3 AS id, 1 AS tenant_id, 'merged' AS title")
+	src := momo.SubquerySQL("SELECT 3 AS id, 1 AS tenant_id, 'merged' AS title")
 	on := suite.DocID.EqExpr(momo.TypedSQL[int64]("src.id"))
 	cols := []momo.ColumnRef{suite.DocID, suite.DocTenantID, suite.DocTitle}
 	vals := []momo.Expr{momo.TypedSQL[int64]("src.id"), momo.TypedSQL[int64]("src.tenant_id"), momo.TypedSQL[string]("src.title")}

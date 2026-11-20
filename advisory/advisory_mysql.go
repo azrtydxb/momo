@@ -54,7 +54,7 @@ func lockErr(kind error, err error) error {
 // mysqlCall runs one lock function and returns its integer result. ok is false
 // for SQL NULL.
 func mysqlCall(ctx context.Context, db *momo.DB, sql string, args ...any) (v int64, ok bool, err error) {
-	got, err := momo.Scalars[*int64](ctx, db, sql, args...)
+	got, err := momo.QueryScalars[*int64](ctx, db, sql, args...)
 	if err != nil {
 		return 0, false, err
 	}

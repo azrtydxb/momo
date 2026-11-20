@@ -157,7 +157,7 @@ func TestPinAndTransaction(t *testing.T) {
 				t.Fatal(err)
 			}
 			// The discarded session is gone, so its lock is free for another one.
-			free, err := momo.Scalars[int64](ctx, db, "SELECT GET_LOCK('momo_t', 5)")
+			free, err := momo.QueryScalars[int64](ctx, db, "SELECT GET_LOCK('momo_t', 5)")
 			if err != nil || len(free) != 1 || free[0] != 1 {
 				t.Fatalf("lock after Discard = %v, %v, want it released", free, err)
 			}

@@ -23,7 +23,7 @@ func TestGraphQLSDL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, diags, err := gen.Load([]string{"./"}, gen.Config{Dir: root})
+	g, diags, err := gen.Load([]string{"./"}, gen.LoadConfig{Dir: root})
 	if err != nil || len(diags) != 0 {
 		t.Fatalf("load: %v %v", err, diags)
 	}

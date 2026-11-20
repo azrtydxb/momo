@@ -314,7 +314,7 @@ func lock(ctx context.Context, q momo.Querier, fn string, key any, s settings) e
 
 func try(ctx context.Context, q momo.Querier, fn string, key any, s settings) (bool, error) {
 	k, args := keyExpr(key, s)
-	got, err := momo.Scalars[bool](ctx, q, "SELECT "+fn+"("+k+")", args...)
+	got, err := momo.QueryScalars[bool](ctx, q, "SELECT "+fn+"("+k+")", args...)
 	if err != nil {
 		return false, err
 	}

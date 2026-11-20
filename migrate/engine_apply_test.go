@@ -414,7 +414,7 @@ func TestApplyResetsBeforeUnlock(t *testing.T) {
 	var mu sync.Mutex
 	var log []string
 	d := recorder{inner: mpg.New(), mu: &mu, log: &log}
-	e := migratetest.NewEngine(t, d, db.Driver(), twoVersions(), migrate.WithConfig(migrate.Config{StatementTimeout: time.Minute}))
+	e := migratetest.NewEngine(t, d, db.Driver(), twoVersions(), migrate.WithSettings(migrate.Settings{StatementTimeout: time.Minute}))
 	if _, err := e.Apply(context.Background(), migrate.ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +473,7 @@ func TestApplyCancelledStillUnlocks(t *testing.T) {
 
 func TestApplySchemasMustMatchCurrentSchema(t *testing.T) {
 	db := testopen.Postgres(t)
-	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), twoVersions(), migrate.WithConfig(migrate.Config{Schemas: []string{"definitely_not_current"}}))
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), twoVersions(), migrate.WithSettings(migrate.Settings{Schemas: []string{"definitely_not_current"}}))
 	_, err := e.Apply(context.Background(), migrate.ApplyOptions{})
 	if err == nil || !strings.Contains(err.Error(), "definitely_not_current") || !strings.Contains(err.Error(), testdb.Schema(t)) {
 		t.Fatalf("want a configuration error naming both schemas, got %v", err)

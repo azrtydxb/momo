@@ -218,7 +218,7 @@ func TestHybridSearchUsesHNSWIndex(t *testing.T) {
 		if err := tx.SetLocal(ctx, "enable_seqscan", "off"); err != nil {
 			return err
 		}
-		lines, err := momo.Scalars[string](ctx, tx, "EXPLAIN "+c.SQL, c.Args...)
+		lines, err := momo.QueryScalars[string](ctx, tx, "EXPLAIN "+c.SQL, c.Args...)
 		if err != nil {
 			return err
 		}

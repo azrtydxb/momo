@@ -31,7 +31,7 @@ type BaselineMismatchError struct {
 func (e *BaselineMismatchError) Error() string {
 	r := e.Report
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s: differing object kinds: %s (%d changed, %d missing, %d unmanaged); fix the database (Engine.DriftRepair or momo migrate drift --fix-sql prints the DDL), adjust Config.Exclude, or force the baseline",
+	fmt.Fprintf(&b, "%s: differing object kinds: %s (%d changed, %d missing, %d unmanaged); fix the database (Engine.DriftRepair or momo migrate drift --fix-sql prints the DDL), adjust Settings.Exclude, or force the baseline",
 		ErrBaselineMismatch, strings.Join(r.kinds(), ", "), len(r.Changed), len(r.Missing), len(r.Unmanaged))
 	for _, l := range r.Lines(maxMismatchLines) {
 		b.WriteString("\n  ")
@@ -116,7 +116,7 @@ type Repair struct {
 	// Report that no change covers, so no statement can repair them: an index
 	// PostgreSQL marks invalid, an unmanaged extension or schema, anything the
 	// differ does not express. Fix them by hand or hide them with
-	// Config.Exclude. Differences of text Drift could not compare
+	// Settings.Exclude. Differences of text Drift could not compare
 	// (DriftReport.Unverified) are not listed here, because Drift does not
 	// count them as drift either.
 	Uncovered []string

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package config reads momo.yaml and converts it into a gen.Config.
+// Package config reads momo.yaml and converts it into a gen.LoadConfig.
 package config
 
 import (
@@ -117,23 +117,23 @@ func validateTypes(types map[string]string) error {
 	return nil
 }
 
-// ToConfig converts f into a gen.Config rooted at dir. Plugins are left to
+// ToConfig converts f into a gen.LoadConfig rooted at dir. Plugins are left to
 // the caller.
-func ToConfig(f *File, dir string) (gen.Config, error) {
+func ToConfig(f *File, dir string) (gen.LoadConfig, error) {
 	name := f.Naming
 	if name == "" {
 		name = "momo"
 	}
 	namer, err := naming.ByName(name)
 	if err != nil {
-		return gen.Config{}, fmt.Errorf("naming: %w", err)
+		return gen.LoadConfig{}, fmt.Errorf("naming: %w", err)
 	}
 	var dialects []dialect.Name
 	for _, d := range f.Dialects {
 		if dialect.For(dialect.Name(d)) == nil {
-			return gen.Config{}, fmt.Errorf("dialects: unknown dialect %q", d)
+			return gen.LoadConfig{}, fmt.Errorf("dialects: unknown dialect %q", d)
 		}
 		dialects = append(dialects, dialect.Name(d))
 	}
-	return gen.Config{Dir: dir, Naming: namer, Dialects: dialects, Tags: f.Tags, TypeDefaults: f.Types}, nil
+	return gen.LoadConfig{Dir: dir, Naming: namer, Dialects: dialects, Tags: f.Tags, TypeDefaults: f.Types}, nil
 }

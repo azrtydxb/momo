@@ -70,6 +70,13 @@ func newCall[T any](s spec) Call[T] {
 // as parameters exactly as momo.Func binds them, without masking. Chain
 // OrderBy for name(args ORDER BY ...). Momo cannot verify that T is what the
 // function returns.
+//
+// momo.Func calls any scalar SQL function and returns a momo.FuncExpr[T]: a
+// plain Expression[T] that renders name(args) and nothing more. agg.Func calls
+// an aggregate function and returns a Call[T], which adds the aggregate
+// modifiers a scalar call does not have: Distinct, OrderBy, WithinGroup,
+// Filter and Over. Use momo.Func for a per-row function and agg.Func for a
+// function that folds a group of rows.
 func Func[T any](name string, args ...any) Call[T] {
 	return newCall[T](spec{kind: kindGeneric, name: name, args: slices.Clone(args)})
 }

@@ -38,7 +38,7 @@ func loadDeclared(t testing.TB, d dialect.Name) *schema.Schema {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, diags, err := gen.Load([]string{"./testdata/model"}, gen.Config{Dir: dir, Dialects: []dialect.Name{d}})
+	g, diags, err := gen.Load([]string{"./testdata/model"}, gen.LoadConfig{Dir: dir, Dialects: []dialect.Name{d}})
 	if err != nil {
 		t.Fatal(err)
 	}

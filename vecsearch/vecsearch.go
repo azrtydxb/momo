@@ -101,7 +101,7 @@ func pgvectorAtLeast08(version string) (bool, error) {
 // requireIterativeSupport returns momo.ErrUnsupported when the installed pgvector
 // is older than 0.8.0 or missing.
 func requireIterativeSupport(ctx context.Context, tx *momo.Tx) error {
-	vs, err := momo.Scalars[string](ctx, tx, "SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+	vs, err := momo.QueryScalars[string](ctx, tx, "SELECT extversion FROM pg_extension WHERE extname = 'vector'")
 	if err != nil {
 		return err
 	}
