@@ -614,6 +614,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audit history tables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../importers/" class="md-nav__link">
         
   
@@ -2182,6 +2210,11 @@
 <td>GeneratedVirtual declares a column as VIRTUAL generated: GENERATED ALWAYS AS (expr) VIRTUAL, computed on read.</td>
 </tr>
 <tr>
+<td><code>momo.Config.History</code></td>
+<td>method</td>
+<td>History opts the model into an audit history (PostgreSQL).</td>
+</tr>
+<tr>
 <td><code>momo.Config.IDGen</code></td>
 <td>method</td>
 <td>IDGen declares a Go-side id generator for a string field: an insert fills the field when it holds the zero value.</td>
@@ -3050,6 +3083,36 @@
 <td><code>momo.HasOne</code></td>
 <td>const</td>
 <td>HasOne has its foreign key on the child; at most one child per parent.</td>
+</tr>
+<tr>
+<td><code>momo.HistoryAsOf</code></td>
+<td>func</td>
+<td>HistoryAsOf returns the state of the row of model T with the given primary key at the time at: the latest version recorded at or before at.</td>
+</tr>
+<tr>
+<td><code>momo.HistoryDelete</code></td>
+<td>const</td>
+<td>The operations a HistoryEntry records.</td>
+</tr>
+<tr>
+<td><code>momo.HistoryEntry</code></td>
+<td>type</td>
+<td>HistoryEntry is one recorded version of a row of a model that declares Config.History.</td>
+</tr>
+<tr>
+<td><code>momo.HistoryInsert</code></td>
+<td>const</td>
+<td>The operations a HistoryEntry records.</td>
+</tr>
+<tr>
+<td><code>momo.HistoryOf</code></td>
+<td>func</td>
+<td>HistoryOf returns every recorded version of the row of model T with the given primary key, in the order of the changes (the history id).</td>
+</tr>
+<tr>
+<td><code>momo.HistoryUpdate</code></td>
+<td>const</td>
+<td>The operations a HistoryEntry records.</td>
 </tr>
 <tr>
 <td><code>momo.Hook</code></td>
@@ -4742,6 +4805,11 @@
 <td>ServerVersioner is implemented by drivers that report the server version (PostgreSQL server_version_num, e.g.</td>
 </tr>
 <tr>
+<td><code>momo.SetActor</code></td>
+<td>func</td>
+<td>SetActor records who is changing data in the rest of the transaction: the audit history trigger of a model that declares Config.History copies it into history_changed_by.</td>
+</tr>
+<tr>
 <td><code>momo.SetConfigLocal</code></td>
 <td>func</td>
 <td>SetConfigLocal sets the configuration parameter key to value for the rest of the current transaction only (set_config with is_local = true).</td>
@@ -5566,6 +5634,66 @@
 <td><code>schema.Function</code></td>
 <td>type</td>
 <td>Function is a PostgreSQL function.</td>
+</tr>
+<tr>
+<td><code>schema.History</code></td>
+<td>type</td>
+<td>History is the set of schema objects that make up the audit history of one table: the history table, the trigger function and the trigger on the audited table.</td>
+</tr>
+<tr>
+<td><code>schema.HistoryActorSetting</code></td>
+<td>const</td>
+<td>HistoryActorSetting is the transaction-local PostgreSQL setting the history trigger reads into HistoryChangedByColumn.</td>
+</tr>
+<tr>
+<td><code>schema.HistoryChangedAtColumn</code></td>
+<td>const</td>
+<td>HistoryChangedAtColumn holds the wall-clock time of the change (clock_timestamp(), so two changes of one transaction keep their order).</td>
+</tr>
+<tr>
+<td><code>schema.HistoryChangedByColumn</code></td>
+<td>const</td>
+<td>HistoryChangedByColumn holds the actor the transaction set, or NULL.</td>
+</tr>
+<tr>
+<td><code>schema.HistoryFor</code></td>
+<td>func</td>
+<td>HistoryFor builds the audit history objects of t, for PostgreSQL.</td>
+</tr>
+<tr>
+<td><code>schema.HistoryFunctionName</code></td>
+<td>func</td>
+<td>HistoryFunctionName returns the name of the trigger function that writes the history of table.</td>
+</tr>
+<tr>
+<td><code>schema.HistoryIDColumn</code></td>
+<td>const</td>
+<td>HistoryIDColumn is the identity primary key of a history table.</td>
+</tr>
+<tr>
+<td><code>schema.HistoryIndexName</code></td>
+<td>func</td>
+<td>HistoryIndexName returns the name of the index of the history table that serves the queries of one row's versions.</td>
+</tr>
+<tr>
+<td><code>schema.HistoryOperationColumn</code></td>
+<td>const</td>
+<td>HistoryOperationColumn holds INSERT, UPDATE or DELETE.</td>
+</tr>
+<tr>
+<td><code>schema.HistorySuffix</code></td>
+<td>const</td>
+<td>HistorySuffix is appended to a table name to name its audit history table.</td>
+</tr>
+<tr>
+<td><code>schema.HistoryTableName</code></td>
+<td>func</td>
+<td>HistoryTableName returns the name of the history table of table.</td>
+</tr>
+<tr>
+<td><code>schema.HistoryTriggerName</code></td>
+<td>func</td>
+<td>HistoryTriggerName returns the name of the trigger that writes the history of table.</td>
 </tr>
 <tr>
 <td><code>schema.Index</code></td>

@@ -16,7 +16,7 @@
         <link rel="prev" href="../mysql/">
       
       
-        <link rel="next" href="../importers/">
+        <link rel="next" href="../history/">
       
       
         
@@ -1215,6 +1215,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audit history tables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -4236,7 +4264,10 @@ file read-write and set WAL mode, as every momo SQLite connection does. The same
   <code>has_many</code> or <code>has_one</code> on the other side), with their <code>on_delete</code> and
   <code>on_update</code> actions; STORED and VIRTUAL generated columns become <code>read_only</code>
   fields with <code>generated</code> and, for VIRTUAL, <code>virtual</code>; views and triggers are
-  declared with <code>c.View</code> and <code>c.Trigger</code>.</li>
+  declared with <code>c.View</code> and <code>c.Trigger</code>. On PostgreSQL, a table with the
+  history table, function and trigger that <code>c.History()</code> builds is declared by
+  that one call, and the three objects get no declaration of their own; see
+  <a href="../history/#generate-from-db">audit history tables</a>.</li>
 </ul>
 <p>SQLite has no schemas, extensions, native enums, functions, policies or row-level
 security, so none is read or written. A shadow table of a virtual table, the

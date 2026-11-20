@@ -923,6 +923,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audit history tables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../importers/" class="md-nav__link">
         
   
@@ -2240,7 +2268,7 @@ string literals only.</p>
 <code>&lt;table&gt;_&lt;col&gt;_idx</code> produced by an <code>index</code> tag (the <code>Plan</code> field above already
 yields <code>accounts_plan_idx</code>); the generator refuses the duplicate.</p>
 <p>Config methods: <code>Config.Index</code>, <code>Config.IndexExpr</code>, <code>Config.Unique</code>, <code>Config.ForeignKey</code>, <code>Config.Check</code>, <code>Config.CheckIn</code>, <code>Config.Enum</code>, <code>Config.Default</code>, <code>Config.Generated</code>,
-<code>Config.Comment</code>, <code>Config.Collate</code>, <code>Config.IDGen</code>, <code>Config.FKName</code>, <code>Config.Exclude</code>, <code>Config.PrimaryKey</code>, <code>Config.PrimaryKeyDeferrable</code>, <code>Config.PrimaryKeyInitiallyDeferred</code>, <code>Config.View</code>, <code>Config.Function</code>, <code>Config.Trigger</code>, <code>Config.Policy</code>, <code>Config.RLS</code>, <code>Config.Partition</code>,
+<code>Config.Comment</code>, <code>Config.Collate</code>, <code>Config.IDGen</code>, <code>Config.FKName</code>, <code>Config.Exclude</code>, <code>Config.PrimaryKey</code>, <code>Config.PrimaryKeyDeferrable</code>, <code>Config.PrimaryKeyInitiallyDeferred</code>, <code>Config.History</code>, <code>Config.View</code>, <code>Config.Function</code>, <code>Config.Trigger</code>, <code>Config.Policy</code>, <code>Config.RLS</code>, <code>Config.Partition</code>,
 <code>Config.PartitionOf</code>. Index chain: <code>IndexOpts.Unique()</code> (on <code>Config.Index</code> or <code>Config.IndexExpr</code>), <code>Where(pred)</code>, <code>Method(m)</code>, <code>IndexOpts.With(k, v)</code>,
 <code>Opclass(field, op)</code>, <code>Desc(field)</code>, <code>Nulls(field, "first"|"last")</code>,
 <code>Concurrently()</code> (<code>diff</code> writes the index as <code>CREATE INDEX CONCURRENTLY</code> in its own no-transaction migration).</p>
@@ -2313,6 +2341,29 @@ deferrable primary key or unique constraint, because PostgreSQL refuses it:
 the generator and <code>migrate.Diff</code> report an error that names the foreign key and the
 key, so keep a key that other tables reference immediate. See
 <a href="../migrations/#deferrable-constraints">migrations</a>.</p>
+<p>A model keeps an audit history on PostgreSQL with <code>c.History()</code> (call it once;
+the model needs a primary key and a table in the current schema). The generator
+declares <code>&lt;table&gt;_history</code> (the model's columns plus <code>history_id</code>,
+<code>history_operation</code>, <code>history_changed_at</code> and <code>history_changed_by</code>), the function
+<code>&lt;table&gt;_history_fn</code> and the trigger <code>&lt;table&gt;_history_trg</code>, which records the new
+row of an insert or update and the removed row of a delete, whoever makes the
+change. Never declare those objects by hand next to <code>c.History()</code>: they are
+ordinary schema objects, so <code>migrate diff</code> mirrors a column added, altered or
+renamed on the model on the history table in the same plan (a column the model
+drops stays there as nullable, so no audit data is lost; <code>--rename-table</code> and
+<code>--rename-column</code> follow too), and <code>generate --from-db</code> writes <code>c.History()</code> for
+a database whose history objects match exactly. A primary key change closes the
+old key's timeline with a DELETE row, and an UPDATE that changes nothing records
+nothing. Record the
+actor with <code>momo.SetActor</code> on the <code>*momo.Tx</code> before the change (a
+transaction-local setting; a change made without it records a NULL actor), and
+read the versions with <code>momo.HistoryOf</code> (every version of a row) and
+<code>momo.HistoryAsOf</code> (its state at a time, <code>momo.ErrNotFound</code> when the row did not
+exist then); both take the primary key values after the handle, and accept a
+<code>momo.TenantFilter(ctx, column)</code> after them to scope the read to a tenant.
+SQLite, MySQL and MariaDB refuse it: a generator
+diagnostic, and <code>momo.ErrUnsupported</code> from the three calls. See
+<a href="../history/">history</a>.</p>
 <p>Many-to-many needs <code>join:</code> with the same table on both models you declare it on
 (the reverse side is optional, but if declared it must carry <code>join:</code> too):</p>
 <!-- docscheck:fragment -->

@@ -614,6 +614,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audit history tables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../importers/" class="md-nav__link">
         
   
@@ -2006,6 +2034,13 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>yes: <code>DEFERRABLE</code> and <code>DEFERRABLE INITIALLY DEFERRED</code> on a unique constraint, a primary key and a foreign key are declared, read from <code>pg_constraint</code>, written by <code>generate --from-db</code>, rendered, compared by <code>diff</code>, <code>Baseline</code> and <code>drift</code>, and kept by a snapshot; a change of deferrability drops and adds the constraint again</td>
 <td><code>ErrUnsupported</code>: a declaration is a generator error and the renderer refuses it, because <code>PRAGMA foreign_key_list</code> does not report the deferrability of a foreign key and a primary key or unique constraint cannot be deferred</td>
 <td><code>ErrUnsupported</code>: MySQL and MariaDB check each constraint at the end of the statement and have no <code>DEFERRABLE</code>; a declaration is a generator error and the renderer refuses it</td>
+</tr>
+<tr>
+<td>Audit history tables</td>
+<td><code>schema.History</code>, <code>schema.HistoryFor</code></td>
+<td>yes: <code>Config.History</code> declares <code>&lt;table&gt;_history</code>, a trigger function and an <code>AFTER INSERT OR UPDATE OR DELETE</code> row trigger as ordinary schema objects, so <code>diff</code>, <code>Baseline</code>, <code>drift</code> and <code>generate --from-db</code> handle them and a column change or rename of the model reaches the history table in the same plan, and a dropped column stays there as nullable; the actor is the transaction-local setting <code>momo.actor</code>, set by <code>momo.SetActor</code>; <code>momo.HistoryOf</code> reads the versions of a row and <code>momo.HistoryAsOf</code> its state at a time</td>
+<td><code>ErrUnsupported</code>: a declaration is a generator error, and <code>momo.SetActor</code>, <code>momo.HistoryOf</code> and <code>momo.HistoryAsOf</code> return <code>ErrUnsupported</code>, because SQLite has no transaction-local setting to carry the actor</td>
+<td><code>ErrUnsupported</code>: a declaration is a generator error, and <code>momo.SetActor</code>, <code>momo.HistoryOf</code> and <code>momo.HistoryAsOf</code> return <code>ErrUnsupported</code>, because MySQL and MariaDB have no transaction-local setting to carry the actor</td>
 </tr>
 <tr>
 <td>Transactional outbox</td>
