@@ -11,12 +11,12 @@ import (
 // the generator emits them.
 var hookNames = []string{"BeforeInsert", "BeforeUpdate", "BeforeDelete", "AfterLoad"}
 
-// DetectHooks finds the hook methods of a model statically. A method named
+// detectHooks finds the hook methods of a model statically. A method named
 // BeforeInsert, BeforeUpdate, BeforeDelete or AfterLoad in the method set of
 // *T is a hook when its signature is exactly func(context.Context) error. A
 // method with a hook name and another signature yields a diagnostic at the
 // method. The result maps each detected hook name to true.
-func DetectHooks(named *types.Named, fset *token.FileSet) (map[string]bool, []Diagnostic) {
+func detectHooks(named *types.Named, fset *token.FileSet) (map[string]bool, []Diagnostic) {
 	found := map[string]bool{}
 	var diags []Diagnostic
 	if named == nil {

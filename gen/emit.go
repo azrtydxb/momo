@@ -34,7 +34,7 @@ type pending struct {
 // of g.Plugins in order, buffering the files in w. Models are grouped by
 // package directory (sorted); per package it emits the model-package
 // momo_gen.go and, per model, the momo_gen.go of the model's subpackage.
-// EmitDescriptors already embeds the EmitLookup output (ColumnByName and
+// emitDescriptors already embeds the emitLookup output (ColumnByName and
 // ColumnNames) in that file, so the lookup is not emitted a second time. If any emitter reports diagnostics they are returned as
 // *ErrDiagnostics and nothing is buffered.
 //
@@ -96,7 +96,7 @@ func Emit(g *Graph, w *Writer) error {
 			}
 			subOwner[m.SubPkg] = m
 			sub := filepath.Join(dir, m.SubPkg, "momo_gen.go")
-			desc, d := EmitDescriptors(m, g)
+			desc, d := emitDescriptors(m, g)
 			diags = append(diags, d...)
 			if len(d) == 0 {
 				files = append(files, pending{sub, desc})

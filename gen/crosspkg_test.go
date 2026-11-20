@@ -108,20 +108,20 @@ func TestEmitImportsUseImportPath(t *testing.T) {
 		t.Fatal("models or module info missing")
 	}
 	want := owner.ModulePath + "/gen/testdata/fixtures/crossa"
-	src, d := EmitDescriptors(item, g)
+	src, d := emitDescriptors(item, g)
 	if len(d) != 0 || !strings.Contains(string(src), `"`+want+`"`) {
 		t.Fatalf("Item descriptors do not import %s: %v\n%s", want, d, src)
 	}
 	// A different module path must show up in the import: the path is
 	// derived, not copied from the loader's PkgPath.
 	owner.ModulePath = "example.com/renamed"
-	src, _ = EmitDescriptors(item, g)
+	src, _ = emitDescriptors(item, g)
 	if !strings.Contains(string(src), `"example.com/renamed/gen/testdata/fixtures/crossa"`) {
 		t.Fatalf("import not built through ImportPath:\n%s", src)
 	}
 	// A package directory outside its module is reported, not emitted.
 	owner.ModuleDir = filepath.Join(dir, "crossb")
-	if _, d = EmitDescriptors(item, g); len(d) == 0 || !strings.Contains(d[0].Msg, "is outside module") {
+	if _, d = emitDescriptors(item, g); len(d) == 0 || !strings.Contains(d[0].Msg, "is outside module") {
 		t.Fatalf("want outside-module diagnostic, got %v", d)
 	}
 }

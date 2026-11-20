@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/azrtydxb/momo/internal/genutil"
 )
 
 // ErrHandwritten is returned when an output path holds a file that does not
@@ -121,8 +123,8 @@ func (w *Writer) File(path string, src []byte) error {
 	if hand {
 		return fmt.Errorf("gen: %s: %w", path, ErrHandwritten)
 	}
-	if !bytes.HasPrefix(formatted, []byte(HeaderPrefix)) {
-		return fmt.Errorf("gen: generator bug: output for %s lacks the %q header", path, strings.TrimSpace(HeaderPrefix))
+	if !bytes.HasPrefix(formatted, []byte(genutil.HeaderPrefix)) {
+		return fmt.Errorf("gen: generator bug: output for %s lacks the %q header", path, strings.TrimSpace(genutil.HeaderPrefix))
 	}
 	if prev, ok := w.files[path]; ok {
 		if !bytes.Equal(prev, formatted) {
@@ -168,7 +170,7 @@ var commentLeaders = []string{"// ", "%% ", "# "}
 // the comment styles Text accepts.
 func isHeaderLine(line string) bool {
 	for _, lead := range commentLeaders {
-		if strings.HasPrefix(line, lead+strings.TrimPrefix(HeaderPrefix, "// ")) {
+		if strings.HasPrefix(line, lead+strings.TrimPrefix(genutil.HeaderPrefix, "// ")) {
 			return true
 		}
 	}
@@ -188,7 +190,7 @@ func (w *Writer) Text(path string, data []byte) error {
 	}
 	first, _, _ := strings.Cut(string(data), "\n")
 	if !isHeaderLine(strings.TrimRight(first, "\r")) {
-		return fmt.Errorf("gen: generator bug: output for %s lacks the %q header", path, strings.TrimSpace(HeaderPrefix))
+		return fmt.Errorf("gen: generator bug: output for %s lacks the %q header", path, strings.TrimSpace(genutil.HeaderPrefix))
 	}
 	hand, err := isHandwritten(path)
 	if err != nil {

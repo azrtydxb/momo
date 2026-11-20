@@ -140,7 +140,7 @@ func WriteSnapshot(w io.Writer, s SnapshotFile) error {
 // version, a snapshot whose recorded version differs from its file name, and a
 // snapshot that names itself as its parent are errors naming the file.
 func LatestSnapshot(fsys fs.FS) (*SnapshotFile, error) {
-	files, err := Discover(fsys)
+	files, err := discover(fsys)
 	if err != nil {
 		return nil, err
 	}

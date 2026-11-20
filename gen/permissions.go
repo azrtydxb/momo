@@ -4,11 +4,11 @@ package gen
 
 import "github.com/azrtydxb/momo/gen/tags"
 
-// AccessFor derives a field's write access from its tags. At most one of
+// accessFor derives a field's write access from its tags. At most one of
 // read_only, create_only and immutable may be present; create_only and
 // immutable are rejected on pointer types. The returned diagnostics carry
 // no position; the caller sets it.
-func AccessFor(t tags.Tags, field string, pointer bool) (Access, []Diagnostic) {
+func accessFor(t tags.Tags, field string, pointer bool) (Access, []Diagnostic) {
 	n := 0
 	for _, b := range []bool{t.ReadOnly, t.CreateOnly, t.Immutable} {
 		if b {
@@ -34,9 +34,9 @@ func AccessFor(t tags.Tags, field string, pointer bool) (Access, []Diagnostic) {
 	return Writable, nil
 }
 
-// DescriptorType returns the momo descriptor type and constructor names for
+// descriptorType returns the momo descriptor type and constructor names for
 // an access mode, without type arguments.
-func DescriptorType(a Access, pointer bool) (typeName, ctor string) {
+func descriptorType(a Access, pointer bool) (typeName, ctor string) {
 	switch a {
 	case ReadOnly:
 		if pointer {
@@ -54,11 +54,11 @@ func DescriptorType(a Access, pointer bool) (typeName, ctor string) {
 	return "Column", "NewColumn"
 }
 
-// VectorDescriptorType returns the momo vector descriptor type and
+// vectorDescriptorType returns the momo vector descriptor type and
 // constructor names for an access mode, without type arguments. Every
 // variant is accepted by the distance builders, so a restricted vector can
 // still be searched.
-func VectorDescriptorType(a Access, pointer bool) (typeName, ctor string) {
+func vectorDescriptorType(a Access, pointer bool) (typeName, ctor string) {
 	switch a {
 	case ReadOnly:
 		if pointer {

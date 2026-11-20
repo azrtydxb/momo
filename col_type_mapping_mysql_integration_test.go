@@ -19,9 +19,10 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/tags"
-	"github.com/azrtydxb/momo/gen/typemap"
 	"github.com/azrtydxb/momo/internal/exprtest"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/internal/typemap"
+	"github.com/azrtydxb/momo/internal/vectortype"
 	"github.com/azrtydxb/momo/types"
 	"github.com/azrtydxb/momo/vector"
 )
@@ -117,13 +118,13 @@ func tmVectorMySQL(t *testing.T, db *momo.DB, cell string) {
 	if err != nil || len(version) != 1 {
 		t.Fatalf("VERSION(): %v, %v", version, err)
 	}
-	typ, err := momo.MySQLVectorType(db.Dialect().Flavor, version[0], 3)
+	typ, err := vectortype.MySQL(db.Dialect().Flavor, version[0], 3)
 	if !strings.EqualFold(strings.ReplaceAll(cell, "(N)", "(3)"), typ) && err == nil {
-		t.Fatalf("documented %q, MySQLVectorType = %q", cell, typ)
+		t.Fatalf("documented %q, vectortype.MySQL = %q", cell, typ)
 	}
 	if err != nil {
 		if !errors.Is(err, momo.ErrUnsupported) {
-			t.Fatalf("MySQLVectorType on %s: %v, want ErrUnsupported", version[0], err)
+			t.Fatalf("vectortype.MySQL on %s: %v, want ErrUnsupported", version[0], err)
 		}
 		if _, err := momo.Exec(ctx, db, "CREATE TABLE tm_vec (id bigint PRIMARY KEY, emb vector(3))"); err == nil {
 			t.Fatalf("CREATE TABLE with a vector column succeeded on %s, which has no VECTOR type", version[0])

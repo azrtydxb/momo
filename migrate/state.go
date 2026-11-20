@@ -657,7 +657,7 @@ func foldChain(entries []chainEntry) ([]*schema.Schema, []error) {
 // snapshotEntries reads the snapshots of fsys in version order, only those at
 // or before upTo when upTo is not empty.
 func snapshotEntries(fsys fs.FS, upTo string) ([]chainEntry, error) {
-	files, err := Discover(fsys)
+	files, err := discover(fsys)
 	if err != nil {
 		return nil, err
 	}
@@ -715,7 +715,7 @@ func deriveState(entries []chainEntry) (*schema.Schema, bool, error) {
 // returns ErrNoSnapshot when there is none and an error wrapping
 // ErrBranchConflict when two branches cannot be shown independent.
 func LatestState(fsys fs.FS) (*SnapshotFile, error) {
-	files, err := Discover(fsys)
+	files, err := discover(fsys)
 	if err != nil {
 		return nil, err
 	}

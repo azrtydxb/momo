@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -44,7 +45,7 @@ func TestGenerateCheckIn(t *testing.T) {
 		if want := []string{"archived", "draft", "it's", "published"}; !slices.Equal(kind.In.Values, want) {
 			t.Fatalf("%s: values = %v, want the sorted %v", d, kind.In.Values, want)
 		}
-		if want := schema.CheckInExpr(d, "kind", kind.In.Values); kind.Expr != want {
+		if want := schemautil.CheckInExpr(d, "kind", kind.In.Values); kind.Expr != want {
 			t.Fatalf("%s: Expr = %q, want %q", d, kind.Expr, want)
 		}
 		if tag.Name != "notes_tag_in" || tag.In == nil || tag.In.Column != "tag" || !slices.Equal(tag.In.Values, []string{"x", "y"}) {

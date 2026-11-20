@@ -39,11 +39,11 @@ func (e *Engine) Rebase(ctx context.Context, target fs.FS, desired *schema.Schem
 	if target == nil {
 		return nil, nil, errors.New("migrate: Rebase needs a target directory")
 	}
-	branch, err := Discover(e.dir)
+	branch, err := discover(e.dir)
 	if err != nil {
 		return nil, nil, err
 	}
-	tfiles, err := Discover(target)
+	tfiles, err := discover(target)
 	if err != nil {
 		return nil, nil, fmt.Errorf("migrate: target: %w", err)
 	}
@@ -69,7 +69,7 @@ func (e *Engine) Rebase(ctx context.Context, target fs.FS, desired *schema.Schem
 			}
 		}
 		if f.Kind == "up" && !inTarget[f.Version] {
-			dirs, err := ParseDirectives(f.Body)
+			dirs, err := readDirectives(f.Body)
 			if err != nil {
 				return nil, nil, fmt.Errorf("migrate: %s: %w", f.Path, err)
 			}

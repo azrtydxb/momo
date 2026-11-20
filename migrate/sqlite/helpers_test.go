@@ -12,7 +12,6 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/driver/sqlitedriver"
 	"github.com/azrtydxb/momo/internal/testdb"
-	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 )
 
 type execer interface {
@@ -88,24 +87,4 @@ func scanOne(t *testing.T, c momo.PinnedConn, sql string, dest ...any) {
 	if err := rows.Scan(dest...); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// newRebuildFixture returns a pinned connection with foreign_keys ON, a parent
-// table items with an index, a view, a trigger on items, a child table links
-// with an FK to items and a trigger on links that updates items, and three
-// parent rows and two child rows.
-func newRebuildFixture(t *testing.T) momo.PinnedConn {
-	t.Helper()
-	db := testopen.SQLite(t)
-	c := pinned(t, db)
-	mustExec(t, c, `PRAGMA foreign_keys = ON`)
-	mustExec(t, c, `CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, qty INTEGER)`)
-	mustExec(t, c, `CREATE INDEX items_name ON items(name)`)
-	mustExec(t, c, `CREATE TRIGGER items_audit AFTER UPDATE ON items BEGIN SELECT 1; END`)
-	mustExec(t, c, `CREATE VIEW items_v AS SELECT id, name FROM items`)
-	mustExec(t, c, `CREATE TABLE links (id INTEGER PRIMARY KEY, item_id INTEGER NOT NULL REFERENCES items(id))`)
-	mustExec(t, c, `CREATE TRIGGER links_touch AFTER INSERT ON links BEGIN UPDATE items SET qty = qty WHERE id = NEW.item_id; END`)
-	mustExec(t, c, `INSERT INTO items (name, qty) VALUES ('a', 1), ('b', 2), ('c', 3)`)
-	mustExec(t, c, `INSERT INTO links (item_id) VALUES (1), (2)`)
-	return c
 }

@@ -30,7 +30,7 @@ func TestEmitMetaGolden(t *testing.T) {
 	if len(diags) != 0 {
 		t.Fatalf("load diagnostics: %v", diags)
 	}
-	src, ds := EmitMeta(g.Models, g)
+	src, ds := emitMeta(g.Models, g)
 	if len(ds) != 0 {
 		t.Fatalf("emit diagnostics: %v", ds)
 	}
@@ -67,7 +67,7 @@ func TestEmitMetaBuilds(t *testing.T) {
 	if len(diags) != 0 {
 		t.Fatalf("load diagnostics: %v", diags)
 	}
-	src, ds := EmitMeta(g.Models, g)
+	src, ds := emitMeta(g.Models, g)
 	if len(ds) != 0 {
 		t.Fatalf("emit diagnostics: %v", ds)
 	}
@@ -152,7 +152,7 @@ func TestEmitMetaProjectionGolden(t *testing.T) {
 	if len(g.Schema.Tables) != 3 {
 		t.Fatalf("a projection must not get a table: %+v", g.Schema.Tables)
 	}
-	src, ds := EmitMeta(g.Models, g)
+	src, ds := emitMeta(g.Models, g)
 	if len(ds) != 0 {
 		t.Fatalf("emit diagnostics: %v", ds)
 	}
@@ -228,7 +228,7 @@ func TestDescriptorTableCarriesSoftDelete(t *testing.T) {
 		"BoolWidget": `var Table = momo.TableRef{Name: "bool_widgets", SoftDelete: "removed", SoftDeleteKind: momo.SoftDeleteBool}`,
 	}
 	for _, m := range g.Models {
-		src, ds := EmitDescriptors(m, g)
+		src, ds := emitDescriptors(m, g)
 		if len(ds) != 0 {
 			t.Fatalf("emit diagnostics: %v", ds)
 		}

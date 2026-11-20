@@ -18,7 +18,7 @@ import (
 // WithImplicitTx. Typical use is row-level-security scoping:
 //
 //	db := momo.New(drv, momo.WithTxSetup(func(ctx context.Context, tx *momo.Tx) error {
-//		return momo.SetConfigLocal(ctx, tx, "app.tenant_id", tenantFrom(ctx))
+//		return tx.SetLocal(ctx, "app.tenant_id", tenantFrom(ctx))
 //	}))
 //
 // fn runs once per real transaction. It does not run again for a savepoint
@@ -34,7 +34,7 @@ import (
 // WithImplicitTx whenever the setup enforces a security boundary. Statements
 // issued through db.Driver() bypass momo entirely and are never scoped either.
 // fn must not commit or roll back tx. Use transaction-local settings only
-// (SetConfigLocal, Tx.SetLocal): a session-level SET would outlive the
+// (Tx.SetLocal): a session-level SET would outlive the
 // transaction and, behind PgBouncer in transaction mode, leak to another
 // client. With several options the functions run in registration order.
 func WithTxSetup(fn func(ctx context.Context, tx *Tx) error) Option {
@@ -72,6 +72,10 @@ func WithImplicitTx() Option { return func(db *DB) { db.implicitTx = true } }
 // never use a session-level SET for this. key must not come from untrusted
 // input (see Tx.SetLocal). It returns ErrUnsupported on dialects without
 // transaction-scoped settings.
+//
+// Deprecated: use Tx.SetLocal, which does the same through the transaction:
+// tx.SetLocal(ctx, key, value). SetConfigLocal calls it and stays for one
+// release.
 func SetConfigLocal(ctx context.Context, tx *Tx, key, value string) error {
 	return tx.SetLocal(ctx, key, value)
 }

@@ -31,8 +31,9 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/gen/tags"
-	"github.com/azrtydxb/momo/gen/typemap"
 	"github.com/azrtydxb/momo/internal/dbdefault"
+	"github.com/azrtydxb/momo/internal/schemautil"
+	"github.com/azrtydxb/momo/internal/typemap"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -858,7 +859,7 @@ func (g *generator) constraints(m *model) {
 // a set whatever the spelling of the stored expression. It reports whether it
 // declared the check.
 func (g *generator) checkIn(m *model, ck *schema.Check) bool {
-	col, values, ok := schema.ParseCheckIn(ck.Expr)
+	col, values, ok := schemautil.ParseCheckIn(ck.Expr)
 	if !ok {
 		return false
 	}
@@ -867,7 +868,7 @@ func (g *generator) checkIn(m *model, ck *schema.Check) bool {
 	if !found || c == nil || c.Enum != "" || (f.goType != "string" && f.goType != "*string") || !textColumn(g.o.Dialect, c) {
 		return false
 	}
-	in := schema.CheckIn{Column: col, Values: schema.SortedValues(values)}
+	in := schema.CheckIn{Column: col, Values: schemautil.SortedValues(values)}
 	if in.Validate() != nil {
 		return false
 	}

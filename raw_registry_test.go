@@ -108,7 +108,7 @@ func TestRegisterQueryUsesDefaultRegistry(t *testing.T) {
 
 // Catches: the offline handle reaching for a database.
 func TestOfflineNeverExecutes(t *testing.T) {
-	db := momo.NewOffline(dialect.SQLite)
+	db := momo.MustNewOffline(dialect.SQLite)
 	if _, err := momo.Exec(t.Context(), db, "SELECT 1"); !errors.Is(err, momo.ErrUnsupported) {
 		t.Fatalf("Exec on an offline handle = %v, want ErrUnsupported", err)
 	}
@@ -126,7 +126,21 @@ func TestQueryRegistryTrimsSQL(t *testing.T) {
 	}
 }
 
-func TestNewOfflineUnknownDialectPanics(t *testing.T) {
+func TestMustNewOfflineUnknownDialectPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("an unknown dialect must panic")
+		}
+	}()
+	momo.MustNewOffline("oracle")
+}
+
+// Catches: the deprecated forwarder drifting from MustNewOffline.
+func TestNewOfflineForwardsToMustNewOffline(t *testing.T) {
+	db := momo.NewOffline(dialect.Postgres)
+	if db.Dialect().Name != dialect.Postgres {
+		t.Fatalf("dialect = %s, want postgres", db.Dialect().Name)
+	}
 	defer func() {
 		if recover() == nil {
 			t.Fatal("an unknown dialect must panic")

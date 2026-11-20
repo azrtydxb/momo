@@ -58,7 +58,7 @@ func RegisterQuery(name string, build func(q Querier) Compilable) {
 }
 
 // Register adds a named query. build receives a Querier that only compiles
-// (see NewOffline) and returns the statement, for example a SelectQuery or a
+// (see MustNewOffline) and returns the statement, for example a SelectQuery or a
 // CompilableSQL. It runs once per Compile and dialect, so it must not touch a
 // database, and the argument values it binds are placeholders that never
 // reach the listed SQL. Register panics when name is empty or contains a line break, build is nil or
@@ -108,10 +108,10 @@ func (r *QueryRegistry) snapshot() ([]string, []func(Querier) Compilable) {
 // is stable whatever the indentation of a raw string literal. A builder that
 // fails, returns nil or renders an error (for example ErrUnsupported on a
 // dialect that lacks the feature) fails the whole call with an error naming
-// the query. An unknown dialect panics, see NewOffline.
+// the query. An unknown dialect panics, see MustNewOffline.
 func (r *QueryRegistry) Compile(d dialect.Name) ([]RegisteredQuery, error) {
 	names, builds := r.snapshot()
-	q := NewOffline(d)
+	q := MustNewOffline(d)
 	out := make([]RegisteredQuery, 0, len(names))
 	for i, n := range names {
 		c := builds[i](q)
@@ -155,20 +155,27 @@ type rawCompiled struct {
 
 func (r rawCompiled) SQL() (Compiled, error) { return r.c, r.err }
 
-// NewOffline returns a *DB for dialect d that compiles statements but never
-// reaches a database: every execution returns an error matching
+// MustNewOffline returns a *DB for dialect d that compiles statements but
+// never reaches a database: every execution returns an error matching
 // ErrUnsupported. Use it to call SQL on a query builder in a unit test. The
 // dialect is the default one for d, without a MySQL flavor or a server
 // version.
 //
-// NewOffline panics for a dialect name that is not postgres, mysql or sqlite.
-func NewOffline(d dialect.Name) *DB {
+// MustNewOffline panics for a dialect name that is not postgres, mysql or
+// sqlite, like regexp.MustCompile does for a bad pattern.
+func MustNewOffline(d dialect.Name) *DB {
 	dd := dialect.For(d)
 	if dd == nil {
-		panic(fmt.Sprintf("momo: NewOffline: unknown dialect %q", d))
+		panic(fmt.Sprintf("momo: MustNewOffline: unknown dialect %q", d))
 	}
 	return New(offlineDriver{dd})
 }
+
+// NewOffline is MustNewOffline.
+//
+// Deprecated: use MustNewOffline, the name that says it panics for an unknown
+// dialect. NewOffline calls it and stays for one release.
+func NewOffline(d dialect.Name) *DB { return MustNewOffline(d) }
 
 var errOffline = errors.New("the offline handle has no database")
 

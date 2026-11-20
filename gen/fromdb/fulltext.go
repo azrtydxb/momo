@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -26,7 +27,7 @@ func (g *generator) prepareFullText(m *model) {
 		}
 		ft := ix.FullText
 		if g.o.Dialect == dialect.Postgres && !ft.Expression {
-			name := schema.TSVectorColumn(ix.Name)
+			name := schemautil.TSVectorColumn(ix.Name)
 			t.Columns = slices.DeleteFunc(t.Columns, func(c schema.Column) bool { return c.Name == name && c.Generated != "" })
 		}
 		ix.Parts = make([]schema.IndexPart, len(ft.Columns))
@@ -36,7 +37,7 @@ func (g *generator) prepareFullText(m *model) {
 		if g.o.Dialect != dialect.SQLite {
 			continue
 		}
-		fts := schema.FTS5Table(t.Name)
+		fts := schemautil.FTS5Table(t.Name)
 		if ix.Name == fts {
 			want := t.Name + "_search"
 			taken := false

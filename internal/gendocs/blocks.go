@@ -12,7 +12,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/tags"
-	"github.com/azrtydxb/momo/gen/typemap"
+	"github.com/azrtydxb/momo/internal/typemap"
 )
 
 // family is one column of the dialect tables: a dialect value and the name

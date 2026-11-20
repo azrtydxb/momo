@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
 )
@@ -25,7 +26,7 @@ func checkInSchema(values ...string) *schema.Schema {
 		PrimaryKey: []string{"id"},
 		Checks: []schema.Check{{
 			Name: "notes_kind_check",
-			Expr: schema.CheckInExpr(dialect.Postgres, "kind", values),
+			Expr: schemautil.CheckInExpr(dialect.Postgres, "kind", values),
 			In:   &schema.CheckIn{Column: "kind", Values: slices.Clone(values)},
 		}},
 	}}}
@@ -120,7 +121,7 @@ func TestCheckInMixedCaseColumnAgreesInEqualAndDiff(t *testing.T) {
 	}
 	declared := table(schema.Check{
 		Name: "notes_status_check",
-		Expr: schema.CheckInExpr(dialect.MySQL, "Status", []string{"a", "b"}),
+		Expr: schemautil.CheckInExpr(dialect.MySQL, "Status", []string{"a", "b"}),
 		In:   &schema.CheckIn{Column: "Status", Values: []string{"a", "b"}},
 	})
 	stored := table(schema.Check{Name: "notes_status_check", Expr: "(`Status` in (_utf8mb4\\'b\\',_utf8mb4\\'a\\'))"})
@@ -208,7 +209,7 @@ func TestCheckInFallsBackToDropAndAdd(t *testing.T) {
 	other := checkInSchema("a")
 	other.Tables[0].Columns = append(other.Tables[0].Columns, schema.Column{Name: "tag", Type: "text", Nullable: true})
 	other.Tables[0].Checks[0].In.Column = "tag"
-	other.Tables[0].Checks[0].Expr = schema.CheckInExpr(dialect.Postgres, "tag", []string{"a"})
+	other.Tables[0].Checks[0].Expr = schemautil.CheckInExpr(dialect.Postgres, "tag", []string{"a"})
 	for name, c := range map[string]struct{ from, to *schema.Schema }{
 		"list to plain": {checkInSchema("a", "b"), plain},
 		"plain to list": {plain, checkInSchema("a", "b")},

@@ -15,6 +15,7 @@ import (
 	"github.com/azrtydxb/momo/internal/obstest"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/internal/vectorparity"
+	"github.com/azrtydxb/momo/internal/vectortype"
 	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vecsearch"
 	"github.com/azrtydxb/momo/vector"
@@ -126,7 +127,7 @@ func sqvIDs(docs []vecDoc) []int64 {
 // sqvDocsTable creates docs(id, emb vector(3), radius) and loads three rows.
 func sqvDocsTable(t *testing.T, db *momo.DB) []vector.Vector {
 	t.Helper()
-	typ, err := momo.SQLiteVectorType("emb", 3)
+	typ, err := vectortype.SQLite("emb", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +217,7 @@ func TestSQLiteVectorDistances(t *testing.T) {
 // bytes, compared through vec_bit.
 func TestSQLiteBitVectorHamming(t *testing.T) {
 	db := testopen.SQLite(t)
-	typ, err := momo.SQLiteBitsType("bits", 8)
+	typ, err := vectortype.SQLiteBits("bits", 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +268,7 @@ func TestSQLiteBitVectorHamming(t *testing.T) {
 // TestSQLiteVectorNullable inserts, updates and reads the nullable field type.
 func TestSQLiteVectorNullable(t *testing.T) {
 	db := testopen.SQLite(t)
-	typ, err := momo.SQLiteVectorType("emb", 3)
+	typ, err := vectortype.SQLite("emb", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +365,7 @@ func TestSQLiteVectorRefusals(t *testing.T) {
 func TestSQLiteVectorSensitiveRedaction(t *testing.T) {
 	rec := &obstest.Recorder{}
 	db := testopen.SQLite(t, momo.WithHook(rec), momo.WithArgLogging())
-	typ, err := momo.SQLiteVectorType("emb", 3)
+	typ, err := vectortype.SQLite("emb", 3)
 	if err != nil {
 		t.Fatal(err)
 	}

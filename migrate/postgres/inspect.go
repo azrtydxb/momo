@@ -153,7 +153,7 @@ func (in *inspector) namespaces(ctx context.Context, out *schema.Schema) error {
 			return err
 		}
 		if n != in.current {
-			out.Schemas = append(out.Schemas, schema.SchemaNamespace{Name: n})
+			out.Schemas = append(out.Schemas, schema.Namespace{Name: n})
 		}
 		return nil
 	})

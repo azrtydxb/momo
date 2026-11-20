@@ -18,6 +18,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/internal/vectortype"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -81,7 +82,7 @@ func embCreate(t *testing.T, db *momo.DB, d dialect.Name) {
 	t.Helper()
 	vec := "vector(3)"
 	if d == dialect.SQLite {
-		typ, err := momo.SQLiteVectorType("emb", 3)
+		typ, err := vectortype.SQLite("emb", 3)
 		if err != nil {
 			t.Fatal(err)
 		}

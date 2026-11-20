@@ -679,7 +679,7 @@ func Equal(a, b *Schema) bool {
 	return bytes.Equal(ca, cb)
 }
 
-// reconcileCheckIns makes the checks of one name on one table that SameCheck
+// reconcileCheckIns makes the checks of one name on one table that sameCheck
 // calls the same compare equal: the value list is another view of the
 // expression, so both lose it and share one spelling. na and nb are the
 // normalized copies Equal owns; the decision is taken on the schemas as given
@@ -698,7 +698,7 @@ func reconcileCheckIns(na, nb, a, b *Schema) {
 			}
 			for _, ca := range ta.Checks {
 				for _, cb := range tb.Checks {
-					if ca.Name != cb.Name || (ca.In == nil && cb.In == nil) || !SameCheck(ca, cb) {
+					if ca.Name != cb.Name || (ca.In == nil && cb.In == nil) || !sameCheck(ca, cb) {
 						continue
 					}
 					ya, yb := checkByName(xa, ca.Name), checkByName(xb, cb.Name)

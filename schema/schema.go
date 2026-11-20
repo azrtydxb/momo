@@ -32,9 +32,9 @@ type Schema struct {
 	Dialect       dialect.Name `json:"dialect"`
 	// Schemas lists PostgreSQL namespaces other than the connection's
 	// current schema, which is implicit.
-	Schemas    []SchemaNamespace `json:"schemas,omitempty"`
-	Extensions []Extension       `json:"extensions,omitempty"`
-	Enums      []Enum            `json:"enums,omitempty"`
+	Schemas    []Namespace `json:"schemas,omitempty"`
+	Extensions []Extension `json:"extensions,omitempty"`
+	Enums      []Enum      `json:"enums,omitempty"`
 	// Sequences lists the PostgreSQL sequences no column owns. A serial or
 	// identity column owns its sequence and is declared by the column.
 	Sequences []Sequence `json:"sequences,omitempty"`
@@ -45,10 +45,15 @@ type Schema struct {
 	Policies  []Policy   `json:"policies,omitempty"`
 }
 
-// SchemaNamespace is a PostgreSQL schema (namespace) managed by Momo.
-type SchemaNamespace struct {
+// Namespace is a PostgreSQL schema (namespace) managed by Momo.
+type Namespace struct {
 	Name string `json:"name"`
 }
+
+// SchemaNamespace is the former name of Namespace.
+//
+// Deprecated: use Namespace.
+type SchemaNamespace = Namespace
 
 // Extension is a PostgreSQL extension such as "vector".
 type Extension struct {
@@ -351,7 +356,7 @@ type Check struct {
 	// In is set when the constraint restricts a text column to a list of values.
 	// The differ then compares the values as a set, and Expr holds the canonical
 	// rendering of the sorted values. Equal and the drift comparison do the
-	// same (see SameCheck). A check read back from a database carries no In;
+	// same (see Equal). A check read back from a database carries no In;
 	// when the other side has one, its list is read from its Expr.
 	In *CheckIn `json:"in,omitempty"`
 }
@@ -382,7 +387,7 @@ func (t *Table) Column(name string) (*Column, bool) {
 func (s *Schema) Sort() {
 	byName := func(a, b string) int { return cmp.Compare(a, b) }
 	byKey := func(a, b []string) int { return slices.Compare(a, b) }
-	slices.SortFunc(s.Schemas, func(a, b SchemaNamespace) int { return byName(a.Name, b.Name) })
+	slices.SortFunc(s.Schemas, func(a, b Namespace) int { return byName(a.Name, b.Name) })
 	slices.SortFunc(s.Extensions, func(a, b Extension) int { return byName(a.Name, b.Name) })
 	slices.SortFunc(s.Enums, func(a, b Enum) int { return byName(a.Name, b.Name) })
 	slices.SortFunc(s.Sequences, func(a, b Sequence) int { return byKey([]string{a.Schema, a.Name}, []string{b.Schema, b.Name}) })

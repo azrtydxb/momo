@@ -326,7 +326,7 @@ func (e *Engine) LintAll() ([]Finding, error) {
 }
 
 func (e *Engine) lintPending(pending []Pending) ([]Finding, error) {
-	files, err := Discover(e.dir)
+	files, err := discover(e.dir)
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +335,7 @@ func (e *Engine) lintPending(pending []Pending) ([]Finding, error) {
 	for _, f := range files {
 		switch f.Kind {
 		case "up":
-			d, err := ParseDirectives(f.Body)
+			d, err := readDirectives(f.Body)
 			if err != nil {
 				return nil, fmt.Errorf("migrate: %s: %w", f.Path, err)
 			}

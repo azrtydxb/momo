@@ -10,9 +10,10 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo/dialect"
-	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/gen/tags"
-	"github.com/azrtydxb/momo/gen/typemap"
+	"github.com/azrtydxb/momo/internal/snake"
+	"github.com/azrtydxb/momo/internal/tagparse"
+	"github.com/azrtydxb/momo/internal/typemap"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -59,10 +60,10 @@ func sdiagsString(ds []Diagnostic) string {
 
 // fld builds a persisted field the way discovery does.
 func fld(name, goType, tag string) *Field {
-	tg, _ := tags.Parse(tag)
+	tg, _ := tagparse.Parse(tag)
 	col := tg.Column
 	if col == "" {
-		col = naming.ToSnake(name)
+		col = snake.ToSnake(name)
 	}
 	return &Field{
 		GoName:   name,

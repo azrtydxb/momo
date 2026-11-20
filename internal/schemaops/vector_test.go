@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package schema
+package schemaops
 
 import (
 	"errors"
@@ -8,7 +8,20 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/schema"
 )
+
+// The schema types the tests build, under their short names.
+type (
+	Table     = schema.Table
+	Column    = schema.Column
+	Index     = schema.Index
+	IndexPart = schema.IndexPart
+	KV        = schema.KV
+)
+
+// kv builds a storage parameter.
+func kv(key, value string) KV { return KV{Key: key, Value: value} }
 
 func TestVectorIndexRules(t *testing.T) {
 	tbl := func(typ string) *Table {
@@ -33,18 +46,18 @@ func TestVectorIndexRules(t *testing.T) {
 		{"hnsw halfvec over 4000", "halfvec(4001)", hnsw("halfvec_l2_ops"), false},
 		{"hnsw bit hamming", "bit(64000)", hnsw("bit_hamming_ops"), true},
 		{"hnsw bit with vector opclass", "bit(8)", hnsw("vector_cosine_ops"), false},
-		{"ivfflat vector with lists", "vector(768)", ivf("vector_l2_ops", KV{"lists", "100"}), true},
+		{"ivfflat vector with lists", "vector(768)", ivf("vector_l2_ops", kv("lists", "100")), true},
 		{"ivfflat vector without lists", "vector(768)", ivf("vector_l2_ops"), false},
-		{"ivfflat sparsevec rejected", "sparsevec(100)", ivf("sparsevec_l2_ops", KV{"lists", "10"}), false},
-		{"ivfflat bit jaccard rejected", "bit(8)", ivf("bit_jaccard_ops", KV{"lists", "10"}), false},
-		{"unknown with key", "vector(3)", hnsw("vector_l2_ops", KV{"ef", "10"}), false},
+		{"ivfflat sparsevec rejected", "sparsevec(100)", ivf("sparsevec_l2_ops", kv("lists", "10")), false},
+		{"ivfflat bit jaccard rejected", "bit(8)", ivf("bit_jaccard_ops", kv("lists", "10")), false},
+		{"unknown with key", "vector(3)", hnsw("vector_l2_ops", kv("ef", "10")), false},
 	}
 	for _, c := range cases {
 		err := ValidateVectorIndex(dialect.Postgres, tbl(c.typ), c.idx)
 		if c.ok && err != nil {
 			t.Errorf("%s: unexpected error %v", c.name, err)
 		}
-		if !c.ok && !errors.Is(err, ErrInvalidVectorIndex) {
+		if !c.ok && !errors.Is(err, schema.ErrInvalidVectorIndex) {
 			t.Errorf("%s: err = %v, want ErrInvalidVectorIndex", c.name, err)
 		}
 	}
@@ -70,43 +83,43 @@ func TestVectorIndexRulesMore(t *testing.T) {
 		{"hnsw vector l1 ok", pg, "vector(3)", Index{Method: "hnsw", Parts: part("vector_l1_ops")}, true},
 		{"hnsw bit over 64000", pg, "bit(64001)", Index{Method: "hnsw", Parts: part("bit_hamming_ops")}, false},
 		{"hnsw missing opclass", pg, "vector(3)", Index{Method: "hnsw", Parts: part("")}, false},
-		{"hnsw params ok", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"m", "16"}, {"ef_construction", "64"}}}, true},
-		{"hnsw m too small", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"m", "1"}}}, false},
-		{"hnsw m too large", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"m", "101"}}}, false},
-		{"hnsw ef below 2m", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"m", "16"}, {"ef_construction", "31"}}}, false},
-		{"hnsw ef over 1000", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"ef_construction", "1001"}}}, false},
-		{"hnsw m not a number", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"m", "x"}}}, false},
-		{"hnsw with lists", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"lists", "10"}}}, false},
-		{"ivfflat with m", pg, "vector(3)", Index{Method: "ivfflat", Parts: l2, With: []KV{{"lists", "10"}, {"m", "16"}}}, false},
-		{"ivfflat lists zero", pg, "vector(3)", Index{Method: "ivfflat", Parts: l2, With: []KV{{"lists", "0"}}}, false},
-		{"ivfflat lists over 32768", pg, "vector(3)", Index{Method: "ivfflat", Parts: l2, With: []KV{{"lists", "32769"}}}, false},
-		{"ivfflat default opclass empty", pg, "vector(3)", Index{Method: "ivfflat", Parts: part(""), With: []KV{{"lists", "10"}}}, true},
-		{"ivfflat halfvec ok", pg, "halfvec(4000)", Index{Method: "ivfflat", Parts: part("halfvec_cosine_ops"), With: []KV{{"lists", "10"}}}, true},
-		{"ivfflat halfvec over 4000", pg, "halfvec(4001)", Index{Method: "ivfflat", Parts: part("halfvec_l2_ops"), With: []KV{{"lists", "10"}}}, false},
-		{"ivfflat vector over 2000", pg, "vector(2001)", Index{Method: "ivfflat", Parts: l2, With: []KV{{"lists", "10"}}}, false},
-		{"ivfflat bit hamming", pg, "bit(8)", Index{Method: "ivfflat", Parts: part("bit_hamming_ops"), With: []KV{{"lists", "10"}}}, true},
-		{"ivfflat vector with halfvec ops", pg, "vector(3)", Index{Method: "ivfflat", Parts: part("halfvec_l2_ops"), With: []KV{{"lists", "10"}}}, false},
+		{"hnsw params ok", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{kv("m", "16"), kv("ef_construction", "64")}}, true},
+		{"hnsw m too small", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{kv("m", "1")}}, false},
+		{"hnsw m too large", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{kv("m", "101")}}, false},
+		{"hnsw ef below 2m", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{kv("m", "16"), kv("ef_construction", "31")}}, false},
+		{"hnsw ef over 1000", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{kv("ef_construction", "1001")}}, false},
+		{"hnsw m not a number", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{kv("m", "x")}}, false},
+		{"hnsw with lists", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{kv("lists", "10")}}, false},
+		{"ivfflat with m", pg, "vector(3)", Index{Method: "ivfflat", Parts: l2, With: []KV{kv("lists", "10"), kv("m", "16")}}, false},
+		{"ivfflat lists zero", pg, "vector(3)", Index{Method: "ivfflat", Parts: l2, With: []KV{kv("lists", "0")}}, false},
+		{"ivfflat lists over 32768", pg, "vector(3)", Index{Method: "ivfflat", Parts: l2, With: []KV{kv("lists", "32769")}}, false},
+		{"ivfflat default opclass empty", pg, "vector(3)", Index{Method: "ivfflat", Parts: part(""), With: []KV{kv("lists", "10")}}, true},
+		{"ivfflat halfvec ok", pg, "halfvec(4000)", Index{Method: "ivfflat", Parts: part("halfvec_cosine_ops"), With: []KV{kv("lists", "10")}}, true},
+		{"ivfflat halfvec over 4000", pg, "halfvec(4001)", Index{Method: "ivfflat", Parts: part("halfvec_l2_ops"), With: []KV{kv("lists", "10")}}, false},
+		{"ivfflat vector over 2000", pg, "vector(2001)", Index{Method: "ivfflat", Parts: l2, With: []KV{kv("lists", "10")}}, false},
+		{"ivfflat bit hamming", pg, "bit(8)", Index{Method: "ivfflat", Parts: part("bit_hamming_ops"), With: []KV{kv("lists", "10")}}, true},
+		{"ivfflat vector with halfvec ops", pg, "vector(3)", Index{Method: "ivfflat", Parts: part("halfvec_l2_ops"), With: []KV{kv("lists", "10")}}, false},
 		{"expression part", pg, "vector(3)", Index{Method: "hnsw", Parts: []IndexPart{{Expr: "emb::halfvec(3)", OpClass: "halfvec_l2_ops"}}}, false},
 		{"two parts", pg, "vector(3)", Index{Method: "hnsw", Parts: []IndexPart{{Column: "emb", OpClass: "vector_l2_ops"}, {Column: "emb", OpClass: "vector_l2_ops"}}}, false},
 		{"not a vector column", pg, "text", Index{Method: "hnsw", Parts: l2}, false},
 		{"unknown column", pg, "vector(3)", Index{Method: "hnsw", Parts: []IndexPart{{Column: "nope", OpClass: "vector_l2_ops"}}}, false},
 		{"non vector method", pg, "vector(3)", Index{Method: "gin", Parts: part("")}, false},
 		{"unsized vector type", pg, "vector", Index{Method: "hnsw", Parts: l2}, false},
-		{"unsized halfvec type", pg, "halfvec", Index{Method: "ivfflat", Parts: part("halfvec_l2_ops"), With: []KV{{"lists", "10"}}}, false},
+		{"unsized halfvec type", pg, "halfvec", Index{Method: "ivfflat", Parts: part("halfvec_l2_ops"), With: []KV{kv("lists", "10")}}, false},
 		{"unsized sparsevec type", pg, "sparsevec", Index{Method: "hnsw", Parts: part("sparsevec_l2_ops")}, false},
 		{"unsized bit hnsw", pg, "bit", Index{Method: "hnsw", Parts: part("bit_hamming_ops")}, true},
-		{"unsized bit ivfflat", pg, "bit", Index{Method: "ivfflat", Parts: part("bit_hamming_ops"), With: []KV{{"lists", "10"}}}, true},
-		{"hnsw m 100 default ef", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"m", "100"}}}, false},
-		{"hnsw m 32 default ef", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"m", "32"}}}, true},
-		{"hnsw m 2 ef 4", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"m", "2"}, {"ef_construction", "4"}}}, true},
-		{"hnsw m 2 default ef", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{{"m", "2"}}}, true},
+		{"unsized bit ivfflat", pg, "bit", Index{Method: "ivfflat", Parts: part("bit_hamming_ops"), With: []KV{kv("lists", "10")}}, true},
+		{"hnsw m 100 default ef", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{kv("m", "100")}}, false},
+		{"hnsw m 32 default ef", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{kv("m", "32")}}, true},
+		{"hnsw m 2 ef 4", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{kv("m", "2"), kv("ef_construction", "4")}}, true},
+		{"hnsw m 2 default ef", pg, "vector(3)", Index{Method: "hnsw", Parts: l2, With: []KV{kv("m", "2")}}, true},
 	}
 	for _, c := range cases {
 		err := ValidateVectorIndex(c.d, tbl(c.typ), c.idx)
 		if c.ok && err != nil {
 			t.Errorf("%s: unexpected error %v", c.name, err)
 		}
-		if !c.ok && !errors.Is(err, ErrInvalidVectorIndex) {
+		if !c.ok && !errors.Is(err, schema.ErrInvalidVectorIndex) {
 			t.Errorf("%s: err = %v, want ErrInvalidVectorIndex", c.name, err)
 		}
 	}
@@ -118,10 +131,10 @@ func TestVectorIndexRefusesDimensionlessColumn(t *testing.T) {
 	tbl := &Table{Name: "kb_chunks", Columns: []Column{{Name: "embedding", Type: "vector"}}}
 	for _, idx := range []Index{
 		{Name: "kb_hnsw", Method: "hnsw", Parts: []IndexPart{{Column: "embedding", OpClass: "vector_cosine_ops"}}},
-		{Name: "kb_ivf", Method: "ivfflat", Parts: []IndexPart{{Column: "embedding", OpClass: "vector_cosine_ops"}}, With: []KV{{"lists", "10"}}},
+		{Name: "kb_ivf", Method: "ivfflat", Parts: []IndexPart{{Column: "embedding", OpClass: "vector_cosine_ops"}}, With: []KV{kv("lists", "10")}},
 	} {
 		err := ValidateVectorIndex(dialect.Postgres, tbl, idx)
-		if !errors.Is(err, ErrInvalidVectorIndex) {
+		if !errors.Is(err, schema.ErrInvalidVectorIndex) {
 			t.Fatalf("%s: err = %v, want ErrInvalidVectorIndex", idx.Method, err)
 		}
 		for _, want := range []string{`column "embedding"`, "no dimensions", idx.Name} {
@@ -154,7 +167,7 @@ func TestVectorIndexOpClass(t *testing.T) {
 		if c.ok != (err == nil) || got != c.want {
 			t.Errorf("%s/%s: got %q, %v", c.typ, c.m, got, err)
 		}
-		if err != nil && !errors.Is(err, ErrInvalidVectorIndex) {
+		if err != nil && !errors.Is(err, schema.ErrInvalidVectorIndex) {
 			t.Errorf("%s/%s: err %v does not wrap ErrInvalidVectorIndex", c.typ, c.m, err)
 		}
 	}

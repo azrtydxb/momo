@@ -14,6 +14,8 @@ import (
 
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/deferkey"
+	"github.com/azrtydxb/momo/internal/schemaops"
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -602,7 +604,7 @@ func (d *differ) alterColumn(t *schema.Table, a, b *schema.Column, ao, bo *schem
 		}
 	}
 	ftCol := na.Generated != nb.Generated && slices.ContainsFunc(t.Indexes, func(ix schema.Index) bool {
-		return ix.FullText != nil && !ix.FullText.Expression && schema.TSVectorColumn(ix.Name) == b.Name
+		return ix.FullText != nil && !ix.FullText.Expression && schemautil.TSVectorColumn(ix.Name) == b.Name
 	})
 	d.emit(Change{Kind: AlterColumn, Schema: t.Schema, Table: t.Name, Name: b.Name, Before: cp(*ao), After: &after, Destructive: na.Type != nb.Type, FullTextColumn: ftCol})
 }
@@ -697,7 +699,7 @@ func (d *differ) checks(fn, tn, rawFrom, to *schema.Table) {
 		func(a, b schema.Check) bool {
 			ra, rb := raw(rawFrom, a), raw(to, b)
 			if ra.In != nil || rb.In != nil {
-				return schema.SameCheck(ra, rb)
+				return schemaops.SameCheck(ra, rb)
 			}
 			// Neither side declares a list, so SameCheck would compare the raw
 			// Expr anyway; the normalized Expr is what every other check uses.
@@ -772,7 +774,7 @@ func valueDelta(before, after []string) (added, removed []string) {
 			removed = append(removed, v)
 		}
 	}
-	return schema.SortedValues(added), schema.SortedValues(removed)
+	return schemautil.SortedValues(added), schemautil.SortedValues(removed)
 }
 
 func (d *differ) foreignKeys(fn, tn, to *schema.Table) {

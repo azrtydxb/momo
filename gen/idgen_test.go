@@ -16,7 +16,7 @@ func TestEmitMetaIDGens(t *testing.T) {
 	if len(diags) != 0 {
 		t.Fatalf("load diagnostics: %v", diags)
 	}
-	src, ds := EmitMeta(g.Models, g)
+	src, ds := emitMeta(g.Models, g)
 	if len(ds) != 0 {
 		t.Fatalf("emit diagnostics: %v", ds)
 	}
@@ -41,7 +41,7 @@ func TestEmitMetaWithoutIDGensOmitsField(t *testing.T) {
 	if err != nil || len(diags) != 0 {
 		t.Fatalf("load: %v %v", err, diags)
 	}
-	src, ds := EmitMeta(g.Models, g)
+	src, ds := emitMeta(g.Models, g)
 	if len(ds) != 0 {
 		t.Fatalf("emit diagnostics: %v", ds)
 	}
@@ -58,7 +58,7 @@ func TestEmitMetaIDGenProblems(t *testing.T) {
 	if len(diags) != 0 {
 		t.Fatalf("load diagnostics: %v", diags)
 	}
-	_, ds := EmitMeta(g.Models, g)
+	_, ds := emitMeta(g.Models, g)
 	var msgs []string
 	for _, d := range ds {
 		msgs = append(msgs, d.Msg)

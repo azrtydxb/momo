@@ -3,12 +3,10 @@
 package sqlite
 
 import (
-	"context"
 	"fmt"
 	"slices"
 	"strings"
 
-	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
@@ -34,61 +32,15 @@ import (
 //  11. Commit.
 //  12. Turn foreign-key enforcement back on (the reset Setup returned).
 //
-// RebuildStatements and the rebuild RenderSchema writes cover steps 3 to 10;
+// rebuildStatements and the rebuild RenderSchema writes cover steps 3 to 10;
 // the runner supplies 2 and 11, and Dialect.Setup 1 and 12.
 
-// Dependent is a view or trigger that a table rebuild must drop and recreate.
-type Dependent struct {
+// dependent is a view or trigger that a table rebuild must drop and recreate.
+type dependent struct {
 	Type  string // "view" or "trigger"
 	Name  string
 	Table string // the trigger's table (sqlite_schema.tbl_name); the view's own name for a view
 	SQL   string // the stored CREATE statement
-}
-
-// Capture reads, in rowid order, every view and every trigger whose SQL mentions
-// table (a whole-word, case-insensitive match that ignores string literals),
-// plus every trigger on table, plus every view or trigger that mentions a view
-// already captured: SQLite fails ALTER TABLE ... RENAME while any view names a
-// missing object, so a view that sits on top of a captured view has to go too.
-// Over-inclusion is safe: recreating an unaffected object verbatim does not
-// change behaviour.
-func Capture(ctx context.Context, c momo.PinnedConn, table string) ([]Dependent, error) {
-	var all []Dependent
-	err := forEach(ctx, c, `SELECT type, name, tbl_name, sql FROM sqlite_schema WHERE type IN ('view', 'trigger') AND sql IS NOT NULL ORDER BY rowid`, nil, func(r momo.Rows) error {
-		var d Dependent
-		if err := r.Scan(&d.Type, &d.Name, &d.Table, &d.SQL); err != nil {
-			return err
-		}
-		all = append(all, d)
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("migrate/sqlite: read the views and triggers: %w", err)
-	}
-	names := map[string]string{strings.ToLower(table): table}
-	taken := make([]bool, len(all))
-	for changed := true; changed; {
-		changed = false
-		for i, d := range all {
-			if taken[i] {
-				continue
-			}
-			if d.Type == "trigger" && strings.EqualFold(d.Table, table) || mentionsAny(d.SQL, names) {
-				taken[i] = true
-				changed = true
-				if d.Type == "view" {
-					names[strings.ToLower(d.Name)] = d.Name
-				}
-			}
-		}
-	}
-	var out []Dependent
-	for i, d := range all {
-		if taken[i] {
-			out = append(out, d)
-		}
-	}
-	return out, nil
 }
 
 // mentionsAny reports whether src names any of names (lower-case key, real value).
@@ -98,38 +50,10 @@ func mentionsAny(src string, names map[string]string) bool {
 	return len(found) > 0
 }
 
-// Rebuild writes the statements that rebuild table to the desired definition
-// on the live database c: it captures the views and triggers that mention the
-// table, reads the table's current columns, and calls RebuildStatements. Rows
-// are copied for the columns that exist in both.
-//
-// Precondition: the caller ran Setup(ctx, c, SessionOptions{ForeignKeysOff:
-// true}) outside any transaction, and runs the result with migrate.RunStatements
-// (one transaction; the fk-check statement fails it on a violation).
-func Rebuild(ctx context.Context, c momo.PinnedConn, table string, desired schema.Table, desiredIndexes []schema.Index) ([]migrate.Statement, error) {
-	var old []string
-	err := forEach(ctx, c, `SELECT name FROM pragma_table_xinfo(?) WHERE hidden <> 1 ORDER BY cid`, []any{table}, func(r momo.Rows) error {
-		var n string
-		if err := r.Scan(&n); err != nil {
-			return err
-		}
-		old = append(old, n)
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("migrate/sqlite: read the columns of %q: %w", table, err)
-	}
-	if len(old) == 0 {
-		return nil, &momo.Error{Kind: momo.ErrValidation, Op: "migrate/sqlite", Table: table, Err: fmt.Errorf("the table %q does not exist", table)}
-	}
-	deps, err := Capture(ctx, c, table)
-	if err != nil {
-		return nil, err
-	}
-	return RebuildStatements(table, old, desired, desiredIndexes, deps)
-}
-
-// RebuildStatements is Rebuild without I/O. The statements, in order:
+// rebuildStatements writes the statements that rebuild table to the desired
+// definition without I/O: the integration tests read the live table and its
+// dependents first. Rows are copied for the columns in oldColumns that the
+// desired table has. The statements, in order:
 //
 //  1. DROP VIEW / DROP TRIGGER IF EXISTS for each dependent, in reverse order.
 //  2. CREATE TABLE "new_<table>" from desired.
@@ -148,7 +72,7 @@ func Rebuild(ctx context.Context, c momo.PinnedConn, table string, desired schem
 // It returns an error when an enum column's values are needed: desired is
 // written without the schema's enums, so give it TEXT columns with a Checks
 // entry instead, or render through RenderSchema.
-func RebuildStatements(table string, oldColumns []string, desired schema.Table, desiredIndexes []schema.Index, deps []Dependent) ([]migrate.Statement, error) {
+func rebuildStatements(table string, oldColumns []string, desired schema.Table, desiredIndexes []schema.Index, deps []dependent) ([]migrate.Statement, error) {
 	var copyCols [][2]string
 	for _, col := range desired.Columns {
 		if col.Generated == "" && slices.Contains(oldColumns, col.Name) {
@@ -161,7 +85,7 @@ func RebuildStatements(table string, oldColumns []string, desired schema.Table, 
 // rebuildScript writes the eight steps. copyCols pairs each destination column
 // with the source expression's column; drops are removed before the rebuild and
 // recreates are created after it.
-func rebuildScript(table string, desired schema.Table, indexes []schema.Index, copyCols [][2]string, enums map[string][]string, drops, recreates []Dependent) ([]migrate.Statement, error) {
+func rebuildScript(table string, desired schema.Table, indexes []schema.Index, copyCols [][2]string, enums map[string][]string, drops, recreates []dependent) ([]migrate.Statement, error) {
 	tmp := "new_" + table
 	var out []migrate.Statement
 	for i := len(drops) - 1; i >= 0; i-- {
@@ -293,7 +217,7 @@ func (r *renderer) rebuild(table string, plan []migrate.Change) ([]migrate.State
 // through a view) and the ones to recreate afterwards: those the desired
 // schema holds unchanged. A changed or removed one has its own change in the
 // plan.
-func (r *renderer) dependents(table, oldName string) (drops, recreates []Dependent, err error) {
+func (r *renderer) dependents(table, oldName string) (drops, recreates []dependent, err error) {
 	names := map[string]string{strings.ToLower(table): table, strings.ToLower(oldName): oldName}
 	views := slices.Clone(r.from.Views)
 	slices.SortFunc(views, func(a, b schema.View) int { return strings.Compare(a.Name, b.Name) })
@@ -326,7 +250,7 @@ func (r *renderer) dependents(table, oldName string) (drops, recreates []Depende
 	}
 	ordered := orderViews(inViews)
 	for _, v := range ordered {
-		drops = append(drops, Dependent{Type: "view", Name: v.Name, Table: v.Name})
+		drops = append(drops, dependent{Type: "view", Name: v.Name, Table: v.Name})
 		want, ok := lookupView(r.to, v.Name)
 		if !ok || want.Materialized || schema.NormalizeExpr(dialect.SQLite, want.Query) != schema.NormalizeExpr(dialect.SQLite, v.Query) {
 			continue
@@ -335,13 +259,13 @@ func (r *renderer) dependents(table, oldName string) (drops, recreates []Depende
 		if err != nil {
 			return nil, nil, err
 		}
-		recreates = append(recreates, Dependent{Type: "view", Name: v.Name, Table: v.Name, SQL: sql})
+		recreates = append(recreates, dependent{Type: "view", Name: v.Name, Table: v.Name, SQL: sql})
 	}
 	for i, t := range triggers {
 		if !trigIn[i] {
 			continue
 		}
-		drops = append(drops, Dependent{Type: "trigger", Name: t.Name, Table: t.Table})
+		drops = append(drops, dependent{Type: "trigger", Name: t.Name, Table: t.Table})
 		want, ok := lookupTrigger(r.to, t.Name)
 		if !ok || want.Table != t.Table || schema.NormalizeExpr(dialect.SQLite, want.Definition) != schema.NormalizeExpr(dialect.SQLite, t.Definition) {
 			continue
@@ -350,7 +274,7 @@ func (r *renderer) dependents(table, oldName string) (drops, recreates []Depende
 		if err != nil {
 			return nil, nil, err
 		}
-		recreates = append(recreates, Dependent{Type: "trigger", Name: t.Name, Table: t.Table, SQL: sql})
+		recreates = append(recreates, dependent{Type: "trigger", Name: t.Name, Table: t.Table, SQL: sql})
 	}
 	return drops, recreates, nil
 }

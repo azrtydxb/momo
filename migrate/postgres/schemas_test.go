@@ -33,7 +33,7 @@ func TestPostgresSchemas(t *testing.T) {
 	cfg := migrate.WithSettings(migrate.Settings{Schemas: []string{cur, extra}})
 	desired := &schema.Schema{
 		Dialect: "postgres",
-		Schemas: []schema.SchemaNamespace{{Name: extra}},
+		Schemas: []schema.Namespace{{Name: extra}},
 		Tables: []schema.Table{
 			{Schema: extra, Name: "invoices", Columns: []schema.Column{{Name: "id", Type: "bigint"}}, PrimaryKey: []string{"id"}},
 			{Name: "users", Columns: []schema.Column{{Name: "id", Type: "bigint"}}, PrimaryKey: []string{"id"}},

@@ -17,7 +17,7 @@ func TestColumnByName(t *testing.T) {
 	if err != nil || len(diags) != 0 {
 		t.Fatalf("load: %v %v", err, diags)
 	}
-	src, ds := EmitLookup(findModel(t, g, "Account"), g)
+	src, ds := emitLookup(findModel(t, g, "Account"), g)
 	if len(ds) != 0 {
 		t.Fatalf("diags %v", ds)
 	}

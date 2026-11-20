@@ -7,12 +7,13 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/schema"
 )
 
 // seq is a fully populated bigint sequence, as an inspector reports it.
 func seq(name string, start, incr, lo, hi, cache int64) schema.Sequence {
-	return schema.Sequence{Name: name, AsType: "bigint", Start: schema.Int64(start), Increment: incr, MinValue: schema.Int64(lo), MaxValue: schema.Int64(hi), Cache: cache}
+	return schema.Sequence{Name: name, AsType: "bigint", Start: schemautil.Int64(start), Increment: incr, MinValue: schemautil.Int64(lo), MaxValue: schemautil.Int64(hi), Cache: cache}
 }
 
 func sequencesSchema(seqs ...schema.Sequence) *schema.Schema {
@@ -59,7 +60,7 @@ func TestSequenceStatement(t *testing.T) {
 		{"start apart from min", seq("s", 500, 1, 1, 9223372036854775807, 1), `c.Sequence("s").Start(500)`},
 		{"zero start and min", seq("s", 0, 1, 0, 9223372036854775807, 1), `c.Sequence("s").MinValue(0)`},
 		{"zero start above min", seq("s", 0, 1, -5, 9223372036854775807, 1), `c.Sequence("s").MinValue(-5).Start(0)`},
-		{"bounded integer", schema.Sequence{Schema: "app", Name: "s", AsType: "integer", Start: schema.Int64(100), Increment: 1, MinValue: schema.Int64(100), MaxValue: schema.Int64(999), Cache: 1, Cycle: true}, `c.Sequence("s").Schema("app").As("integer").MinValue(100).MaxValue(999).Cycle()`},
+		{"bounded integer", schema.Sequence{Schema: "app", Name: "s", AsType: "integer", Start: schemautil.Int64(100), Increment: 1, MinValue: schemautil.Int64(100), MaxValue: schemautil.Int64(999), Cache: 1, Cycle: true}, `c.Sequence("s").Schema("app").As("integer").MinValue(100).MaxValue(999).Cycle()`},
 		{"descending", seq("s", -1, -1, -9223372036854775808, -1, 1), `c.Sequence("s").Increment(-1)`},
 		{"descending max zero", seq("s", 0, -1, -9223372036854775808, 0, 1), `c.Sequence("s").Increment(-1).MaxValue(0)`},
 	}

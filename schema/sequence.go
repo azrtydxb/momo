@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+
+	"github.com/azrtydxb/momo/internal/schemautil"
 )
 
 // sequenceTypes maps the spellings of a sequence data type to the one the
@@ -57,15 +59,12 @@ func ValidateSequence(q Sequence) error {
 	return nil
 }
 
-// Int64 returns a pointer to v, for the optional numeric fields of Sequence.
-func Int64(v int64) *int64 { return &v }
-
 // orDefault returns a copy of p, or def when p is nil.
 func orDefault(p *int64, def int64) *int64 {
 	if p == nil {
-		return Int64(def)
+		return schemautil.Int64(def)
 	}
-	return Int64(*p)
+	return schemautil.Int64(*p)
 }
 
 // NormalizeSequence returns q with every field a declaration may leave unset

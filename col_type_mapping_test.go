@@ -11,13 +11,13 @@ import (
 
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/tags"
-	"github.com/azrtydxb/momo/gen/typemap"
+	"github.com/azrtydxb/momo/internal/typemap"
 	"github.com/azrtydxb/momo/types"
 )
 
 // Provenance of a documented mapping.
 const (
-	srcGenerator = "generator" // gen/typemap.Map decides
+	srcGenerator = "generator" // internal/typemap.Map decides
 	srcCodec     = "codec"     // the type's own SQLType method decides
 	srcManual    = "manual"    // not generated; the user writes the DDL
 )

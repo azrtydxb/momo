@@ -23,6 +23,7 @@ import (
 	"github.com/azrtydxb/momo/gen"
 	"github.com/azrtydxb/momo/gen/config"
 	"github.com/azrtydxb/momo/internal/migratecfg"
+	"github.com/azrtydxb/momo/internal/redact"
 	"github.com/azrtydxb/momo/migrate"
 	mmysql "github.com/azrtydxb/momo/migrate/mysql"
 	mpg "github.com/azrtydxb/momo/migrate/postgres"
@@ -164,11 +165,11 @@ type cli struct {
 }
 
 func (l *cli) say(format string, args ...any) {
-	_, _ = fmt.Fprintf(l.out, "%s\n", migrate.RedactURLs(fmt.Sprintf(format, args...), l.secrets...))
+	_, _ = fmt.Fprintf(l.out, "%s\n", redact.RedactURLs(fmt.Sprintf(format, args...), l.secrets...))
 }
 
 func (l *cli) errf(code int, format string, args ...any) int {
-	_, _ = fmt.Fprintf(l.errOut, "momo: %s\n", migrate.RedactURLs(fmt.Sprintf(format, args...), l.secrets...))
+	_, _ = fmt.Fprintf(l.errOut, "momo: %s\n", redact.RedactURLs(fmt.Sprintf(format, args...), l.secrets...))
 	return code
 }
 
@@ -215,7 +216,7 @@ func runMigrate(out, errOut io.Writer, args []string, env func(string) string) i
 			_, _ = fmt.Fprint(out, migrateUsage)
 			return exitOK
 		}
-		_, _ = fmt.Fprintf(errOut, "momo: %s\n\n%s", migrate.RedactURLs(err.Error()), migrateUsage)
+		_, _ = fmt.Fprintf(errOut, "momo: %s\n\n%s", redact.RedactURLs(err.Error()), migrateUsage)
 		return exitUsage
 	}
 	rest := gfs.Args()
@@ -447,13 +448,13 @@ func (l *cli) noteURL(u string) {
 			l.secrets = append(l.secrets, cfg.Passwd)
 		}
 		if w := l.connWarning(u); w != "" {
-			_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", migrate.RedactURLs(w, l.secrets...))
+			_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", redact.RedactURLs(w, l.secrets...))
 		}
 		return
 	}
 	l.secrets = append(l.secrets, u)
 	if w := l.connWarning(u); w != "" {
-		_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", migrate.RedactURLs(w, l.secrets...))
+		_, _ = fmt.Fprintf(l.errOut, "momo: warning: %s\n", redact.RedactURLs(w, l.secrets...))
 	}
 	if parsed, err := url.Parse(u); err == nil && parsed.User != nil {
 		if pw, ok := parsed.User.Password(); ok {
@@ -721,7 +722,7 @@ func (l *cli) driftFix(ctx context.Context, e *migrate.Engine, o migrate.RepairO
 
 // warnf writes one line to standard error.
 func (l *cli) warnf(format string, args ...any) {
-	_, _ = fmt.Fprintf(l.errOut, "%s\n", migrate.RedactURLs(fmt.Sprintf(format, args...), l.secrets...))
+	_, _ = fmt.Fprintf(l.errOut, "%s\n", redact.RedactURLs(fmt.Sprintf(format, args...), l.secrets...))
 }
 
 // qualifiedChange names the object a change acts on: table.name, or the name

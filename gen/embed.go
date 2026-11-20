@@ -13,6 +13,7 @@ import (
 
 	"github.com/azrtydxb/momo/gen/naming"
 	"github.com/azrtydxb/momo/gen/tags"
+	"github.com/azrtydxb/momo/internal/tagparse"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -118,7 +119,7 @@ func (fl *flattener) parseTag(v *types.Var, tag string) tags.Tags {
 	if !ok {
 		return tags.Tags{}
 	}
-	t, probs := tags.Parse(raw)
+	t, probs := tagparse.Parse(raw)
 	for _, pr := range probs {
 		fl.diag(v.Pos(), "field "+v.Name()+": "+pr.Msg)
 	}
@@ -136,7 +137,7 @@ func (fl *flattener) newField(v *types.Var, path []int, prefix string, ft tags.T
 	// GoType, the nullability and the vector detection all read it.
 	t := types.Unalias(v.Type())
 	_, nullable := t.Underlying().(*types.Pointer)
-	access, adiags := AccessFor(ft, v.Name(), nullable)
+	access, adiags := accessFor(ft, v.Name(), nullable)
 	for _, d := range adiags {
 		fl.diag(v.Pos(), d.Msg)
 	}

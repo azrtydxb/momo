@@ -28,7 +28,7 @@ func TestWalkSkipsDotEntries(t *testing.T) {
 	if len(sum.Files) != 2 {
 		t.Fatalf("ComputeSum must hash only the two real files, got %v", sum.Files)
 	}
-	files, err := Discover(fsys)
+	files, err := discover(fsys)
 	if err != nil || len(files) != 2 {
 		t.Fatalf("Discover must see only the two real files: %v %v", files, err)
 	}

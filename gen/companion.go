@@ -88,10 +88,10 @@ var structuredTypes = map[string]reflect.Type{
 	"PartitionOf": reflect.TypeOf(schema.PartitionOf{}),
 }
 
-// ReadCompanion reads the MomoConfig method of m without executing it. A
+// readCompanion reads the MomoConfig method of m without executing it. A
 // model without the method has an empty result. Anything the reader does not
 // accept is a positioned diagnostic; it never evaluates code and never guesses.
-func ReadCompanion(pkg *packages.Package, m *Model) (*CompanionResult, []Diagnostic) {
+func readCompanion(pkg *packages.Package, m *Model) (*CompanionResult, []Diagnostic) {
 	r := &companionReader{
 		pkg: pkg,
 		m:   m,

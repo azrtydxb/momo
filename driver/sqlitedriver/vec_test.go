@@ -13,6 +13,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/schemaops"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -118,7 +119,7 @@ func TestSQLiteANNIndexUnsupported(t *testing.T) {
 	sq := dialect.For(dialect.SQLite)
 	tbl := &schema.Table{Name: "docs", Columns: []schema.Column{{Name: "emb", Type: "vector(3)"}}}
 	idx := schema.Index{Name: "docs_emb", Method: "hnsw", Parts: []schema.IndexPart{{Column: "emb", OpClass: "vector_l2_ops"}}}
-	if err := schema.ValidateVectorIndex(dialect.SQLite, tbl, idx); !errors.Is(err, schema.ErrInvalidVectorIndex) {
+	if err := schemaops.ValidateVectorIndex(dialect.SQLite, tbl, idx); !errors.Is(err, schema.ErrInvalidVectorIndex) {
 		t.Errorf("ValidateVectorIndex(sqlite) = %v, want ErrInvalidVectorIndex", err)
 	}
 	if len(sq.Vector.Indexes) != 0 {

@@ -97,7 +97,7 @@ func TestRelationDescriptorShape(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.model+"."+c.relation, func(t *testing.T) {
 			g := loadGraph(t, c.root, c.pattern)
-			src, ds := EmitDescriptors(findModel(t, g, c.model), g)
+			src, ds := emitDescriptors(findModel(t, g, c.model), g)
 			if len(ds) != 0 {
 				t.Fatalf("diagnostics: %v", ds)
 			}
@@ -118,7 +118,7 @@ func TestRelationDescriptorShape(t *testing.T) {
 
 func TestPolymorphicDescriptorGolden(t *testing.T) {
 	g := loadGraph(t, "testdata/fixtures", "./poly")
-	src, ds := EmitDescriptors(findModel(t, g, "Document"), g)
+	src, ds := emitDescriptors(findModel(t, g, "Document"), g)
 	if len(ds) != 0 {
 		t.Fatalf("diagnostics: %v", ds)
 	}

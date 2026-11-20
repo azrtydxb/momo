@@ -11,6 +11,8 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/schemautil"
+	"github.com/azrtydxb/momo/internal/sqlerr"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
 )
@@ -135,7 +137,7 @@ func (in *inspector) skippedTables(rows []masterRow) (map[string]bool, error) {
 		skip[n] = true
 		return nil
 	})
-	if err != nil && !migrate.IsNoSuchTable(err, "pragma_table_list") {
+	if err != nil && !sqlerr.IsNoSuchTable(err, "pragma_table_list") {
 		return nil, fmt.Errorf("migrate/sqlite: read pragma_table_list: %w", err)
 	}
 	return skip, nil
@@ -432,9 +434,9 @@ func applyChecks(t *schema.Table, def tableDef) []schema.Enum {
 		}
 		check := schema.Check{Name: name, Expr: ck.expr}
 		if ck.name != "" {
-			if col, values, ok := schema.ParseCheckIn(ck.expr); ok {
+			if col, values, ok := schemautil.ParseCheckIn(ck.expr); ok {
 				if _, found := t.Column(col); found {
-					check.In = &schema.CheckIn{Column: col, Values: schema.SortedValues(values)}
+					check.In = &schema.CheckIn{Column: col, Values: schemautil.SortedValues(values)}
 				}
 			}
 		}

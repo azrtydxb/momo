@@ -72,7 +72,7 @@ func (e *Engine) Rehash(ctx context.Context, version string, accept bool) (res *
 	if row == nil || row.Status != StatusApplied {
 		return nil, fmt.Errorf("migrate: version %s has no applied history row to rehash", version)
 	}
-	files, err := Discover(e.dir)
+	files, err := discover(e.dir)
 	if err != nil {
 		return nil, err
 	}

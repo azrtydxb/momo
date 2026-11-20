@@ -11,11 +11,12 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/schemautil"
 )
 
 // full is a fully populated sequence, as an inspector reports it.
 func full(name, asType string, start, incr, lo, hi int64, cycle bool) Sequence {
-	return Sequence{Name: name, AsType: asType, Start: Int64(start), Increment: incr, MinValue: Int64(lo), MaxValue: Int64(hi), Cache: 1, Cycle: cycle}
+	return Sequence{Name: name, AsType: asType, Start: schemautil.Int64(start), Increment: incr, MinValue: schemautil.Int64(lo), MaxValue: schemautil.Int64(hi), Cache: 1, Cycle: cycle}
 }
 
 // TestNormalizeSequenceDefaults pins the PostgreSQL defaults a declaration
@@ -34,13 +35,13 @@ func TestNormalizeSequenceDefaults(t *testing.T) {
 		{"integer", Sequence{Name: "s", AsType: "int4"}, full("s", "integer", 1, 1, 1, math.MaxInt32, false)},
 		{"smallint", Sequence{Name: "s", AsType: "SMALLINT"}, full("s", "smallint", 1, 1, 1, math.MaxInt16, false)},
 		{"step", Sequence{Name: "s", Increment: 5, Cycle: true}, full("s", "bigint", 1, 5, 1, math.MaxInt64, true)},
-		{"start follows min", Sequence{Name: "s", MinValue: Int64(100)}, full("s", "bigint", 100, 1, 100, math.MaxInt64, false)},
-		{"zero start and min", Sequence{Name: "s", Start: Int64(0), MinValue: Int64(0)}, full("s", "bigint", 0, 1, 0, math.MaxInt64, false)},
-		{"zero min start follows", Sequence{Name: "s", MinValue: Int64(0)}, full("s", "bigint", 0, 1, 0, math.MaxInt64, false)},
+		{"start follows min", Sequence{Name: "s", MinValue: schemautil.Int64(100)}, full("s", "bigint", 100, 1, 100, math.MaxInt64, false)},
+		{"zero start and min", Sequence{Name: "s", Start: schemautil.Int64(0), MinValue: schemautil.Int64(0)}, full("s", "bigint", 0, 1, 0, math.MaxInt64, false)},
+		{"zero min start follows", Sequence{Name: "s", MinValue: schemautil.Int64(0)}, full("s", "bigint", 0, 1, 0, math.MaxInt64, false)},
 		{"descending", Sequence{Name: "s", Increment: -1}, full("s", "bigint", -1, -1, math.MinInt64, -1, false)},
-		{"descending max zero", Sequence{Name: "s", Increment: -1, MaxValue: Int64(0), MinValue: Int64(-10)}, full("s", "bigint", 0, -1, -10, 0, false)},
+		{"descending max zero", Sequence{Name: "s", Increment: -1, MaxValue: schemautil.Int64(0), MinValue: schemautil.Int64(-10)}, full("s", "bigint", 0, -1, -10, 0, false)},
 		{"descending integer", Sequence{Name: "s", AsType: "integer", Increment: -2}, full("s", "integer", -1, -2, math.MinInt32, -1, false)},
-		{"explicit", Sequence{Schema: "app", Name: "s", Start: Int64(7), Increment: 3, MinValue: Int64(5), MaxValue: Int64(90), Cache: 20}, Sequence{Schema: "app", Name: "s", AsType: "bigint", Start: Int64(7), Increment: 3, MinValue: Int64(5), MaxValue: Int64(90), Cache: 20}},
+		{"explicit", Sequence{Schema: "app", Name: "s", Start: schemautil.Int64(7), Increment: 3, MinValue: schemautil.Int64(5), MaxValue: schemautil.Int64(90), Cache: 20}, Sequence{Schema: "app", Name: "s", AsType: "bigint", Start: schemautil.Int64(7), Increment: 3, MinValue: schemautil.Int64(5), MaxValue: schemautil.Int64(90), Cache: 20}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -93,14 +94,14 @@ func TestSequenceZeroStartIsNotDefault(t *testing.T) {
 	mk := func(q Sequence) *Schema {
 		return &Schema{Dialect: dialect.Postgres, Tables: []Table{}, Sequences: []Sequence{q}}
 	}
-	declared := mk(Sequence{Name: "counter", Start: Int64(0), MinValue: Int64(0)})
+	declared := mk(Sequence{Name: "counter", Start: schemautil.Int64(0), MinValue: schemautil.Int64(0)})
 	if !Equal(declared, mk(full("counter", "bigint", 0, 1, 0, math.MaxInt64, false))) {
 		t.Fatal("START 0 MINVALUE 0 must equal its inspection")
 	}
 	if Equal(declared, mk(Sequence{Name: "counter"})) {
 		t.Fatal("START 0 MINVALUE 0 must differ from the defaults")
 	}
-	down := mk(Sequence{Name: "down", Increment: -1, MaxValue: Int64(-1)})
+	down := mk(Sequence{Name: "down", Increment: -1, MaxValue: schemautil.Int64(-1)})
 	if !Equal(down, mk(full("down", "bigint", -1, -1, math.MinInt64, -1, false))) {
 		t.Fatal("a descending sequence with MAXVALUE -1 must equal its inspection")
 	}
@@ -116,7 +117,7 @@ func TestSequencesSortedAndRoundTrip(t *testing.T) {
 	s := &Schema{Dialect: dialect.Postgres, Tables: []Table{}, Sequences: []Sequence{
 		{Name: "z_seq", Increment: 2},
 		{Schema: "app", Name: "a_seq", AsType: "integer", Cycle: true},
-		{Name: "a_seq", Start: Int64(0), MinValue: Int64(0)},
+		{Name: "a_seq", Start: schemautil.Int64(0), MinValue: schemautil.Int64(0)},
 	}}
 	var buf bytes.Buffer
 	if err := s.Write(&buf); err != nil {

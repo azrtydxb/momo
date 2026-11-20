@@ -14,6 +14,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/schemautil"
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/migrate/migratetest"
@@ -37,7 +38,7 @@ func driftDesired(d dialect.Name) *schema.Schema {
 		extensions = []schema.Extension{{Name: "vector"}}
 	}
 	check := func(name, col string, values ...string) schema.Check {
-		return schema.Check{Name: name, Expr: schema.CheckInExpr(d, col, values), In: &schema.CheckIn{Column: col, Values: values}}
+		return schema.Check{Name: name, Expr: schemautil.CheckInExpr(d, col, values), In: &schema.CheckIn{Column: col, Values: values}}
 	}
 	return &schema.Schema{Dialect: d, Extensions: extensions, Tables: []schema.Table{{
 		Name: "items",

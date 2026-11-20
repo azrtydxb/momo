@@ -9,8 +9,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/azrtydxb/momo/gen/tags"
 	"github.com/azrtydxb/momo/internal/migratecfg"
+	"github.com/azrtydxb/momo/internal/tagparse"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -184,7 +184,7 @@ func checkGo(where, goType, imp string, required bool) error {
 // reported when the config is loaded and not when the models are compiled.
 func checkTags(where string, opts []string) error {
 	for _, o := range opts {
-		if _, probs := tags.Parse(o); len(probs) > 0 {
+		if _, probs := tagparse.Parse(o); len(probs) > 0 {
 			return fmt.Errorf("%s: %q: %s", where, o, probs[0].Msg)
 		}
 	}

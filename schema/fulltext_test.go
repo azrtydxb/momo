@@ -68,9 +68,6 @@ func TestFullTextValidate(t *testing.T) {
 			t.Errorf("case %d accepted: %+v", i, f)
 		}
 	}
-	if FTS5Table("articles") != "articles_fts" || TSVectorColumn("articles_search") != "articles_search_tsv" {
-		t.Fatal("name functions drifted")
-	}
 }
 
 // Catches: an option a dialect ignores (including the PostgreSQL-only

@@ -1,16 +1,69 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package migrate
+// Package sqlsplit splits a migration body into its SQL statements. It imports
+// only the standard library.
+package sqlsplit
 
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 )
 
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
-// SplitStatements splits a migration body into statements. A statement ends
+// KnownDirectives lists the names of the `-- momo:` directives a migration
+// header may hold. migrate's directive parser accepts exactly these names (a
+// test in migrate feeds every one of them to it), and the splitter stops its
+// header scan at a name that is not listed.
+var KnownDirectives = []string{
+	"no-transaction", "destructive", "split", "sqlite-foreign-keys-off", "generated", "imported", "ddl",
+}
+
+// hasSplitDirective reports whether the leading comment block of body holds a
+// `-- momo:split` directive. It scans the header the way migrate's directive
+// parser does and must stay in step with it: blank lines are skipped, block
+// comments are skipped, the first line that is neither ends the header, and a
+// `-- momo:<name> ...` line whose first word after `momo:` is split counts.
+// A directive name migrate does not know ends the scan, as it does there.
+func hasSplitDirective(body []byte) bool {
+	inBlock := false
+	for _, raw := range strings.Split(string(body), "\n") {
+		line := strings.TrimSpace(raw)
+		if inBlock {
+			if strings.Contains(line, "*/") {
+				inBlock = false
+			}
+			continue
+		}
+		switch {
+		case line == "":
+			continue
+		case strings.HasPrefix(line, "/*"):
+			inBlock = !strings.Contains(line[2:], "*/")
+			continue
+		case !strings.HasPrefix(line, "--"):
+			return false
+		}
+		text := strings.TrimSpace(strings.TrimLeft(line, "-"))
+		rest, ok := strings.CutPrefix(text, "momo:")
+		if !ok {
+			continue
+		}
+		name, _, _ := strings.Cut(strings.TrimSpace(rest), " ")
+		if name == "split" {
+			return true
+		}
+		if !slices.Contains(KnownDirectives, name) {
+			// The migrate parser stops at an unknown directive and reports it.
+			return false
+		}
+	}
+	return false
+}
+
+// Split splits a migration body into statements. A statement ends
 // at a semicolon outside single-quoted strings, double-quoted identifiers,
 // line and block comments and, for PostgreSQL, dollar-quoted bodies. Block
 // comments nest for PostgreSQL only. For SQLite a CREATE TRIGGER statement
@@ -19,22 +72,22 @@ var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 // including preceding comments, trimmed of surrounding whitespace; statements
 // holding only whitespace and comments are dropped. A UTF-8 BOM is treated
 // as whitespace, so a leading one is ignored. Offsets in errors count from the start of body.
-func SplitStatements(body []byte, dialectName string) ([]string, error) {
+func Split(body []byte, dialectName string) ([]string, error) {
 	base := 0
 	if bytes.HasPrefix(body, utf8BOM) {
 		body = body[len(utf8BOM):]
 		base = len(utf8BOM)
 	}
-	// An unknown directive is reported by ParseDirectives, not here.
-	dirs, _ := parseDirectives(body)
+	// An unknown directive is reported by migrate's directive parser, not here.
+	split := hasSplitDirective(body)
 	sc := &splitter{
 		src:      body,
 		base:     base,
-		pg:       dialectName == "postgres" && !dirs.Split,
+		pg:       dialectName == "postgres" && !split,
 		nested:   dialectName == "postgres",
 		sqlite:   dialectName == "sqlite",
 		mysql:    dialectName == "mysql",
-		triggers: dialectName == "sqlite" && !dirs.Split,
+		triggers: dialectName == "sqlite" && !split,
 	}
 	return sc.run()
 }

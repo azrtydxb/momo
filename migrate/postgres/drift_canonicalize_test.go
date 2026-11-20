@@ -74,7 +74,7 @@ func TestCanonicalizeTwoSchemasSameTableName(t *testing.T) {
 		schema.Table{Name: "t", Columns: []schema.Column{{Name: "n", Type: "integer", Nullable: true}}, Checks: []schema.Check{{Name: "t_chk", Expr: "n IN (1, 2)"}}},
 		schema.Table{Schema: other, Name: "t", Columns: []schema.Column{{Name: "n", Type: "integer", Nullable: true}}, Checks: []schema.Check{{Name: "t_chk", Expr: "n BETWEEN 1 AND 5"}}},
 	)
-	s.Schemas = []schema.SchemaNamespace{{Name: other}}
+	s.Schemas = []schema.Namespace{{Name: other}}
 	e := canonEngine(t, db.Driver(), canonFS(t, s), cur, other)
 	if err := e.Baseline(ctx, canonVersion, false); err != nil {
 		t.Fatalf("baseline: %v", err)
@@ -115,7 +115,7 @@ func TestCanonicalizeTwoSchemasSameIndexName(t *testing.T) {
 		schema.Table{Name: "t1", Columns: col, Indexes: []schema.Index{{Name: "idx_n", Parts: part, Where: "n IN (1, 2)"}}},
 		schema.Table{Schema: other, Name: "t2", Columns: col, Indexes: []schema.Index{{Name: "idx_n", Parts: part, Where: "n BETWEEN 1 AND 5"}}},
 	)
-	s.Schemas = []schema.SchemaNamespace{{Name: other}}
+	s.Schemas = []schema.Namespace{{Name: other}}
 	e := canonEngine(t, db.Driver(), canonFS(t, s), cur, other)
 	if err := e.Baseline(ctx, canonVersion, false); err != nil {
 		t.Fatalf("baseline: %v", err)

@@ -34,10 +34,13 @@ type Directives struct {
 	// after it, not to the file; it is not a field here.
 }
 
-// ParseDirectives reads the directives in the leading comment block of body,
+// utf8BOM is the UTF-8 byte order mark a migration file may start with.
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+
+// readDirectives reads the directives in the leading comment block of body,
 // that is, the comment and blank lines before the first statement. An
 // unknown directive is an error naming its line.
-func ParseDirectives(body []byte) (Directives, error) {
+func readDirectives(body []byte) (Directives, error) {
 	d, err := parseDirectives(bytes.TrimPrefix(body, utf8BOM))
 	return d, err
 }
@@ -136,7 +139,7 @@ func walkFiles(fsys fs.FS, fn func(p string) error) error {
 	})
 }
 
-// Discover lists the migration files in fsys, walking nested directories
+// discover lists the migration files in fsys, walking nested directories
 // (for example an archive/2026 folder), ordered by version and then by path,
 // so an archived old migration still sorts before a newer top-level one. A
 // File's Path is its slash-separated path relative to fsys. It ignores the
@@ -145,7 +148,7 @@ func walkFiles(fsys fs.FS, fn func(p string) error) error {
 // valid UTC timestamp, a repeated version and kind, one version under two
 // names, and one version spread over two directories are errors that name the
 // files.
-func Discover(fsys fs.FS) ([]File, error) {
+func discover(fsys fs.FS) ([]File, error) {
 	var files []File
 	err := walkFiles(fsys, func(p string) error {
 		name := path.Base(p)

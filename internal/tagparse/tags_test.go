@@ -1,64 +1,68 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package tags
+package tagparse
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/azrtydxb/momo/gen/tags"
+)
 
 func TestParseTags(t *testing.T) {
 	cases := []struct {
 		name    string
 		raw     string
 		wantMsg string
-		check   func(*testing.T, Tags)
+		check   func(*testing.T, tags.Tags)
 	}{
-		{name: "column size notnull", raw: "column:title,size:255,notnull", check: func(t *testing.T, g Tags) {
+		{name: "column size notnull", raw: "column:title,size:255,notnull", check: func(t *testing.T, g tags.Tags) {
 			if g.Column != "title" || g.Size != 255 || !g.NotNull {
 				t.Fatalf("got %+v", g)
 			}
 		}},
-		{name: "dim index method", raw: "dim:1536,index:docs_emb,method:hnsw", check: func(t *testing.T, g Tags) {
+		{name: "dim index method", raw: "dim:1536,index:docs_emb,method:hnsw", check: func(t *testing.T, g tags.Tags) {
 			if g.Dim != 1536 || !g.Index || g.IndexName != "docs_emb" || g.Method != "hnsw" {
 				t.Fatalf("got %+v", g)
 			}
 		}},
-		{name: "sort nulls", raw: "index,sort:desc,nulls:first", check: func(t *testing.T, g Tags) {
+		{name: "sort nulls", raw: "index,sort:desc,nulls:first", check: func(t *testing.T, g tags.Tags) {
 			if !g.Index || g.Sort != "desc" || g.Nulls != "first" {
 				t.Fatalf("got %+v", g)
 			}
 		}},
-		{name: "search", raw: "search", check: func(t *testing.T, g Tags) {
+		{name: "search", raw: "search", check: func(t *testing.T, g tags.Tags) {
 			if !g.Search {
 				t.Fatalf("got %+v", g)
 			}
 		}},
-		{name: "skip", raw: "-", check: func(t *testing.T, g Tags) {
+		{name: "skip", raw: "-", check: func(t *testing.T, g tags.Tags) {
 			if !g.Skip {
 				t.Fatalf("got %+v", g)
 			}
 		}},
-		{name: "timestamp unit", raw: "created_at:unixmilli", check: func(t *testing.T, g Tags) {
+		{name: "timestamp unit", raw: "created_at:unixmilli", check: func(t *testing.T, g tags.Tags) {
 			if !g.CreatedAt || g.TimeUnit != "unixmilli" {
 				t.Fatalf("got %+v", g)
 			}
 		}},
-		{name: "view", raw: "view:doc_view,materialized", check: func(t *testing.T, g Tags) {
+		{name: "view", raw: "view:doc_view,materialized", check: func(t *testing.T, g tags.Tags) {
 			if g.View != "doc_view" || !g.Materialized {
 				t.Fatalf("got %+v", g)
 			}
 		}},
-		{name: "idgen", raw: "pk,idgen:ulid", check: func(t *testing.T, g Tags) {
+		{name: "idgen", raw: "pk,idgen:ulid", check: func(t *testing.T, g tags.Tags) {
 			if !g.PK || g.IDGen != "ulid" {
 				t.Fatalf("got %+v", g)
 			}
 		}},
-		{name: "dbdefault", raw: "pk,default:now(),dbdefault", check: func(t *testing.T, g Tags) {
+		{name: "dbdefault", raw: "pk,default:now(),dbdefault", check: func(t *testing.T, g tags.Tags) {
 			if !g.DBDefault || !g.PK {
 				t.Fatalf("got %+v", g)
 			}
 		}},
 		{name: "dbdefault with value", raw: "dbdefault:yes", wantMsg: "dbdefault does not take a value"},
 		{name: "idgen without value", raw: "idgen", wantMsg: "idgen requires a value"},
-		{name: "embed_from", raw: "dim:3,embed_from:title|body", check: func(t *testing.T, g Tags) {
+		{name: "embed_from", raw: "dim:3,embed_from:title|body", check: func(t *testing.T, g tags.Tags) {
 			if g.Dim != 3 || g.EmbedFrom != "title|body" {
 				t.Fatalf("got %+v", g)
 			}

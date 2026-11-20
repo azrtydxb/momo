@@ -44,7 +44,7 @@ func TestWalkSymlinks(t *testing.T) {
 	if err != nil || len(sum.Files) != 2 {
 		t.Fatalf("a file symlink must be followed: %v %v", sum, err)
 	}
-	files, err := Discover(os.DirFS(dir))
+	files, err := discover(os.DirFS(dir))
 	if err != nil || len(files) != 2 || string(files[0].Body) != "CREATE TABLE b (id int);\n" {
 		t.Fatalf("Discover must read through a file symlink: %v %v", files, err)
 	}
@@ -54,7 +54,7 @@ func TestWalkSymlinks(t *testing.T) {
 	if _, err := ComputeSum(os.DirFS(dir)); err == nil || err.Error() != want {
 		t.Fatalf("ComputeSum: got %v, want %q", err, want)
 	}
-	if _, err := Discover(os.DirFS(dir)); err == nil || !strings.Contains(err.Error(), want) {
+	if _, err := discover(os.DirFS(dir)); err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("Discover: got %v, want %q", err, want)
 	}
 }

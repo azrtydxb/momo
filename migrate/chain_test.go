@@ -68,7 +68,7 @@ func TestMigrationBranchConflict(t *testing.T) {
 		"20260102000000_a.snapshot.json":    {Data: []byte(snapCol("20260102000000", "20260101000000", "x"))},
 		"20260102000001_b.snapshot.json":    {Data: []byte(snapCol("20260102000001", "20260101000000", "y"))},
 	}
-	_, err := Chain(fsys)
+	_, err := snapshotChain(fsys)
 	if !errors.Is(err, ErrBranchConflict) {
 		t.Fatalf("want ErrBranchConflict, got %v", err)
 	}
@@ -86,7 +86,7 @@ func TestMigrationForkOfDifferentTablesIsValid(t *testing.T) {
 		"20260102000000_a.snapshot.json":    {Data: []byte(snapTable("20260102000000", "20260101000000", "a"))},
 		"20260102000001_b.snapshot.json":    {Data: []byte(snapTable("20260102000001", "20260101000000", "b"))},
 	}
-	got, err := Chain(fsys)
+	got, err := snapshotChain(fsys)
 	if err != nil || len(got) != 3 {
 		t.Fatalf("a fork of different tables is a valid chain: %v %v", got, err)
 	}
@@ -98,7 +98,7 @@ func TestMigrationTwoRootsConflict(t *testing.T) {
 		"20260101000000_a.snapshot.json": {Data: []byte(snapTable("20260101000000", "", "a"))},
 		"20260101000001_b.snapshot.json": {Data: []byte(snapTable("20260101000001", "", "b"))},
 	}
-	if _, err := Chain(fsys); !errors.Is(err, ErrBranchConflict) {
+	if _, err := snapshotChain(fsys); !errors.Is(err, ErrBranchConflict) {
 		t.Fatalf("want ErrBranchConflict, got %v", err)
 	}
 }
@@ -130,7 +130,7 @@ func TestValidateOfflineClean(t *testing.T) {
 	if p := problemsOf(t, sealed(t, goodChain())); len(p) != 0 {
 		t.Fatalf("clean chain reported %v", p)
 	}
-	got, err := Chain(goodChain())
+	got, err := snapshotChain(goodChain())
 	if err != nil || len(got) != 2 || got[0].Version != "20260101000000" || got[1].Version != "20260102000000" {
 		t.Fatalf("chain order wrong: %v %v", got, err)
 	}
@@ -139,7 +139,7 @@ func TestValidateOfflineClean(t *testing.T) {
 func TestValidateOfflineMissingParent(t *testing.T) {
 	m := goodChain()
 	delete(m, "20260101000000_root.snapshot.json")
-	_, err := Chain(m)
+	_, err := snapshotChain(m)
 	if err == nil || !strings.Contains(err.Error(), "20260102000000_next.snapshot.json") || !strings.Contains(err.Error(), "20260101000000") {
 		t.Fatalf("missing parent must name the file and parent: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestValidateOfflineCycle(t *testing.T) {
 		"20260101000000_a.snapshot.json": {Data: []byte(snap("20260101000000", "20260102000000"))},
 		"20260102000000_b.snapshot.json": {Data: []byte(snap("20260102000000", "20260101000000"))},
 	}
-	_, err := Chain(m)
+	_, err := snapshotChain(m)
 	if err == nil || !strings.Contains(err.Error(), "cycle") ||
 		!strings.Contains(err.Error(), "20260101000000_a.snapshot.json") || !strings.Contains(err.Error(), "20260102000000_b.snapshot.json") {
 		t.Fatalf("cycle must be reported naming both files: %v", err)
@@ -166,7 +166,7 @@ func TestValidateOfflineParentNotPrevious(t *testing.T) {
 		"20260102000000_b.snapshot.json": {Data: []byte(snap("20260102000000", "20260103000000"))},
 		"20260103000000_c.snapshot.json": {Data: []byte(snap("20260103000000", "20260101000000"))},
 	}
-	_, err := Chain(m)
+	_, err := snapshotChain(m)
 	if err == nil || !strings.Contains(err.Error(), "20260102000000_b.snapshot.json") || !strings.Contains(err.Error(), "not older") {
 		t.Fatalf("a parent that is not older must be reported: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestValidateOfflineMalformedName(t *testing.T) {
 func TestNextVersionUsesInjectedUTCClock(t *testing.T) {
 	loc := time.FixedZone("X", 5*3600)
 	now := func() time.Time { return time.Date(2026, 3, 4, 10, 0, 0, 0, loc) }
-	got, err := NextVersion(now, fstest.MapFS{})
+	got, err := nextVersion(now, fstest.MapFS{})
 	if err != nil || got != "20260304050000" {
 		t.Fatalf("want UTC 20260304050000, got %q %v", got, err)
 	}
@@ -229,7 +229,7 @@ func TestNextVersionUsesInjectedUTCClock(t *testing.T) {
 func TestNextVersionStaysAfterLatest(t *testing.T) {
 	now := func() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
 	m := fstest.MapFS{"20270101000000_x.snapshot.json": {Data: []byte(snap("20270101000000", ""))}}
-	got, err := NextVersion(now, m)
+	got, err := nextVersion(now, m)
 	if err != nil || got != "20270101000001" {
 		t.Fatalf("version must follow the latest existing one, got %q %v", got, err)
 	}

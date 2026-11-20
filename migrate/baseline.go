@@ -123,7 +123,7 @@ func (e *Engine) insertBaselineRows(ctx context.Context, c momo.PinnedConn, tbl,
 			have[r.Version] = true
 		}
 	}
-	files, err := Discover(e.dir)
+	files, err := discover(e.dir)
 	if err != nil {
 		return err
 	}

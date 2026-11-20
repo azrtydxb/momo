@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
@@ -48,7 +49,7 @@ func TestPostgresAlterSequenceTypeAndNegativeIncrement(t *testing.T) {
 		},
 		{
 			{Name: "jobs_seq", AsType: "smallint", Increment: 5, Cache: 3, Cycle: true},
-			{Name: "countdown_seq", AsType: "integer", Increment: -10, MinValue: schema.Int64(-5000), Start: schema.Int64(-1)},
+			{Name: "countdown_seq", AsType: "integer", Increment: -10, MinValue: schemautil.Int64(-5000), Start: schemautil.Int64(-1)},
 		},
 	}
 	for _, qs := range steps {

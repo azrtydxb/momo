@@ -6,41 +6,43 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/azrtydxb/momo/internal/genutil"
 )
 
-// EmitLookup returns the source of the allowlisted ColumnByName and
+// emitLookup returns the source of the allowlisted ColumnByName and
 // ColumnNames functions of one model's descriptor subpackage (no header, no
-// imports; EmitDescriptors appends it and records the "fmt" import).
+// imports; emitDescriptors appends it and records the "fmt" import).
 //
 // The allowlist is the persisted columns in Fields order minus sensitive
 // fields. Matching is an exact string switch over database column names, so no
 // input is ever interpolated into SQL and case variants, quoted or qualified
 // names and the empty string are rejected.
-func EmitLookup(m *Model, g *Graph) ([]byte, []Diagnostic) {
+func emitLookup(m *Model, g *Graph) ([]byte, []Diagnostic) {
 	_ = g
-	return emitLookup(m, fieldIdents(m, nil))
+	return emitLookupIDs(m, fieldIdents(m, nil))
 }
 
 // fieldIdents returns the Go identifier of each field of m, in field order,
 // as the descriptor package declares it. extra holds names that are already
-// taken in that package, such as import aliases. EmitDescriptors and the
+// taken in that package, such as import aliases. emitDescriptors and the
 // lookup emitter both use it, so the names they write always agree.
 func fieldIdents(m *Model, extra map[string]bool) []string {
-	used := DescriptorReserved()
+	used := genutil.DescriptorReserved()
 	for k := range extra {
 		used[k] = true
 	}
 	ids := make([]string, len(m.Fields))
 	for i, f := range m.Fields {
-		ids[i] = Identifier(f.GoName, used)
+		ids[i] = genutil.Identifier(f.GoName, used)
 		used[ids[i]] = true
 	}
 	return ids
 }
 
-// emitLookup renders ColumnByName for m, using ids (from fieldIdents) as the
+// emitLookupIDs renders ColumnByName for m, using ids (from fieldIdents) as the
 // descriptor names.
-func emitLookup(m *Model, ids []string) ([]byte, []Diagnostic) {
+func emitLookupIDs(m *Model, ids []string) ([]byte, []Diagnostic) {
 	var cases, names []string
 	seen := map[string]bool{}
 	var b strings.Builder

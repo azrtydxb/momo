@@ -17,6 +17,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/sqlsplit"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -65,7 +66,7 @@ func (e *Engine) pin(ctx context.Context) (momo.PinnedConn, error) {
 }
 
 func (e *Engine) loadPending(done map[string]bool) ([]Pending, error) {
-	files, err := Discover(e.dir)
+	files, err := discover(e.dir)
 	if err != nil {
 		return nil, err
 	}
@@ -82,11 +83,11 @@ func (e *Engine) loadPending(done map[string]bool) ([]Pending, error) {
 		if f.Kind != "up" || done[f.Version] {
 			continue
 		}
-		dirs, err := ParseDirectives(f.Body)
+		dirs, err := readDirectives(f.Body)
 		if err != nil {
 			return nil, fmt.Errorf("migrate: %s: %w", f.Path, err)
 		}
-		parts, err := SplitStatements(f.Body, name)
+		parts, err := sqlsplit.Split(f.Body, name)
 		if err != nil {
 			return nil, fmt.Errorf("migrate: %s: %w", f.Path, err)
 		}
@@ -188,7 +189,7 @@ func (e *Engine) verifyChecksums(hist []HistoryRow) error {
 	if len(bad) > 0 {
 		return fmt.Errorf("%w: %s differ from %s", ErrChecksumMismatch, strings.Join(bad, ", "), SumFileName)
 	}
-	files, err := Discover(e.dir)
+	files, err := discover(e.dir)
 	if err != nil {
 		return err
 	}
@@ -320,7 +321,7 @@ func (e *Engine) checkTo(to string) error {
 	if to == "" {
 		return nil
 	}
-	files, err := Discover(e.dir)
+	files, err := discover(e.dir)
 	if err != nil {
 		return err
 	}
@@ -501,7 +502,7 @@ func (e *Engine) Apply(ctx context.Context, o ApplyOptions) (rep *Report, err er
 	if err := e.verifyChecksums(hist); err != nil {
 		return nil, err
 	}
-	if _, err := Chain(e.dir); err != nil {
+	if _, err := snapshotChain(e.dir); err != nil {
 		if errors.Is(err, ErrBranchConflict) {
 			return nil, err
 		}
@@ -588,7 +589,7 @@ func (e *Engine) Status(ctx context.Context) ([]VersionStatus, error) {
 	if err != nil {
 		return nil, err
 	}
-	files, err := Discover(e.dir)
+	files, err := discover(e.dir)
 	if err != nil {
 		return nil, err
 	}
@@ -805,7 +806,7 @@ var migrationName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 // Otherwise Migration.Files holds the new files only, by relative name:
 // <version>_<name>.up.sql, <version>_<name>.snapshot.json (whose parent is the
 // latest snapshot's version) and the updated momo.sum. The version is the
-// engine clock in UTC (NextVersion), moved to the second after the latest
+// engine clock in UTC (nextVersion), moved to the second after the latest
 // existing version when the clock is not already past it, so versions only grow.
 //
 // When the rendered plan mixes transactional statements with statements that
@@ -864,7 +865,7 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 	case !errors.Is(err, ErrNoSnapshot):
 		return nil, err
 	}
-	version, err := NextVersion(e.opts.clock, e.dir)
+	version, err := nextVersion(e.opts.clock, e.dir)
 	if err != nil {
 		return nil, err
 	}

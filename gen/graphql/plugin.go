@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/azrtydxb/momo/gen"
+	"github.com/azrtydxb/momo/internal/genutil"
 )
 
 // Plugin is the gen.Plugin that writes the GraphQL schema, the Go glue for a
@@ -93,7 +94,7 @@ func (p Plugin) Generate(g *gen.Graph, w *gen.Writer) error {
 func dirImportPath(g *gen.Graph, dir string) (string, error) {
 	for _, m := range g.Models {
 		if m.ModulePath != "" {
-			return gen.ImportPath(m.ModulePath, m.ModuleDir, dir)
+			return genutil.ImportPath(m.ModulePath, m.ModuleDir, dir)
 		}
 	}
 	return "", fmt.Errorf("graphql: cannot derive the import path of %s: set ImportPath", dir)

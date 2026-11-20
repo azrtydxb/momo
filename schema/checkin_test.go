@@ -10,75 +10,9 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/schema"
 )
-
-// Catches: an expression spelling a database reports that is not read back as
-// a value list, and an expression that only looks like one (an extra
-// condition, a function, a negation, a number list) read as one.
-func TestParseCheckIn(t *testing.T) {
-	cases := []struct {
-		name, expr, col string
-		values          []string
-		ok              bool
-	}{
-		{"plain", `kind IN ('a','b')`, "kind", []string{"a", "b"}, true},
-		{"quoted spaced", `"kind" in ('a', 'b')`, "kind", []string{"a", "b"}, true},
-		{"parenthesised", `(kind IN ('a'))`, "kind", []string{"a"}, true},
-		{"mysql", "(`kind` in (_utf8mb4'a',_utf8mb4'b'))", "kind", []string{"a", "b"}, true},
-		{"mysql escaped quotes", "(`kind` in (_utf8mb4\\'a\\',_utf8mb4\\'b\\'))", "kind", []string{"a", "b"}, true},
-		{"postgres text", `(kind = ANY (ARRAY['a'::text, 'b'::text]))`, "kind", []string{"a", "b"}, true},
-		{"postgres varchar", `((kind)::text = ANY ((ARRAY['a'::character varying, 'b'::character varying])::text[]))`, "kind", []string{"a", "b"}, true},
-		{"escaped quote", `kind IN ('it''s')`, "kind", []string{"it's"}, true},
-		{"extra condition", `kind IN ('a') AND qty > 0`, "", nil, false},
-		{"function", `lower(kind) IN ('a')`, "", nil, false},
-		{"negation", `kind NOT IN ('a')`, "", nil, false},
-		{"numbers", `qty IN (1, 2)`, "", nil, false},
-		{"one value equality", `kind = 'a'`, "kind", []string{"a"}, true},
-		{"one value postgres", `(kind = 'a'::text)`, "kind", []string{"a"}, true},
-		{"one value postgres varchar", `((kind)::text = 'a'::text)`, "kind", []string{"a"}, true},
-		{"one value mysql", "(`kind` = _utf8mb4\\'a\\')", "kind", []string{"a"}, true},
-		{"equality with a list", `kind = 'a', 'b'`, "", nil, false},
-		{"equality with a number", `qty = 1`, "", nil, false},
-		{"backslash", `kind IN ('a\b')`, "", nil, false},
-		{"trailing comma", `kind IN ('a',)`, "", nil, false},
-		{"empty", `kind IN ()`, "", nil, false},
-		{"unterminated", `kind IN ('a`, "", nil, false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			col, values, ok := schema.ParseCheckIn(c.expr)
-			if ok != c.ok || col != c.col || !slices.Equal(values, c.values) {
-				t.Fatalf("ParseCheckIn(%q) = %q, %v, %v; want %q, %v, %v", c.expr, col, values, ok, c.col, c.values, c.ok)
-			}
-		})
-	}
-}
-
-// Catches: a rendering that depends on the order of the values, repeats one,
-// quotes the column the wrong way for the dialect (MySQL reads a double-quoted
-// name as a string) or leaves a quote in a value unescaped.
-func TestCheckInExpr(t *testing.T) {
-	values := []string{"c", "it's", "a", "c"}
-	cases := map[dialect.Name]string{
-		dialect.Postgres: `"kind" IN ('a','c','it''s')`,
-		dialect.SQLite:   `"kind" IN ('a','c','it''s')`,
-		dialect.MySQL:    "`kind` IN ('a','c','it''s')",
-	}
-	for d, want := range cases {
-		if got := schema.CheckInExpr(d, "kind", values); got != want {
-			t.Errorf("%s: got %s, want %s", d, got, want)
-		}
-		if got := schema.CheckInExpr(d, "kind", []string{"it's", "c", "a"}); got != want {
-			t.Errorf("%s: a reordered list renders %s, want %s", d, got, want)
-		}
-	}
-	// What the renderer writes is what the parser reads back.
-	col, got, ok := schema.ParseCheckIn(schema.CheckInExpr(dialect.MySQL, "kind", values))
-	if !ok || col != "kind" || !slices.Equal(got, []string{"a", "c", "it's"}) {
-		t.Fatalf("round trip = %q %v %v", col, got, ok)
-	}
-}
 
 // Catches: a check that ignores its value list when rendering, and one that
 // keeps the stale expression.
@@ -172,44 +106,6 @@ func TestCheckValueList(t *testing.T) {
 	}
 }
 
-// Catches: SameCheck deciding on the wrong thing: text for value lists, sets
-// for anything else, or a different answer for the declared side and the
-// inspected side depending on which is first.
-func TestSameCheck(t *testing.T) {
-	in := func(expr, col string, values ...string) schema.Check {
-		return schema.Check{Name: "c", Expr: expr, In: &schema.CheckIn{Column: col, Values: values}}
-	}
-	read := func(expr string) schema.Check { return schema.Check{Name: "c", Expr: expr} }
-	cases := []struct {
-		name string
-		a, b schema.Check
-		want bool
-	}{
-		{"plain same text", read("qty > 0"), read("qty > 0"), true},
-		{"plain other text", read("qty > 0"), read("qty >= 0"), false},
-		{"plain lists are text without In", read("s IN ('a','b')"), read("s IN ('b','a')"), false},
-		{"declared and read, other order", in("x", "status", "a", "b"), read("(status = ANY (ARRAY['b'::text, 'a'::text]))"), true},
-		{"declared and read, repeated value", in("x", "status", "a", "b", "a"), read("status in ('a','b')"), true},
-		{"quote in a value", in("x", "status", "it's", "a"), read("(status = ANY (ARRAY['a'::text, 'it''s'::text]))"), true},
-		{"other quoted value", in("x", "status", "it's"), read("(status = 'its'::text)"), false},
-		{"mixed-case values differ", in("x", "status", "A", "b"), read("status in ('a','b')"), false},
-		{"mixed-case values equal", in("x", "status", "A", "b"), read("status in ('b','A')"), true},
-		{"other column", in("x", "status", "a"), read("kind in ('a')"), false},
-		{"NULL element falls back to text, other", in("x", "status", "a", "b"), read("(status = ANY (ARRAY['a'::text, NULL::text]))"), false},
-		{"NULL element falls back to text, same", in("s = ANY (ARRAY['a'::text, NULL::text])", "s", "a"), read("s = ANY (ARRAY['a'::text, NULL::text])"), true},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := schema.SameCheck(c.a, c.b); got != c.want {
-				t.Errorf("SameCheck(a, b) = %v, want %v", got, c.want)
-			}
-			if got := schema.SameCheck(c.b, c.a); got != c.want {
-				t.Errorf("SameCheck(b, a) = %v, want %v", got, c.want)
-			}
-		})
-	}
-}
-
 // Catches: Equal comparing the text of a value-list check, so a declared
 // CheckIn and the same constraint as each database reports it differ.
 func TestEqualComparesCheckInAsASet(t *testing.T) {
@@ -221,7 +117,7 @@ func TestEqualComparesCheckInAsASet(t *testing.T) {
 		}}}
 	}
 	declared := func(d dialect.Name, values ...string) schema.Check {
-		return schema.Check{Name: "notes_status_check", Expr: schema.CheckInExpr(d, "status", values), In: &schema.CheckIn{Column: "status", Values: values}}
+		return schema.Check{Name: "notes_status_check", Expr: schemautil.CheckInExpr(d, "status", values), In: &schema.CheckIn{Column: "status", Values: values}}
 	}
 	read := func(expr string) schema.Check { return schema.Check{Name: "notes_status_check", Expr: expr} }
 	cases := []struct {

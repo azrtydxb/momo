@@ -15,6 +15,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
+	"github.com/azrtydxb/momo/internal/vectortype"
 	"github.com/azrtydxb/momo/schema"
 	"github.com/azrtydxb/momo/vector"
 )
@@ -84,7 +85,7 @@ func createHybridTable(t *testing.T, db *momo.DB, d dialect.Name) {
 	t.Helper()
 	switch d {
 	case dialect.SQLite:
-		typ, err := momo.SQLiteVectorType("emb", 2)
+		typ, err := vectortype.SQLite("emb", 2)
 		if err != nil {
 			t.Fatal(err)
 		}

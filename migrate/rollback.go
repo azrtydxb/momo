@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/azrtydxb/momo"
+	iredact "github.com/azrtydxb/momo/internal/redact"
+	"github.com/azrtydxb/momo/internal/sqlsplit"
 )
 
 // RollbackOptions controls Rollback.
@@ -72,7 +74,7 @@ func (e *Engine) Rollback(ctx context.Context, o RollbackOptions) (rep *Report, 
 		return &Report{}, nil
 	}
 	// A Go migration has no down step: refuse before any down runs or is read.
-	if err := RefuseGoRollback(selected); err != nil {
+	if err := refuseGoRollback(selected); err != nil {
 		return nil, err
 	}
 	downs, err := e.loadDowns(selected)
@@ -134,7 +136,7 @@ func selectRollback(hist []HistoryRow, group bool) []HistoryRow {
 // loadDowns reads the down file of every selected row, in the same order. It
 // returns ErrNoDown for the first version that has none.
 func (e *Engine) loadDowns(rows []HistoryRow) ([]Pending, error) {
-	files, err := Discover(e.dir)
+	files, err := discover(e.dir)
 	if err != nil {
 		return nil, err
 	}
@@ -151,11 +153,11 @@ func (e *Engine) loadDowns(rows []HistoryRow) ([]Pending, error) {
 		if !ok {
 			return nil, fmt.Errorf("%w: version %s (%s)", ErrNoDown, r.Version, r.Name)
 		}
-		dirs, err := ParseDirectives(f.Body)
+		dirs, err := readDirectives(f.Body)
 		if err != nil {
 			return nil, fmt.Errorf("migrate: %s: %w", f.Path, err)
 		}
-		parts, err := SplitStatements(f.Body, name)
+		parts, err := sqlsplit.Split(f.Body, name)
 		if err != nil {
 			return nil, fmt.Errorf("migrate: %s: %w", f.Path, err)
 		}
@@ -203,7 +205,7 @@ func runRollback(ctx context.Context, env RunEnv, r HistoryRow, p Pending) (Appl
 			defer cancel()
 			_, ms := elapsed(env, start)
 			if herr := env.recordOnFailure(fctx, func(x execer) error {
-				return h.finish(fctx, x, p.Version, StatusFailed, n, RedactURLs("down: "+cause.Error()), ms)
+				return h.finish(fctx, x, p.Version, StatusFailed, n, iredact.RedactURLs("down: "+cause.Error()), ms)
 			}); herr != nil {
 				cause = errors.Join(cause, fmt.Errorf("record failed: %w", herr))
 			}

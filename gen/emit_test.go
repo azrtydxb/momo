@@ -155,7 +155,7 @@ func TestEmitDiagnosticsWriteNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Without schema tables EmitMeta reports a diagnostic for every model.
+	// Without schema tables emitMeta reports a diagnostic for every model.
 	g.Schema.Tables = nil
 	w := NewWriter(WriterOptions{ModuleRoot: dir})
 	err = Emit(g, w)

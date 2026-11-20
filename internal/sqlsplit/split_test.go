@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package migrate
+package sqlsplit
 
 import (
 	"reflect"
@@ -10,7 +10,7 @@ import (
 
 func TestSplitStatements(t *testing.T) {
 	body := "CREATE TABLE a (x int); -- trailing ; comment\nINSERT INTO a VALUES ('a;b');\n/* block ; */ SELECT 1;"
-	got, err := SplitStatements([]byte(body), "postgres")
+	got, err := Split([]byte(body), "postgres")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +22,7 @@ func TestSplitStatements(t *testing.T) {
 
 func TestSplitDollarQuotes(t *testing.T) {
 	body := "CREATE FUNCTION f() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;\nSELECT f();"
-	got, err := SplitStatements([]byte(body), "postgres")
+	got, err := Split([]byte(body), "postgres")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestSplitDollarQuotes(t *testing.T) {
 
 func TestSplitSQLiteTrigger(t *testing.T) {
 	body := "CREATE TRIGGER tr AFTER INSERT ON t BEGIN UPDATE t SET x = 1; END;\nSELECT 1;"
-	got, err := SplitStatements([]byte(body), "sqlite")
+	got, err := Split([]byte(body), "sqlite")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,52 +42,27 @@ func TestSplitSQLiteTrigger(t *testing.T) {
 	}
 }
 
-func TestDirectives(t *testing.T) {
-	body := "-- momo:no-transaction\n-- momo:destructive\nDROP TABLE x;"
-	d, err := ParseDirectives([]byte(body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !d.NoTransaction || !d.Destructive || d.Split {
-		t.Fatalf("bad directives: %+v", d)
-	}
-	d2, err := ParseDirectives([]byte("DROP TABLE x;\n-- momo:destructive"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if d2.Destructive {
-		t.Fatal("a directive below the first statement must not count")
-	}
-}
-
-func TestDirectivesImported(t *testing.T) {
-	d, err := ParseDirectives([]byte("-- momo:imported\n-- momo:no-transaction\nCREATE TABLE x (id int);"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !d.Imported || !d.NoTransaction || d.Generated {
-		t.Fatalf("bad directives: %+v", d)
-	}
-}
-
-func TestDirectivesHostile(t *testing.T) {
-	_, err := ParseDirectives([]byte("-- a note\n-- momo:destructiv\nDROP TABLE x;"))
-	if err == nil || !strings.Contains(err.Error(), "line 2") || !strings.Contains(err.Error(), "destructiv") {
-		t.Fatalf("want positioned unknown-directive error, got %v", err)
-	}
-	d, err := ParseDirectives([]byte("\xef\xbb\xbf-- momo:split\r\n-- momo:generated\r\nSELECT 1;"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !d.Split || !d.Generated {
-		t.Fatalf("BOM/CRLF directives lost: %+v", d)
-	}
-	d, err = ParseDirectives([]byte("-- momo:sqlite-foreign-keys-off\n"))
-	if err != nil || !d.SQLiteForeignKeysOff {
-		t.Fatalf("sqlite-foreign-keys-off: %+v %v", d, err)
-	}
-	if _, err := ParseDirectives(nil); err != nil {
-		t.Fatalf("empty body: %v", err)
+// TestHasSplitDirective pins the header scan that must stay in step with
+// migrate's directive parser.
+func TestHasSplitDirective(t *testing.T) {
+	for name, tc := range map[string]struct {
+		body string
+		want bool
+	}{
+		"plain":              {"-- momo:split\nSELECT 1;", true},
+		"after other":        {"-- momo:generated\n-- momo:split\nSELECT 1;", true},
+		"bom":                {"\xef\xbb\xbf-- momo:split\r\nSELECT 1;", false},
+		"below statement":    {"SELECT 1;\n-- momo:split", false},
+		"after block":        {"/* header\n-- momo:split\n*/\n-- momo:split\nSELECT 1;", true},
+		"only inside block":  {"/* header\n-- momo:split\n*/\nSELECT 1;", false},
+		"unknown stops scan": {"-- momo:bogus\n-- momo:split\nSELECT 1;", false},
+		"other word":         {"-- momo:splitting\nSELECT 1;", false},
+		"note then split":    {"-- a note\n\n-- momo:split extra\nSELECT 1;", true},
+		"empty":              {"", false},
+	} {
+		if got := hasSplitDirective([]byte(tc.body)); got != tc.want {
+			t.Errorf("%s: hasSplitDirective = %v, want %v", name, got, tc.want)
+		}
 	}
 }
 
@@ -120,7 +95,7 @@ func TestSplitHostile(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := SplitStatements([]byte(c.body), c.dialect)
+			got, err := Split([]byte(c.body), c.dialect)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -140,7 +115,7 @@ func TestSplitUnterminated(t *testing.T) {
 		"dollar":  "SELECT $x$ abc;",
 		"bom-str": "\xef\xbb\xbfSELECT 'x",
 	} {
-		_, err := SplitStatements([]byte(body), "postgres")
+		_, err := Split([]byte(body), "postgres")
 		if err == nil || !strings.Contains(err.Error(), "unterminated") || !strings.Contains(err.Error(), "byte ") {
 			t.Errorf("%s: want positioned unterminated error, got %v", name, err)
 		}
@@ -164,7 +139,7 @@ func TestSplitBOM(t *testing.T) {
 		"bom-after-comment": {"-- c\n" + bom, nil},
 	} {
 		for _, d := range []string{"postgres", "sqlite", "mysql"} {
-			got, err := SplitStatements([]byte(tc.body), d)
+			got, err := Split([]byte(tc.body), d)
 			if err != nil || len(got) != len(tc.want) || len(got) > 0 && !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("%s/%s: got %q (%v), want %q", name, d, got, err, tc.want)
 			}
@@ -176,7 +151,7 @@ func TestSplitBOM(t *testing.T) {
 func requireResplit(t *testing.T, got []string) {
 	t.Helper()
 	for _, st := range got {
-		again, err := SplitStatements([]byte(st), "postgres")
+		again, err := Split([]byte(st), "postgres")
 		if err != nil || len(again) != 1 || again[0] != st {
 			t.Fatalf("statement %q re-split to %q (%v)", st, again, err)
 		}
@@ -190,7 +165,7 @@ func requireResplit(t *testing.T, got []string) {
 func TestSplitNonASCIISpaceIsIdentifier(t *testing.T) {
 	for name, space := range map[string]string{"nbsp": "\xc2\xa0", "nel": "\xc2\x85", "line separator": "\xe2\x80\xa8"} {
 		t.Run(name+" leading", func(t *testing.T) {
-			got, err := SplitStatements([]byte("SELECT 1;"+space+"$$ a;SELECT 2"), "postgres")
+			got, err := Split([]byte("SELECT 1;"+space+"$$ a;SELECT 2"), "postgres")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -201,7 +176,7 @@ func TestSplitNonASCIISpaceIsIdentifier(t *testing.T) {
 			requireResplit(t, got)
 		})
 		t.Run(name+" inside a statement", func(t *testing.T) {
-			got, err := SplitStatements([]byte("SELECT 1 "+space+"$$ a;SELECT 2"), "postgres")
+			got, err := Split([]byte("SELECT 1 "+space+"$$ a;SELECT 2"), "postgres")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -219,7 +194,7 @@ func TestSplitNonASCIISpaceIsIdentifier(t *testing.T) {
 // ends in an identifier byte.
 func TestSplitEscapeStringPrefix(t *testing.T) {
 	body := "E'a\\'b';SELECT 2"
-	got, err := SplitStatements([]byte("SELECT 1;\xef\xbb\xbf"+body), "postgres")
+	got, err := Split([]byte("SELECT 1;\xef\xbb\xbf"+body), "postgres")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +203,7 @@ func TestSplitEscapeStringPrefix(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 	requireResplit(t, got)
-	if _, err := SplitStatements([]byte("SELECT 1;\xc2\xa0"+body), "postgres"); err == nil {
+	if _, err := Split([]byte("SELECT 1;\xc2\xa0"+body), "postgres"); err == nil {
 		t.Fatal("want an unterminated string error: NBSP+E is an identifier, so the string has no escapes")
 	}
 }
@@ -236,10 +211,10 @@ func TestSplitEscapeStringPrefix(t *testing.T) {
 // TestSplitDollarQuoteAfterBOM pins that a BOM is white space: a dollar quote
 // opens after it exactly as after a space, and a closed one re-splits.
 func TestSplitDollarQuoteAfterBOM(t *testing.T) {
-	if _, err := SplitStatements([]byte("SELECT 1;\xef\xbb\xbf$$00"), "postgres"); err == nil {
+	if _, err := Split([]byte("SELECT 1;\xef\xbb\xbf$$00"), "postgres"); err == nil {
 		t.Fatal("want an unterminated dollar-quoted string error")
 	}
-	got, err := SplitStatements([]byte("SELECT 1;\xef\xbb\xbf$$ a; $$00"), "postgres")
+	got, err := Split([]byte("SELECT 1;\xef\xbb\xbf$$ a; $$00"), "postgres")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +228,7 @@ func TestSplitDollarQuoteAfterBOM(t *testing.T) {
 // TestSplitPositionalParamIsNotATag pins that $1 and $00 are positional
 // parameters, never dollar-quote tags.
 func TestSplitPositionalParamIsNotATag(t *testing.T) {
-	got, err := SplitStatements([]byte("SELECT $1, $00;SELECT $$a;b$$"), "postgres")
+	got, err := Split([]byte("SELECT $1, $00;SELECT $$a;b$$"), "postgres")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +244,7 @@ func TestSplitBOMEndsIdentifierRun(t *testing.T) {
 	for name, prefix := range map[string]string{"ident byte": "a", "nbsp": "\xc2\xa0"} {
 		t.Run(name, func(t *testing.T) {
 			stmt := prefix + "\xef\xbb\xbf" + "E'x\\'y'"
-			got, err := SplitStatements([]byte("SELECT 1;"+stmt+";SELECT 2"), "postgres")
+			got, err := Split([]byte("SELECT 1;"+stmt+";SELECT 2"), "postgres")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -300,7 +275,7 @@ func TestSplitTrimsOnlyScannedWhitespace(t *testing.T) {
 	} {
 		for _, d := range []string{"postgres", "sqlite", "mysql"} {
 			t.Run(name+" "+d, func(t *testing.T) {
-				got, err := SplitStatements([]byte(tc.in), d)
+				got, err := Split([]byte(tc.in), d)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -308,7 +283,7 @@ func TestSplitTrimsOnlyScannedWhitespace(t *testing.T) {
 					t.Fatalf("got %q, want %q", got, tc.want)
 				}
 				for _, st := range got {
-					again, err := SplitStatements([]byte(st), d)
+					again, err := Split([]byte(st), d)
 					if err != nil || len(again) != 1 || again[0] != st {
 						t.Fatalf("statement %q re-split to %q (%v)", st, again, err)
 					}
@@ -328,7 +303,7 @@ func FuzzSplitStatements(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, s string) {
 		for _, d := range []string{"postgres", "sqlite", "mysql"} {
-			got, err := SplitStatements([]byte(s), d)
+			got, err := Split([]byte(s), d)
 			if err != nil {
 				continue
 			}
@@ -341,7 +316,7 @@ func FuzzSplitStatements(f *testing.F) {
 				continue
 			}
 			for _, st := range got {
-				again, err := SplitStatements([]byte(st), d)
+				again, err := Split([]byte(st), d)
 				if err != nil || len(again) != 1 || again[0] != st {
 					t.Fatalf("%s: statement %q re-split to %q (%v)", d, st, again, err)
 				}

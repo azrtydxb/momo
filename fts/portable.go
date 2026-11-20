@@ -10,7 +10,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/exprkit"
-	"github.com/azrtydxb/momo/schema"
+	"github.com/azrtydxb/momo/internal/schemautil"
 )
 
 // SnippetOpts configures Snippet.
@@ -162,7 +162,7 @@ func (c pgCall) writeVector(b *momo.Builder) {
 		}
 		b.WriteString(")")
 	default:
-		b.QualifiedIdent(t.table, schema.TSVectorColumn(t.indexName))
+		b.QualifiedIdent(t.table, schemautil.TSVectorColumn(t.indexName))
 	}
 }
 
@@ -268,7 +268,7 @@ func sqlitePrepare(b *momo.Builder, t Target, q Query, extra ...momo.Expr) (sqli
 		b.SetErr(validationError("table %s: primary key %s is %s; FTS5 search needs an integer key", t.tbl.Name, c.pk, col.Type))
 		return c, false
 	}
-	c.fts = schema.FTS5Table(t.tbl.Name)
+	c.fts = schemautil.FTS5Table(t.tbl.Name)
 	c.match, c.empty = q.fts5()
 	c.fl = sensFlags(b, append(t.exprs(), extra...)...)
 	return c, true

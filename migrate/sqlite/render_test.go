@@ -406,7 +406,7 @@ func TestSQLiteRenderSchemaEnums(t *testing.T) {
 	}
 }
 
-// TestSQLiteRebuildStatementsPure covers RebuildStatements, which does no I/O:
+// TestSQLiteRebuildStatementsPure covers rebuildStatements, which does no I/O:
 // the common columns are copied, generated ones are not, and an enum column
 // without its values is refused.
 func TestSQLiteRebuildStatementsPure(t *testing.T) {
@@ -415,7 +415,7 @@ func TestSQLiteRebuildStatementsPure(t *testing.T) {
 		{Name: "added", Type: "TEXT", Nullable: true},
 		{Name: "calc", Type: "INTEGER", Nullable: true, Generated: "id + 1"},
 	}, PrimaryKey: []string{"id"}}
-	stmts, err := RebuildStatements("t", []string{"id", "calc", "gone"}, desired, nil, []Dependent{{Type: "view", Name: "v", Table: "v", SQL: "CREATE VIEW v AS SELECT id FROM t"}})
+	stmts, err := rebuildStatements("t", []string{"id", "calc", "gone"}, desired, nil, []dependent{{Type: "view", Name: "v", Table: "v", SQL: "CREATE VIEW v AS SELECT id FROM t"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,10 +436,10 @@ func TestSQLiteRebuildStatementsPure(t *testing.T) {
 	}
 
 	enumCol := schema.Table{Name: "t", Columns: []schema.Column{{Name: "e", Type: "TEXT", Enum: "x"}}}
-	if _, err := RebuildStatements("t", []string{"e"}, enumCol, nil, nil); err == nil {
+	if _, err := rebuildStatements("t", []string{"e"}, enumCol, nil, nil); err == nil {
 		t.Fatal("an enum column without its values must be refused")
 	}
-	if _, err := RebuildStatements("t", nil, desired, nil, []Dependent{{Type: "index", Name: "i"}}); err == nil {
+	if _, err := rebuildStatements("t", nil, desired, nil, []dependent{{Type: "index", Name: "i"}}); err == nil {
 		t.Fatal("a dependent that is neither a view nor a trigger must be refused")
 	}
 }

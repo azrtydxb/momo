@@ -18,6 +18,7 @@ import (
 	"github.com/azrtydxb/momo/internal/suite"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/internal/vectorparity"
+	"github.com/azrtydxb/momo/internal/vectortype"
 	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
@@ -197,7 +198,7 @@ func TestMySQLVectorNullableWrite(t *testing.T) {
 	for _, s := range servers {
 		t.Run(s.name, func(t *testing.T) {
 			db := s.open(t)
-			typ, err := momo.MySQLVectorType(s.flavor, serverVersion(t, db), 3)
+			typ, err := vectortype.MySQL(s.flavor, serverVersion(t, db), 3)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -232,9 +233,9 @@ func TestMySQLVectorCapability(t *testing.T) {
 			t.Fatal("MySQL driver must not report Capabilities().Vectors")
 		}
 		version := serverVersion(t, db)
-		_, err := momo.MySQLVectorType("mysql", version, 3)
+		_, err := vectortype.MySQL("mysql", version, 3)
 		if !errors.Is(err, momo.ErrUnsupported) {
-			t.Fatalf("MySQLVectorType(%s): err = %v, want momo.ErrUnsupported", version, err)
+			t.Fatalf("vectortype.MySQL(%s): err = %v, want momo.ErrUnsupported", version, err)
 		}
 		if !strings.Contains(err.Error(), "8.4") {
 			t.Fatalf("diagnostic %q does not name the server version", err)
@@ -246,7 +247,7 @@ func TestMySQLVectorCapability(t *testing.T) {
 	})
 	t.Run("mysql-9.7 stores and refuses distance", func(t *testing.T) {
 		db := testopen.MySQL97(t)
-		typ, err := momo.MySQLVectorType("mysql", serverVersion(t, db), 3)
+		typ, err := vectortype.MySQL("mysql", serverVersion(t, db), 3)
 		if err != nil {
 			t.Fatal(err)
 		}

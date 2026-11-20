@@ -13,7 +13,7 @@ import (
 
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen"
-	"github.com/azrtydxb/momo/gen/tags"
+	"github.com/azrtydxb/momo/internal/tagparse"
 	"github.com/azrtydxb/momo/schema"
 )
 
@@ -45,7 +45,7 @@ func Cases(setDefault bool) []Case {
 }
 
 func field(name, goType, tag string, i int) *gen.Field {
-	tg, _ := tags.Parse(tag)
+	tg, _ := tagparse.Parse(tag)
 	col := "id"
 	if name == "ParentID" {
 		col = "parent_id"

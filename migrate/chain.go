@@ -145,13 +145,13 @@ func loadChain(files []File) ([]chainEntry, []error) {
 	return entries, problems
 }
 
-// Chain returns the snapshots in fsys ordered by version. It fails when the
-// snapshots do not form a valid chain: a fork whose branches change the same
+// snapshotChain returns the snapshots in fsys ordered by version. It fails when
+// the snapshots do not form a valid chain: a fork whose branches change the same
 // table or a second root (the error wraps ErrBranchConflict), a missing parent,
 // a cycle, or a parent that is not older than its child. Every error names the
 // offending files.
-func Chain(fsys fs.FS) ([]SnapshotFile, error) {
-	files, err := Discover(fsys)
+func snapshotChain(fsys fs.FS) ([]SnapshotFile, error) {
+	files, err := discover(fsys)
 	if err != nil {
 		return nil, err
 	}
@@ -166,20 +166,20 @@ func Chain(fsys fs.FS) ([]SnapshotFile, error) {
 	return out, nil
 }
 
-// NextVersion returns the version for a new migration: the UTC time from now
+// nextVersion returns the version for a new migration: the UTC time from now
 // formatted as YYYYMMDDHHMMSS. When fsys already holds a version at or after
 // that time (a clock behind a teammate's, or two migrations in one second) it
 // returns the second after the latest existing version, so versions only
-// grow. The clock is injected; NextVersion never reads the wall clock.
-func NextVersion(now func() time.Time, fsys fs.FS) (string, error) {
-	files, err := Discover(fsys)
+// grow. The clock is injected; nextVersion never reads the wall clock.
+func nextVersion(now func() time.Time, fsys fs.FS) (string, error) {
+	files, err := discover(fsys)
 	if err != nil {
 		return "", err
 	}
 	return nextVersionFrom(now, files)
 }
 
-// nextVersionFrom is NextVersion over files a caller has already discovered.
+// nextVersionFrom is nextVersion over files a caller has already discovered.
 func nextVersionFrom(now func() time.Time, files []File) (string, error) {
 	v := now().UTC().Format(versionLayout)
 	for _, f := range files {

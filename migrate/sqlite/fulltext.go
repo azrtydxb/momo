@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/schemautil"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/schema"
 )
@@ -75,7 +76,7 @@ func (Dialect) ExpandSchema(s *schema.Schema) (*schema.Schema, error) {
 		if !found || schema.NormalizeType(dialect.SQLite, pkCol.Type) != "INTEGER" {
 			return nil, invalid("table %q: full-text search on SQLite needs an INTEGER primary key, column %q is not one", t.Name, pk)
 		}
-		fts := schema.FTS5Table(t.Name)
+		fts := schemautil.FTS5Table(t.Name)
 		for _, other := range out.Tables {
 			if other.Name == fts {
 				return nil, invalid("table %q: the FTS5 table name %q is already a table", t.Name, fts)
@@ -121,7 +122,7 @@ func createFTS5SQL(table string, ix schema.Index, pk string) (string, error) {
 	if !ftsIdentRE.MatchString(table) || !ftsIdentRE.MatchString(pk) {
 		return "", invalid("table %q: full-text search on SQLite needs plain identifiers for the table and its key, got %q and %q", table, table, pk)
 	}
-	sql := "CREATE VIRTUAL TABLE " + ident(schema.FTS5Table(table)) + " USING fts5(" + identList(ft.Columns) +
+	sql := "CREATE VIRTUAL TABLE " + ident(schemautil.FTS5Table(table)) + " USING fts5(" + identList(ft.Columns) +
 		", content='" + table + "', content_rowid='" + pk + "'"
 	if ft.Tokenizer != "" {
 		sql += ", tokenize='" + ft.Tokenizer + "'"
@@ -131,7 +132,7 @@ func createFTS5SQL(table string, ix schema.Index, pk string) (string, error) {
 
 // rebuildFTS5SQL fills a new FTS5 table from its content table.
 func rebuildFTS5SQL(table string) string {
-	fts := ident(schema.FTS5Table(table))
+	fts := ident(schemautil.FTS5Table(table))
 	return "INSERT INTO " + fts + "(" + fts + ") VALUES('rebuild')"
 }
 
@@ -149,7 +150,7 @@ func dropFTS5SQL(fts string, ifExists bool) string {
 // insert: the reverse order corrupts the index. The text is written once, here,
 // and compared textually on both sides of a diff.
 func ftsTriggers(table string, ft schema.FullText, pk string) []schema.Trigger {
-	fts := schema.FTS5Table(table)
+	fts := schemautil.FTS5Table(table)
 	cols := identList(ft.Columns)
 	prefix := func(p string) string {
 		q := make([]string, len(ft.Columns))
@@ -204,7 +205,7 @@ func (r *renderer) renderFTSChange(c migrate.Change, ix schema.Index) ([]migrate
 		// the name the old table had, while c.Table is already the new one.
 		fts := c.Name
 		if fts == "" {
-			fts = schema.FTS5Table(c.Table)
+			fts = schemautil.FTS5Table(c.Table)
 		}
 		return one(dropFTS5SQL(fts, c.IfExists)), nil
 	}

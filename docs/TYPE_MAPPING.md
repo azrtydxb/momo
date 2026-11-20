@@ -17,10 +17,10 @@ unsigned types and the MySQL limits.
    `Value` and `SQLType`) uses its own `SQLType`. This is how `types.TimeOfDay`
    and `types.Hstore` get their columns.
 2. Otherwise the generator maps the Go type with its built-in table
-   (package `gen/typemap`). A pointer and the `sql.Null*` wrappers map like the
+   (the generator's type map). A pointer and the `sql.Null*` wrappers map like the
    type they wrap: nullability is a column property, not a type property.
 3. A Go type with no mapping (for example `uint64` or `map`) makes
-   `typemap.Map` return an error wrapping `momo.ErrUnsupported`, which the
+   the type map return an error wrapping `momo.ErrUnsupported`, which the
    generator reports at the field. Give the type a codec or declare the column
    yourself.
 
@@ -82,7 +82,7 @@ has no array columns, so the generator rejects them there.
 
 <!-- /generated:typemap -->
 
-The MySQL column is what `typemap.Map` returns for MySQL and MariaDB, which share
+The MySQL column is what the type map returns for MySQL and MariaDB, which share
 it. Unsigned Go integers map to the unsigned column types: `uint8` to
 `tinyint unsigned`, `uint16` to `smallint unsigned`, `uint32` to `int unsigned`,
 `uint` to `bigint unsigned` and `uint64` to `bigint unsigned`. `int8` maps to
@@ -99,7 +99,7 @@ refuses text, blob and json in a primary key, unique key, index or foreign key
 on MySQL and MariaDB, naming the column and asking for `size:N`. `types.Date` stays text, as its codec
 stores it. `text` and `blob` hold 64 KiB, so use a `type` tag for more. Only an
 error that wraps `momo.ErrUnsupported` shows as `unsupported`; any other error
-from `typemap.Map` fails the generation of this table.
+from the type map fails the generation of this table.
 
 The PostgreSQL type of `time.Time` can be changed for the whole project with the
 `types:` section of `momo.yaml`, for example `types: {time.Time: timestamp(3)}`

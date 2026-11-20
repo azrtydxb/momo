@@ -16,6 +16,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/gen/fromdb"
+	"github.com/azrtydxb/momo/internal/schemautil"
 	testopen "github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/migrate"
 	"github.com/azrtydxb/momo/migrate/migratetest"
@@ -56,7 +57,7 @@ func checkInTable(d dialect.Name, values ...string) *schema.Schema {
 		PrimaryKey: []string{"id"},
 		Checks: []schema.Check{{
 			Name: "notes_kind_check",
-			Expr: schema.CheckInExpr(d, "kind", values),
+			Expr: schemautil.CheckInExpr(d, "kind", values),
 			In:   &schema.CheckIn{Column: "kind", Values: slices.Clone(values)},
 		}},
 	}}}
