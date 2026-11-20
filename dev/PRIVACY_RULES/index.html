@@ -1541,7 +1541,7 @@
 <li>Joined relation tables: for a <code>Joined</code> relation only the primary table is filtered; the joined table is not.</li>
 <li>The association helpers (<code>Link</code>, <code>Unlink</code>, <code>Replace</code> and the like) and graph creation.</li>
 <li>Subqueries and other sources rendered inside a statement: subquery operands, <code>UPDATE ... FROM</code> sources, and the <code>FromSelect</code> source of an insert.</li>
-<li>Raw SQL of every kind: <code>momo.Exec</code>, <code>momo.MapRows</code>, <code>momo.Scalars</code>, <code>momo.Query</code>, <code>momo.QueryRows</code>, <code>momo.SQL</code> fragments and <code>momo.RawSubquery</code>.</li>
+<li>Raw SQL of every kind: <code>momo.Exec</code>, <code>momo.MapRows</code>, <code>momo.QueryScalars</code>, <code>momo.Query</code>, <code>momo.QueryRows</code>, <code>momo.SQL</code> fragments and <code>momo.SubquerySQL</code>.</li>
 <li>Bulk loading with COPY: <code>InsertQuery[T].Copy</code> runs the insert interceptors (deny only) and <code>BeforeInsert</code>, but a predicate an interceptor adds is ignored, and <code>momo.CopierOf(...).CopyFrom</code> skips them entirely.</li>
 <li>Anything run on the driver directly, and any other <code>*momo.DB</code> over the same driver.</li>
 </ul>

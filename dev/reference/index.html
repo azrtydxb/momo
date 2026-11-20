@@ -2127,12 +2127,17 @@
 <tr>
 <td><code>momo.ColumnRows</code></td>
 <td>type</td>
-<td>ColumnRows is the cursor RawRows returns: a Rows that also names its result columns.</td>
+<td>ColumnRows is the cursor QueryCursor returns: a Rows that also names its result columns.</td>
 </tr>
 <tr>
 <td><code>momo.Compilable</code></td>
 <td>type</td>
 <td>Compilable is a statement that renders to SQL without running it.</td>
+</tr>
+<tr>
+<td><code>momo.CompilableSQL</code></td>
+<td>func</td>
+<td>CompilableSQL wraps a hand-written statement as a Compilable, with the placeholder rules of Exec ('?' binds, "??" is a literal '?', on PostgreSQL native $n placeholders).</td>
 </tr>
 <tr>
 <td><code>momo.Compiled</code></td>
@@ -4125,6 +4130,11 @@
 <td>Query renders sql through the raw path (see Exec: '?' binds, "??" is a literal '?', Expr arguments render inline, an argument-count mismatch is a build error; on PostgreSQL native $n placeholders bind argument n, see SQL) and scans every row into a T.</td>
 </tr>
 <tr>
+<td><code>momo.QueryCursor</code></td>
+<td>func</td>
+<td>QueryCursor runs sql through the raw path and returns the open cursor, for a result whose shape is only known at run time: a statement whose column count or types depend on its input, which Query and QueryRows cannot type and MapRows would buffer into maps.</td>
+</tr>
+<tr>
 <td><code>momo.QueryEvent</code></td>
 <td>type</td>
 <td>QueryEvent describes one statement for observability hooks.</td>
@@ -4155,6 +4165,11 @@
 <td>QueryRows is the streaming form of Query: it yields one T per row without buffering the result.</td>
 </tr>
 <tr>
+<td><code>momo.QueryScalars</code></td>
+<td>func</td>
+<td>QueryScalars renders sql through the raw path (see Exec: '?' binds, "??" is a literal '?', Expr arguments render inline, an argument-count mismatch is a build error; on PostgreSQL native $n placeholders bind argument n, see SQL) and returns the first column of every row as V.</td>
+</tr>
+<tr>
 <td><code>momo.Rank</code></td>
 <td>func</td>
 <td>Rank is rank(): the rank with gaps after ties.</td>
@@ -4162,17 +4177,17 @@
 <tr>
 <td><code>momo.RawQuery</code></td>
 <td>func</td>
-<td>RawQuery wraps a hand-written statement as a Compilable, with the placeholder rules of Exec ('?' binds, "??" is a literal '?', on PostgreSQL native $n placeholders).</td>
+<td>RawQuery is CompilableSQL.</td>
 </tr>
 <tr>
 <td><code>momo.RawRows</code></td>
 <td>func</td>
-<td>RawRows runs sql through the raw path and returns the open cursor, for a result whose shape is only known at run time: a statement whose column count or types depend on its input, which Query and QueryRows cannot type and MapRows would buffer into maps.</td>
+<td>RawRows is QueryCursor.</td>
 </tr>
 <tr>
 <td><code>momo.RawSubquery</code></td>
 <td>func</td>
-<td>RawSubquery is an explicit escape hatch: a raw SELECT usable as a Subquery (IN, EXISTS, CTE body, set operation member, FromSubquery source).</td>
+<td>RawSubquery is SubquerySQL.</td>
 </tr>
 <tr>
 <td><code>momo.ReadOnlyColumn</code></td>
@@ -4512,7 +4527,7 @@
 <tr>
 <td><code>momo.Scalars</code></td>
 <td>func</td>
-<td>Scalars renders sql through the raw path (see Exec: '?' binds, "??" is a literal '?', Expr arguments render inline, an argument-count mismatch is a build error; on PostgreSQL native $n placeholders bind argument n, see SQL) and returns the first column of every row as V.</td>
+<td>Scalars is QueryScalars.</td>
 </tr>
 <tr>
 <td><code>momo.ScanDelete</code></td>
@@ -4853,6 +4868,11 @@
 <td><code>momo.Subquery</code></td>
 <td>type</td>
 <td>Subquery is a query usable as an expression: IN (...), EXISTS (...), scalar subqueries and FROM sources.</td>
+</tr>
+<tr>
+<td><code>momo.SubquerySQL</code></td>
+<td>func</td>
+<td>SubquerySQL is an explicit escape hatch: a raw SELECT usable as a Subquery (IN, EXISTS, CTE body, set operation member, FromSubquery source).</td>
 </tr>
 <tr>
 <td><code>momo.Sum</code></td>
@@ -6512,7 +6532,7 @@
 <tr>
 <td><code>migrate.Config</code></td>
 <td>type</td>
-<td>Config is the engine configuration.</td>
+<td>Deprecated: use Settings.</td>
 </tr>
 <tr>
 <td><code>migrate.ConfigFromFile</code></td>
@@ -6892,7 +6912,7 @@
 <tr>
 <td><code>migrate.FormatVersion</code></td>
 <td>const</td>
-<td>FormatVersion is the format version of the momo_migrations history table.</td>
+<td>Deprecated: use HistoryFormat.</td>
 </tr>
 <tr>
 <td><code>migrate.GoMigration</code></td>
@@ -6908,6 +6928,11 @@
 <td><code>migrate.HasErrors</code></td>
 <td>func</td>
 <td>HasErrors reports whether any finding has error severity.</td>
+</tr>
+<tr>
+<td><code>migrate.HistoryFormat</code></td>
+<td>const</td>
+<td>HistoryFormat is the format version of the momo_migrations history table.</td>
 </tr>
 <tr>
 <td><code>migrate.HistoryLocator</code></td>
@@ -7220,6 +7245,11 @@
 <td>Change kinds produced by Diff.</td>
 </tr>
 <tr>
+<td><code>migrate.Settings</code></td>
+<td>type</td>
+<td>Settings is the engine configuration.</td>
+</tr>
+<tr>
 <td><code>migrate.Severity</code></td>
 <td>type</td>
 <td>Severity is a lint severity: "error" or "warning".</td>
@@ -7400,6 +7430,11 @@
 <td>WithLockWait sets how long Apply waits for the migration lock before it returns ErrLocked.</td>
 </tr>
 <tr>
+<td><code>migrate.WithSettings</code></td>
+<td>func</td>
+<td>WithSettings sets the engine configuration.</td>
+</tr>
+<tr>
 <td><code>migrate.WithStatementTimeout</code></td>
 <td>func</td>
 <td>WithStatementTimeout sets the statement_timeout of the migration session.</td>
@@ -7528,12 +7563,17 @@
 <tr>
 <td><code>momotest.Graph</code></td>
 <td>func</td>
-<td>Graph returns a step that inserts root with the related rows it includes in one unit, as momo.CreateGraph does: parents first, then root, then children, with foreign keys filled in.</td>
+<td>Deprecated: use GraphOf.</td>
+</tr>
+<tr>
+<td><code>momotest.GraphOf</code></td>
+<td>func</td>
+<td>GraphOf returns a step that inserts root with the related rows it includes in one unit, as momo.CreateGraph does: parents first, then root, then children, with foreign keys filled in.</td>
 </tr>
 <tr>
 <td><code>momotest.Insert</code></td>
 <td>func</td>
-<td>Insert returns a step that inserts rows one by one, in the order given, reading generated columns (identity keys, defaults) back into each row.</td>
+<td>Deprecated: use Rows.</td>
 </tr>
 <tr>
 <td><code>momotest.LoadFixtures</code></td>
@@ -7544,6 +7584,11 @@
 <td><code>momotest.LoadQueryGolden</code></td>
 <td>func</td>
 <td>LoadQueryGolden reads a golden file written by QueryGolden, for example the file of the previous release, so a test can run those statements against the current schema.</td>
+</tr>
+<tr>
+<td><code>momotest.MomoOptionsOf</code></td>
+<td>func</td>
+<td>MomoOptionsOf returns the options that WithMomoOptions collected from opts, in order.</td>
 </tr>
 <tr>
 <td><code>momotest.New</code></td>
@@ -7574,6 +7619,11 @@
 <td><code>momotest.RequireEnv</code></td>
 <td>const</td>
 <td>RequireEnv, set to 1, turns "the server URL is not set" from a skip into a failure.</td>
+</tr>
+<tr>
+<td><code>momotest.Rows</code></td>
+<td>func</td>
+<td>Rows returns a step that inserts rows one by one, in the order given, reading generated columns (identity keys, defaults) back into each row.</td>
 </tr>
 <tr>
 <td><code>momotest.Seed</code></td>
@@ -8033,12 +8083,12 @@
 <tr>
 <td><code>fts.Headline</code></td>
 <td>func</td>
-<td>Headline is ts_headline(config, doc, q [, options]): doc with the query matches marked up.</td>
+<td>Headline is TSHeadline.</td>
 </tr>
 <tr>
 <td><code>fts.Match</code></td>
 <td>func</td>
-<td>Match is vec @@ q: true when the document matches the query.</td>
+<td>Match is TSMatch.</td>
 </tr>
 <tr>
 <td><code>fts.MySQLMatch</code></td>
@@ -8078,7 +8128,7 @@
 <tr>
 <td><code>fts.PhraseToQuery</code></td>
 <td>func</td>
-<td>PhraseToQuery is phraseto_tsquery(config, query): the words of query as one phrase.</td>
+<td>PhraseToQuery is TSPhraseQuery.</td>
 </tr>
 <tr>
 <td><code>fts.Plain</code></td>
@@ -8088,7 +8138,7 @@
 <tr>
 <td><code>fts.PlainToQuery</code></td>
 <td>func</td>
-<td>PlainToQuery is plainto_tsquery(config, query): the words of query ANDed together, punctuation ignored.</td>
+<td>PlainToQuery is TSPlainQuery.</td>
 </tr>
 <tr>
 <td><code>fts.Query</code></td>
@@ -8103,12 +8153,12 @@
 <tr>
 <td><code>fts.Rank</code></td>
 <td>func</td>
-<td>Rank is ts_rank(vec, q [, normalization]): a relevance score from how often the query terms occur.</td>
+<td>Rank is TSRank.</td>
 </tr>
 <tr>
 <td><code>fts.RankCD</code></td>
 <td>func</td>
-<td>RankCD is ts_rank_cd(vec, q [, normalization]): the cover-density score, which also rewards query terms that sit close together.</td>
+<td>RankCD is TSRankCD.</td>
 </tr>
 <tr>
 <td><code>fts.Raw</code></td>
@@ -8136,6 +8186,51 @@
 <td>SnippetOpts configures Snippet.</td>
 </tr>
 <tr>
+<td><code>fts.TSHeadline</code></td>
+<td>func</td>
+<td>TSHeadline is ts_headline(config, doc, q [, options]): doc with the query matches marked up.</td>
+</tr>
+<tr>
+<td><code>fts.TSMatch</code></td>
+<td>func</td>
+<td>TSMatch is vec @@ q: true when the document matches the query.</td>
+</tr>
+<tr>
+<td><code>fts.TSPhraseQuery</code></td>
+<td>func</td>
+<td>TSPhraseQuery is phraseto_tsquery(config, query): the words of query as one phrase.</td>
+</tr>
+<tr>
+<td><code>fts.TSPlainQuery</code></td>
+<td>func</td>
+<td>TSPlainQuery is plainto_tsquery(config, query): the words of query ANDed together, punctuation ignored.</td>
+</tr>
+<tr>
+<td><code>fts.TSQuery</code></td>
+<td>func</td>
+<td>TSQuery is to_tsquery(config, query): query must already be in tsquery syntax (&amp; | ! &lt;-&gt; and prefix:*); a malformed query is a database error.</td>
+</tr>
+<tr>
+<td><code>fts.TSRank</code></td>
+<td>func</td>
+<td>TSRank is ts_rank(vec, q [, normalization]): a relevance score from how often the query terms occur.</td>
+</tr>
+<tr>
+<td><code>fts.TSRankCD</code></td>
+<td>func</td>
+<td>TSRankCD is ts_rank_cd(vec, q [, normalization]): the cover-density score, which also rewards query terms that sit close together.</td>
+</tr>
+<tr>
+<td><code>fts.TSVector</code></td>
+<td>func</td>
+<td>TSVector is to_tsvector(config, doc): doc parsed into a tsvector with the text search configuration config.</td>
+</tr>
+<tr>
+<td><code>fts.TSWebsearchQuery</code></td>
+<td>func</td>
+<td>TSWebsearchQuery is websearch_to_tsquery(config, query): the query in the forgiving web-search syntax (quoted phrases, or, a leading minus).</td>
+</tr>
+<tr>
 <td><code>fts.Target</code></td>
 <td>type</td>
 <td>Target is what Search, Score and Snippet search.</td>
@@ -8143,12 +8238,12 @@
 <tr>
 <td><code>fts.ToQuery</code></td>
 <td>func</td>
-<td>ToQuery is to_tsquery(config, query): query must already be in tsquery syntax (&amp; | ! &lt;-&gt; and prefix:*); a malformed query is a database error.</td>
+<td>ToQuery is TSQuery.</td>
 </tr>
 <tr>
 <td><code>fts.ToVector</code></td>
 <td>func</td>
-<td>ToVector is to_tsvector(config, doc): doc parsed into a tsvector with the text search configuration config.</td>
+<td>ToVector is TSVector.</td>
 </tr>
 <tr>
 <td><code>fts.Web</code></td>
@@ -8158,7 +8253,7 @@
 <tr>
 <td><code>fts.WebsearchToQuery</code></td>
 <td>func</td>
-<td>WebsearchToQuery is websearch_to_tsquery(config, query): the query in the forgiving web-search syntax (quoted phrases, or, a leading minus).</td>
+<td>WebsearchToQuery is TSWebsearchQuery.</td>
 </tr>
 </tbody>
 </table>
@@ -9001,9 +9096,19 @@
 <td>Substr is substr(e, from, length): length characters of e starting at the 1-based position from.</td>
 </tr>
 <tr>
+<td><code>sqlfn.SubstrExpr</code></td>
+<td>func</td>
+<td>SubstrExpr is substr(e, from, length) with the positions as expressions, for example a column.</td>
+</tr>
+<tr>
 <td><code>sqlfn.SubstrFrom</code></td>
 <td>func</td>
 <td>SubstrFrom is substr(e, from): everything from the 1-based position from.</td>
+</tr>
+<tr>
+<td><code>sqlfn.SubstrToEnd</code></td>
+<td>func</td>
+<td>SubstrToEnd is substr(e, from): everything from the 1-based position from.</td>
 </tr>
 <tr>
 <td><code>sqlfn.Upper</code></td>
@@ -9062,6 +9167,11 @@
 <td><code>timeop.ClockTimestamp</code></td>
 <td>func</td>
 <td>ClockTimestamp is the wall-clock time at the moment it is evaluated: clock_timestamp() on PostgreSQL, which changes within a statement and a transaction, unlike Now.</td>
+</tr>
+<tr>
+<td><code>timeop.CurrentDate</code></td>
+<td>func</td>
+<td>CurrentDate is CURRENT_DATE: the transaction date on PostgreSQL, the session date on MySQL, the UTC date as text on SQLite.</td>
 </tr>
 <tr>
 <td><code>timeop.CurrentTimestamp</code></td>
@@ -9219,6 +9329,11 @@
 <td>The extract fields every dialect can answer.</td>
 </tr>
 <tr>
+<td><code>timeop.Infinity</code></td>
+<td>func</td>
+<td>Infinity is 'infinity'::timestamptz, later than every timestamp.</td>
+</tr>
+<tr>
 <td><code>timeop.Interval</code></td>
 <td>type</td>
 <td>Interval is a length of time: a count and a unit.</td>
@@ -9236,7 +9351,7 @@
 <tr>
 <td><code>timeop.IntervalExpr</code></td>
 <td>func</td>
-<td>IntervalExpr is an interval whose count comes from an integer expression: a column, or momo.Value(n) to bind a parameter.</td>
+<td>IntervalExpr is IntervalOfExpr.</td>
 </tr>
 <tr>
 <td><code>timeop.IntervalHour</code></td>
@@ -9269,6 +9384,11 @@
 <td>IntervalOf is a literal interval of n units, written into the SQL text (INTERVAL '5 day'), so the same expression in SELECT and GROUP BY stays identical.</td>
 </tr>
 <tr>
+<td><code>timeop.IntervalOfExpr</code></td>
+<td>func</td>
+<td>IntervalOfExpr is an interval whose count comes from an integer expression: a column, or momo.Value(n) to bind a parameter.</td>
+</tr>
+<tr>
 <td><code>timeop.IntervalSecond</code></td>
 <td>const</td>
 <td>The interval units every dialect supports.</td>
@@ -9287,6 +9407,11 @@
 <td><code>timeop.IntervalYear</code></td>
 <td>const</td>
 <td>The interval units every dialect supports.</td>
+</tr>
+<tr>
+<td><code>timeop.NegInfinity</code></td>
+<td>func</td>
+<td>NegInfinity is '-infinity'::timestamptz, earlier than every timestamp.</td>
 </tr>
 <tr>
 <td><code>timeop.Now</code></td>

@@ -574,6 +574,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#the-raw-sql-family" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The raw SQL family
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#porting-pgx-and-sqlc-sql" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1718,6 +1729,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#the-raw-sql-family" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The raw SQL family
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#porting-pgx-and-sqlc-sql" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1894,8 +1916,8 @@ DON'T, the call either fails, silently does the wrong thing, or is a known bug.<
   <a href="../vectors/#hybrid-search">vectors.md</a>). Full-text search runs on PostgreSQL,
   SQLite and MySQL or MariaDB: declare it once on the model (the <code>search</code> tag or
   <code>c.FullText</code>) and search with <code>fts.Search</code>, <code>fts.Score</code> and <code>fts.Snippet</code>
-  (see <a href="../fulltext/">fulltext.md</a>); <code>types.TSVector</code>, <code>fts.Match</code>,
-  <code>fts.RankCD</code>, <code>fts.Headline</code> and the query builders are PostgreSQL SQL. To
+  (see <a href="../fulltext/">fulltext.md</a>); <code>types.TSVector</code>, <code>fts.TSMatch</code>,
+  <code>fts.TSRankCD</code>, <code>fts.TSHeadline</code> and the query builders are PostgreSQL SQL. To
   weigh the signals yourself, combine a vector distance with a text rank in one
   score as shown in <a href="../fulltext/">fulltext.md</a>.</li>
 </ul>
@@ -3115,8 +3137,10 @@ predicate key is <code>ErrValidation</code>, and so is a predicate in the outer 
 <span class="c1">// CTE, no positional column names needed:</span>
 <span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">Pair</span><span class="p">](</span><span class="nx">q</span><span class="p">).</span><span class="nx">With</span><span class="p">(</span><span class="s">"s"</span><span class="p">,</span><span class="w"> </span><span class="nx">inner</span><span class="p">).</span><span class="nx">From</span><span class="p">(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">CTE</span><span class="p">(</span><span class="s">"s"</span><span class="p">)).</span><span class="nx">Columns</span><span class="p">(</span><span class="nx">pairK</span><span class="p">,</span><span class="w"> </span><span class="nx">n</span><span class="p">.</span><span class="nx">Ref</span><span class="p">(</span><span class="s">"s"</span><span class="p">))</span>
 
-<span class="c1">// Strings (package sqlfn): Substr(e, from, length), SubstrFrom, Lower, Upper, Length. Positions are</span>
-<span class="c1">// literals, so the same expression works in SELECT and GROUP BY.</span>
+<span class="c1">// Strings (package sqlfn): sqlfn.Substr(e, from, length), sqlfn.SubstrToEnd, sqlfn.SubstrExpr (positions as</span>
+<span class="c1">// int32 expressions), sqlfn.Lower, sqlfn.Upper, sqlfn.Length. Substr positions are Go values rendered</span>
+<span class="c1">// as literals, so the same expression works in SELECT and GROUP BY.</span>
+<span class="c1">// sqlfn.NullIf renders its value as a literal, strings included: sqlfn.NullIf(doc.Title, "").</span>
 <span class="nx">sqlfn</span><span class="p">.</span><span class="nx">Substr</span><span class="p">(</span><span class="nx">doc</span><span class="p">.</span><span class="nx">Title</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">)</span>
 <span class="c1">// Filter and order on a computed value:</span>
 <span class="c1">//   Where(sqlfn.Substr(doc.Title, 1, 3).Eq("abc"), sqlfn.Length(doc.Title).Ge(3))</span>
@@ -3133,6 +3157,9 @@ predicate key is <code>ErrValidation</code>, and so is a predicate in the outer 
 <span class="c1">// Plain values bound by Func or an aggregate are not masked in hook events, even</span>
 <span class="c1">// beside a sensitive column; only comparison predicates mask their other operands.</span>
 <span class="nx">momo</span><span class="p">.</span><span class="nx">Func</span><span class="p">[</span><span class="kt">string</span><span class="p">](</span><span class="s">"btrim"</span><span class="p">,</span><span class="w"> </span><span class="nx">doc</span><span class="p">.</span><span class="nx">Title</span><span class="p">)</span>
+<span class="c1">// momo.Func is for scalar (per-row) functions and returns an Expression[T] with no aggregate modifiers.</span>
+<span class="c1">// agg.Func is for aggregate functions and returns an agg.Call[T], which adds Distinct, OrderBy,</span>
+<span class="c1">// WithinGroup, Filter and Over. A custom aggregate called through momo.Func has none of those.</span>
 <span class="c1">// Aggregates with their own ORDER BY (agg.Call[T], package momo/agg); chain OrderBy, inside the call.</span>
 <span class="nx">agg</span><span class="p">.</span><span class="nx">String</span><span class="p">(</span><span class="nx">label</span><span class="p">,</span><span class="w"> </span><span class="s">", "</span><span class="p">).</span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">label</span><span class="p">.</span><span class="nx">Asc</span><span class="p">())</span><span class="w">        </span><span class="c1">// string_agg / group_concat / GROUP_CONCAT</span>
 <span class="nx">agg</span><span class="p">.</span><span class="nx">Array</span><span class="p">[</span><span class="kt">string</span><span class="p">](</span><span class="nx">label</span><span class="p">).</span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">label</span><span class="p">.</span><span class="nx">Asc</span><span class="p">())</span><span class="w">       </span><span class="c1">// []string; ErrUnsupported on other dialects</span>
@@ -3154,7 +3181,7 @@ predicate key is <code>ErrValidation</code>, and so is a predicate in the outer 
 <span class="c1">// Row-value comparison, the keyset position check; both rows need 2+ elements of the same count:</span>
 <span class="c1">//   Where(momo.Row(w.CreatedAt, w.ID).Lt(momo.Row(me.At, momo.Value(id)))); also Le, Gt, Ge</span>
 <span class="c1">// CURRENT_DATE, and 'infinity' / '-infinity' timestamptz (PostgreSQL only; ErrUnsupported elsewhere):</span>
-<span class="c1">//   sqlfn.CurrentDate(); sqlfn.Infinity(); sqlfn.NegInfinity()</span>
+<span class="c1">//   timeop.CurrentDate(); timeop.Infinity(); timeop.NegInfinity()</span>
 <span class="c1">// Inline literal for text that must match in SELECT and GROUP BY (a bound value gets a new $n each</span>
 <span class="c1">// time, PostgreSQL 42803). Ints, floats, bool, string and time.Time. A string has ' doubled and is</span>
 <span class="c1">// refused (ErrValidation) with a backslash or NUL; a time.Time must be exactly 00:00:00 UTC and</span>
@@ -3173,7 +3200,7 @@ predicate key is <code>ErrValidation</code>, and so is a predicate in the outer 
 <span class="nx">timeop</span><span class="p">.</span><span class="nx">StatementTimestamp</span><span class="p">()</span><span class="w">                              </span><span class="c1">// statement_timestamp(): start of the current statement; MySQL is ErrUnsupported</span>
 <span class="c1">// Intervals are an operand of AddInterval/SubInterval, not an expression of their own.</span>
 <span class="nx">timeop</span><span class="p">.</span><span class="nx">SubInterval</span><span class="p">(</span><span class="nx">timeop</span><span class="p">.</span><span class="nx">Now</span><span class="p">(),</span><span class="w"> </span><span class="nx">timeop</span><span class="p">.</span><span class="nx">IntervalOf</span><span class="p">(</span><span class="mi">7</span><span class="p">,</span><span class="w"> </span><span class="nx">timeop</span><span class="p">.</span><span class="nx">IntervalDay</span><span class="p">))</span><span class="w">              </span><span class="c1">// literal count</span>
-<span class="nx">timeop</span><span class="p">.</span><span class="nx">AddInterval</span><span class="p">(</span><span class="nx">doc</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">,</span><span class="w"> </span><span class="nx">timeop</span><span class="p">.</span><span class="nx">IntervalExpr</span><span class="p">(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Value</span><span class="p">(</span><span class="kt">int64</span><span class="p">(</span><span class="nx">n</span><span class="p">)),</span><span class="w"> </span><span class="nx">timeop</span><span class="p">.</span><span class="nx">IntervalHour</span><span class="p">))</span><span class="w"> </span><span class="c1">// bound or column count</span>
+<span class="nx">timeop</span><span class="p">.</span><span class="nx">AddInterval</span><span class="p">(</span><span class="nx">doc</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">,</span><span class="w"> </span><span class="nx">timeop</span><span class="p">.</span><span class="nx">IntervalOfExpr</span><span class="p">(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Value</span><span class="p">(</span><span class="kt">int64</span><span class="p">(</span><span class="nx">n</span><span class="p">)),</span><span class="w"> </span><span class="nx">timeop</span><span class="p">.</span><span class="nx">IntervalHour</span><span class="p">))</span><span class="w"> </span><span class="c1">// bound or column count</span>
 <span class="nx">timeop</span><span class="p">.</span><span class="nx">AddInterval</span><span class="p">(</span><span class="nx">doc</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">,</span><span class="w"> </span><span class="nx">timeop</span><span class="p">.</span><span class="nx">IntervalOf</span><span class="p">(</span><span class="mi">1500</span><span class="p">,</span><span class="w"> </span><span class="nx">timeop</span><span class="p">.</span><span class="nx">IntervalMillisecond</span><span class="p">))</span><span class="w">           </span><span class="c1">// also IntervalMicrosecond; SQLite rounds to the nearest millisecond (1500us adds 2 ms)</span>
 <span class="nx">timeop</span><span class="p">.</span><span class="nx">AddDuration</span><span class="p">(</span><span class="nx">doc</span><span class="p">.</span><span class="nx">CreatedAt</span><span class="p">,</span><span class="w"> </span><span class="mi">1500</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Millisecond</span><span class="p">)</span><span class="w">                                         </span><span class="c1">// a time.Duration as a literal interval, no rounding; also SubDuration</span>
 <span class="c1">// Difference of two timestamps, read as seconds: a Span has no value of its own on MySQL and SQLite.</span>
@@ -3371,7 +3398,7 @@ yourself. A keyset order that is not total skips or repeats rows. Example:
   <code>ErrValidation</code>. Use <code>SoftDelete</code> or <code>ForceDelete</code>.</li>
 <li>The soft-delete filter applies automatically to <code>Select</code>, <code>Count</code>, relation
   loads and <code>Has</code>/<code>HasNo</code> of a model. It does NOT apply to raw SQL (<code>momo.SQL</code>,
-  <code>momo.Exec</code>, <code>momo.Scalars</code>), or to a projection whose <code>From</code> is a subquery or
+  <code>momo.Exec</code>, <code>momo.QueryScalars</code>), or to a projection whose <code>From</code> is a subquery or
   a hand-built <code>TableRef</code> (see "Projections" in section 4): add
   <code>deleted_at IS NULL</code> / <code>&lt;table&gt;.DeletedAt.IsNull()</code> yourself. A projection
   read <code>From</code> a generated table (also with joins) is filtered automatically.</li>
@@ -3428,7 +3455,7 @@ yourself. A keyset order that is not total skips or repeats rows. Example:
   <code>SelectExprs</code> (a FROM-less or single-source select of expressions, with <code>From</code>,
   <code>Where</code>, <code>Join</code>/<code>LeftJoin</code>/<code>CrossJoin</code>, <code>GroupBy</code>, <code>Having</code> and <code>OrderBy</code>; the clauses
   work like those of <code>Select[T]</code>, and a join, <code>GroupBy</code> or <code>Having</code> needs a <code>From</code>) or a <code>Select[T]</code> query. The select list must have as many columns as the
-  target columns (<code>ErrValidation</code> otherwise; a <code>RawSubquery</code> is checked by the
+  target columns (<code>ErrValidation</code> otherwise; a <code>SubquerySQL</code> is checked by the
   database). <code>FromSelect</code> runs no model hooks.</li>
 <li>The soft-delete filter on a <code>SelectExprs</code> source (including inside <code>NotExists</code>) is
   added only when <code>From</code> gets a <code>TableRef</code> that carries the soft-delete marker.
@@ -3545,11 +3572,11 @@ as arguments):</p>
 <span class="nx">momo</span><span class="p">.</span><span class="nx">TypedSQL</span><span class="p">[</span><span class="kt">int64</span><span class="p">](</span><span class="s">"balance + ?"</span><span class="p">,</span><span class="w"> </span><span class="nx">delta</span><span class="p">)</span>
 <span class="c1">// Statements and scalar lists:</span>
 <span class="nx">affected</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Exec</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">`UPDATE tasks SET done = ? WHERE id IN (?)`</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">In</span><span class="p">(</span><span class="nx">ids</span><span class="p">))</span>
-<span class="nx">ids</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Scalars</span><span class="p">[</span><span class="kt">int64</span><span class="p">](</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">`SELECT id FROM tasks WHERE done = ?`</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">)</span>
+<span class="nx">ids</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">QueryScalars</span><span class="p">[</span><span class="kt">int64</span><span class="p">](</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">`SELECT id FROM tasks WHERE done = ?`</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">)</span>
 <span class="c1">// Several columns into Row1..Row10 (positional), a model or a projection (matched by column name):</span>
 <span class="nx">rows</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Query</span><span class="p">[</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Row2</span><span class="p">[</span><span class="kt">int64</span><span class="p">,</span><span class="w"> </span><span class="kt">string</span><span class="p">]](</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">`SELECT id, title FROM tasks WHERE done = ?`</span><span class="p">,</span><span class="w"> </span><span class="kc">true</span><span class="p">)</span>
 <span class="k">for</span><span class="w"> </span><span class="nx">row</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">QueryRows</span><span class="p">[</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Row2</span><span class="p">[</span><span class="kt">int64</span><span class="p">,</span><span class="w"> </span><span class="kt">string</span><span class="p">]](</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">`SELECT id, title FROM tasks`</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">row</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="p">}</span>
-<span class="c1">// Helpers: momo.In(slice) (empty slice is a build error), momo.Ident("col"), momo.RawSubquery(sql, args...)</span>
+<span class="c1">// Helpers: momo.In(slice) (empty slice is a build error), momo.Ident("col"), momo.SubquerySQL(sql, args...)</span>
 </code></pre></div>
 <ul>
 <li>DON'T build SQL text with <code>fmt.Sprintf</code> from user input. Use <code>?</code>, <code>In</code>, <code>Ident</code>.</li>
@@ -3590,7 +3617,7 @@ as arguments):</p>
   argument redaction are those of <code>Exec</code>; interceptors, soft-delete filters and
   <code>AfterLoad</code> do not apply to raw SQL. <code>QueryRows</code> closes the cursor on early
   break, on an error and on a canceled context (<code>ErrCanceled</code>).</li>
-<li><code>RawRows(ctx, q, sql, args...)</code> returns the open cursor (<code>momo.ColumnRows</code>:
+<li><code>QueryCursor(ctx, q, sql, args...)</code> returns the open cursor (<code>momo.ColumnRows</code>:
   <code>Next</code>, <code>Scan(dest...)</code>, <code>Columns</code>, <code>Err</code>, <code>Close</code>) for a result whose shape is
   only known at run time. It has the hooks (op <code>raw</code>), <code>WithTxSetup</code>,
   error classification and redaction of <code>Query</code>, on a <code>*DB</code>, <code>*Tx</code> or <code>AdoptTx</code>
@@ -3605,9 +3632,90 @@ as arguments):</p>
   <code>UPDATE</code> without <code>RETURNING</code>) or an unnamed driver. Prefer <code>Query[T]</code> when the
   shape is known.</li>
 </ul>
+<h4 id="the-raw-sql-family">The raw SQL family<a class="headerlink" href="#the-raw-sql-family" title="Permanent link">&para;</a></h4>
+<p>Nine functions of the root package take hand-written SQL. They share one
+placeholder contract (<code>?</code> binds the next argument, <code>??</code> is a literal <code>?</code>, <code>$n</code>
+on PostgreSQL, <code>momo.In</code>, <code>momo.Ident</code> and <code>momo.Named</code> as arguments) and one
+safety rule: the SQL text is a trusted constant and user input is an argument.
+They fall into two groups.</p>
+<p>Functions that run a statement take a context, a querier, the SQL text and its
+arguments, hit the database at once and have hooks with the op <code>raw</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Returns</th>
+<th>Use it for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>momo.Exec</code></td>
+<td>rows affected, error</td>
+<td>a statement that writes or changes the schema</td>
+</tr>
+<tr>
+<td><code>momo.Query</code></td>
+<td><code>[]T</code>, buffered</td>
+<td>a result whose row type is known</td>
+</tr>
+<tr>
+<td><code>momo.QueryRows</code></td>
+<td><code>iter.Seq2[T, error]</code>, streamed</td>
+<td>the same result without buffering it</td>
+</tr>
+<tr>
+<td><code>momo.QueryScalars</code></td>
+<td><code>[]V</code>, one column</td>
+<td>a single-column result such as ids</td>
+</tr>
+<tr>
+<td><code>momo.QueryCursor</code></td>
+<td><code>momo.ColumnRows</code>, an open cursor</td>
+<td>a result whose shape is known only at run time (close it)</td>
+</tr>
+</tbody>
+</table>
+<p>Functions that wrap a fragment for a builder take no context, run nothing and
+return a value that another builder renders:</p>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Returns</th>
+<th>Use it for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>momo.SQL</code></td>
+<td><code>momo.Predicate</code></td>
+<td>a condition in <code>Where</code>, <code>Having</code> or <code>On</code></td>
+</tr>
+<tr>
+<td><code>momo.TypedSQL</code></td>
+<td><code>momo.Expression[T]</code></td>
+<td>a value in a select list, an assignment or a typed comparison</td>
+</tr>
+<tr>
+<td><code>momo.SubquerySQL</code></td>
+<td><code>momo.Subquery</code></td>
+<td>a SELECT used in <code>IN</code>, <code>EXISTS</code>, a CTE or a set operation</td>
+</tr>
+<tr>
+<td><code>momo.CompilableSQL</code></td>
+<td><code>momo.Compilable</code></td>
+<td>a hand-written statement registered with <code>momo.RegisterQuery</code></td>
+</tr>
+</tbody>
+</table>
+<p>The naming rule: a function that runs hand-written SQL is a verb (<code>Exec</code>,
+<code>Query</code>, <code>QueryRows</code>, <code>QueryScalars</code>, <code>QueryCursor</code>); a function that wraps
+hand-written SQL for a builder ends in <code>SQL</code> (<code>SQL</code>, <code>TypedSQL</code>, <code>SubquerySQL</code>,
+<code>CompilableSQL</code>). No name carries the word Raw.</p>
 <h4 id="porting-pgx-and-sqlc-sql">Porting pgx and sqlc SQL<a class="headerlink" href="#porting-pgx-and-sqlc-sql" title="Permanent link">&para;</a></h4>
-<p>On the PostgreSQL dialect, raw SQL (<code>Exec</code>, <code>Scalars</code>, <code>Query</code>, <code>QueryRows</code>, <code>SQL</code>, <code>TypedSQL</code>,
-<code>RawSubquery</code>) accepts PostgreSQL's native <code>$1, $2, ...</code> placeholders, so a
+<p>On the PostgreSQL dialect, raw SQL (<code>Exec</code>, <code>QueryScalars</code>, <code>Query</code>, <code>QueryRows</code>, <code>SQL</code>, <code>TypedSQL</code>,
+<code>SubquerySQL</code>) accepts PostgreSQL's native <code>$1, $2, ...</code> placeholders, so a
 statement written for pgx or sqlc moves over unchanged:</p>
 <!-- docscheck:fragment -->
 
@@ -3618,7 +3726,7 @@ statement written for pgx or sqlc moves over unchanged:</p>
 <ul>
 <li><code>$n</code> binds positional argument n of that call. A reused <code>$n</code> (here <code>$2</code>) binds
   the argument once. An <code>In</code>, <code>Ident</code> or <code>Expr</code> argument is rendered again at each
-  use. Momo renumbers: inside a larger statement (<code>TypedSQL</code> or <code>RawSubquery</code>
+  use. Momo renumbers: inside a larger statement (<code>TypedSQL</code> or <code>SubquerySQL</code>
   after earlier <code>Where</code> binds) <code>$1</code> still means the fragment's first argument.</li>
 <li>One style per fragment. Mixing <code>$n</code> with <code>?</code>, <code>@name</code> or <code>Named</code> is
   <code>ErrValidation</code>.</li>
@@ -4358,7 +4466,7 @@ invalid text representation) hide the message because it may quote the value; th
 <code>pgvector/pgvector:0.8.7-pg16</code> and <code>0.8.7-pg17</code>.</p>
 <p>To list or freeze the SQL an app issues without a database, register named
 builders with <code>momo.RegisterQuery(name, func(q momo.Querier) momo.Compilable)</code>
-(use <code>momo.RawQuery</code> for hand-written SQL), read them with
+(use <code>momo.CompilableSQL</code> for hand-written SQL), read them with
 <code>QueryRegistry.Compile(dialect)</code> and freeze them with <code>momotest.QueryGolden</code>
 (<code>MOMO_UPDATE_GOLDEN=1</code> rewrites the files; registering a name twice panics).
 The SQL of <code>InsertQuery[T].Model</code> depends on the sample model's dbdefault fields (a
@@ -4374,11 +4482,13 @@ a real call sets them, or register <code>InsertQuery[T].Values</code> with <code
 
 <span class="nx">db</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">WithMigrations</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">Migrations</span><span class="p">()))</span><span class="w">  </span><span class="c1">// schema per test, dropped after</span>
 <span class="nx">tx</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">NewTx</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">WithMigrations</span><span class="p">(</span><span class="nx">app</span><span class="p">.</span><span class="nx">Migrations</span><span class="p">()))</span><span class="w"> </span><span class="c1">// rolled back after; Commit refused</span>
-<span class="nx">momotest</span><span class="p">.</span><span class="nx">Seed</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span><span class="w"> </span><span class="nx">tx</span><span class="p">,</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">Insert</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">org</span><span class="p">),</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">Insert</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">user</span><span class="p">))</span>
+<span class="nx">momotest</span><span class="p">.</span><span class="nx">Seed</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span><span class="w"> </span><span class="nx">tx</span><span class="p">,</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">Rows</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">org</span><span class="p">),</span><span class="w"> </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">Rows</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">user</span><span class="p">))</span>
 </code></pre></div>
 <p><code>momotest.LoadFixtures(t, q, "fixtures.yaml")</code> inserts a YAML file of
 <code>table: [rows]</code> in file order (columns sorted, <code>null</code> is <code>NULL</code>, values bound),
-and <code>sqlitetest.New(t)</code> (package <code>momotest/sqlitetest</code>, cgo) returns a
+and <code>sqlitetest.New(t)</code> (package <code>momotest/sqlitetest</code>, cgo; it takes the same
+<code>momotest.Option</code> values as <code>momotest.New</code>, applies <code>momotest.WithMomoOptions</code>
+and gives the options that configure a server no effect) returns a
 <code>*momo.DB</code> on a throwaway SQLite file per test. <code>momotest.AssertSQL(t,
 query.SQL(), want)</code> compares compiled SQL ignoring
 whitespace without running it (the failure never shows an argument value), and
@@ -4510,7 +4620,7 @@ steps.</p>
    is filtered automatically; do not add the predicate.</li>
 <li>Page with <code>OrderBy</code> + <code>After</code> and a unique tie-break; pass one value per
     effective ORDER BY key (primary key included).</li>
-<li>Pass user input only as arguments to <code>momo.SQL</code>/<code>TypedSQL</code>/<code>Exec</code>/<code>Scalars</code>/<code>Query</code>/<code>QueryRows</code>;
+<li>Pass user input only as arguments to <code>momo.SQL</code>/<code>TypedSQL</code>/<code>Exec</code>/<code>QueryScalars</code>/<code>Query</code>/<code>QueryRows</code>;
     qualify column names in raw fragments inside joins.</li>
 <li>Inside <code>db.Tx</code>, use only the <code>tx</code> handle. Retry the whole transaction on
     <code>ErrSerialization</code> with jittered backoff; never retry inside it.</li>

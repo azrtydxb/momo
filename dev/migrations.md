@@ -343,7 +343,7 @@ repeated once; a second disagreement fails with an error asking you to retry.
   `search_path` before any table exists. Keep schemas on the migrator's
   `search_path` writable only by the migrator.
 - With no table yet, it is created in the current schema.
-  `migrate.Config.Schemas[0]` (`migrate.schemas`) must equal the current schema
+  `migrate.Settings.Schemas[0]` (`migrate.schemas`) must equal the current schema
   (current_schema) or the engine returns a configuration error naming both.
   `plan`, `status` and `drift` on a connection with no current schema and no
   table report an empty history; `apply` and the other writers fail.
@@ -439,7 +439,7 @@ unmanaged. Exit 0 and `no drift`, or exit 1 and one line per finding:
   `momo.yaml` with `migrate.ConfigFromFile(fsys, "momo.yaml")`; it returns the
   engine options the CLI builds from the `migrate:` section and `introspect.only`
   (see [upgrading](upgrading.md)).
-- `migrate.Config.OnlyTables` (set from `introspect.only` by the CLI) is the
+- `migrate.Settings.OnlyTables` (set from `introspect.only` by the CLI) is the
   inverse for tables: when it is not empty, a table whose name or `schema.name`
   matches none of its globs is not managed. A table in the current schema is
   matched by its bare name only (its schema is empty), so write `users`, not
@@ -1842,7 +1842,7 @@ of the type, a `Start` outside the bounds, or an `Increment` of 0.
 - A sequence that is later attached to a column with `ALTER SEQUENCE` and
   `OWNED BY` becomes column-owned and is no longer a standalone sequence, so
   remove its `c.Sequence` declaration.
-- `introspect.only` (`migrate.Config.OnlyTables`) does not filter sequences in
+- `introspect.only` (`migrate.Settings.OnlyTables`) does not filter sequences in
   the engine, the same as views and functions; use `migrate.exclude` to hide
   one. `generate --from-db` does filter them when `introspect.only` is set: it
   declares a standalone sequence only on the model of a listed table that uses

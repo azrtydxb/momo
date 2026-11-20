@@ -108,7 +108,7 @@ func main() {
 }
 ```
 
-Raw SQL stays available through `momo.Exec` and `momo.Scalars`; `?` binds the
+Raw SQL stays available through `momo.Exec` and `momo.QueryScalars`; `?` binds the
 next argument, so a value never becomes part of the SQL text.
 
 ## Relations

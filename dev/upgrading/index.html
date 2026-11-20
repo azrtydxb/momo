@@ -1283,6 +1283,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#colliding-and-inconsistent-names-are-renamed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Colliding and inconsistent names are renamed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-expression-extension-api-is-small-and-column-flags-have-a-type" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2719,6 +2730,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#colliding-and-inconsistent-names-are-renamed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Colliding and inconsistent names are renamed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-expression-extension-api-is-small-and-column-flags-have-a-type" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3962,13 +3984,20 @@ return a <code>*sql.DB</code>. Six option and helper names also changed so that 
 functional option is spelled With plus what it sets, the 20 advisory lock
 functions became two functions with options, the statement N+1 detector moved
 into <code>obs</code> and now shares one scope with the relation-load detector, and the
-hook constructors return their concrete types. The old <code>pgxdriver</code> names, the
-renamed options, the advisory functions and the old N+1 names stay as deprecated
-forwarders for this release and run the same statements, so that code keeps
-compiling and behaving as before; move to the new names before the forwarders
-go. Beyond the driver constructors, the one change that can stop code compiling
-is a hook constructor result that you assert to an interface or assign to a
-variable of another type. Separately,
+hook constructors return their concrete types. Names that two packages shared or
+that broke a naming rule were renamed too: <code>migrate.Config</code> and <code>gen.Config</code>,
+<code>migrate.FormatVersion</code>, the date functions of <code>sqlfn</code>, the PostgreSQL names of
+<code>fts</code>, a few <code>sqlfn</code> and <code>timeop</code> pairs, and the <code>momotest</code> seed steps (the
+table is in the section on colliding names below). The old <code>pgxdriver</code> names, the
+renamed options, the advisory functions, the old N+1 names and the old names of
+that table stay as deprecated aliases or forwarders for this release and run the
+same statements, so that code keeps compiling and behaving as before; move to
+the new names before the forwarders go. Beyond the driver constructors, the
+changes that can stop code compiling are a hook constructor result that you
+assert to an interface or assign to a variable of another type, and
+<code>sqlitetest.New</code>, which now takes the options of <code>momotest</code>, and code outside
+this module that defines its own typed expressions or passes a bare <code>uint16</code> as
+column flags (the last section of this page). Separately,
 <code>momo migrate drift</code>, <code>momo migrate baseline</code> and <code>momo generate --from-db</code> now
 see exclusion constraints on PostgreSQL and write range columns as <code>types.Range</code>
 fields (the first two sections below); no edit is needed in your code for that,
@@ -4286,6 +4315,164 @@ refuse any other option with <code>ErrValidation</code>. Two differences to know
 <li><code>advisory.Acquire</code> returns <code>(bool, error)</code> for the blocking form too, so
   assign or discard the boolean.</li>
 </ul>
+<h3 id="colliding-and-inconsistent-names-are-renamed">Colliding and inconsistent names are renamed<a class="headerlink" href="#colliding-and-inconsistent-names-are-renamed" title="Permanent link">&para;</a></h3>
+<p>Before, <code>momo.Config</code> (the model marker), <code>migrate.Config</code> and <code>gen.Config</code> were
+three unrelated types with one name, <code>sqlfn.DateExpr</code> and <code>timeop.DateExpr</code>
+were two different types, <code>momo.Rank</code> (a window function) and <code>fts.Rank</code>
+(<code>ts_rank</code>) shared a word, and a few function pairs did not follow the rule that
+<code>X</code> takes Go values and <code>XExpr</code> takes expressions. Each old name below is kept
+for this release as a deprecated alias or forwarder that runs the same code,
+except <code>sqlitetest.New</code>, which has one signature and cannot keep two.</p>
+<table>
+<thead>
+<tr>
+<th>Old name</th>
+<th>New name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>migrate.Config</code></td>
+<td><code>migrate.Settings</code></td>
+</tr>
+<tr>
+<td><code>migrate.WithConfig</code></td>
+<td><code>migrate.WithSettings</code></td>
+</tr>
+<tr>
+<td><code>gen.Config</code></td>
+<td><code>gen.LoadConfig</code></td>
+</tr>
+<tr>
+<td><code>migrate.FormatVersion</code> (the history table)</td>
+<td><code>migrate.HistoryFormat</code></td>
+</tr>
+<tr>
+<td><code>sqlfn.CurrentDate</code></td>
+<td><code>timeop.CurrentDate</code></td>
+</tr>
+<tr>
+<td><code>sqlfn.Infinity</code>, <code>sqlfn.NegInfinity</code></td>
+<td><code>timeop.Infinity</code>, <code>timeop.NegInfinity</code></td>
+</tr>
+<tr>
+<td><code>sqlfn.DateExpr</code></td>
+<td><code>timeop.Expr</code></td>
+</tr>
+<tr>
+<td><code>fts.ToVector</code></td>
+<td><code>fts.TSVector</code></td>
+</tr>
+<tr>
+<td><code>fts.ToQuery</code></td>
+<td><code>fts.TSQuery</code></td>
+</tr>
+<tr>
+<td><code>fts.WebsearchToQuery</code></td>
+<td><code>fts.TSWebsearchQuery</code></td>
+</tr>
+<tr>
+<td><code>fts.PlainToQuery</code></td>
+<td><code>fts.TSPlainQuery</code></td>
+</tr>
+<tr>
+<td><code>fts.PhraseToQuery</code></td>
+<td><code>fts.TSPhraseQuery</code></td>
+</tr>
+<tr>
+<td><code>fts.Match</code></td>
+<td><code>fts.TSMatch</code></td>
+</tr>
+<tr>
+<td><code>fts.Rank</code></td>
+<td><code>fts.TSRank</code></td>
+</tr>
+<tr>
+<td><code>fts.RankCD</code></td>
+<td><code>fts.TSRankCD</code></td>
+</tr>
+<tr>
+<td><code>fts.Headline</code></td>
+<td><code>fts.TSHeadline</code></td>
+</tr>
+<tr>
+<td><code>sqlfn.SubstrFrom</code></td>
+<td><code>sqlfn.SubstrToEnd</code>; <code>sqlfn.SubstrExpr</code> is new</td>
+</tr>
+<tr>
+<td><code>timeop.IntervalExpr</code></td>
+<td><code>timeop.IntervalOfExpr</code></td>
+</tr>
+<tr>
+<td><code>momotest.Insert</code></td>
+<td><code>momotest.Rows</code></td>
+</tr>
+<tr>
+<td><code>momotest.Graph</code></td>
+<td><code>momotest.GraphOf</code></td>
+</tr>
+<tr>
+<td><code>sqlitetest.New(tb, momo.WithHook(h))</code></td>
+<td><code>sqlitetest.New(tb, momotest.WithMomoOptions(momo.WithHook(h)))</code></td>
+</tr>
+<tr>
+<td><code>sqlitetest.Template.New(tb, momo.WithHook(h))</code></td>
+<td><code>tpl.New(tb, momotest.WithMomoOptions(momo.WithHook(h)))</code></td>
+</tr>
+</tbody>
+</table>
+<p>Notes on the rows that are more than a rename:</p>
+<ul>
+<li><code>sqlfn.NullIf</code> now takes <code>T any</code>, the constraint <code>sqlfn.NullIfExpr</code> always had,
+  so <code>sqlfn.NullIf(name, "")</code> compiles. Every call that compiled before renders
+  the same SQL.</li>
+<li><code>momo.Coalesce</code> takes a bound fallback and <code>sqlfn.CoalesceExpr</code> takes
+  expressions, the value and expression forms of one function; both stay.
+  <code>momo.Func</code> calls any scalar function and <code>agg.Func</code> calls an aggregate.</li>
+<li><code>sqlitetest.New</code> and <code>momotest.New</code> take the same <code>momotest.Option</code>.
+  <code>sqlitetest</code> honors <code>momotest.WithMomoOptions</code> and ignores the options that
+  configure a PostgreSQL server (<code>momotest.WithEnv</code>, <code>momotest.WithMigrations</code>,
+  <code>momotest.WithExtensions</code>, <code>momotest.WithMaxConns</code>, <code>momotest.WithTemplateClone</code>).</li>
+<li><code>momo.Model</code>, <code>momo.View</code>, <code>momo.Projection</code> and <code>momo.Config</code> keep their
+  names: they are the markers that models embed and that <code>MomoConfig</code> receives,
+  and the collision was with the two engine types renamed above.</li>
+<li><code>schema.FormatVersion</code> and <code>gen.FormatVersion</code> keep their names; they version
+  the snapshot and the generated-file formats, and <code>migrate.HistoryFormat</code>
+  versions the history table.</li>
+</ul>
+<p>The nine raw SQL functions follow one rule: a function that runs hand-written
+SQL is a verb and a function that wraps it for a builder ends in <code>SQL</code>, and no
+name carries the word Raw. <code>momo.Exec</code>, <code>momo.Query</code>, <code>momo.QueryRows</code>,
+<code>momo.SQL</code> and <code>momo.TypedSQL</code> already followed it and keep their names. The
+other four are renamed, with identical signatures; the old names are deprecated
+forwarders for this release:</p>
+<table>
+<thead>
+<tr>
+<th>Old name</th>
+<th>New name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>momo.Scalars</code></td>
+<td><code>momo.QueryScalars</code></td>
+</tr>
+<tr>
+<td><code>momo.RawRows</code></td>
+<td><code>momo.QueryCursor</code></td>
+</tr>
+<tr>
+<td><code>momo.RawSubquery</code></td>
+<td><code>momo.SubquerySQL</code></td>
+</tr>
+<tr>
+<td><code>momo.RawQuery</code></td>
+<td><code>momo.CompilableSQL</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>momovet</code> checks the new names and the deprecated ones alike.</p>
 <h3 id="the-expression-extension-api-is-small-and-column-flags-have-a-type">The expression extension API is small, and column flags have a type<a class="headerlink" href="#the-expression-extension-api-is-small-and-column-flags-have-a-type" title="Permanent link">&para;</a></h3>
 <p>Code outside this module may define its own typed expressions, and the surface
 for that is now frozen and small: <code>momo.Expr</code>, <code>momo.Expression</code>, <code>momo.Ops</code>,
@@ -5963,7 +6150,7 @@ warning, so a typo does not hide in the rest of the list.</p>
   a difference. Move the target table into <code>only</code>, or accept the report. The
   column itself is still modeled, without the relation.</li>
 </ul>
-<p>Library users: <code>migrate.Config.OnlyTables</code> and <code>migrate.InspectOptions.Only</code>
+<p>Library users: <code>migrate.Settings.OnlyTables</code> (then <code>migrate.Config.OnlyTables</code>) and <code>migrate.InspectOptions.Only</code>
 are new fields. <code>OnlyTables</code> is what <code>introspect.only</code> sets: when it is not
 empty, a table that matches none of its globs is hidden from drift, baseline
 and diff, with its triggers and policies, and the PostgreSQL inspector does not
@@ -5971,7 +6158,7 @@ read it. The MySQL and SQLite inspectors ignore <code>migrate.InspectOptions.Onl
 every table, which is filtered afterwards, so a table they cannot represent can
 still fail inspection. <code>migrate.MatchObject</code> is the glob rule shared by
 <code>Exclude</code>, <code>OnlyTables</code> and the inspector. An empty or malformed entry is an
-error that names <code>migrate.Config.OnlyTables</code>.</p>
+error that names <code>migrate.Settings.OnlyTables</code>.</p>
 <h3 id="skip-globs-match-schemaname"><code>skip</code> globs match <code>schema.name</code><a class="headerlink" href="#skip-globs-match-schemaname" title="Permanent link">&para;</a></h3>
 <p><code>introspect.skip</code> globs now match the same way <code>introspect.only</code> and
 <code>migrate.exclude</code> do: the bare table name, or <code>schema.name</code> for a table outside
@@ -6836,6 +7023,14 @@ as an argument.</p>
 </tr>
 </tbody>
 </table>
+<p>Renamed again in 0.20.0 (see
+<a href="#colliding-and-inconsistent-names-are-renamed">Colliding and inconsistent names are renamed</a>):
+the <code>fts</code> names in this table (<code>fts.ToVector</code>, <code>fts.ToQuery</code>,
+<code>fts.WebsearchToQuery</code>, <code>fts.PlainToQuery</code>, <code>fts.PhraseToQuery</code>, <code>fts.Match</code>,
+<code>fts.Rank</code>, <code>fts.RankCD</code>, <code>fts.Headline</code>) are now the <code>TS</code> names, <code>sqlfn.SubstrFrom</code>
+is <code>sqlfn.SubstrToEnd</code>, and <code>timeop.IntervalExpr</code> is <code>timeop.IntervalOfExpr</code>.
+The rows above stay as written, and the old names still compile as deprecated
+forwarders for one release.</p>
 <h3 id="rewrite-recipe">Rewrite recipe<a class="headerlink" href="#rewrite-recipe" title="Permanent link">&para;</a></h3>
 <ol>
 <li>Commit your work first, because the next steps edit files in place, then

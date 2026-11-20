@@ -1752,8 +1752,8 @@
 once which text columns are searchable; <code>momo migrate</code> creates the structure
 each database needs for that declaration, and one set of calls in package <code>fts</code>
 runs the search on all of them. Package <code>fts</code> also keeps the builders that
-write PostgreSQL full-text SQL by hand (<code>fts.Match</code>, <code>fts.Rank</code>,
-<code>fts.Headline</code>) and two builders for <code>MATCH ... AGAINST</code> on MySQL and MariaDB
+write PostgreSQL full-text SQL by hand (<code>fts.TSMatch</code>, <code>fts.TSRank</code>,
+<code>fts.TSHeadline</code>) and two builders for <code>MATCH ... AGAINST</code> on MySQL and MariaDB
 (<code>fts.MySQLMatch</code>, <code>fts.MySQLRelevance</code>). The capabilities table in
 <a href="../capabilities/">capabilities</a> shows the <code>dialect.Dialect.FullText</code> flag per dialect.</p>
 <p>The three databases do not search alike. The portable calls cover the common
@@ -2336,47 +2336,47 @@ one fails the build with <code>ErrValidation</code>.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>fts.Match</code></td>
+<td><code>fts.TSMatch</code></td>
 <td><code>vec @@ query</code></td>
 <td><code>Predicate</code></td>
 </tr>
 <tr>
-<td><code>fts.ToVector</code></td>
+<td><code>fts.TSVector</code></td>
 <td><code>to_tsvector(config, text)</code></td>
 <td><code>fts.Expr[types.TSVector]</code></td>
 </tr>
 <tr>
-<td><code>fts.WebsearchToQuery</code></td>
+<td><code>fts.TSWebsearchQuery</code></td>
 <td><code>websearch_to_tsquery(config, text)</code></td>
 <td><code>fts.Expr[types.TSQuery]</code></td>
 </tr>
 <tr>
-<td><code>fts.PlainToQuery</code></td>
+<td><code>fts.TSPlainQuery</code></td>
 <td><code>plainto_tsquery(config, text)</code></td>
 <td><code>fts.Expr[types.TSQuery]</code></td>
 </tr>
 <tr>
-<td><code>fts.PhraseToQuery</code></td>
+<td><code>fts.TSPhraseQuery</code></td>
 <td><code>phraseto_tsquery(config, text)</code></td>
 <td><code>fts.Expr[types.TSQuery]</code></td>
 </tr>
 <tr>
-<td><code>fts.ToQuery</code></td>
+<td><code>fts.TSQuery</code></td>
 <td><code>to_tsquery(config, text)</code></td>
 <td><code>fts.Expr[types.TSQuery]</code></td>
 </tr>
 <tr>
-<td><code>fts.Rank</code></td>
+<td><code>fts.TSRank</code></td>
 <td><code>ts_rank(vec, query [, normalization])</code></td>
 <td><code>fts.Expr[float64]</code></td>
 </tr>
 <tr>
-<td><code>fts.RankCD</code></td>
+<td><code>fts.TSRankCD</code></td>
 <td><code>ts_rank_cd(vec, query [, normalization])</code></td>
 <td><code>fts.Expr[float64]</code></td>
 </tr>
 <tr>
-<td><code>fts.Headline</code></td>
+<td><code>fts.TSHeadline</code></td>
 <td><code>ts_headline(config, text, query [, options])</code></td>
 <td><code>fts.Expr[string]</code></td>
 </tr>
@@ -2384,29 +2384,29 @@ one fails the build with <code>ErrValidation</code>.</p>
 </table>
 <p>The query text, the configuration and the headline options are always bound
 parameters. The normalization argument of the rank functions is the optional
-PostgreSQL flag mask (0 to 63) and renders as a literal. <code>fts.WebsearchToQuery</code>
+PostgreSQL flag mask (0 to 63) and renders as a literal. <code>fts.TSWebsearchQuery</code>
 accepts any user input without raising a syntax error, so it is the builder for
-a search box; <code>fts.ToQuery</code> expects tsquery syntax and a malformed query is a
+a search box; <code>fts.TSQuery</code> expects tsquery syntax and a malformed query is a
 database error.</p>
 <p>An <code>fts.Expr</code> has <code>As</code>, <code>Asc</code>, <code>Desc</code> and the comparison methods of any scalar
 expression, so it works in Where, OrderBy and Columns:</p>
 <!-- docscheck:fragment -->
 
-<div class="highlight"><pre><span></span><code><span class="nx">q</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">WebsearchToQuery</span><span class="p">(</span><span class="s">"english"</span><span class="p">,</span><span class="w"> </span><span class="nx">userInput</span><span class="p">)</span>
-<span class="nx">rank</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">RankCD</span><span class="p">(</span><span class="nx">articleSearch</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><span class="nx">q</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">TSWebsearchQuery</span><span class="p">(</span><span class="s">"english"</span><span class="p">,</span><span class="w"> </span><span class="nx">userInput</span><span class="p">)</span>
+<span class="nx">rank</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">TSRankCD</span><span class="p">(</span><span class="nx">articleSearch</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">)</span>
 
 <span class="nx">hits</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">Hit</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span>
 <span class="w">    </span><span class="nx">From</span><span class="p">(</span><span class="nx">momo</span><span class="p">.</span><span class="nx">TableRef</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">"kb_articles"</span><span class="p">}).</span>
 <span class="w">    </span><span class="nx">Columns</span><span class="p">(</span><span class="nx">articleID</span><span class="p">,</span><span class="w"> </span><span class="nx">rank</span><span class="p">.</span><span class="nx">As</span><span class="p">(</span><span class="s">"rank"</span><span class="p">),</span>
-<span class="w">        </span><span class="nx">fts</span><span class="p">.</span><span class="nx">Headline</span><span class="p">(</span><span class="s">"english"</span><span class="p">,</span><span class="w"> </span><span class="nx">articleBody</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">"StartSel=&lt;b&gt;, StopSel=&lt;/b&gt;, MaxFragments=2"</span><span class="p">)).</span>
-<span class="w">    </span><span class="nx">Where</span><span class="p">(</span><span class="nx">fts</span><span class="p">.</span><span class="nx">Match</span><span class="p">(</span><span class="nx">articleSearch</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">)).</span>
+<span class="w">        </span><span class="nx">fts</span><span class="p">.</span><span class="nx">TSHeadline</span><span class="p">(</span><span class="s">"english"</span><span class="p">,</span><span class="w"> </span><span class="nx">articleBody</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">"StartSel=&lt;b&gt;, StopSel=&lt;/b&gt;, MaxFragments=2"</span><span class="p">)).</span>
+<span class="w">    </span><span class="nx">Where</span><span class="p">(</span><span class="nx">fts</span><span class="p">.</span><span class="nx">TSMatch</span><span class="p">(</span><span class="nx">articleSearch</span><span class="p">,</span><span class="w"> </span><span class="nx">q</span><span class="p">)).</span>
 <span class="w">    </span><span class="nx">OrderBy</span><span class="p">(</span><span class="nx">rank</span><span class="p">.</span><span class="nx">Desc</span><span class="p">()).</span>
 <span class="w">    </span><span class="nx">Limit</span><span class="p">(</span><span class="mi">20</span><span class="p">).</span>
 <span class="w">    </span><span class="nx">All</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
 </code></pre></div>
 <p>Here <code>articleSearch</code> is a <code>Column[types.TSVector]</code> and <code>articleBody</code> a
 <code>Column[string]</code>. Without a stored column, search a text column directly with
-<code>fts.ToVector</code> over <code>articleBody</code> as the first operand of <code>fts.Match</code> (an
+<code>fts.TSVector</code> over <code>articleBody</code> as the first operand of <code>fts.TSMatch</code> (an
 expression index on the same expression keeps it fast).</p>
 <p>Every use of a call binds its own parameters (the configuration and the query
 text), so the same expression written in the select list and again in GROUP BY
@@ -2426,7 +2426,7 @@ weighted rank from the distance and order ascending:</p>
 <!-- docscheck:fragment -->
 
 <div class="highlight"><pre><span></span><code><span class="nx">dist</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">vecop</span><span class="p">.</span><span class="nx">Cosine</span><span class="p">(</span><span class="nx">articleEmb</span><span class="p">,</span><span class="w"> </span><span class="nx">queryEmbedding</span><span class="p">)</span><span class="w"> </span><span class="c1">// vector.Vector</span>
-<span class="nx">text</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">RankCD</span><span class="p">(</span><span class="nx">articleSearch</span><span class="p">,</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">WebsearchToQuery</span><span class="p">(</span><span class="s">"english"</span><span class="p">,</span><span class="w"> </span><span class="nx">userInput</span><span class="p">))</span>
+<span class="nx">text</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">TSRankCD</span><span class="p">(</span><span class="nx">articleSearch</span><span class="p">,</span><span class="w"> </span><span class="nx">fts</span><span class="p">.</span><span class="nx">TSWebsearchQuery</span><span class="p">(</span><span class="s">"english"</span><span class="p">,</span><span class="w"> </span><span class="nx">userInput</span><span class="p">))</span>
 <span class="nx">score</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">sqlfn</span><span class="p">.</span><span class="nx">SubExpr</span><span class="p">[</span><span class="kt">float64</span><span class="p">](</span><span class="nx">dist</span><span class="p">,</span><span class="w"> </span><span class="nx">sqlfn</span><span class="p">.</span><span class="nx">Mul</span><span class="p">[</span><span class="kt">float64</span><span class="p">](</span><span class="nx">text</span><span class="p">,</span><span class="w"> </span><span class="mf">0.5</span><span class="p">))</span>
 
 <span class="nx">hits</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Select</span><span class="p">[</span><span class="nx">Hit</span><span class="p">](</span><span class="nx">db</span><span class="p">).</span>
@@ -2437,7 +2437,7 @@ weighted rank from the distance and order ascending:</p>
 <span class="w">    </span><span class="nx">All</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
 </code></pre></div>
 <p>This scores every row. To restrict the candidate set to text matches, add
-a Where on <code>fts.Match</code> over <code>articleSearch</code> and the same query, which lets the GIN
+a Where on <code>fts.TSMatch</code> over <code>articleSearch</code> and the same query, which lets the GIN
 index prune the rows before the vector distance is computed. The
 <code>TestFullTextHybridRanking</code> integration test runs this pattern.</p>
 <h2 id="scanning">Scanning<a class="headerlink" href="#scanning" title="Permanent link">&para;</a></h2>

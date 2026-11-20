@@ -1786,7 +1786,7 @@ from using one transaction per test:</p>
   every other parallel test using the same template until this one ends. Run
   such tests with <code>New</code>.</li>
 <li>Identity and sequence values are consumed by a rolled-back transaction, so
-  never assert a literal generated id; compare with the id that <code>Insert</code> read
+  never assert a literal generated id; compare with the id that <code>momotest.Rows</code> read
   back.</li>
 </ul>
 <h2 id="migrations-must-stay-in-their-schema">Migrations must stay in their schema<a class="headerlink" href="#migrations-must-stay-in-their-schema" title="Permanent link">&para;</a></h2>
@@ -1856,17 +1856,18 @@ drops a schema or database it did not create in the current test.</p>
 
 <div class="highlight"><pre><span></span><code><span class="nx">org</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">models</span><span class="p">.</span><span class="nx">Org</span><span class="p">{</span><span class="nx">Name</span><span class="p">:</span><span class="w"> </span><span class="s">"acme"</span><span class="p">}</span>
 <span class="nx">momotest</span><span class="p">.</span><span class="nx">Seed</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span><span class="w"> </span><span class="nx">tx</span><span class="p">,</span>
-<span class="w">    </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">Insert</span><span class="p">(</span><span class="nx">org</span><span class="p">),</span>
-<span class="w">    </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">Insert</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">models</span><span class="p">.</span><span class="nx">User</span><span class="p">{</span><span class="nx">OrgID</span><span class="p">:</span><span class="w"> </span><span class="nx">org</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span><span class="w"> </span><span class="nx">Email</span><span class="p">:</span><span class="w"> </span><span class="s">"ada@acme.test"</span><span class="p">}),</span>
+<span class="w">    </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">Rows</span><span class="p">(</span><span class="nx">org</span><span class="p">),</span>
+<span class="w">    </span><span class="nx">momotest</span><span class="p">.</span><span class="nx">Rows</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">models</span><span class="p">.</span><span class="nx">User</span><span class="p">{</span><span class="nx">OrgID</span><span class="p">:</span><span class="w"> </span><span class="nx">org</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span><span class="w"> </span><span class="nx">Email</span><span class="p">:</span><span class="w"> </span><span class="s">"ada@acme.test"</span><span class="p">}),</span>
 <span class="p">)</span>
 </code></pre></div>
 <p><code>momotest.Seed</code> runs its steps in the order given, so list a table before the tables that
 reference it. All steps run in one transaction (a savepoint when the querier is
-a <code>*momo.Tx</code>); if one fails, nothing is kept and the test fails. <code>Insert</code> reads
+a <code>*momo.Tx</code>); if one fails, nothing is kept and the test fails. <code>momotest.Rows</code> reads
 generated columns, such as identity keys, back into the rows you pass, so later
-steps can use them. <code>momotest.Graph</code> inserts a root with the related rows it includes, as
+steps can use them. <code>momotest.GraphOf</code> inserts a root with the related rows it includes, as
 <code>momo.CreateGraph</code> does. A step is any <code>func(ctx, momo.Querier) error</code>, so
-custom fixtures fit too.</p>
+custom fixtures fit too. The older names <code>momotest.Insert</code> and <code>momotest.Graph</code>
+still work as deprecated forwarders to <code>momotest.Rows</code> and <code>momotest.GraphOf</code>.</p>
 <h2 id="fixtures-from-a-file-loadfixtures">Fixtures from a file: LoadFixtures<a class="headerlink" href="#fixtures-from-a-file-loadfixtures" title="Permanent link">&para;</a></h2>
 <p><code>momotest.LoadFixtures(t, q, path)</code> inserts the rows of a YAML file into <code>q</code>, a
 <code>*momo.DB</code> or a <code>*momo.Tx</code>, for data that is easier to read as a file than as Go
@@ -1902,16 +1903,20 @@ with sqlite-vec loaded, without a server and without an environment variable:
 <code>sqlitetest.New(t, opts...)</code> returns a <code>*momo.DB</code> on a new file in the test's
 own temporary directory. Every call opens a file of its own, so two databases in
 one test never see each other's tables and parallel tests do not collide. The
-database is closed and the file removed when the test ends. The options go to
-<code>momo.New</code>, for example <code>momo.WithHook</code>, and <code>momotest.LoadFixtures</code> fills it like any
-other database. The database starts empty: create the tables with your own DDL,
-for example <code>momo.SQLiteVectorType</code> for a vector column (see
+database is closed and the file removed when the test ends. <code>sqlitetest.New</code>
+takes the same options as <code>momotest.New</code>, of type <code>momotest.Option</code>.
+<code>momotest.WithMomoOptions</code> is honored and its options go to <code>momo.New</code>, for
+example <code>momo.WithHook</code>; the options that configure a server (<code>momotest.WithEnv</code>,
+<code>momotest.WithMigrations</code>, <code>momotest.WithExtensions</code>, <code>momotest.WithMaxConns</code>,
+<code>momotest.WithTemplateClone</code>) have no effect. <code>momotest.LoadFixtures</code> fills the
+database like any other. The database starts empty: create the tables with your
+own DDL, for example <code>momo.SQLiteVectorType</code> for a vector column (see
 <a href="../vectors/">Vector search</a>); <code>momotest.WithMigrations</code> and <code>momotest.NewTx</code> are
 PostgreSQL features and do not apply.</p>
 <p>A schema with many tables costs DDL on every test. <code>sqlitetest.NewTemplate</code>
 takes a function that creates the tables through a <code>*momo.DB</code>; keep the
 <code>*sqlitetest.Template</code> it returns in a package variable and call its <code>New(t,
-opts...)</code> method in each test. The function runs once per test binary, on the
+opts...)</code> method in each test, with the same <code>momotest.Option</code> values. The function runs once per test binary, on the
 first call, and the result is kept as a snapshot made with <code>VACUUM INTO</code>; every
 <code>New</code> then writes that snapshot to a file of its own in the test's temporary
 directory and opens it, so no DDL runs again. A copy is independent of the
@@ -1967,7 +1972,7 @@ dialect.</p>
 (<code>momo.DefaultQueries</code>); <code>momo.NewQueryRegistry</code> makes an isolated one for a
 test. <code>build</code> receives a <code>momo.Querier</code> that compiles but never executes (see
 <code>momo.NewOffline</code>) and returns anything with an <code>SQL()</code> method: a <code>Select</code>,
-<code>Insert</code>, <code>Update</code>, <code>Delete</code> or <code>Merge</code> query, or <code>momo.RawQuery</code> for a
+<code>Insert</code>, <code>Update</code>, <code>Delete</code> or <code>Merge</code> query, or <code>momo.CompilableSQL</code> for a
 hand-written statement. Registering a name twice panics, naming the query. The
 values you bind in <code>build</code> are placeholders and never appear in the listing.
 <code>Registry.Compile(dialect.Postgres)</code> returns every query sorted by name with
@@ -2016,7 +2021,7 @@ transaction rolls back at the end.</p>
 
 <span class="kd">func</span><span class="w"> </span><span class="nx">init</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">RegisterQuery</span><span class="p">(</span><span class="s">"open_tasks"</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">q</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Querier</span><span class="p">)</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Compilable</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">RawQuery</span><span class="p">(</span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">"SELECT id, title FROM tasks WHERE owner = $1 AND NOT done"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">CompilableSQL</span><span class="p">(</span><span class="nx">q</span><span class="p">,</span><span class="w"> </span><span class="s">"SELECT id, title FROM tasks WHERE owner = $1 AND NOT done"</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
 <span class="w">    </span><span class="p">})</span>
 <span class="p">}</span>
 

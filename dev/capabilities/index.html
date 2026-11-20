@@ -2023,7 +2023,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 </tr>
 <tr>
 <td>Date and time expressions</td>
-<td><code>timeop.Extract</code>, <code>timeop.AtTimeZone</code>, <code>timeop.Trunc</code>, <code>timeop.Now</code>, <code>timeop.CurrentTimestamp</code>, <code>timeop.IntervalOf</code>, <code>timeop.IntervalExpr</code>, <code>timeop.IntervalDuration</code>, <code>timeop.AddInterval</code>, <code>timeop.SubInterval</code>, <code>timeop.AddDuration</code>, <code>timeop.SubDuration</code>, <code>timeop.Sub</code>, <code>timeop.Age</code>, <code>timeop.EpochSeconds</code>, <code>timeop.AddDays</code>, <code>timeop.AddDaysExpr</code>, <code>timeop.DaysBetween</code></td>
+<td><code>timeop.Extract</code>, <code>timeop.AtTimeZone</code>, <code>timeop.Trunc</code>, <code>timeop.Now</code>, <code>timeop.CurrentTimestamp</code>, <code>timeop.IntervalOf</code>, <code>timeop.IntervalOfExpr</code>, <code>timeop.IntervalDuration</code>, <code>timeop.AddInterval</code>, <code>timeop.SubInterval</code>, <code>timeop.AddDuration</code>, <code>timeop.SubDuration</code>, <code>timeop.Sub</code>, <code>timeop.Age</code>, <code>timeop.EpochSeconds</code>, <code>timeop.AddDays</code>, <code>timeop.AddDaysExpr</code>, <code>timeop.DaysBetween</code>, <code>timeop.CurrentDate</code>, <code>timeop.Infinity</code>, <code>timeop.NegInfinity</code></td>
 <td>yes</td>
 <td>every <code>timeop.ExtractField</code>, <code>timeop.TruncUnit</code>, interval and <code>timeop.Now</code> run on both SQLite drivers; month arithmetic overflows into the next month (Jan 31 plus a month is Mar 2 or 3, where PostgreSQL and MySQL clamp); <code>timeop.Now</code> is millisecond text; <code>timeop.AtTimeZone</code> is PostgreSQL only; <code>timeop.IntervalMillisecond</code> and <code>timeop.IntervalMicrosecond</code> keep milliseconds; <code>timeop.EpochSeconds</code> of <code>timeop.Sub</code> runs through <code>julianday</code> (about 0.1 ms), <code>timeop.Age</code> is PostgreSQL only; <code>timeop.AddDays</code>, <code>timeop.AddDaysExpr</code> and <code>timeop.DaysBetween</code> read a <code>types.Date</code> stored as <code>YYYY-MM-DD</code> text (<code>date()</code> and <code>julianday</code>), and a bound infinite date fails the build with <code>ErrValidation</code></td>
 <td>every <code>timeop.ExtractField</code>, <code>timeop.TruncUnit</code>, interval (including milliseconds and microseconds), <code>timeop.Now</code>, <code>timeop.EpochSeconds</code> of <code>timeop.Sub</code>, <code>timeop.AddDays</code>, <code>timeop.AddDaysExpr</code> and <code>timeop.DaysBetween</code> run on MySQL 8.4, MySQL 9.7 and MariaDB 11.8; month arithmetic clamps to the last day of the month; <code>timeop.AtTimeZone</code> is PostgreSQL only; <code>timeop.Age</code> and <code>timeop.StatementTimestamp</code> are <code>ErrUnsupported</code> (golden-tested); a bound infinite <code>types.Date</code> fails the build with <code>ErrValidation</code></td>
@@ -2185,7 +2185,7 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>Raw SQL</td>
 <td>yes</td>
 <td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
-<td><code>momo.Exec</code>, <code>momo.Scalars</code>, <code>momo.RawRows</code> (a <code>Scan(dest...)</code> cursor for a run-time shape), <code>momo.Query</code> and <code>momo.QueryRows</code> (into a model, a projection, <code>Row1</code>..<code>Row10</code> or a plain struct scanned by column name with no generated metadata, named by the <code>momo:"column:x"</code> tag or else by the <code>momo.WithNaming</code> preset (snake_case by default); an unmatched column or field is <code>ErrValidation</code> naming it), <code>momo.SQL</code>, <code>TypedSQL</code>, <code>RawSubquery</code>, <code>Named</code>, <code>In</code>, <code>Ident</code></td>
+<td><code>momo.Exec</code>, <code>momo.QueryScalars</code>, <code>momo.QueryCursor</code> (a <code>Scan(dest...)</code> cursor for a run-time shape), <code>momo.Query</code> and <code>momo.QueryRows</code> (into a model, a projection, <code>Row1</code>..<code>Row10</code> or a plain struct scanned by column name with no generated metadata, named by the <code>momo:"column:x"</code> tag or else by the <code>momo.WithNaming</code> preset (snake_case by default); an unmatched column or field is <code>ErrValidation</code> naming it), <code>momo.SQL</code>, <code>TypedSQL</code>, <code>SubquerySQL</code>, <code>Named</code>, <code>In</code>, <code>Ident</code></td>
 </tr>
 <tr>
 <td><code>EXPLAIN</code></td>
@@ -2391,7 +2391,7 @@ primary key. The statements are listed by <code>MergeQuery.Statements</code>;
 <td>Subqueries</td>
 <td>yes</td>
 <td>SQLite and MySQL: yes, covered by the shared suite (<code>suite.RunAll</code>)</td>
-<td><code>Exists</code>, <code>NotExists</code>, <code>FromSubquery(q, alias)</code>, <code>IN</code> subquery, <code>RawSubquery</code></td>
+<td><code>Exists</code>, <code>NotExists</code>, <code>FromSubquery(q, alias)</code>, <code>IN</code> subquery, <code>SubquerySQL</code></td>
 </tr>
 <tr>
 <td>Select-list alias</td>
@@ -2433,7 +2433,7 @@ primary key. The statements are listed by <code>MergeQuery.Statements</code>;
 <td><code>CURRENT_DATE</code>, <code>'infinity'</code> and <code>'-infinity'</code></td>
 <td>yes</td>
 <td><code>CURRENT_DATE</code> runs on SQLite (as text) and MySQL; infinity is PostgreSQL only, <code>ErrUnsupported</code> elsewhere</td>
-<td><code>sqlfn.CurrentDate()</code>, <code>sqlfn.Infinity()</code>, <code>sqlfn.NegInfinity()</code></td>
+<td><code>timeop.CurrentDate()</code>, <code>timeop.Infinity()</code>, <code>timeop.NegInfinity()</code></td>
 </tr>
 <tr>
 <td>Raw fragment composition</td>
@@ -2650,7 +2650,7 @@ covers MySQL only; for MariaDB see
 </tr>
 <tr>
 <td>Full-text search (<code>tsvector</code>, <code>@@</code>, rank, headline), see fulltext.md</td>
-<td>yes, package <code>fts</code>: <code>fts.Search</code>, <code>fts.Score</code>, <code>fts.Snippet</code> on a declared index; <code>fts.Match</code>, <code>fts.Rank</code>, <code>fts.Headline</code> on a tsvector</td>
+<td>yes, package <code>fts</code>: <code>fts.Search</code>, <code>fts.Score</code>, <code>fts.Snippet</code> on a declared index; <code>fts.TSMatch</code>, <code>fts.TSRank</code>, <code>fts.TSHeadline</code> on a tsvector</td>
 <td>yes, package <code>fts</code>: <code>fts.Search</code>, <code>fts.Score</code> (negated <code>bm25</code>) and <code>fts.Snippet</code> on an FTS5 table; needs FTS5 in the SQLite build</td>
 <td>yes</td>
 </tr>
@@ -2972,7 +2972,7 @@ setting at the start of every transaction from a scope carried in the
 </tr>
 <tr>
 <td><code>WithImplicitTx</code></td>
-<td>Auto-commit statements on a <code>*DB</code> (<code>Select</code>, <code>Insert</code>, <code>Update</code>, <code>Delete</code>, <code>Exec</code>, <code>Scalars</code>, relation loads) each run in a short transaction, so the setup applies. <code>Iter</code>, <code>Each</code> and <code>Rows</code> hold the transaction until exhausted or closed, then commit; a scan or driver error rolls back, and so does a cancelled context for a write or a read abandoned early (a fully drained read still commits). Close early-abandoned rows to free the connection.</td>
+<td>Auto-commit statements on a <code>*DB</code> (<code>Select</code>, <code>Insert</code>, <code>Update</code>, <code>Delete</code>, <code>Exec</code>, <code>QueryScalars</code>, relation loads) each run in a short transaction, so setup applies. <code>Iter</code>, <code>Each</code> and <code>Rows</code> hold the transaction until exhausted or closed, then commit; a scan or driver error rolls back, and so does a canceled context for a write or a read abandoned early (a fully drained read still commits). Close early-abandoned rows to free the connection.</td>
 </tr>
 <tr>
 <td><code>SetConfigLocal</code></td>

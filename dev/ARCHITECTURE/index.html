@@ -1673,8 +1673,8 @@ schemas without being fooled by spelling differences.</p>
   <code>Merge</code>, built from generated column descriptors (<code>Column[T]</code>,
   <code>NullColumn[T]</code>, <code>VectorColumn[V]</code>) and expression builders. Query values
   are immutable: each method returns a modified copy.</li>
-<li>Raw SQL escape hatches: <code>momo.Exec</code>, <code>momo.Scalars</code>, <code>momo.Query</code>, <code>momo.QueryRows</code>, <code>momo.SQL</code>,
-  <code>momo.TypedSQL</code> and <code>RawSubquery</code>, with <code>?</code> positional and <code>@name</code> named
+<li>Raw SQL escape hatches: <code>momo.Exec</code>, <code>momo.QueryScalars</code>, <code>momo.Query</code>, <code>momo.QueryRows</code>, <code>momo.SQL</code>,
+  <code>momo.TypedSQL</code> and <code>SubquerySQL</code>, with <code>?</code> positional and <code>@name</code> named
   placeholders.</li>
 <li>Relations: generated <code>Relation</code> descriptors, <code>Load</code>, <code>LoadAll</code>, <code>Preload</code>
   and the join and write helpers; see <a href="../relations/">relations</a>.</li>

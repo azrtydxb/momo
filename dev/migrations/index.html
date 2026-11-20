@@ -2818,7 +2818,7 @@ repeated once; a second disagreement fails with an error asking you to retry.</p
   <code>search_path</code> before any table exists. Keep schemas on the migrator's
   <code>search_path</code> writable only by the migrator.</li>
 <li>With no table yet, it is created in the current schema.
-  <code>migrate.Config.Schemas[0]</code> (<code>migrate.schemas</code>) must equal the current schema
+  <code>migrate.Settings.Schemas[0]</code> (<code>migrate.schemas</code>) must equal the current schema
   (current_schema) or the engine returns a configuration error naming both.
   <code>plan</code>, <code>status</code> and <code>drift</code> on a connection with no current schema and no
   table report an empty history; <code>apply</code> and the other writers fail.</li>
@@ -2981,7 +2981,7 @@ unmanaged. Exit 0 and <code>no drift</code>, or exit 1 and one line per finding:
   engine options the CLI builds from the <code>migrate:</code> section and <code>introspect.only</code>
   (see <a href="../upgrading/">upgrading</a>).</p>
 </li>
-<li><code>migrate.Config.OnlyTables</code> (set from <code>introspect.only</code> by the CLI) is the
+<li><code>migrate.Settings.OnlyTables</code> (set from <code>introspect.only</code> by the CLI) is the
   inverse for tables: when it is not empty, a table whose name or <code>schema.name</code>
   matches none of its globs is not managed. A table in the current schema is
   matched by its bare name only (its schema is empty), so write <code>users</code>, not
@@ -4461,7 +4461,7 @@ of the type, a <code>Start</code> outside the bounds, or an <code>Increment</cod
 <li>A sequence that is later attached to a column with <code>ALTER SEQUENCE</code> and
   <code>OWNED BY</code> becomes column-owned and is no longer a standalone sequence, so
   remove its <code>c.Sequence</code> declaration.</li>
-<li><code>introspect.only</code> (<code>migrate.Config.OnlyTables</code>) does not filter sequences in
+<li><code>introspect.only</code> (<code>migrate.Settings.OnlyTables</code>) does not filter sequences in
   the engine, the same as views and functions; use <code>migrate.exclude</code> to hide
   one. <code>generate --from-db</code> does filter them when <code>introspect.only</code> is set: it
   declares a standalone sequence only on the model of a listed table that uses

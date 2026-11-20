@@ -14,13 +14,20 @@ return a `*sql.DB`. Six option and helper names also changed so that every
 functional option is spelled With plus what it sets, the 20 advisory lock
 functions became two functions with options, the statement N+1 detector moved
 into `obs` and now shares one scope with the relation-load detector, and the
-hook constructors return their concrete types. The old `pgxdriver` names, the
-renamed options, the advisory functions and the old N+1 names stay as deprecated
-forwarders for this release and run the same statements, so that code keeps
-compiling and behaving as before; move to the new names before the forwarders
-go. Beyond the driver constructors, the one change that can stop code compiling
-is a hook constructor result that you assert to an interface or assign to a
-variable of another type. Separately,
+hook constructors return their concrete types. Names that two packages shared or
+that broke a naming rule were renamed too: `migrate.Config` and `gen.Config`,
+`migrate.FormatVersion`, the date functions of `sqlfn`, the PostgreSQL names of
+`fts`, a few `sqlfn` and `timeop` pairs, and the `momotest` seed steps (the
+table is in the section on colliding names below). The old `pgxdriver` names, the
+renamed options, the advisory functions, the old N+1 names and the old names of
+that table stay as deprecated aliases or forwarders for this release and run the
+same statements, so that code keeps compiling and behaving as before; move to
+the new names before the forwarders go. Beyond the driver constructors, the
+changes that can stop code compiling are a hook constructor result that you
+assert to an interface or assign to a variable of another type, and
+`sqlitetest.New`, which now takes the options of `momotest`, and code outside
+this module that defines its own typed expressions or passes a bare `uint16` as
+column flags (the last section of this page). Separately,
 `momo migrate drift`, `momo migrate baseline` and `momo generate --from-db` now
 see exclusion constraints on PostgreSQL and write range columns as `types.Range`
 fields (the first two sections below); no edit is needed in your code for that,
@@ -224,6 +231,76 @@ refuse any other option with `ErrValidation`. Two differences to know:
   with `ErrValidation` where the old transaction functions failed to compile.
 - `advisory.Acquire` returns `(bool, error)` for the blocking form too, so
   assign or discard the boolean.
+
+### Colliding and inconsistent names are renamed
+
+Before, `momo.Config` (the model marker), `migrate.Config` and `gen.Config` were
+three unrelated types with one name, `sqlfn.DateExpr` and `timeop.DateExpr`
+were two different types, `momo.Rank` (a window function) and `fts.Rank`
+(`ts_rank`) shared a word, and a few function pairs did not follow the rule that
+`X` takes Go values and `XExpr` takes expressions. Each old name below is kept
+for this release as a deprecated alias or forwarder that runs the same code,
+except `sqlitetest.New`, which has one signature and cannot keep two.
+
+| Old name                                        | New name                                                         |
+| ----------------------------------------------- | ---------------------------------------------------------------- |
+| `migrate.Config`                                | `migrate.Settings`                                               |
+| `migrate.WithConfig`                            | `migrate.WithSettings`                                           |
+| `gen.Config`                                    | `gen.LoadConfig`                                                 |
+| `migrate.FormatVersion` (the history table)     | `migrate.HistoryFormat`                                          |
+| `sqlfn.CurrentDate`                             | `timeop.CurrentDate`                                             |
+| `sqlfn.Infinity`, `sqlfn.NegInfinity`           | `timeop.Infinity`, `timeop.NegInfinity`                          |
+| `sqlfn.DateExpr`                                | `timeop.Expr`                                                    |
+| `fts.ToVector`                                  | `fts.TSVector`                                                   |
+| `fts.ToQuery`                                   | `fts.TSQuery`                                                    |
+| `fts.WebsearchToQuery`                          | `fts.TSWebsearchQuery`                                           |
+| `fts.PlainToQuery`                              | `fts.TSPlainQuery`                                               |
+| `fts.PhraseToQuery`                             | `fts.TSPhraseQuery`                                              |
+| `fts.Match`                                     | `fts.TSMatch`                                                    |
+| `fts.Rank`                                      | `fts.TSRank`                                                     |
+| `fts.RankCD`                                    | `fts.TSRankCD`                                                   |
+| `fts.Headline`                                  | `fts.TSHeadline`                                                 |
+| `sqlfn.SubstrFrom`                              | `sqlfn.SubstrToEnd`; `sqlfn.SubstrExpr` is new                   |
+| `timeop.IntervalExpr`                           | `timeop.IntervalOfExpr`                                          |
+| `momotest.Insert`                               | `momotest.Rows`                                                  |
+| `momotest.Graph`                                | `momotest.GraphOf`                                               |
+| `sqlitetest.New(tb, momo.WithHook(h))`          | `sqlitetest.New(tb, momotest.WithMomoOptions(momo.WithHook(h)))` |
+| `sqlitetest.Template.New(tb, momo.WithHook(h))` | `tpl.New(tb, momotest.WithMomoOptions(momo.WithHook(h)))`        |
+
+Notes on the rows that are more than a rename:
+
+- `sqlfn.NullIf` now takes `T any`, the constraint `sqlfn.NullIfExpr` always had,
+  so `sqlfn.NullIf(name, "")` compiles. Every call that compiled before renders
+  the same SQL.
+- `momo.Coalesce` takes a bound fallback and `sqlfn.CoalesceExpr` takes
+  expressions, the value and expression forms of one function; both stay.
+  `momo.Func` calls any scalar function and `agg.Func` calls an aggregate.
+- `sqlitetest.New` and `momotest.New` take the same `momotest.Option`.
+  `sqlitetest` honors `momotest.WithMomoOptions` and ignores the options that
+  configure a PostgreSQL server (`momotest.WithEnv`, `momotest.WithMigrations`,
+  `momotest.WithExtensions`, `momotest.WithMaxConns`, `momotest.WithTemplateClone`).
+- `momo.Model`, `momo.View`, `momo.Projection` and `momo.Config` keep their
+  names: they are the markers that models embed and that `MomoConfig` receives,
+  and the collision was with the two engine types renamed above.
+- `schema.FormatVersion` and `gen.FormatVersion` keep their names; they version
+  the snapshot and the generated-file formats, and `migrate.HistoryFormat`
+  versions the history table.
+
+The nine raw SQL functions follow one rule: a function that runs hand-written
+SQL is a verb and a function that wraps it for a builder ends in `SQL`, and no
+name carries the word Raw. `momo.Exec`, `momo.Query`, `momo.QueryRows`,
+`momo.SQL` and `momo.TypedSQL` already followed it and keep their names. The
+other four are renamed, with identical signatures; the old names are deprecated
+forwarders for this release:
+
+| Old name           | New name             |
+| ------------------ | -------------------- |
+| `momo.Scalars`     | `momo.QueryScalars`  |
+| `momo.RawRows`     | `momo.QueryCursor`   |
+| `momo.RawSubquery` | `momo.SubquerySQL`   |
+| `momo.RawQuery`    | `momo.CompilableSQL` |
+
+`momovet` checks the new names and the deprecated ones alike.
 
 ### The expression extension API is small, and column flags have a type
 
@@ -2010,7 +2087,7 @@ What `only` hides, and what it does not:
   a difference. Move the target table into `only`, or accept the report. The
   column itself is still modeled, without the relation.
 
-Library users: `migrate.Config.OnlyTables` and `migrate.InspectOptions.Only`
+Library users: `migrate.Settings.OnlyTables` (then `migrate.Config.OnlyTables`) and `migrate.InspectOptions.Only`
 are new fields. `OnlyTables` is what `introspect.only` sets: when it is not
 empty, a table that matches none of its globs is hidden from drift, baseline
 and diff, with its triggers and policies, and the PostgreSQL inspector does not
@@ -2018,7 +2095,7 @@ read it. The MySQL and SQLite inspectors ignore `migrate.InspectOptions.Only` an
 every table, which is filtered afterwards, so a table they cannot represent can
 still fail inspection. `migrate.MatchObject` is the glob rule shared by
 `Exclude`, `OnlyTables` and the inspector. An empty or malformed entry is an
-error that names `migrate.Config.OnlyTables`.
+error that names `migrate.Settings.OnlyTables`.
 
 ### `skip` globs match `schema.name`
 
@@ -2449,6 +2526,15 @@ as an argument.
 | `momo.L1Distance`                   | `github.com/azrtydxb/momo/vecop`     | `vecop.L1`                        |
 | `momo.HammingDistance`              | `github.com/azrtydxb/momo/vecop`     | `vecop.Hamming`                   |
 | `momo.JaccardDistance`              | `github.com/azrtydxb/momo/vecop`     | `vecop.Jaccard`                   |
+
+Renamed again in 0.20.0 (see
+[Colliding and inconsistent names are renamed](#colliding-and-inconsistent-names-are-renamed)):
+the `fts` names in this table (`fts.ToVector`, `fts.ToQuery`,
+`fts.WebsearchToQuery`, `fts.PlainToQuery`, `fts.PhraseToQuery`, `fts.Match`,
+`fts.Rank`, `fts.RankCD`, `fts.Headline`) are now the `TS` names, `sqlfn.SubstrFrom`
+is `sqlfn.SubstrToEnd`, and `timeop.IntervalExpr` is `timeop.IntervalOfExpr`.
+The rows above stay as written, and the old names still compile as deprecated
+forwarders for one release.
 
 ### Rewrite recipe
 

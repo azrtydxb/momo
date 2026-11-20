@@ -1616,7 +1616,7 @@ func main() {
     }
     fmt.Println(len(posts), "posts")
 }</code></p>
-<p>Raw SQL stays available through <code>momo.Exec</code> and <code>momo.Scalars</code>; <code>?</code> binds the
+<p>Raw SQL stays available through <code>momo.Exec</code> and <code>momo.QueryScalars</code>; <code>?</code> binds the
 next argument, so a value never becomes part of the SQL text.</p>
 <h2 id="relations">Relations<a class="headerlink" href="#relations" title="Permanent link">&para;</a></h2>
 <p>GORM's <code>Preload</code> runs one extra query per relation. So does Momo, and you pick
