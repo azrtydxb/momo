@@ -40,7 +40,7 @@ func TestFieldPermissions(t *testing.T) {
 	}
 }
 
-func TestaccessFor(t *testing.T) {
+func TestAccessFor(t *testing.T) {
 	cases := []struct {
 		name    string
 		tg      tags.Tags
