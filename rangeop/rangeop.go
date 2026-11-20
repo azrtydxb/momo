@@ -11,14 +11,14 @@
 // Range types exist on PostgreSQL alone, so every builder fails the build with
 // momo.ErrUnsupported on another dialect.
 //
-// The package builds on the exported extension API of the root package
-// (PredicateFunc, Ops, Builder.ArgFor, Builder.RenderSensitive and FlagsOf), as
-// arrayop does.
+// The package builds on the frozen extension API of the root package plus
+// internal/exprkit, as arrayop does.
 package rangeop
 
 import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -51,14 +51,14 @@ func rangeSQL[T types.RangeElem]() string {
 // parameter its type, which the server cannot infer where an operator has both
 // an element and a range form.
 func binary(feature string, left momo.Expr, op string, arg any, cast string) momo.Predicate {
-	return momo.PredicateFunc(func(b *momo.Builder) {
+	return exprkit.Predicate(func(b *momo.Builder) {
 		if b.Dialect().Name != dialect.Postgres {
-			b.Unsupported(feature)
+			exprkit.Unsupported(b, feature)
 			return
 		}
-		fl := b.RenderSensitive(left, momo.FlagsOf(left))
+		fl := exprkit.RenderSensitive(b, left, exprkit.FlagsOf(left))
 		b.WriteString(op)
-		b.ArgFor(fl, arg)
+		exprkit.ArgFor(b, fl, arg)
 		b.WriteString("::" + cast)
 	})
 }
@@ -109,13 +109,13 @@ func StrictlyRight[T types.RangeElem](col momo.Expression[types.Range[T]], other
 
 // unary returns the predicate fn(col).
 func unary[T types.RangeElem](feature, fn string, col momo.Expression[types.Range[T]]) momo.Predicate {
-	return momo.PredicateFunc(func(b *momo.Builder) {
+	return exprkit.Predicate(func(b *momo.Builder) {
 		if b.Dialect().Name != dialect.Postgres {
-			b.Unsupported(feature)
+			exprkit.Unsupported(b, feature)
 			return
 		}
 		b.WriteString(fn + "(")
-		b.RenderSensitive(col, momo.FlagsOf(col))
+		exprkit.RenderSensitive(b, col, exprkit.FlagsOf(col))
 		b.WriteString(")")
 	})
 }
@@ -170,7 +170,7 @@ func Upper[T types.RangeElem](col momo.Expression[types.Range[T]]) BoundExpr[T] 
 
 // Flags returns the flags of the column operand, so a sensitive column keeps
 // the values it is compared with masked.
-func (e BoundExpr[T]) Flags() uint16 { return momo.FlagsOf(e.src) }
+func (e BoundExpr[T]) Flags() momo.ColumnFlags { return exprkit.FlagsOf(e.src) }
 
 // As names the expression in a select list.
 func (e BoundExpr[T]) As(alias string) momo.Aliased[T] { return momo.As[T](e, alias) }
@@ -179,10 +179,10 @@ func (e BoundExpr[T]) As(alias string) momo.Aliased[T] { return momo.As[T](e, al
 // dialect without range types.
 func (e BoundExpr[T]) AppendSQL(b *momo.Builder) {
 	if b.Dialect().Name != dialect.Postgres {
-		b.Unsupported(e.feature)
+		exprkit.Unsupported(b, e.feature)
 		return
 	}
 	b.WriteString(e.fn + "(")
-	b.RenderSensitive(e.src, momo.FlagsOf(e.src))
+	exprkit.RenderSensitive(b, e.src, exprkit.FlagsOf(e.src))
 	b.WriteString(")")
 }

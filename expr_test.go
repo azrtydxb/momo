@@ -7,6 +7,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 )
 
 // Catches: Order.AppendOrder dropping the direction or the NULLS placement that
@@ -24,7 +25,7 @@ func TestOrderAppendOrder(t *testing.T) {
 		{"asc nulls first", title.Asc().NullsFirst(), `"docs"."title" ASC NULLS FIRST`},
 	}
 	for _, c := range cases {
-		b := momo.NewBuilder(dialect.For(dialect.Postgres))
+		b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 		c.o.AppendOrder(b)
 		if b.Err() != nil || b.String() != c.want {
 			t.Errorf("%s: got %q, %v; want %q", c.name, b.String(), b.Err(), c.want)
@@ -44,7 +45,7 @@ func TestOrderAppendOrder(t *testing.T) {
 		{"default nulls", title.Desc(), "`docs`.`title` DESC"},
 	}
 	for _, c := range myCases {
-		my := momo.NewBuilder(dialect.For(dialect.MySQL))
+		my := exprkit.NewBuilder(dialect.For(dialect.MySQL))
 		c.o.AppendOrder(my)
 		if my.Err() != nil || my.String() != c.want {
 			t.Errorf("mysql %s: got %q, %v; want %q", c.name, my.String(), my.Err(), c.want)

@@ -20,7 +20,7 @@ import (
 // values compared against a sensitive column into hook events.
 func TestArrayOperatorsMaskSensitiveColumn(t *testing.T) {
 	for _, sensitive := range []bool{true, false} {
-		var fl uint16
+		var fl momo.ColumnFlags
 		if sensitive {
 			fl = momo.FlagSensitive
 		}

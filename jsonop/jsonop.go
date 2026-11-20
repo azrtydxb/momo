@@ -2,9 +2,8 @@
 
 // Package jsonop holds the JSON operators over types.JSON[T] columns (jsonb on
 // PostgreSQL): text extraction, nested paths, containment and key tests. The
-// package builds on the exported extension API of the root package (Ops,
-// PredicateFunc, Builder.ArgFor, Builder.RenderSensitive, Builder.Unsupported
-// and FlagsOf).
+// package builds on the frozen extension API of the root package plus
+// internal/exprkit.
 //
 // The column operand is any Expression of types.JSON[T]: a Column, a
 // NullColumn, or an aliased column. Containment values and HasKey keys are
@@ -74,13 +73,14 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/types"
 )
 
 // flags keeps the sensitive flag of the column operand and marks the result
 // nullable, since an extraction is NULL for a missing key.
-func flags(src momo.Expr) uint16 {
-	return momo.FlagNullable | momo.FlagsOf(src)&momo.FlagSensitive
+func flags(src momo.Expr) momo.ColumnFlags {
+	return momo.FlagNullable | exprkit.FlagsOf(src)&momo.FlagSensitive
 }
 
 func validation(err error) error {
@@ -160,12 +160,12 @@ func isDigits(s string) bool {
 
 // argOrLiteral writes lit as a quoted literal when keys are plain and the
 // column is not sensitive, otherwise binds v with fl.
-func argOrLiteral(b *momo.Builder, keys []string, fl uint16, lit string, v any) {
+func argOrLiteral(b *momo.Builder, keys []string, fl momo.ColumnFlags, lit string, v any) {
 	if plainKey(keys) && fl&momo.FlagSensitive == 0 {
 		b.WriteString("'" + lit + "'")
 		return
 	}
-	b.ArgFor(fl, v)
+	exprkit.ArgFor(b, fl, v)
 }
 
 // TextExpr is the text of a JSON member, an Expression[string] with the
@@ -217,7 +217,7 @@ func Root[T any](c momo.Expression[types.JSON[T]]) TextExpr {
 }
 
 // Flags returns the sensitive flag of the column operand plus FlagNullable.
-func (e TextExpr) Flags() uint16 { return flags(e.src) }
+func (e TextExpr) Flags() momo.ColumnFlags { return flags(e.src) }
 
 // AppendSQL renders the extraction. Other dialects than PostgreSQL, SQLite and
 // MySQL fail the build with ErrUnsupported.
@@ -233,7 +233,7 @@ func (e TextExpr) AppendSQL(b *momo.Builder) {
 	switch name {
 	case dialect.Postgres:
 		b.WriteString("(")
-		fl := b.RenderSensitive(e.src, momo.FlagsOf(e.src))
+		fl := exprkit.RenderSensitive(b, e.src, exprkit.FlagsOf(e.src))
 		if e.path {
 			b.WriteString(" #>> ")
 			argOrLiteral(b, e.keys, fl, "{"+strings.Join(e.keys, ",")+"}", e.keys)
@@ -244,20 +244,20 @@ func (e TextExpr) AppendSQL(b *momo.Builder) {
 		b.WriteString(")")
 	case dialect.SQLite:
 		b.WriteString("CAST(json_extract(")
-		fl := b.RenderSensitive(e.src, momo.FlagsOf(e.src))
+		fl := exprkit.RenderSensitive(b, e.src, exprkit.FlagsOf(e.src))
 		b.WriteString(", ")
 		path := pathString(name, e.keys, e.path)
 		argOrLiteral(b, e.keys, fl, path, path)
 		b.WriteString(") AS TEXT)")
 	case dialect.MySQL:
 		b.WriteString("JSON_UNQUOTE(JSON_EXTRACT(")
-		fl := b.RenderSensitive(e.src, momo.FlagsOf(e.src))
+		fl := exprkit.RenderSensitive(b, e.src, exprkit.FlagsOf(e.src))
 		b.WriteString(", ")
 		path := pathString(name, e.keys, e.path)
 		argOrLiteral(b, e.keys, fl, path, path)
 		b.WriteString("))")
 	default:
-		b.Unsupported("JSON text extraction")
+		exprkit.Unsupported(b, "JSON text extraction")
 	}
 }
 
@@ -266,18 +266,18 @@ func (e TextExpr) appendRoot(b *momo.Builder) {
 	switch b.Dialect().Name {
 	case dialect.Postgres:
 		b.WriteString("(")
-		b.RenderSensitive(e.src, momo.FlagsOf(e.src))
+		exprkit.RenderSensitive(b, e.src, exprkit.FlagsOf(e.src))
 		b.WriteString(" #>> '{}')")
 	case dialect.SQLite:
 		b.WriteString("CAST(json_extract(")
-		b.RenderSensitive(e.src, momo.FlagsOf(e.src))
+		exprkit.RenderSensitive(b, e.src, exprkit.FlagsOf(e.src))
 		b.WriteString(", '$') AS TEXT)")
 	case dialect.MySQL:
 		b.WriteString("JSON_UNQUOTE(JSON_EXTRACT(")
-		b.RenderSensitive(e.src, momo.FlagsOf(e.src))
+		exprkit.RenderSensitive(b, e.src, exprkit.FlagsOf(e.src))
 		b.WriteString(", '$'))")
 	default:
-		b.Unsupported("JSON root extraction")
+		exprkit.Unsupported(b, "JSON root extraction")
 	}
 }
 
@@ -288,10 +288,10 @@ func (e TextExpr) appendRoot(b *momo.Builder) {
 // member. MySQL uses JSON_CONTAINS; SQLite has no containment operator and
 // fails with ErrUnsupported, as does any other dialect.
 func Contains[T any](c momo.Expression[types.JSON[T]], v any) momo.Predicate {
-	return momo.PredicateFunc(func(b *momo.Builder) {
+	return exprkit.Predicate(func(b *momo.Builder) {
 		name := b.Dialect().Name
 		if name == dialect.SQLite {
-			b.Unsupported("JSON containment (Contains)")
+			exprkit.Unsupported(b, "JSON containment (Contains)")
 			return
 		}
 		enc, err := json.Marshal(v)
@@ -302,26 +302,26 @@ func Contains[T any](c momo.Expression[types.JSON[T]], v any) momo.Predicate {
 		switch name {
 		case dialect.Postgres:
 			b.WriteString("(")
-			fl := b.RenderSensitive(c, momo.FlagsOf(c))
+			fl := exprkit.RenderSensitive(b, c, exprkit.FlagsOf(c))
 			b.WriteString(" @> CAST(")
-			b.ArgFor(fl, string(enc))
+			exprkit.ArgFor(b, fl, string(enc))
 			b.WriteString(" AS jsonb))")
 		case dialect.MySQL:
 			b.WriteString("JSON_CONTAINS(")
-			fl := b.RenderSensitive(c, momo.FlagsOf(c))
+			fl := exprkit.RenderSensitive(b, c, exprkit.FlagsOf(c))
 			if b.Dialect().Flavor == dialect.FlavorMariaDB {
 				// MariaDB has no JSON target in CAST (a syntax error), and its
 				// JSON_CONTAINS takes the candidate as JSON text.
 				b.WriteString(", ")
-				b.ArgFor(fl, string(enc))
+				exprkit.ArgFor(b, fl, string(enc))
 				b.WriteString(")")
 				break
 			}
 			b.WriteString(", CAST(")
-			b.ArgFor(fl, string(enc))
+			exprkit.ArgFor(b, fl, string(enc))
 			b.WriteString(" AS JSON))")
 		default:
-			b.Unsupported("JSON containment (Contains)")
+			exprkit.Unsupported(b, "JSON containment (Contains)")
 		}
 	})
 }
@@ -332,7 +332,7 @@ func Contains[T any](c momo.Expression[types.JSON[T]], v any) momo.Predicate {
 // SQL NULL column yields NULL, so Not drops those rows too. key is always a
 // bound parameter and is always an object key, never an array index.
 func HasKey[T any](c momo.Expression[types.JSON[T]], key string) momo.Predicate {
-	return momo.PredicateFunc(func(b *momo.Builder) {
+	return exprkit.Predicate(func(b *momo.Builder) {
 		name := b.Dialect().Name
 		if !keysValid(b, []string{key}, name != dialect.Postgres) {
 			return
@@ -340,24 +340,24 @@ func HasKey[T any](c momo.Expression[types.JSON[T]], key string) momo.Predicate 
 		switch name {
 		case dialect.Postgres:
 			b.WriteString("(")
-			fl := b.RenderSensitive(c, momo.FlagsOf(c))
+			fl := exprkit.RenderSensitive(b, c, exprkit.FlagsOf(c))
 			b.WriteString(" ? ")
-			b.ArgFor(fl, key)
+			exprkit.ArgFor(b, fl, key)
 			b.WriteString(")")
 		case dialect.SQLite:
 			b.WriteString("(json_type(")
-			fl := b.RenderSensitive(c, momo.FlagsOf(c))
+			fl := exprkit.RenderSensitive(b, c, exprkit.FlagsOf(c))
 			b.WriteString(", ")
-			b.ArgFor(fl, pathString(name, []string{key}, false))
+			exprkit.ArgFor(b, fl, pathString(name, []string{key}, false))
 			b.WriteString(") IS NOT NULL)")
 		case dialect.MySQL:
 			b.WriteString("JSON_CONTAINS_PATH(")
-			fl := b.RenderSensitive(c, momo.FlagsOf(c))
+			fl := exprkit.RenderSensitive(b, c, exprkit.FlagsOf(c))
 			b.WriteString(", 'one', ")
-			b.ArgFor(fl, pathString(name, []string{key}, false))
+			exprkit.ArgFor(b, fl, pathString(name, []string{key}, false))
 			b.WriteString(")")
 		default:
-			b.Unsupported("JSON key test (HasKey)")
+			exprkit.Unsupported(b, "JSON key test (HasKey)")
 		}
 	})
 }

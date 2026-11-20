@@ -137,7 +137,7 @@ func (tx *Tx) spExec(ctx context.Context, stmt, name string) error {
 	if tx.done.Load() {
 		return ErrTxDone
 	}
-	b := NewBuilder(tx.ex.d)
+	b := newBuilder(tx.ex.d)
 	b.WriteString(stmt)
 	b.Ident(name)
 	_, err := tx.ex.exec(ctx, "savepoint", "", Compiled{SQL: b.String()})

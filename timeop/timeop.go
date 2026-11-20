@@ -11,9 +11,9 @@
 // gets written, so no caller string is ever interpolated. A name outside the
 // allowlist fails the build with momo.ErrValidation.
 //
-// The package builds on the exported extension API of the root package
-// (Ops, NewOps, Typed, As, IsBound and the Builder methods) and uses no
-// unexported name of it.
+// The package builds on the frozen extension API of the root package (Ops,
+// NewOps, Typed, As and the Builder methods) plus internal/exprkit, and uses
+// no unexported name of it.
 package timeop
 
 import (
@@ -25,6 +25,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 )
 
 func timeErr(format string, a ...any) *momo.Error {
@@ -52,7 +53,7 @@ const (
 // (momo.Value(t)) is cast to timestamptz, because the server cannot always infer
 // the parameter type inside EXTRACT, date_trunc or AT TIME ZONE.
 func appendTime(b *momo.Builder, e momo.Expression[time.Time]) {
-	if b.Dialect().Name == dialect.Postgres && momo.IsBound(e) {
+	if b.Dialect().Name == dialect.Postgres && exprkit.IsBound(e) {
 		b.WriteString("CAST(")
 		e.AppendSQL(b)
 		b.WriteString(" AS timestamptz)")
@@ -136,7 +137,7 @@ func (x ExtractExpr) AppendSQL(b *momo.Builder) {
 	case dialect.MySQL:
 		x.appendMySQL(b)
 	default:
-		b.Unsupported("Extract")
+		exprkit.Unsupported(b, "Extract")
 	}
 }
 
@@ -269,7 +270,7 @@ func AtTimeZoneExpr(e momo.Expression[time.Time], zone momo.Expression[string]) 
 			return
 		}
 		if b.Dialect().Name != dialect.Postgres {
-			b.Unsupported("AtTimeZone")
+			exprkit.Unsupported(b, "AtTimeZone")
 			return
 		}
 		b.WriteString("(")
@@ -456,7 +457,7 @@ func intervalExpr(ts momo.Expression[time.Time], iv Interval, sign int64) Expr {
 				fn = "DATE_SUB("
 			}
 			b.WriteString(fn)
-			if momo.IsBound(ts) {
+			if exprkit.IsBound(ts) {
 				// DATE_ADD of a bare parameter returns text on MariaDB, which
 				// the driver cannot read as a time; the cast types the operand.
 				// It is applied on MySQL and MariaDB alike.
@@ -497,7 +498,7 @@ func intervalExpr(ts momo.Expression[time.Time], iv Interval, sign int64) Expr {
 			iv.count.AppendSQL(b)
 			b.WriteString(") * " + strconv.FormatInt(sign*spec.factor, 10) + " AS TEXT) || ' " + spec.sqlite + "')")
 		default:
-			b.Unsupported("interval arithmetic")
+			exprkit.Unsupported(b, "interval arithmetic")
 		}
 	})
 }
@@ -532,7 +533,7 @@ func (s Span) AppendSQL(b *momo.Builder) {
 		return
 	}
 	if b.Dialect().Name != dialect.Postgres {
-		b.Unsupported("an interval value")
+		exprkit.Unsupported(b, "an interval value")
 		return
 	}
 	if s.age {
@@ -595,7 +596,7 @@ func (x EpochExpr) AppendSQL(b *momo.Builder) {
 		b.WriteString(") AS double precision)")
 	case dialect.MySQL:
 		if x.s.age {
-			b.Unsupported("Age")
+			exprkit.Unsupported(b, "Age")
 			return
 		}
 		b.WriteString("(TIMESTAMPDIFF(MICROSECOND, ")
@@ -605,7 +606,7 @@ func (x EpochExpr) AppendSQL(b *momo.Builder) {
 		b.WriteString(") / 1000000.0 + 0e0)")
 	case dialect.SQLite:
 		if x.s.age {
-			b.Unsupported("Age")
+			exprkit.Unsupported(b, "Age")
 			return
 		}
 		b.WriteString("((julianday(")
@@ -614,7 +615,7 @@ func (x EpochExpr) AppendSQL(b *momo.Builder) {
 		x.s.b.AppendSQL(b)
 		b.WriteString(")) * 86400.0)")
 	default:
-		b.Unsupported("EpochSeconds")
+		exprkit.Unsupported(b, "EpochSeconds")
 	}
 }
 
@@ -627,14 +628,14 @@ func nowExpr(name string, pg, my string) Expr {
 			b.WriteString(pg)
 		case dialect.MySQL:
 			if my == "" {
-				b.Unsupported(name)
+				exprkit.Unsupported(b, name)
 				return
 			}
 			b.WriteString(my)
 		case dialect.SQLite:
 			b.WriteString("strftime(" + sqliteTimeFmt + ", 'now')")
 		default:
-			b.Unsupported(name)
+			exprkit.Unsupported(b, name)
 		}
 	})
 }
@@ -729,7 +730,7 @@ func Trunc(unit TruncUnit, e momo.Expression[time.Time]) Expr {
 		case dialect.MySQL:
 			truncMySQL(b, unit, f.mysql, e)
 		default:
-			b.Unsupported("Trunc")
+			exprkit.Unsupported(b, "Trunc")
 		}
 	})
 }

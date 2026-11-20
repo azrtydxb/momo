@@ -44,7 +44,7 @@ func (c vectorBase[V]) ColumnName() string { return c.col.ColumnName() }
 func (c vectorBase[V]) Table() string { return c.col.Table() }
 
 // Flags returns the generated column flags.
-func (c vectorBase[V]) Flags() uint16 { return c.col.Flags() }
+func (c vectorBase[V]) Flags() ColumnFlags { return c.col.Flags() }
 
 // Dim returns the declared dimension. Zero marks a dimensionless column: a
 // distance argument of any size is accepted and checked against itself.
@@ -76,7 +76,7 @@ func (c vectorBase[V]) Desc() Order                     { return c.col.Desc() }
 
 func (c vectorBase[V]) as(alias string) vectorBase[V] { c.col = c.col.As(alias); return c }
 
-func newVectorBase[V VectorValue](table, name string, dim int, flags uint16) vectorBase[V] {
+func newVectorBase[V VectorValue](table, name string, dim int, flags ColumnFlags) vectorBase[V] {
 	return vectorBase[V]{col: NewColumn[V](table, name, flags), dim: dim}
 }
 
@@ -87,7 +87,7 @@ func newVectorBase[V VectorValue](table, name string, dim int, flags uint16) vec
 type VectorColumn[V VectorValue] struct{ vectorBase[V] }
 
 // NewVectorColumn is used by generated code.
-func NewVectorColumn[V VectorValue](table, name string, dim int, flags uint16) VectorColumn[V] {
+func NewVectorColumn[V VectorValue](table, name string, dim int, flags ColumnFlags) VectorColumn[V] {
 	return VectorColumn[V]{newVectorBase[V](table, name, dim, flags)}
 }
 
@@ -118,7 +118,7 @@ func (c VectorColumn[V]) Excluded() Expression[V] { return c.col.Excluded() }
 type NullVectorColumn[V VectorValue] struct{ VectorColumn[V] }
 
 // NewNullVectorColumn is used by generated code.
-func NewNullVectorColumn[V VectorValue](table, name string, dim int, flags uint16) NullVectorColumn[V] {
+func NewNullVectorColumn[V VectorValue](table, name string, dim int, flags ColumnFlags) NullVectorColumn[V] {
 	return NullVectorColumn[V]{NewVectorColumn[V](table, name, dim, flags|FlagNullable)}
 }
 
@@ -142,7 +142,7 @@ type ReadOnlyVectorColumn[V VectorValue] struct {
 }
 
 // NewReadOnlyVectorColumn is used by generated code.
-func NewReadOnlyVectorColumn[V VectorValue](table, name string, dim int, flags uint16) ReadOnlyVectorColumn[V] {
+func NewReadOnlyVectorColumn[V VectorValue](table, name string, dim int, flags ColumnFlags) ReadOnlyVectorColumn[V] {
 	return ReadOnlyVectorColumn[V]{vectorBase: newVectorBase[V](table, name, dim, flags)}
 }
 
@@ -160,7 +160,7 @@ func (c ReadOnlyVectorColumn[V]) As(alias string) ReadOnlyVectorColumn[V] {
 type NullReadOnlyVectorColumn[V VectorValue] struct{ ReadOnlyVectorColumn[V] }
 
 // NewNullReadOnlyVectorColumn is used by generated code.
-func NewNullReadOnlyVectorColumn[V VectorValue](table, name string, dim int, flags uint16) NullReadOnlyVectorColumn[V] {
+func NewNullReadOnlyVectorColumn[V VectorValue](table, name string, dim int, flags ColumnFlags) NullReadOnlyVectorColumn[V] {
 	return NullReadOnlyVectorColumn[V]{NewReadOnlyVectorColumn[V](table, name, dim, flags|FlagNullable)}
 }
 
@@ -178,7 +178,7 @@ type CreateOnlyVectorColumn[V VectorValue] struct {
 }
 
 // NewCreateOnlyVectorColumn is used by generated code.
-func NewCreateOnlyVectorColumn[V VectorValue](table, name string, dim int, flags uint16) CreateOnlyVectorColumn[V] {
+func NewCreateOnlyVectorColumn[V VectorValue](table, name string, dim int, flags ColumnFlags) CreateOnlyVectorColumn[V] {
 	return CreateOnlyVectorColumn[V]{vectorBase: newVectorBase[V](table, name, dim, flags)}
 }
 
@@ -199,7 +199,7 @@ type ImmutableVectorColumn[V VectorValue] struct {
 }
 
 // NewImmutableVectorColumn is used by generated code.
-func NewImmutableVectorColumn[V VectorValue](table, name string, dim int, flags uint16) ImmutableVectorColumn[V] {
+func NewImmutableVectorColumn[V VectorValue](table, name string, dim int, flags ColumnFlags) ImmutableVectorColumn[V] {
 	return ImmutableVectorColumn[V]{vectorBase: newVectorBase[V](table, name, dim, flags)}
 }
 
@@ -211,10 +211,3 @@ func (c ImmutableVectorColumn[V]) As(alias string) ImmutableVectorColumn[V] {
 
 // Set assigns v on insert; only Insert accepts the result.
 func (c ImmutableVectorColumn[V]) Set(v V) InsertAssignment { return InsertAssignment{c.col.Set(v)} }
-
-// VectorColumnOf returns the VectorColumn behind any vector column descriptor
-// that satisfies VectorSource: VectorColumn itself, its nullable variant and
-// the permission variants. Code outside this package uses it to read a source's
-// table, column name, dimension and flags when it builds a distance
-// expression. VectorColumnOf is an extension point; see Ops.
-func VectorColumnOf[V VectorValue](s VectorSource[V]) VectorColumn[V] { return s.vectorColumn() }

@@ -170,7 +170,7 @@ func (sq selectRef) renderDistinctOnWindow(b *Builder) {
 	// nullability (ColumnOf, an expression) is not known to be nullable: give
 	// such an item an explicit NullsFirst or NullsLast.
 	for i, o := range order {
-		if o.Nulls == NullsDefault && FlagsOf(o.Expr)&FlagNullable != 0 {
+		if o.Nulls == NullsDefault && flagsOf(o.Expr)&FlagNullable != 0 {
 			if o.Desc {
 				order[i].Nulls = NullsFirst
 			} else {

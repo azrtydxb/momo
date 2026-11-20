@@ -25,25 +25,25 @@ type inTuple struct {
 	keys  [][]any
 	// flags are optional column flags by position in cols; a sensitive column
 	// keeps its key values out of hook events.
-	flags []uint16
+	flags []ColumnFlags
 }
 
 // flagAt returns the flags of the column at position i, or 0.
-func (x inTuple) flagAt(i int) uint16 { return flagAt(x.flags, i) }
+func (x inTuple) flagAt(i int) ColumnFlags { return flagAt(x.flags, i) }
 
 // keyFlags returns the flags of the named columns of m, or nil when m is nil.
-func keyFlags[T any](m *Meta[T], cols []string) []uint16 {
+func keyFlags[T any](m *Meta[T], cols []string) []ColumnFlags {
 	if m == nil {
 		return nil
 	}
-	var out []uint16
+	var out []ColumnFlags
 	for i, c := range cols {
 		ci := columnIndexOf(m, c)
 		if ci < 0 || m.Columns[ci].Flags&FlagSensitive == 0 {
 			continue
 		}
 		if out == nil {
-			out = make([]uint16, len(cols))
+			out = make([]ColumnFlags, len(cols))
 		}
 		out[i] = m.Columns[ci].Flags
 	}
@@ -51,7 +51,7 @@ func keyFlags[T any](m *Meta[T], cols []string) []uint16 {
 }
 
 // flagAt returns fl[i], or 0 when fl is shorter.
-func flagAt(fl []uint16, i int) uint16 {
+func flagAt(fl []ColumnFlags, i int) ColumnFlags {
 	if i < len(fl) {
 		return fl[i]
 	}
@@ -59,14 +59,14 @@ func flagAt(fl []uint16, i int) uint16 {
 }
 
 // parentKeyFlags are the flags of the parent columns the relation joins on.
-func (r Relation[P, C]) parentKeyFlags() []uint16 { return keyFlags(r.ParentMeta, r.ParentCols) }
+func (r Relation[P, C]) parentKeyFlags() []ColumnFlags { return keyFlags(r.ParentMeta, r.ParentCols) }
 
 // childKeyFlags are the flags of the child columns the relation joins on.
-func (r Relation[P, C]) childKeyFlags() []uint16 { return keyFlags(r.ChildMeta, r.ChildCols) }
+func (r Relation[P, C]) childKeyFlags() []ColumnFlags { return keyFlags(r.ChildMeta, r.ChildCols) }
 
 // ownerFlags are the flags of the columns that hold the parent key: the join
 // table columns referencing the parent for ManyToMany, else the child columns.
-func (r Relation[P, C]) ownerFlags() []uint16 {
+func (r Relation[P, C]) ownerFlags() []ColumnFlags {
 	if r.Through != nil {
 		return r.parentKeyFlags()
 	}

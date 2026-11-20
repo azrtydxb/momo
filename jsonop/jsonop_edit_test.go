@@ -10,6 +10,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/internal/exprtest"
 	"github.com/azrtydxb/momo/internal/fakedriver"
 	"github.com/azrtydxb/momo/internal/obstest"
@@ -107,14 +108,14 @@ func TestJSONEditColumnsAndFlags(t *testing.T) {
 		"set path":   jsonop.Set(jsonDoc, momo.ArrayOf[string](momo.NewColumn[string]("events", "secret", momo.FlagSensitive)), setValue()),
 	}
 	for name, x := range sens {
-		if momo.FlagsOf(x)&momo.FlagSensitive == 0 {
+		if exprkit.FlagsOf(x)&momo.FlagSensitive == 0 {
 			t.Errorf("%s: lost the sensitive flag", name)
 		}
 	}
-	if momo.FlagsOf(jsonop.Set(jsonDoc, momo.ArrayOf[string](momo.NewNullColumn[string]("events", "k", 0)), setValue()))&momo.FlagNullable == 0 {
+	if exprkit.FlagsOf(jsonop.Set(jsonDoc, momo.ArrayOf[string](momo.NewNullColumn[string]("events", "k", 0)), setValue()))&momo.FlagNullable == 0 {
 		t.Error("Set lost the nullable flag of its path")
 	}
-	if momo.FlagsOf(jsonop.DeleteKey(jsonDoc, "k"))&momo.FlagSensitive != 0 {
+	if exprkit.FlagsOf(jsonop.DeleteKey(jsonDoc, "k"))&momo.FlagSensitive != 0 {
 		t.Error("delete key on a non-sensitive column is marked sensitive")
 	}
 	if jsonop.Text(jsonop.DeleteKey(jsonAfter, "k"), "via").Flags()&momo.FlagSensitive == 0 {

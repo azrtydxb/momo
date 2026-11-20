@@ -1445,3 +1445,23 @@ Question B: does `pgxdriver.Open` ping?
 - Stay lazy like `pgxpool` and `NewPool`.
 
 Decision (2026-11-19, the user, via AskUserQuestion): `pgxdriver.Open` and `OpenSQL` ping by default; `NewPool` stays lazy.
+
+## Expression extension surface (#270)
+
+Decision (2026-11-19, the maintainer, on #254 items 1.7 and 1.8): third-party typed expressions are supported, with a small frozen surface; the rest moves behind an internal bridge; `momo.ColumnFlags` types the column flags.
+
+Frozen, each justified in `docs/compatibility.md`: `momo.Expr`, `momo.Expression`, `momo.Ops`, `momo.NewOps`, `momo.Typed`, `Builder.Ident`, `Builder.Arg`, `Builder.Dialect`, `Builder.SetErr`, plus two the issue allowed "if a minimal external expression provably needs them":
+
+- `Builder.WriteString`: without it an expression can write only identifiers and parameters, never a function call or an operator.
+- `momo.Flagged` (with its result type `momo.ColumnFlags`): a wrapper must forward the wrapped column's flags, or `Ops` comparisons stop masking values compared with a sensitive column. An external type reads the flags by asserting `Flagged` itself, so `FlagsOf` can leave.
+- `Builder.QualifiedIdent`, `Builder.String`, `Builder.Args`, `Builder.Err` are not in the issue's list and are not frozen or moved here; they are not extension points and stay as they are.
+
+Moved: `WriteByte`, `MarkSensitive`, `ArgFor`, `RenderSensitive`, `ExprFor`, `AppendFilter`, `Unsupported`, `NewBuilder`, `PredicateFunc`, `FlagsOf`, `IsBound`, `ValidName`, `ValidTypeName`, `WindowOf`, `VectorColumnOf`, `MetaTableSchema`.
+
+Design choices, taken without a question to the user because each is the simplest pattern that satisfies the issue:
+
+- Bridge pattern: `internal/bridge` is a leaf (stdlib and `dialect` only, role internal-leaf, added to the core's allowed imports) that holds a `Kit` of function values typed with `any`; the root fills it from an `init` in `expr_bridge.go`; `internal/exprkit` (role internal-fixture, imports the root) wraps the `Kit` in typed functions that the feature packages call. A package that the root imports cannot import the root, so the registry cannot be typed; the two-package split keeps the types in `exprkit`. No exported root name leads to the registry.
+- Generic names cannot cross a registry of function values. `FlagsOf`, `PredicateFunc` and `MetaTableSchema` need no root state (`exprkit.FlagsOf` asserts `Flagged`, `exprkit.Predicate` is `momo.Typed[bool]` around an adapter, `exprkit.TableSchema` reads `Meta.TableSchema`); `VectorColumnOf` is replaced in `vecop` by an interface assertion on the four accessors every vector column has; `WindowOf[T]` is replaced by `exprkit.WindowCall`, which returns the erased window expression, and `agg` gets its own `agg.WindowExpr[T]` (Ops, As, AppendSQL) as the result of `Call.Over`. That changes the result type of `agg.Call.Over` from `momo.WindowExpr[T]`; it is listed in upgrading.md.
+- Deprecated forwarders: every moved name stays on the root in `expr_deprecated.go` with its old signature (flags as `uint16`) for one release, tested in `expr_deprecated_test.go`. They cannot keep one thing: a type that implements the old `Flags() uint16` no longer satisfies `Flagged`, because `Flagged` now returns `ColumnFlags`; upgrading.md says so. `ColumnMeta.Flags`, the `New*Column` parameters and the `Flag*` constants change type; generated code passes constants or `0`, so the emitted text is unchanged and the generator needs no edit.
+- The limit that follows from freezing `Arg` without `ArgFor`: a value an external expression binds with `Arg` itself is not masked when it is compared with a sensitive column; comparisons made through the `Ops` methods are masked. It is documented in `docs/compatibility.md` and in the `Ops` doc comment.
+- The worked example is `ExampleNewOps` in `expr_extension_example_test.go` (package `momo_test`), compiled and run by the root test job.

@@ -27,7 +27,7 @@ func TestMySQLLockRendering(t *testing.T) {
 		{"mysql of", dialect.FlavorMySQL, false, []string{"a", "b"}, []string{"SKIP LOCKED"}, " FOR UPDATE OF `a`, `b` SKIP LOCKED"},
 	}
 	for _, c := range cases {
-		b := NewBuilder(dialect.MySQLFlavor(c.flavor))
+		b := newBuilder(dialect.MySQLFlavor(c.flavor))
 		renderMySQLLock(b, c.flavor, c.share, c.of, c.opts...)
 		if got := b.String(); got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
@@ -38,7 +38,7 @@ func TestMySQLLockRendering(t *testing.T) {
 // Catches: MariaDB silently dropping or mis-rendering FOR UPDATE OF, which it
 // does not support.
 func TestMariaDBLockOfUnsupported(t *testing.T) {
-	b := NewBuilder(dialect.MySQLFlavor(dialect.FlavorMariaDB))
+	b := newBuilder(dialect.MySQLFlavor(dialect.FlavorMariaDB))
 	renderMySQLLock(b, dialect.FlavorMariaDB, false, []string{"a"})
 	if err := b.Err(); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("err = %v, want ErrUnsupported", err)
@@ -58,7 +58,7 @@ func TestPostgresOnlyLockModesRefused(t *testing.T) {
 			for _, of := range [][]string{nil, {"a"}} {
 				sq := SelectQuery[struct{}]{}
 				sq.s.lock, sq.s.lockOf = mode, of
-				b := NewBuilder(d)
+				b := newBuilder(d)
 				sq.selectView().writeLock(b)
 				if err := b.Err(); !errors.Is(err, ErrUnsupported) {
 					t.Errorf("%s %s of=%v: err = %v, want ErrUnsupported", name, mode, of, err)
@@ -71,12 +71,12 @@ func TestPostgresOnlyLockModesRefused(t *testing.T) {
 // Catches: a bare OFFSET reaching MySQL or MariaDB, where it is a syntax error.
 func TestMySQLBareOffsetGetsLimit(t *testing.T) {
 	s := selectCore{limit: -1, offset: 5}
-	b := NewBuilder(dialect.MySQLFlavor(dialect.FlavorMySQL))
+	b := newBuilder(dialect.MySQLFlavor(dialect.FlavorMySQL))
 	s.writeLimitOffset(b)
 	if got, want := b.String(), " LIMIT 18446744073709551615 OFFSET ?"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
-	pg := NewBuilder(dialect.For(dialect.Postgres))
+	pg := newBuilder(dialect.For(dialect.Postgres))
 	s.writeLimitOffset(pg)
 	if got, want := pg.String(), " OFFSET $1"; got != want {
 		t.Fatalf("postgres got %q, want %q", got, want)

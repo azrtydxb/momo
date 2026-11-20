@@ -12,6 +12,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/internal/fakedriver"
 	"github.com/azrtydxb/momo/internal/obstest"
 	"github.com/azrtydxb/momo/internal/suite"
@@ -200,7 +201,7 @@ func (u extUpper) AppendSQL(b *momo.Builder) {
 	b.WriteString(")")
 }
 
-func (u extUpper) Flags() uint16 { return momo.FlagsOf(u.src) }
+func (u extUpper) Flags() momo.ColumnFlags { return exprkit.FlagsOf(u.src) }
 
 // extPrefix is a boolean predicate, src LIKE prefix%. It embeds momo.Ops[bool].
 type extPrefix struct {
@@ -216,9 +217,9 @@ func extPrefixOf(src momo.Expr, prefix string) extPrefix {
 }
 
 func (p extPrefix) AppendSQL(b *momo.Builder) {
-	fl := b.RenderSensitive(p.src, momo.FlagsOf(p.src))
+	fl := exprkit.RenderSensitive(b, p.src, exprkit.FlagsOf(p.src))
 	b.WriteString(" LIKE ")
-	b.ArgFor(fl, p.prefix+"%")
+	exprkit.ArgFor(b, fl, p.prefix+"%")
 }
 
 // extNeedsPG renders only on PostgreSQL.
@@ -232,7 +233,7 @@ func extNeedsPGExpr() extNeedsPG {
 
 func (extNeedsPG) AppendSQL(b *momo.Builder) {
 	if b.Dialect().Name != dialect.Postgres {
-		b.Unsupported("needs_pg()")
+		exprkit.Unsupported(b, "needs_pg()")
 		return
 	}
 	b.WriteString("needs_pg()")
@@ -275,11 +276,11 @@ func TestExtensionOpsCustomExpressions(t *testing.T) {
 	}
 }
 
-// Catches: Typed or PredicateFunc not producing a usable Expression, or the
+// Catches: Typed or exprkit.Predicate not producing a usable Expression, or the
 // func predicate not reaching the builder.
 func TestExtensionTypedAndPredicateFunc(t *testing.T) {
 	typed := momo.Typed[string](extUpperOf(suite.DocTitle))
-	fn := momo.PredicateFunc(func(b *momo.Builder) {
+	fn := exprkit.Predicate(func(b *momo.Builder) {
 		b.WriteString("1 = ")
 		b.Arg(1)
 	})
@@ -306,7 +307,7 @@ func TestExtensionMasksSensitiveArgs(t *testing.T) {
 	for name, mk := range cases {
 		for _, sensitive := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s/sensitive=%v", name, sensitive), func(t *testing.T) {
-				var flags uint16
+				var flags momo.ColumnFlags
 				if sensitive {
 					flags = momo.FlagSensitive
 				}
@@ -344,9 +345,9 @@ type extForPred struct {
 }
 
 func (p extForPred) AppendSQL(b *momo.Builder) {
-	fl := b.RenderSensitive(p.c, momo.FlagsOf(p.c))
+	fl := exprkit.RenderSensitive(b, p.c, exprkit.FlagsOf(p.c))
 	b.WriteString(" = ")
-	b.ExprFor(fl, momo.Value("pw"))
+	exprkit.ExprFor(b, fl, momo.Value("pw"))
 }
 
 // Catches: Unsupported not recording ErrUnsupported on the builder.
@@ -366,7 +367,15 @@ func TestExtensionUnsupported(t *testing.T) {
 func TestExtensionVectorSource(t *testing.T) {
 	col := momo.NewVectorColumn[vector.Vector]("items", "emb", 3, 0)
 	var src momo.VectorSource[vector.Vector] = col
-	got := momo.VectorColumnOf(src)
+	got, ok := any(src).(interface {
+		Table() string
+		ColumnName() string
+		Dim() int
+		Flags() momo.ColumnFlags
+	})
+	if !ok {
+		t.Fatalf("%T does not expose the column accessors", src)
+	}
 	if got.ColumnName() != "emb" || got.Table() != "items" || got.Dim() != 3 {
 		t.Errorf("accessor returned %s.%s dim %d", got.Table(), got.ColumnName(), got.Dim())
 	}
@@ -393,7 +402,7 @@ func (s shout) AppendSQL(b *momo.Builder) {
 
 // Flags forwards the wrapped column's flags, so a sensitive column stays
 // masked in hook events.
-func (s shout) Flags() uint16 { return momo.FlagsOf(s.src) }
+func (s shout) Flags() momo.ColumnFlags { return exprkit.FlagsOf(s.src) }
 
 // startsWith is a predicate: src LIKE prefix%. RenderSensitive and ArgFor keep
 // the bound prefix masked when src is a sensitive column.
@@ -410,9 +419,9 @@ func newStartsWith(src momo.Expr, prefix string) startsWith {
 }
 
 func (p startsWith) AppendSQL(b *momo.Builder) {
-	fl := b.RenderSensitive(p.src, momo.FlagsOf(p.src))
+	fl := exprkit.RenderSensitive(b, p.src, exprkit.FlagsOf(p.src))
 	b.WriteString(" LIKE ")
-	b.ArgFor(fl, p.prefix+"%")
+	exprkit.ArgFor(b, fl, p.prefix+"%")
 }
 
 // A custom expression embeds momo.Ops[T], writes identifiers through the
@@ -439,11 +448,11 @@ func ExampleOps() {
 	// [ab%]
 }
 
-// PredicateFunc turns a render function into a Predicate without defining a
+// Predicate turns a render function into a Predicate without defining a
 // type.
-func ExamplePredicateFunc() {
+func ExampleTyped() {
 	db := momo.New(pgxdriver.New(nil))
-	active := momo.PredicateFunc(func(b *momo.Builder) {
+	active := exprkit.Predicate(func(b *momo.Builder) {
 		b.Ident("active")
 		b.WriteString(" IS TRUE")
 	})
@@ -493,9 +502,11 @@ func extMarkerOf(table, name string, sensitive bool) extMarker {
 
 func (m extMarker) AppendSQL(b *momo.Builder) {
 	if m.sensitive {
-		b.MarkSensitive()
+		exprkit.MarkSensitive(b)
 	}
-	b.QualifiedIdent(m.table, m.name)
+	b.Ident(m.table)
+	b.WriteString(".")
+	b.Ident(m.name)
 }
 
 // extCompare is the comparison surface Ops gives a string expression.
@@ -515,7 +526,7 @@ type extCompare interface {
 func TestExtensionMasksValuesComparedWithForeignExpressions(t *testing.T) {
 	hosts := map[string]func(sensitive bool) extCompare{
 		"wrapper without Flagged": func(sensitive bool) extCompare {
-			var flags uint16
+			var flags momo.ColumnFlags
 			if sensitive {
 				flags = momo.FlagSensitive
 			}
@@ -571,12 +582,12 @@ func TestExtensionMasksValuesComparedWithForeignExpressions(t *testing.T) {
 // digit or carries a character that is not part of an identifier.
 func TestValidName(t *testing.T) {
 	for _, ok := range []string{"a", "_x", "lower", "col$1", "Straße", strings.Repeat("a", 63)} {
-		if err := momo.ValidName(ok); err != nil {
+		if err := exprkit.ValidName(ok); err != nil {
 			t.Errorf("ValidName(%q) = %v, want nil", ok, err)
 		}
 	}
 	for _, bad := range []string{"", "1a", "a b", "a-b", `a"b`, "a;b", "$a", strings.Repeat("a", 64)} {
-		if err := momo.ValidName(bad); err == nil {
+		if err := exprkit.ValidName(bad); err == nil {
 			t.Errorf("ValidName(%q) = nil, want an error", bad)
 		}
 	}
@@ -600,7 +611,7 @@ func TestIsBound(t *testing.T) {
 		"raw fragment":  {momo.SQL("x = ?", 1), false},
 		"typed raw sql": {momo.TypedSQL[int64]("1"), false},
 	} {
-		if got := momo.IsBound(c.e); got != c.want {
+		if got := exprkit.IsBound(c.e); got != c.want {
 			t.Errorf("%s: IsBound = %v, want %v", name, got, c.want)
 		}
 	}

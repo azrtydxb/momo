@@ -7,6 +7,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -80,7 +81,7 @@ func (r RoundedExpr[T]) AppendSQL(b *momo.Builder) {
 	case dialect.SQLite:
 		r.appendSQLite(b)
 	default:
-		b.Unsupported(fn)
+		exprkit.Unsupported(b, fn)
 	}
 }
 

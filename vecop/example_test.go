@@ -8,6 +8,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
@@ -19,7 +20,7 @@ func ExampleCosine() {
 	query := vector.Vector{1, 0, 0}
 
 	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
-		b := momo.NewBuilder(dialect.For(d))
+		b := exprkit.NewBuilder(dialect.For(d))
 		vecop.Cosine(emb, query).AppendSQL(b)
 		fmt.Println(b.String())
 	}
@@ -32,7 +33,7 @@ func ExampleCosine() {
 func ExampleExpr_Desc() {
 	emb := momo.NewVectorColumn[vector.Vector]("docs", "emb", 3, 0)
 
-	b := momo.NewBuilder(dialect.For(dialect.Postgres))
+	b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	vecop.L2(emb, vector.Vector{1, 2, 3}).Desc().AppendOrder(b)
 	fmt.Println(b.String())
 	// Output:
@@ -43,7 +44,7 @@ func ExampleExpr_Desc() {
 func ExampleInnerProduct() {
 	emb := momo.NewVectorColumn[vector.Vector]("docs", "emb", 3, 0)
 
-	b := momo.NewBuilder(dialect.For(dialect.SQLite))
+	b := exprkit.NewBuilder(dialect.For(dialect.SQLite))
 	vecop.InnerProduct(emb, vector.Vector{1, 2, 3}).AppendSQL(b)
 	fmt.Println(errors.Is(b.Err(), momo.ErrUnsupported))
 	// Output:

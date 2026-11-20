@@ -9,6 +9,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/internal/fakedriver"
 )
 
@@ -72,21 +73,21 @@ func FuzzBuilder(f *testing.F) {
 func TestBuilderAppendFilter(t *testing.T) {
 	n := momo.NewColumn[int64]("docs", "n", 0)
 
-	pg := momo.NewBuilder(dialect.For(dialect.Postgres))
+	pg := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	pg.WriteString("count(*)")
-	pg.AppendFilter(n.Gt(1))
+	exprkit.AppendFilter(pg, n.Gt(1))
 	if pg.Err() != nil || pg.String() != `count(*) FILTER (WHERE "docs"."n" > $1)` || len(pg.Args()) != 1 || pg.Args()[0] != int64(1) {
 		t.Errorf("postgres: got %q %v, %v", pg.String(), pg.Args(), pg.Err())
 	}
 
-	nilPred := momo.NewBuilder(dialect.For(dialect.Postgres))
-	nilPred.AppendFilter(nil)
+	nilPred := exprkit.NewBuilder(dialect.For(dialect.Postgres))
+	exprkit.AppendFilter(nilPred, nil)
 	if !errors.Is(nilPred.Err(), momo.ErrValidation) {
 		t.Errorf("nil predicate: err = %v; want ErrValidation", nilPred.Err())
 	}
 
-	my := momo.NewBuilder(dialect.For(dialect.MySQL))
-	my.AppendFilter(n.Gt(1))
+	my := exprkit.NewBuilder(dialect.For(dialect.MySQL))
+	exprkit.AppendFilter(my, n.Gt(1))
 	if !errors.Is(my.Err(), momo.ErrUnsupported) {
 		t.Errorf("mysql: err = %v; want ErrUnsupported", my.Err())
 	}

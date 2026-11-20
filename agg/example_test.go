@@ -9,6 +9,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/agg"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 )
 
 // String keeps its ORDER BY inside the call, and the Call compares like any
@@ -21,7 +22,7 @@ func Example() {
 		agg.String(title, ", ").OrderBy(title.Asc()).Ne("none"),
 	)
 
-	b := momo.NewBuilder(dialect.For(dialect.Postgres))
+	b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	having.AppendSQL(b)
 	fmt.Println(b.String(), b.Args())
 	// Output:
@@ -35,11 +36,11 @@ func ExamplePercentileCont() {
 	score := momo.NewColumn[float64]("runs", "score", 0)
 	median := agg.PercentileCont(0.5).WithinGroup(score.Asc())
 
-	pg := momo.NewBuilder(dialect.For(dialect.Postgres))
+	pg := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	median.AppendSQL(pg)
 	fmt.Println(pg.String())
 
-	lite := momo.NewBuilder(dialect.For(dialect.SQLite))
+	lite := exprkit.NewBuilder(dialect.For(dialect.SQLite))
 	median.AppendSQL(lite)
 	fmt.Println(errors.Is(lite.Err(), momo.ErrUnsupported))
 	// Output:
@@ -57,11 +58,11 @@ func ExampleJSONB() {
 	obj := agg.BuildObject[item](agg.Field("label", title))
 	list := agg.JSONB[item](obj)
 
-	b := momo.NewBuilder(dialect.For(dialect.Postgres))
+	b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	list.AppendSQL(b)
 	fmt.Println(b.String())
 
-	e := momo.NewBuilder(dialect.For(dialect.Postgres))
+	e := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	agg.EmptyJSONArray[item]().AppendSQL(e)
 	fmt.Println(e.String())
 	// Output:

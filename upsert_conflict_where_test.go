@@ -13,6 +13,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/internal/fakedriver"
 	"github.com/azrtydxb/momo/vector"
 )
@@ -205,7 +206,7 @@ func TestConflictWhereMySQLUnsupported(t *testing.T) {
 // both the plain and the vector column.
 func TestExcludedRendersEXCLUDEDColumn(t *testing.T) {
 	render := func(e momo.Expr) string {
-		b := momo.NewBuilder(dialect.For(dialect.Postgres))
+		b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 		e.AppendSQL(b)
 		return b.String()
 	}

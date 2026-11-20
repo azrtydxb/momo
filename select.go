@@ -191,7 +191,7 @@ type keysetKey struct {
 	expr     Expr
 	desc     bool
 	nullable bool
-	flags    uint16 // column flags; a sensitive key masks its keyset value
+	flags    ColumnFlags // column flags; a sensitive key masks its keyset value
 }
 
 func (sq selectRef) keysetKeys() []keysetKey {
@@ -199,7 +199,7 @@ func (sq selectRef) keysetKeys() []keysetKey {
 	keys := make([]keysetKey, 0, len(s.order)+len(sq.meta.PK))
 	for _, o := range s.order {
 		k := keysetKey{expr: o.Expr, desc: o.Desc, flags: flagsOf(o.Expr)}
-		if f, ok := o.Expr.(interface{ Flags() uint16 }); ok {
+		if f, ok := o.Expr.(Flagged); ok {
 			k.nullable = f.Flags()&FlagNullable != 0
 		}
 		keys = append(keys, k)

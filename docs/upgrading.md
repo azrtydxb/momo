@@ -225,6 +225,57 @@ refuse any other option with `ErrValidation`. Two differences to know:
 - `advisory.Acquire` returns `(bool, error)` for the blocking form too, so
   assign or discard the boolean.
 
+### The expression extension API is small, and column flags have a type
+
+Code outside this module may define its own typed expressions, and the surface
+for that is now frozen and small: `momo.Expr`, `momo.Expression`, `momo.Ops`,
+`momo.NewOps`, `momo.Typed` and `momo.Flagged`, and on `*momo.Builder` the
+methods `Ident`, `Arg`, `Dialect`, `SetErr` and `WriteString`. The other names
+that the docs called extension points moved behind an internal bridge that only
+the packages of this module (`agg`, `arrayop`, `fts`, `jsonop`, `rangeop`,
+`sqlfn`, `timeop` and `vecop`) can import. They stay as deprecated forwarders
+with their old signatures for this release, so existing code keeps compiling;
+move off them before the next release, which removes them.
+
+| Old name                                  | What to do                                                                                                                                            |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `momo.NewBuilder`                         | render through a query: `momo.NewOffline(dialect.Postgres)` and the `SQL` method of a query builder                                                   |
+| `(*momo.Builder).WriteByte`               | `WriteString` with the one-character string                                                                                                           |
+| `(*momo.Builder).ArgFor`                  | `Arg`, and compare through the `momo.Ops` methods, which mask a value compared with a sensitive column                                                |
+| `(*momo.Builder).RenderSensitive`         | no replacement; `momo.Ops` comparisons do this for the host                                                                                           |
+| `(*momo.Builder).ExprFor`                 | no replacement; `momo.Ops` comparisons do this for the host                                                                                           |
+| `(*momo.Builder).MarkSensitive`           | no replacement; a column reference records itself when it renders                                                                                     |
+| `(*momo.Builder).AppendFilter`            | no replacement outside the module; `agg.Call.Filter` and `momo.FilteredAgg` write the clause                                                          |
+| `(*momo.Builder).Unsupported`             | `SetErr` with a `*momo.Error` whose `Kind` is `momo.ErrUnsupported`                                                                                   |
+| `momo.FlagsOf`                            | assert `momo.Flagged` on the expression                                                                                                               |
+| `momo.IsBound`                            | no replacement                                                                                                                                        |
+| `momo.PredicateFunc`                      | a type that embeds `momo.Ops[bool]`, or `momo.Typed[bool]` around an `momo.Expr`                                                                      |
+| `momo.ValidName` and `momo.ValidTypeName` | no replacement; validate the name in your own code                                                                                                    |
+| `momo.WindowOf`                           | no replacement; `agg.Call.Over` builds the window function of an aggregate, and its result is now `agg.WindowExpr[T]` instead of `momo.WindowExpr[T]` |
+| `momo.VectorColumnOf`                     | call `Table`, `ColumnName`, `Dim` and `Flags` on the vector column itself                                                                             |
+| `momo.MetaTableSchema`                    | read `TableSchema` from the model's `MomoMeta()`                                                                                                      |
+
+Two changes cannot keep their old shape. `agg.Call.Over` returns an
+`agg.WindowExpr[T]`, a type of its own with `As` and the `momo.Ops` methods, so
+a variable declared as `momo.WindowExpr[T]` that you assign it to must change to
+the `agg` type or to `momo.Expression[T]`. And the column flags are a named
+type: `momo.ColumnFlags` replaces `uint16` in `momo.ColumnMeta.Flags`, in the
+`momo.NewColumn` family of constructors, in `momo.Flagged` and in the
+`momo.Flag*` constants. Generated code and any call that passes the constants or
+an untyped number compiles unchanged, so run `momo generate` only if you want
+to; a variable or parameter of type `uint16` that holds flags must become
+`momo.ColumnFlags`. A type that implements `Flags() uint16` no longer satisfies
+`momo.Flagged`: change its result type, or `momo.Ops` stops masking values
+compared with the column it wraps.
+
+The `momo.NewColumn` family (`NewNullColumn`, `NewReadOnlyColumn`,
+`NewNullReadOnlyColumn`, `NewCreateOnlyColumn`, `NewImmutableColumn` and the six
+`NewVectorColumn` variants) is generated-code support: it is called by what
+`momo generate` writes and kept stable for that code, and hand-written code
+should use the generated column variables. [The compatibility
+policy](compatibility.md#the-expression-extension-api) lists the frozen surface
+and the reason for each name in it.
+
 ## Upgrading to 0.19.0
 
 `momo migrate drift`, the refusal of `momo migrate baseline` and

@@ -250,7 +250,7 @@ func (h HybridQuery[T]) SQL() (Compiled, error) {
 			vec: ident(s.Vector.ColumnName()), cols: cols, soft: softText, ft: ft,
 		}, s)
 	}
-	sensitive := FlagsOf(s.Text)&FlagSensitive != 0 || FlagsOf(s.Vector)&FlagSensitive != 0
+	sensitive := flagsOf(s.Text)&FlagSensitive != 0 || flagsOf(s.Vector)&FlagSensitive != 0
 	return compile(d, func(b *Builder) {
 		prev := b.argSens
 		b.argSens = prev || sensitive

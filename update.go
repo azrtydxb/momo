@@ -189,7 +189,7 @@ func (u UpdateQuery[T]) fail(kind error, err error) error {
 }
 
 // updModelWritable reports whether Model writes the column from the struct.
-func updModelWritable(f uint16) bool {
+func updModelWritable(f ColumnFlags) bool {
 	return columnAssignable(writeUpdate, f) && f&(FlagPK|FlagVersion|FlagSoftDelete|FlagCreatedAt|FlagUpdatedAt) == 0
 }
 
@@ -197,7 +197,7 @@ func updModelWritable(f uint16) bool {
 type updPKEq struct {
 	table, col string
 	val        any
-	flags      uint16
+	flags      ColumnFlags
 }
 
 func (p updPKEq) AppendSQL(b *Builder) {

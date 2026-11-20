@@ -9,6 +9,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -122,7 +123,7 @@ func (e ExtremeExpr[T]) AppendSQL(b *momo.Builder) {
 		}
 		b.WriteString(")")
 	default:
-		b.Unsupported(fn)
+		exprkit.Unsupported(b, fn)
 	}
 }
 

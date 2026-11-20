@@ -13,14 +13,17 @@ import (
 )
 
 // Expr is any SQL expression fragment. Implementations must write
-// identifiers through Builder.Ident and values through Builder.Arg.
+// identifiers through Builder.Ident and values through Builder.Arg. Part of
+// the frozen extension API; see Ops.
 type Expr interface {
 	AppendSQL(b *Builder)
 }
 
 // Expression is an Expr whose SQL result type corresponds to the Go type
 // T. The type parameter lets the compiler reject comparisons between
-// incompatible operands, e.g. an int64 column against a string.
+// incompatible operands, e.g. an int64 column against a string. Code outside
+// this package gets one by embedding Ops[T] or wrapping an Expr with Typed.
+// Part of the frozen extension API; see Ops.
 type Expression[T any] interface {
 	Expr
 	resultType() T
@@ -58,7 +61,7 @@ type Column[T any] struct{ colCore[T] }
 type colRef struct {
 	table string // table name or alias used as qualifier
 	name  string
-	flags uint16
+	flags ColumnFlags
 }
 
 func (r colRef) AppendSQL(b *Builder) {
@@ -69,7 +72,7 @@ func (r colRef) AppendSQL(b *Builder) {
 }
 
 // Flags returns the column flags, which decide argument masking.
-func (r colRef) Flags() uint16 { return r.flags }
+func (r colRef) Flags() ColumnFlags { return r.flags }
 
 // ColumnName and Table let the reference satisfy ColumnRef wherever a
 // comparison or ordering operand is inspected.
@@ -82,7 +85,7 @@ func (r colRef) Table() string      { return r.table }
 // column's colRef. It carries no write method.
 type colCore[T any] struct{ exprOps[T] }
 
-func newColCore[T any](table, name string, flags uint16) colCore[T] {
+func newColCore[T any](table, name string, flags ColumnFlags) colCore[T] {
 	return colCore[T]{selfOps[T](colRef{table: table, name: name, flags: flags})}
 }
 
@@ -119,7 +122,7 @@ func (c colCore[T]) ColumnName() string { return c.ref().name }
 func (c colCore[T]) Table() string { return c.ref().table }
 
 // Flags returns the generated column flags.
-func (c colCore[T]) Flags() uint16 { return c.ref().flags }
+func (c colCore[T]) Flags() ColumnFlags { return c.ref().flags }
 
 // Excluded is the value proposed for insertion in an upsert, rendered as
 // EXCLUDED.<col>. Use it on the right-hand side of a comparison in the
@@ -132,8 +135,9 @@ func (c colCore[T]) Excluded() ExcludedExpr[T] {
 	return e
 }
 
-// NewColumn is used by generated code.
-func NewColumn[T any](table, name string, flags uint16) Column[T] {
+// NewColumn is generated-code support: the generated descriptors call it, and
+// hand-written code should use the generated column variables instead.
+func NewColumn[T any](table, name string, flags ColumnFlags) Column[T] {
 	return Column[T]{newColCore[T](table, name, flags)}
 }
 
@@ -182,8 +186,8 @@ func (ExcludedExpr[T]) resultType() T { var z T; return z }
 // NullColumn is the descriptor for a nullable column. It adds SetNull.
 type NullColumn[T any] struct{ Column[T] }
 
-// NewNullColumn is used by generated code.
-func NewNullColumn[T any](table, name string, flags uint16) NullColumn[T] {
+// NewNullColumn is generated-code support; see NewColumn.
+func NewNullColumn[T any](table, name string, flags ColumnFlags) NullColumn[T] {
 	return NullColumn[T]{NewColumn[T](table, name, flags|FlagNullable)}
 }
 
@@ -233,7 +237,7 @@ type Assignment struct {
 	val  any
 	expr Expr
 	// flags are the column flags; FlagSensitive masks bound values in hooks.
-	flags uint16
+	flags ColumnFlags
 }
 
 // ColumnName returns the assigned column.
@@ -270,9 +274,9 @@ func (o Order) NullsLast() Order { o.Nulls = NullsLast; return o }
 // the dialect has no NULLS clause (MySQL and MariaDB) an explicit NullsFirst
 // or NullsLast renders as "(expr IS NULL) DESC|ASC, expr ASC|DESC", which
 // orders exactly as PostgreSQL does. The expression is rendered twice, so any
-// argument it binds appears twice in the statement, in order. Code outside
-// this package that renders an ORDER BY inside its own expression (an ordered
-// aggregate) calls it. AppendOrder is an extension point; see Ops.
+// argument it binds appears twice in the statement, in order. The agg package
+// renders the ORDER BY inside an ordered aggregate with it. It is not part of
+// the frozen extension API; see Ops.
 func (o Order) AppendOrder(b *Builder) { o.appendSQL(b) }
 
 func (o Order) appendSQL(b *Builder) {
@@ -369,30 +373,27 @@ func (p parenExpr) AppendSQL(b *Builder) {
 // compared with or assigned to; a sensitive column masks the value in hooks.
 type argExpr struct {
 	v     any
-	flags uint16
+	flags ColumnFlags
 }
 
 func (a argExpr) AppendSQL(b *Builder) { b.argFor(a.flags, a.v) }
 
 // Flagged is implemented by column descriptors, whose flags decide masking.
-// A custom expression that wraps a column implements it by returning
-// FlagsOf of the wrapped expression, so a sensitive column stays masked
-// through the wrapper. Flagged is an extension point; see Ops.
-type Flagged interface{ Flags() uint16 }
+// A custom expression that wraps a column implements it by returning the
+// wrapped expression's flags (its own Flagged result, or 0), so a sensitive
+// column stays masked through the wrapper: Ops comparisons on the wrapper bind
+// their value with those flags. Part of the frozen extension API; see Ops.
+type Flagged interface{ Flags() ColumnFlags }
 
-// FlagsOf returns the column flags of e, or 0 when e does not implement
-// Flagged. Pass the result to Builder.ArgFor, Builder.RenderSensitive or
-// Builder.ExprFor so values compared with a sensitive column are masked in
-// hook events. FlagsOf is an extension point; see Ops.
-func FlagsOf(e Expr) uint16 {
+// flagsOf returns the column flags of e, or 0 when e does not implement
+// Flagged. Pass the result to argFor, renderSens or exprFor so values
+// compared with a sensitive column are masked in hook events.
+func flagsOf(e Expr) ColumnFlags {
 	if f, ok := e.(Flagged); ok {
 		return f.Flags()
 	}
 	return 0
 }
-
-// flagsOf is the in-package spelling of FlagsOf.
-func flagsOf(e Expr) uint16 { return FlagsOf(e) }
 
 // Value wraps a Go value as a typed bound parameter.
 func Value[T any](v T) Expression[T] { return typed[T]{argExpr{v: v}} }
@@ -400,16 +401,16 @@ func Value[T any](v T) Expression[T] { return typed[T]{argExpr{v: v}} }
 // Typed wraps e as an Expression[T], for an expression whose SQL is built
 // elsewhere and whose result type the caller knows. It does not change the
 // SQL e renders and adds no comparison methods; embed Ops[T] in your own type
-// for those. Typed is an extension point: e must write identifiers through
-// Builder.Ident and values through Builder.Arg.
+// for those. e must write identifiers through Builder.Ident and values through
+// Builder.Arg. Part of the frozen extension API; see Ops.
 func Typed[T any](e Expr) Expression[T] { return typed[T]{e} }
 
-// IsBound reports whether e is a Go value bound as a parameter by Value,
+// isBound reports whether e is a Go value bound as a parameter by Value,
 // possibly wrapped by Typed. A feature package uses it to cast a bound operand
 // whose type the server cannot infer (a timestamp inside EXTRACT on
 // PostgreSQL). It is false for a column, a function call or any other
-// expression. IsBound is an extension point; see Ops.
-func IsBound(e Expr) bool {
+// expression.
+func isBound(e Expr) bool {
 	for {
 		w, ok := e.(interface{ inner() Expr })
 		if !ok {
@@ -421,16 +422,15 @@ func IsBound(e Expr) bool {
 	return bound
 }
 
-// PredicateFunc adapts a render function to a Predicate. The function writes
+// predicateFunc adapts a render function to a Predicate. The function writes
 // the condition into the builder, using Builder.Ident for identifiers and
-// Builder.Arg or Builder.ArgFor for values. PredicateFunc is an extension
-// point; see Ops.
-type PredicateFunc func(b *Builder)
+// Builder.Arg or argFor for values.
+type predicateFunc func(b *Builder)
 
 // AppendSQL calls f.
-func (f PredicateFunc) AppendSQL(b *Builder) { f(b) }
+func (f predicateFunc) AppendSQL(b *Builder) { f(b) }
 
-func (PredicateFunc) resultType() bool { return false }
+func (predicateFunc) resultType() bool { return false }
 
 type typed[T any] struct{ Expr }
 
@@ -506,7 +506,7 @@ func (distinctFrom) resultType() bool { return false }
 type between struct {
 	e      Expr
 	lo, hi any
-	flags  uint16
+	flags  ColumnFlags
 }
 
 func (x between) AppendSQL(b *Builder) {
@@ -522,7 +522,7 @@ type inList[T any] struct {
 	e     Expr
 	vs    []T
 	not   bool
-	flags uint16
+	flags ColumnFlags
 }
 
 func (x inList[T]) AppendSQL(b *Builder) {
@@ -669,7 +669,7 @@ func Like(e Expression[string], pattern string) Predicate {
 type like struct {
 	e     Expr
 	p     string
-	flags uint16
+	flags ColumnFlags
 }
 
 func (x like) AppendSQL(b *Builder) {
@@ -709,7 +709,7 @@ func ILike(e Expression[string], pattern string) Predicate { return ilike{e, pat
 type ilike struct {
 	e     Expr
 	p     string
-	flags uint16
+	flags ColumnFlags
 }
 
 func (x ilike) AppendSQL(b *Builder) {
@@ -945,15 +945,10 @@ func (a Aliased[T]) Ref(source string) Column[T] { return ColumnOf[T](source, a.
 // As[T](col, name) for a column.
 func As[T any](e Expression[T], alias string) Aliased[T] { return Aliased[T]{e, alias} }
 
-// validName is the in-package spelling of ValidName.
-func validName(s string) error { return ValidName(s) }
-
-// ValidName checks an identifier-like name: non-empty, at most 63 bytes, a
+// validName checks an identifier-like name: non-empty, at most 63 bytes, a
 // letter or underscore first, then letters, digits, underscores or dollar
-// signs. It returns a descriptive error otherwise. Code outside the package
-// uses it to check a function name or alias before writing it with
-// Builder.Ident. ValidName is an extension point; see Ops.
-func ValidName(s string) error {
+// signs. It returns a descriptive error otherwise.
+func validName(s string) error {
 	if s == "" {
 		return errors.New("name is empty")
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -17,7 +18,7 @@ type parseID int64
 
 func renderParsed(t *testing.T, p momo.Predicate) (string, []any) {
 	t.Helper()
-	b := momo.NewBuilder(dialect.For(dialect.Postgres))
+	b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	p.AppendSQL(b)
 	if err := b.Err(); err != nil {
 		t.Fatal(err)
