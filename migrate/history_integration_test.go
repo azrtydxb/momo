@@ -340,6 +340,27 @@ func TestHistoryWorksForAMixedCaseTableName(t *testing.T) {
 	}
 }
 
+// Catches: a no-op check that compares the rows as jsonb, which treats numeric
+// 1.0 and 1.00 as equal and loses a change that is visible in the stored value,
+// and one that compares the rows as records, which fails on a json column.
+func TestUpdateThatOnlyChangesNumericScaleIsRecorded(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	evolve(ctx, t, db, nil, notesHistorySchema(t,
+		schema.Column{Name: "id", Type: "bigint"},
+		schema.Column{Name: "amount", Type: "numeric", Nullable: true},
+		schema.Column{Name: "doc", Type: "json", Nullable: true},
+	), "init", 1, migrate.DiffOptions{})
+	execAllNotes(ctx, t, db,
+		`INSERT INTO notes (id, amount, doc) VALUES (1, 1.0, '{"a": 1}')`,
+		`UPDATE notes SET amount = 1.00 WHERE id = 1`,
+		`UPDATE notes SET amount = 1.00 WHERE id = 1`)
+	n, err := momo.Scalars[int64](ctx, db, "SELECT count(*) FROM notes_history WHERE id = 1")
+	if err != nil || len(n) != 1 || n[0] != 2 {
+		t.Fatalf("history rows = %v (%v), want 2: the insert and the scale change, not the repeated no-op", n, err)
+	}
+}
+
 func execAllNotes(ctx context.Context, t *testing.T, db *momo.DB, stmts ...string) {
 	t.Helper()
 	for _, s := range stmts {

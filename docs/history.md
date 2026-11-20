@@ -69,8 +69,9 @@ every row, and the state at a time is the latest version at or before it. Two
 cases are handled on purpose:
 
 - An `UPDATE` that changes nothing records nothing. The trigger compares the old
-  and the new row as `jsonb`, so a column type without an equality operator
-  (`json`, `xml`, `point`) does not break it.
+  and the new row as text, so a column type without an equality operator
+  (`json`, `xml`, `point`) does not break it and a change that only shows in the
+  text, such as the scale of a `numeric` (`1.0` to `1.00`), is still recorded.
 - An `UPDATE` that changes the primary key records the old row as a `DELETE`
   before the new row, so the timeline of the old key ends and the timeline of the
   new key starts with the new row. `HistoryAsOf` of the old key then reports that
@@ -81,13 +82,17 @@ so the history records it as an `UPDATE` and `HistoryAsOf` returns the row as
 existing, with the marker set. Only a hard delete or a purge, a `DELETE`
 statement, records a `DELETE`.
 
-The history table repeats each model column by name, type, nullability, default,
-enum and collation. It leaves out the identity and generated parts (the trigger
-writes the value, the database does not generate it), the comment, and every
-constraint and index of the model: a unique constraint copied to the history
-would reject the second version of a row. Because a history table keeps the
-default and NOT NULL of its model column, a NOT NULL column added with a default
-works on both tables.
+The history table repeats each model column by name, type, enum and collation.
+Every copied column is nullable and has no default, whatever the model says. It
+leaves out the identity and generated parts (the trigger writes the value, the
+database does not generate it), the comment, and every constraint and index of
+the model: a unique constraint copied to the history would reject the second
+version of a row. The nullability is relaxed on purpose: an old version holds
+`NULL` for a column that was nullable then or did not exist yet, so a `NOT NULL`
+or a default copied from the model would fail the migration that makes a column
+`NOT NULL`, or would write a value into old rows that was never recorded. The
+trigger writes every column itself, so the model's rules still hold for the live
+rows. A migration never adds `NOT NULL` or a default to a history column.
 
 ## Who changed it
 
@@ -156,7 +161,9 @@ runs, so a model change reaches the history table in the same migration:
   (`ALTER TABLE notes_history DROP COLUMN title`). Until then, a
   `generate --from-db` run models such a history as an ordinary table, function
   and trigger, because the table no longer equals what `Config.History` builds.
-- A column whose type or nullability changes is altered on both tables.
+- A column whose type changes is altered on both tables. A change of
+  nullability or default reaches the model's table only, because the history
+  column is always nullable and has no default.
 - Turning `Config.History` off drops the trigger, the function and the history
   table. Dropping a table is destructive, so `migrate diff` refuses it without
   `--allow-destructive`.
@@ -195,7 +202,9 @@ The report notes each history it recognised.
   MariaDB dialect with a diagnostic that names the model. SQLite and MySQL have no
   transaction-local setting for the actor, so a trigger there could not record
   `changed_by`.
-- `TRUNCATE` is not recorded, because a row trigger does not fire for it.
+- `TRUNCATE` is not recorded, because a row trigger does not fire for it. After a
+  `TRUNCATE` of the model's table, `HistoryAsOf` still returns the truncated
+  rows as existing, and the history keeps every version of them.
 - Every write to the model's table writes a history row too. Nothing prunes the
   history; delete old rows with your own job.
 - A table name over 47 bytes is refused, because the longest derived name,

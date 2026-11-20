@@ -58,9 +58,13 @@ type History struct {
 
 // HistoryFor builds the audit history objects of t, for PostgreSQL.
 //
-// The history table repeats every column of t by name and type, nullability,
-// default, enum and collation, with the identity, generated and comment parts
-// left out, and adds history_id (identity primary key), history_operation,
+// The history table repeats every column of t by name, type, enum and
+// collation, with the identity, generated and comment parts left out. Every
+// copied column is nullable and has no default: an old version holds NULL for a
+// column that was nullable then or did not exist yet, so a NOT NULL or a default
+// copied from the model would fail a later migration on the old rows, or write a
+// value into them that was never recorded. The trigger writes every column
+// itself. It adds history_id (identity primary key), history_operation,
 // history_changed_at and history_changed_by. The trigger function records the
 // new row on INSERT and UPDATE and the removed row on DELETE, so the table is
 // the complete log of every state of every row. An index over the primary key
@@ -95,7 +99,7 @@ func HistoryFor(t *Table) (History, error) {
 	h := Table{Name: HistoryTableName(t.Name)}
 	var names []string
 	for _, c := range t.Columns {
-		h.Columns = append(h.Columns, Column{Name: c.Name, Type: c.Type, Nullable: c.Nullable, Default: c.Default, Enum: c.Enum, Collate: c.Collate})
+		h.Columns = append(h.Columns, Column{Name: c.Name, Type: c.Type, Nullable: true, Enum: c.Enum, Collate: c.Collate})
 		names = append(names, historyIdent(c.Name))
 	}
 	h.Columns = append(h.Columns,
@@ -127,8 +131,9 @@ func HistoryFor(t *Table) (History, error) {
 		newKey = append(newKey, "NEW."+historyIdent(c))
 	}
 	// An UPDATE that changes nothing records nothing. The rows are compared as
-	// jsonb, because a record comparison fails on a column type without an
-	// equality operator (json, xml, point). An UPDATE that changes the primary
+	// text, because a record comparison fails on a column type without an
+	// equality operator (json, xml, point), and a jsonb comparison would treat
+	// numeric 1.0 and 1.00 as equal and lose that change. An UPDATE that changes the primary
 	// key also records the old row as a DELETE, so the timeline of the old key
 	// ends and the new key starts with the new row.
 	body := "BEGIN\n" +
@@ -137,7 +142,7 @@ func HistoryFor(t *Table) (History, error) {
 		"    RETURN OLD;\n" +
 		"  END IF;\n" +
 		"  IF TG_OP = 'UPDATE' THEN\n" +
-		"    IF to_jsonb(OLD) = to_jsonb(NEW) THEN\n" +
+		"    IF OLD::text IS NOT DISTINCT FROM NEW::text THEN\n" +
 		"      RETURN NEW;\n" +
 		"    END IF;\n" +
 		"    IF ROW(" + strings.Join(oldKey, ", ") + ") IS DISTINCT FROM ROW(" + strings.Join(newKey, ", ") + ") THEN\n" +
@@ -154,9 +159,26 @@ func HistoryFor(t *Table) (History, error) {
 		Timing:     "AFTER",
 		Events:     []string{"DELETE", "INSERT", "UPDATE"},
 		ForEachRow: true,
-		Function:   fn.Name + "()",
+		Function:   historyFuncRef(fn.Name) + "()",
 	}
 	return History{Table: h, Function: fn, Trigger: trg}, nil
+}
+
+// historyFuncRef writes a function name the way PostgreSQL prints it in a
+// regprocedure, which is the form inspection reads back: bare when it is
+// all-lowercase letters, digits and underscores, quoted otherwise. A trigger
+// that named a quoted function (a capital letter, a hyphen, a space) bare would
+// fold it to lowercase and find no function.
+func historyFuncRef(name string) string {
+	safe := name != "" && (name[0] == '_' || (name[0] >= 'a' && name[0] <= 'z'))
+	for i := 0; safe && i < len(name); i++ {
+		c := name[i]
+		safe = c == '_' || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+	}
+	if safe {
+		return name
+	}
+	return historyIdent(name)
 }
 
 // historyIdent quotes an identifier for the function body.

@@ -134,16 +134,11 @@ func TestDiffKeepsADroppedColumnOnTheHistoryTableAsNullable(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := described(changes)
-	want := []string{"alter_column notes_history title", "drop_column notes title", "replace_function  notes_history_fn"}
+	// The history column is nullable already (history columns never copy NOT
+	// NULL), so keeping it needs no change of its own.
+	want := []string{"drop_column notes title", "replace_function  notes_history_fn"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("changes\n got %q\nwant %q", got, want)
-	}
-	for _, c := range changes {
-		if c.Kind == AlterColumn {
-			if col, ok := c.After.(*schema.Column); !ok || !col.Nullable {
-				t.Errorf("the retained column = %+v, want nullable", c.After)
-			}
-		}
 	}
 
 	// The schema Diff plans against records the retained column, so the next

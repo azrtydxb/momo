@@ -28,7 +28,7 @@ func auditedTable() Table {
 // Catches: a history table that copies what must not be copied (identity,
 // generated expressions, constraints, indexes: a copied unique constraint
 // would reject the second version of a row) or that loses what a column
-// needs (type, nullability, default).
+// needs (name, type, collation).
 func TestHistoryForCopiesColumnsNotConstraints(t *testing.T) {
 	tbl := auditedTable()
 	h, err := HistoryFor(&tbl)
@@ -53,8 +53,16 @@ func TestHistoryForCopiesColumnsNotConstraints(t *testing.T) {
 	if c := byName["id"]; c.Identity != "" || c.Comment != "" || c.Type != "bigint" {
 		t.Errorf("id = %+v, want a plain bigint: the history repeats the key value, it does not generate it", c)
 	}
-	if c := byName["status"]; c.Default != "'new'" || c.Collate != "C" || c.Nullable {
-		t.Errorf("status = %+v, want its default, collation and NOT NULL kept", c)
+	// Catches: a history column that copies NOT NULL or a default. Old versions
+	// hold NULL, so a later NOT NULL would fail on them, and a default would
+	// backfill a value that was never recorded.
+	for _, c := range h.Table.Columns[:5] {
+		if !c.Nullable || c.Default != "" {
+			t.Errorf("%s = %+v, want a nullable column with no default", c.Name, c)
+		}
+	}
+	if c := byName["status"]; c.Collate != "C" || c.Type != "text" {
+		t.Errorf("status = %+v, want its type and collation kept", c)
 	}
 	if c := byName["total"]; !c.Nullable || c.Type != "numeric(10,2)" {
 		t.Errorf("total = %+v, want nullable numeric(10,2)", c)
@@ -115,7 +123,8 @@ func TestHistoryForTriggerAndFunction(t *testing.T) {
 		`RETURN NEW;`,
 		// A no-op UPDATE records nothing; a primary key change closes the old
 		// key with a DELETE row.
-		`IF to_jsonb(OLD) = to_jsonb(NEW) THEN`,
+		// Text keeps the scale of a numeric (1.0 against 1.00), which jsonb hides.
+		`IF OLD::text IS NOT DISTINCT FROM NEW::text THEN`,
 		`IF ROW(OLD."id") IS DISTINCT FROM ROW(NEW."id") THEN`,
 		`OLD."we""ird", 'DELETE', clock_timestamp()`,
 	} {
@@ -142,6 +151,33 @@ func TestHistoryForFollowsTheColumns(t *testing.T) {
 	}
 	if ha.Function.Body == hb.Function.Body || len(hb.Table.Columns) != len(ha.Table.Columns)+1 {
 		t.Errorf("a new model column left the history objects as they were")
+	}
+}
+
+// Catches: a trigger that names its function bare when the function is created
+// quoted: PostgreSQL folds a bare name to lowercase, so a table with a capital
+// letter, a hyphen or a space would have a trigger that finds no function. The
+// plain lowercase name stays bare, which is how inspection reads it back.
+func TestHistoryForQuotesTheTriggerFunction(t *testing.T) {
+	for table, want := range map[string]string{
+		"orders":   "orders_history_fn()",
+		"Orders":   `"Orders_history_fn"()`,
+		"my-table": `"my-table_history_fn"()`,
+		"my table": `"my table_history_fn"()`,
+		"t1":       "t1_history_fn()",
+	} {
+		tbl := auditedTable()
+		tbl.Name = table
+		h, err := HistoryFor(&tbl)
+		if err != nil {
+			t.Fatalf("%s: %v", table, err)
+		}
+		if h.Trigger.Function != want {
+			t.Errorf("%s: trigger function = %s, want %s", table, h.Trigger.Function, want)
+		}
+		if h.Function.Name != strings.Trim(strings.TrimSuffix(want, "()"), `"`) {
+			t.Errorf("%s: function name = %s", table, h.Function.Name)
+		}
 	}
 }
 
