@@ -129,6 +129,10 @@ type Change struct {
 type DomainColumn struct {
 	Schema, Table, Column string
 	Reattach              bool
+	// Array is set when the column is an array of the domain (email[]): the
+	// column keeps its dimension, so both ALTER COLUMN statements spell the type
+	// with [] after it.
+	Array bool
 }
 
 // Migration is one migration version.

@@ -35,7 +35,9 @@ import (
 //
 // The fields of T map to the attributes by position, not by name. A field is
 // one of: bool, a sized or unsized integer, float32, float64, string, []byte
-// (bytea), time.Time (the instant, as a timestamp with a time zone), another
+// (bytea), time.Time (the instant, as a timestamp with a time zone; it also reads
+// a timestamp without a zone and a date attribute, as a UTC time, and the special
+// values infinity and -infinity and dates BC are not supported), another
 // codec of this package or any driver.Valuer and sql.Scanner pair such as
 // sql.NullString, or a pointer to one of these, where nil is NULL. A NULL
 // attribute cannot be read into a field that is not a pointer (the field
@@ -422,7 +424,7 @@ func decodeField(v reflect.Value, s *string) error {
 // without one as the same wall clock in UTC.
 func parseRecordTime(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
-	for _, layout := range []string{zoneHour, zoneMinute, zoneSecond, time.RFC3339Nano, timestampLayout} {
+	for _, layout := range []string{zoneHour, zoneMinute, zoneSecond, time.RFC3339Nano, timestampLayout, "2006-01-02"} {
 		if t, err := time.Parse(layout, s); err == nil {
 			return t.UTC(), nil
 		}

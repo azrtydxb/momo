@@ -121,8 +121,15 @@ func renderRecreateDomain(c migrate.Change) ([]migrate.Statement, error) {
 		return nil, err
 	}
 	var out []migrate.Statement
+	dims := func(col migrate.DomainColumn) string {
+		if col.Array {
+			return "[]"
+		}
+		return ""
+	}
 	for _, col := range c.DomainColumns {
-		out = append(out, migrate.Statement{SQL: "ALTER TABLE " + tableRef(col.Schema, col.Table) + " ALTER COLUMN " + ident(col.Column) + " TYPE " + before.Type + " USING " + ident(col.Column) + "::" + before.Type})
+		old := before.Type + dims(col)
+		out = append(out, migrate.Statement{SQL: "ALTER TABLE " + tableRef(col.Schema, col.Table) + " ALTER COLUMN " + ident(col.Column) + " TYPE " + old + " USING " + ident(col.Column) + "::" + old})
 	}
 	out = append(out,
 		migrate.Statement{SQL: "DROP DOMAIN " + tableRef(before.Schema, before.Name)},
@@ -131,7 +138,8 @@ func renderRecreateDomain(c migrate.Change) ([]migrate.Statement, error) {
 	ref := tableRef(after.Schema, after.Name)
 	for _, col := range c.DomainColumns {
 		if col.Reattach {
-			out = append(out, migrate.Statement{SQL: "ALTER TABLE " + tableRef(col.Schema, col.Table) + " ALTER COLUMN " + ident(col.Column) + " TYPE " + ref + " USING " + ident(col.Column) + "::" + ref})
+			typ := ref + dims(col)
+			out = append(out, migrate.Statement{SQL: "ALTER TABLE " + tableRef(col.Schema, col.Table) + " ALTER COLUMN " + ident(col.Column) + " TYPE " + typ + " USING " + ident(col.Column) + "::" + typ})
 		}
 	}
 	return out, nil

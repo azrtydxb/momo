@@ -28,6 +28,7 @@ func (d *differ) typeColumns(ref string) []DomainColumn {
 		toTables[tableKey(&d.toNorm.Tables[i])] = &d.toNorm.Tables[i]
 	}
 	uses := func(t string) bool { return strings.TrimSuffix(d.typ(t), "[]") == ref }
+	isArray := func(t string) bool { return strings.HasSuffix(d.typ(t), "[]") }
 	var out []DomainColumn
 	for i := range d.fromNorm.Tables {
 		ft := &d.fromNorm.Tables[i]
@@ -52,7 +53,12 @@ func (d *differ) typeColumns(ref string) []DomainColumn {
 			if !ok {
 				continue
 			}
-			out = append(out, DomainColumn{Schema: tt.Schema, Table: tt.Name, Column: name, Reattach: uses(tc.Type)})
+			// A column that changes between the domain and an array of it is
+			// left off the domain: the plan changes its type itself.
+			out = append(out, DomainColumn{
+				Schema: tt.Schema, Table: tt.Name, Column: name,
+				Reattach: uses(tc.Type) && isArray(tc.Type) == isArray(fc.Type), Array: isArray(fc.Type),
+			})
 		}
 	}
 	return out
@@ -83,6 +89,10 @@ func (d *differ) domains(from, to *schema.Schema) {
 		case reflect.DeepEqual(*o, *n):
 		case o.Type != n.Type:
 			uses := d.typeColumns(strings.ToLower(o.Ref()))
+			if why := d.recreateBlocker(o, uses); why != "" {
+				d.errs = append(d.errs, fmt.Errorf("migrate: domain %s changes its base type, but %s; PostgreSQL cannot alter the base type and momo recreates a domain only under columns: write a custom migration", qualified(o.Schema, "", o.Name), why))
+				continue
+			}
 			d.emit(Change{Kind: RecreateDomain, Schema: n.Schema, Name: n.Name, Before: cp(*fromO[k]), After: cp(*toO[k]), DomainColumns: uses, Destructive: len(uses) > 0})
 		default:
 			c := Change{Kind: AlterDomain, Schema: n.Schema, Name: n.Name, Before: cp(*fromO[k]), After: cp(*toO[k])}
@@ -100,6 +110,46 @@ func (d *differ) domains(from, to *schema.Schema) {
 			d.emit(Change{Kind: DropDomain, Schema: o.Schema, Name: o.Name, Before: cp(*fromO[k]), Destructive: true})
 		}
 	}
+}
+
+// recreateBlocker says why a domain whose base type changes cannot be recreated
+// under its columns alone, or "" when it can: a composite type has an attribute
+// of the domain, another domain is based on it, or a view that the plan leaves as
+// it is reads a table with a column of the domain (PostgreSQL refuses to change
+// the type of a column that a view reads, and a view the plan drops or changes
+// is dropped before the columns change and created again after).
+func (d *differ) recreateBlocker(o *schema.Domain, uses []DomainColumn) string {
+	ref := strings.ToLower(o.Ref())
+	of := func(t string) bool { return strings.TrimSuffix(d.typ(t), "[]") == ref }
+	for _, c := range d.fromNorm.Composites {
+		for _, a := range c.Attributes {
+			if of(a.Type) {
+				return fmt.Sprintf("the attribute %q of the composite type %s is of the domain", a.Name, c.Ref())
+			}
+		}
+	}
+	for _, x := range d.fromNorm.Domains {
+		if x.Ref() != o.Ref() && of(x.Type) {
+			return fmt.Sprintf("the domain %s is based on it", x.Ref())
+		}
+	}
+	toViews := map[string]*schema.View{}
+	for i := range d.toNorm.Views {
+		toViews[viewKey(&d.toNorm.Views[i])] = &d.toNorm.Views[i]
+	}
+	for _, u := range uses {
+		for i := range d.fromNorm.Views {
+			v := &d.fromNorm.Views[i]
+			reads := false
+			for _, dep := range v.Depends {
+				reads = reads || dep == u.Table || (u.Schema != "" && dep == u.Schema+"."+u.Table)
+			}
+			if nv, ok := toViews[viewKey(v)]; reads && ok && reflect.DeepEqual(*v, *nv) {
+				return fmt.Sprintf("the view %s reads the table %s, and PostgreSQL refuses to change the type of a column that a view reads", qualified(v.Schema, "", v.Name), u.Table)
+			}
+		}
+	}
+	return ""
 }
 
 // stricterDomain reports whether n refuses values o accepts: it adds NOT NULL,

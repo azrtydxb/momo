@@ -101,6 +101,19 @@ func (g *generator) domainBase(d schema.Domain) (GoType, error) {
 // introspect.types rule, then the built-in mapping. An array has no record
 // text form in a types.Composite, so it is not mapped.
 func (g *generator) attrGoType(sqlType string) (GoType, error) {
+	// An attribute of a domain has the Go type of the base type of the domain,
+	// through a chain of domains.
+	for range 8 {
+		base, array := strings.CutSuffix(sqlType, "[]")
+		d, ok := g.domain(base)
+		if !ok {
+			break
+		}
+		sqlType = d.Type
+		if array {
+			sqlType += "[]"
+		}
+	}
 	if tr, ok := g.types[schema.NormalizeType(g.o.Dialect, sqlType)]; ok {
 		return custom(tr.Go, tr.Import), nil
 	}

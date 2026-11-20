@@ -251,3 +251,48 @@ func TestPostgresDomainBaseTypeChangeKeepsArrayColumns(t *testing.T) {
 		t.Fatalf("the elements of the array column: %v, %v", elems, err)
 	}
 }
+
+// failingDomainDriver turns every CREATE DOMAIN into a statement PostgreSQL
+// rejects, so the scratch schema of the canonicalization cannot be built.
+type failingDomainDriver struct{ momo.Driver }
+
+func (d failingDomainDriver) Pin(ctx context.Context) (momo.PinnedConn, error) {
+	pc, err := d.Driver.(momo.Pinner).Pin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return failingDomainConn{PinnedConn: pc}, nil
+}
+
+type failingDomainConn struct{ momo.PinnedConn }
+
+func (c failingDomainConn) Exec(ctx context.Context, sql string, args []any) (int64, error) {
+	if strings.HasPrefix(sql, "CREATE DOMAIN") {
+		sql = "SELECT 1/0"
+	}
+	return c.PinnedConn.Exec(ctx, sql, args)
+}
+
+func (c failingDomainConn) Discard() error {
+	if d, ok := c.PinnedConn.(momo.Discarder); ok {
+		return d.Discard()
+	}
+	return c.PinnedConn.Release()
+}
+
+// Catches: drift that could not canonicalize the text of a domain falling back
+// to the declared text without saying so: the domain must be in
+// CanonicalizeSkipped, as a table is, and drift must not fail.
+func TestDriftReportsDomainsItCouldNotCanonicalize(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	desired := dcmpSchema()
+	applyStatements(t, db, planStatements(t, &schema.Schema{Dialect: "postgres"}, desired, migrate.DiffOptions{}))
+	rep, err := canonEngine(t, failingDomainDriver{Driver: db.Driver()}, canonFS(t, desired)).Drift(ctx)
+	if err != nil {
+		t.Fatalf("drift must not fail when the scratch schema cannot be built: %v", err)
+	}
+	if got := skippedNames(rep); !slices.Contains(got, "domain:email") {
+		t.Fatalf("CanonicalizeSkipped = %v, want domain:email among them", got)
+	}
+}

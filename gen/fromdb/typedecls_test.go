@@ -127,6 +127,27 @@ func TestGenerateFromDBRefusesUnreadableAttribute(t *testing.T) {
 	}
 }
 
+// Catches: a composite attribute of a domain type reported as unmapped, or
+// mapped to something other than the Go type of the base of the domain, even
+// through a domain based on another domain.
+func TestGenerateFromDBCompositeAttributeOfDomain(t *testing.T) {
+	s := domainSample()
+	s.Domains = append(s.Domains, schema.Domain{Name: "work_email", Type: "email"})
+	s.Composites[0].Attributes = append(s.Composites[0].Attributes,
+		schema.CompositeAttr{Name: "contact", Type: "email"},
+		schema.CompositeAttr{Name: "backup", Type: "work_email"},
+		schema.CompositeAttr{Name: "code", Type: "short_code"},
+		schema.CompositeAttr{Name: "visits", Type: "big_count"},
+	)
+	res, files := generate(t, s, Config{})
+	if res.Failed() {
+		t.Fatalf("findings: %v", res.Findings)
+	}
+	mustMatch(t, "customers model", files["customers"],
+		`Contact\s+\*string`, `Backup\s+\*string`, `Code\s+\*string`, `Visits\s+\*int64`,
+	)
+}
+
 // Catches: domains and composite types written for a dialect that has none: a
 // SQLite or MySQL schema never carries them, and a PostgreSQL-only mapping
 // must not run there.

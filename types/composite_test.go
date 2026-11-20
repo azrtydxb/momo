@@ -311,6 +311,30 @@ func TestCompositeFloatSpecials(t *testing.T) {
 	}
 }
 
+// Catches: a time.Time field that cannot read the attributes PostgreSQL prints
+// as a date or as a timestamp without a time zone, and that accepts the special
+// values it cannot hold.
+func TestCompositeTimeFieldReadsDatesAndTimestamps(t *testing.T) {
+	type stamp struct{ At time.Time }
+	want := map[string]time.Time{
+		"(2026-01-02)":                 time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+		`("2026-01-02 03:04:05")`:      time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+		`("2026-01-02 03:04:05.5+02")`: time.Date(2026, 1, 2, 1, 4, 5, 500000000, time.UTC),
+	}
+	for in, w := range want {
+		var c Composite[stamp]
+		if err := c.Scan(in); err != nil || !c.V.At.Equal(w) {
+			t.Errorf("Scan(%s) = %v, %v, want %v", in, c.V.At, err, w)
+		}
+	}
+	for _, bad := range []string{"(infinity)", "(-infinity)", `("0044-03-15 BC")`} {
+		var c Composite[stamp]
+		if err := c.Scan(bad); err == nil {
+			t.Errorf("Scan(%s) = %v, want an error", bad, c.V.At)
+		}
+	}
+}
+
 // Catches: a Composite that names a column type itself, which would override
 // the type tag that says which composite type the column is.
 func TestCompositeSQLType(t *testing.T) {

@@ -319,7 +319,11 @@ What the tools do on PostgreSQL:
   base type of a domain, so a change of it is a recreation: each column that uses
   the domain is changed to the old base type, the domain is dropped and created
   again, and each column is changed back, which rewrites the column and fails on
-  a value the new type rejects. The recreation is destructive when a column uses
+  a value the new type rejects; a column that is an array of the domain stays an
+  array. `diff` refuses the recreation, naming the object, when an attribute of a
+  composite type or another domain is of the domain, or when a view that the plan
+  leaves as it is reads a table with a column of the domain, because PostgreSQL
+  refuses those changes; write a custom migration for them. The recreation is destructive when a column uses
   the domain, so `diff` refuses it without `--allow-destructive`. A domain that
   the models no longer declare is dropped, which is destructive too.
 - A change of a composite type is one `ALTER TYPE` statement for each attribute

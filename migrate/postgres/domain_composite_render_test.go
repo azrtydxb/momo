@@ -116,6 +116,22 @@ func TestRenderRecreateDomain(t *testing.T) {
 	)
 }
 
+// Catches: the columns of an array of the domain rendered without their
+// dimension, which turns the array into a scalar on the way off the domain and
+// keeps it one on the way back.
+func TestRenderRecreateDomainKeepsArrays(t *testing.T) {
+	tags := schema.Column{Name: "tags", Type: "email[]", Nullable: true}
+	from := renderDomainSchema(nil, renderID, tags)
+	to := renderDomainSchema(func(d *schema.Domain) { d.Type = "character varying(255)" }, renderID, tags)
+	sql := renderDiff(t, from, to)
+	inOrder(t, sql,
+		`ALTER TABLE "users" ALTER COLUMN "tags" TYPE text[] USING "tags"::text[]`,
+		`DROP DOMAIN "email"`,
+		`CREATE DOMAIN "email" AS character varying(255)`,
+		`ALTER TABLE "users" ALTER COLUMN "tags" TYPE "email"[] USING "tags"::"email"[]`,
+	)
+}
+
 // Catches: a dropped domain rendered as something other than DROP DOMAIN, and a
 // domain that outlives the table that uses it.
 func TestRenderDropDomain(t *testing.T) {

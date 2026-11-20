@@ -248,3 +248,72 @@ func TestDiffComposites(t *testing.T) {
 		t.Errorf("drop order = %v", got)
 	}
 }
+
+// Catches: a column that is an array of the domain recorded as a column of the
+// domain itself, so the recreation turns the array into a scalar.
+func TestDiffDomainRecreateRecordsArrayColumns(t *testing.T) {
+	widen := func(d *schema.Domain) { d.Type = "character varying(255)" }
+	tags := schema.Column{Name: "tags", Type: "email[]", Nullable: true}
+	changes, _, err := Diff(domainSchema(nil, idColumn, tags), domainSchema(widen, idColumn, tags), DiffOptions{AllowDestructive: true})
+	if err != nil || len(changes) != 1 {
+		t.Fatalf("changes = %+v, %v", changes, err)
+	}
+	want := []DomainColumn{{Table: "users", Column: "tags", Reattach: true, Array: true}}
+	if !reflect.DeepEqual(changes[0].DomainColumns, want) {
+		t.Errorf("DomainColumns = %+v, want %+v", changes[0].DomainColumns, want)
+	}
+	// A column that stops being an array of the domain is not put back on it.
+	scalar := schema.Column{Name: "tags", Type: "email", Nullable: true}
+	changes, _, err = Diff(domainSchema(nil, idColumn, tags), domainSchema(widen, idColumn, scalar), DiffOptions{AllowDestructive: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range changes {
+		if c.Kind == RecreateDomain && (len(c.DomainColumns) != 1 || c.DomainColumns[0].Reattach) {
+			t.Errorf("a column that changes shape was reattached: %+v", c.DomainColumns)
+		}
+	}
+}
+
+// Catches: a domain recreated while a composite type attribute, another domain
+// or a view that the plan leaves alone still depends on it, which PostgreSQL
+// rejects halfway through the migration; the differ must refuse up front and
+// name what depends on it.
+func TestDiffDomainRecreateRefusedUnderOtherObjects(t *testing.T) {
+	widen := func(d *schema.Domain) { d.Type = "character varying(255)" }
+	view := schema.View{Name: "user_emails", Query: "SELECT email FROM users", Depends: []string{"users"}}
+	for _, c := range []struct {
+		name  string
+		build func(*schema.Schema)
+		want  string
+	}{
+		{"composite attribute", func(s *schema.Schema) {
+			s.Composites = []schema.Composite{{Name: "contact", Attributes: []schema.CompositeAttr{{Name: "mail", Type: "email"}}}}
+		}, `attribute "mail" of the composite type contact`},
+		{"array attribute", func(s *schema.Schema) {
+			s.Composites = []schema.Composite{{Name: "contact", Attributes: []schema.CompositeAttr{{Name: "mails", Type: "email[]"}}}}
+		}, `attribute "mails" of the composite type contact`},
+		{"domain over it", func(s *schema.Schema) {
+			s.Domains = append(s.Domains, schema.Domain{Name: "work_email", Type: "email"})
+		}, "the domain work_email is based on it"},
+		{"untouched view", func(s *schema.Schema) { s.Views = []schema.View{view} }, "the view user_emails reads the table users"},
+	} {
+		from := domainSchema(nil, idColumn, emailColumn)
+		to := domainSchema(widen, idColumn, emailColumn)
+		c.build(from)
+		c.build(to)
+		_, _, err := Diff(from, to, DiffOptions{AllowDestructive: true})
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want one that says %q", c.name, err, c.want)
+		}
+	}
+	// A view the plan changes is dropped before the columns change and created
+	// again after, so it is no obstacle.
+	from := domainSchema(nil, idColumn, emailColumn)
+	to := domainSchema(widen, idColumn, emailColumn)
+	from.Views = []schema.View{{Name: "user_emails", Query: "SELECT email FROM users", Depends: []string{"users"}}}
+	to.Views = []schema.View{{Name: "user_emails", Query: "SELECT id, email FROM users", Depends: []string{"users"}}}
+	if _, _, err := Diff(from, to, DiffOptions{AllowDestructive: true}); err != nil {
+		t.Errorf("a changed view must not block the recreation: %v", err)
+	}
+}
