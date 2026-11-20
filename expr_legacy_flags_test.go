@@ -13,31 +13,28 @@ import (
 	"github.com/azrtydxb/momo/internal/suite"
 )
 
-// legacyUpper is upper(src) written against the extension API before the
-// column flags had a type: its Flags method returns a uint16.
+// legacyUpper is upper("secret") written against the extension API before the
+// column flags had a type: it writes the column name itself, so the only thing
+// that tells momo the operand is sensitive is its Flags method, which returns
+// a uint16.
 type legacyUpper struct {
 	momo.Ops[string]
-	src momo.Expr
+	flags uint16
 }
 
-func legacyUpperOf(src momo.Expr) legacyUpper {
-	u := legacyUpper{src: src}
+func legacyUpperOf(flags uint16) legacyUpper {
+	u := legacyUpper{flags: flags}
 	u.Ops = momo.NewOps[string](u)
 	return u
 }
 
 func (u legacyUpper) AppendSQL(b *momo.Builder) {
 	b.WriteString("upper(")
-	u.src.AppendSQL(b)
+	b.Ident("secret")
 	b.WriteString(")")
 }
 
-func (u legacyUpper) Flags() uint16 {
-	if f, ok := u.src.(momo.Flagged); ok {
-		return uint16(f.Flags())
-	}
-	return 0
-}
+func (u legacyUpper) Flags() uint16 { return u.flags }
 
 // Catches: a wrapper that still returns Flags() uint16 compiling after the
 // flags got a type but no longer being recognised, so Ops binds the value
@@ -45,15 +42,14 @@ func (u legacyUpper) Flags() uint16 {
 func TestLegacyUint16FlagsWrapperStaysMasked(t *testing.T) {
 	for _, sensitive := range []bool{true, false} {
 		t.Run(fmt.Sprintf("sensitive=%v", sensitive), func(t *testing.T) {
-			var flags momo.ColumnFlags
+			var flags uint16
 			if sensitive {
-				flags = momo.FlagSensitive
+				flags = uint16(momo.FlagSensitive)
 			}
-			col := momo.NewColumn[string]("documents", "secret", flags)
 			rec := &obstest.Recorder{}
 			drv := fakedriver.New(dialect.Postgres)
 			db := momo.New(drv, momo.WithHook(rec), momo.WithArgLogging())
-			if _, err := momo.Select[suite.Document](db).Where(legacyUpperOf(col).Eq("pw")).All(t.Context()); err != nil {
+			if _, err := momo.Select[suite.Document](db).Where(legacyUpperOf(flags).Eq("pw")).All(t.Context()); err != nil {
 				t.Fatal(err)
 			}
 			evs, calls := rec.Events(), drv.Calls()
