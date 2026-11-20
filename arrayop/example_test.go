@@ -9,6 +9,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/arrayop"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 )
 
 // Contains binds the values as one array parameter, however many there are.
@@ -17,11 +18,11 @@ func Example() {
 	tags := momo.NewColumn[[]string]("docs", "tags", 0)
 	pred := arrayop.Contains(tags, "go", "sql")
 
-	pg := momo.NewBuilder(dialect.For(dialect.Postgres))
+	pg := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	pred.AppendSQL(pg)
 	fmt.Println(pg.String(), pg.Args())
 
-	lite := momo.NewBuilder(dialect.For(dialect.SQLite))
+	lite := exprkit.NewBuilder(dialect.For(dialect.SQLite))
 	pred.AppendSQL(lite)
 	fmt.Println(errors.Is(lite.Err(), momo.ErrUnsupported))
 	// Output:
@@ -34,7 +35,7 @@ func Example() {
 func ExampleAnyOf() {
 	title := momo.NewColumn[string]("docs", "title", 0)
 
-	b := momo.NewBuilder(dialect.For(dialect.Postgres))
+	b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	arrayop.AnyOf(title, "a", "b", "c").AppendSQL(b)
 	fmt.Println(b.String(), b.Args())
 	// Output:

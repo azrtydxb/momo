@@ -82,7 +82,7 @@ func secRelation(kind RelationKind) Relation[secParent, secChild] {
 
 // secRelationWith sets the flags of the parent key column and of the child
 // join column, so a test can make only one side sensitive.
-func secRelationWith(kind RelationKind, parentFlag, childFlag uint16) Relation[secParent, secChild] {
+func secRelationWith(kind RelationKind, parentFlag, childFlag ColumnFlags) Relation[secParent, secChild] {
 	pm := &Meta[secParent]{Table: "parents", Columns: []ColumnMeta{{Name: "id", Flags: FlagPK | parentFlag}}, SoftDelete: -1,
 		Value: func(p *secParent, _ int) any { return p.ID }}
 	cm := &Meta[secChild]{Table: "kids", SoftDelete: -1, Columns: []ColumnMeta{{Name: "id", Flags: FlagPK}, {Name: "owner", Flags: childFlag}},
@@ -207,7 +207,7 @@ func TestJoinTableAsymmetricKeysMaskOnlyTheSensitiveSide(t *testing.T) {
 	ctx := context.Background()
 	const parentVal, childVal = "parent-key-value", "child-key-value"
 	sides := map[string]struct {
-		parentFlag, childFlag uint16
+		parentFlag, childFlag ColumnFlags
 		masked, visible       string
 	}{
 		"plain parent, sensitive child": {0, FlagSensitive, childVal, parentVal},

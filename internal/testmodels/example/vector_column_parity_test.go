@@ -9,6 +9,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/driver/pgxdriver"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/internal/testmodels/example"
 	"github.com/azrtydxb/momo/internal/testmodels/example/document"
 	"github.com/azrtydxb/momo/vecop"
@@ -126,7 +127,7 @@ func TestVectorPermissionColumnsSearchable(t *testing.T) {
 		{"create_only", vecop.L2(co.As("a"), v), `("a"."co" <-> $1)`},
 		{"immutable", vecop.InnerProduct(im, v), `("t"."im" <#> $1)`},
 	} {
-		b := momo.NewBuilder(vecDB().Dialect())
+		b := exprkit.NewBuilder(vecDB().Dialect())
 		c.d.AppendSQL(b)
 		if b.Err() != nil || b.String() != c.want {
 			t.Errorf("%s: SQL %q (err %v), want %q", c.name, b.String(), b.Err(), c.want)

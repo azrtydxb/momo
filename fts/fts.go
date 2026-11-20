@@ -10,9 +10,8 @@
 // a trigger, or ToVector over a text column. The operand types types.TSVector
 // and types.TSQuery live in package types.
 //
-// The package builds on the exported extension API of the root package
-// (Ops, PredicateFunc, Builder.ArgFor, Builder.ExprFor, Builder.RenderSensitive
-// and Builder.Unsupported).
+// The package builds on the frozen extension API of the root package plus
+// internal/exprkit.
 package fts
 
 import (
@@ -22,6 +21,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -66,7 +66,7 @@ func available(b *momo.Builder, what string) bool {
 	if b.Dialect().Name == dialect.Postgres {
 		return true
 	}
-	b.Unsupported("full-text search (" + what + ")")
+	exprkit.Unsupported(b, "full-text search ("+what+")")
 	return false
 }
 
@@ -75,11 +75,11 @@ func available(b *momo.Builder, what string) bool {
 // is known before the first argument of the call is bound (a configuration
 // precedes the operands in the SQL text). Arguments bound by the call are then
 // masked in hook events, as for a comparison against a sensitive column.
-func sensFlags(b *momo.Builder, es ...momo.Expr) uint16 {
-	probe := momo.NewBuilder(b.Dialect())
-	var fl uint16
+func sensFlags(b *momo.Builder, es ...momo.Expr) momo.ColumnFlags {
+	probe := exprkit.NewBuilder(b.Dialect())
+	var fl momo.ColumnFlags
 	for _, e := range es {
-		fl = probe.RenderSensitive(e, fl)
+		fl = exprkit.RenderSensitive(probe, e, fl)
 	}
 	return fl & momo.FlagSensitive
 }
@@ -87,14 +87,14 @@ func sensFlags(b *momo.Builder, es ...momo.Expr) uint16 {
 // writeRegconfig binds config and casts it to regconfig. An empty config is a
 // validation error: PostgreSQL would reject it at run time. fl carries
 // FlagSensitive to mask the bound value.
-func writeRegconfig(b *momo.Builder, what, config string, fl uint16) {
+func writeRegconfig(b *momo.Builder, what, config string, fl momo.ColumnFlags) {
 	if config == "" {
 		b.SetErr(&momo.Error{Kind: momo.ErrValidation, Op: "build",
 			Err: fmt.Errorf("%s: text search configuration must not be empty", what)})
 		return
 	}
 	b.WriteString("CAST(")
-	b.ArgFor(fl, config)
+	exprkit.ArgFor(b, fl, config)
 	b.WriteString(" AS regconfig)")
 }
 
@@ -106,7 +106,7 @@ func ToVector(config string, doc momo.Expression[string]) Expr[types.TSVector] {
 		b.WriteString("to_tsvector(")
 		writeRegconfig(b, "to_tsvector", config, fl)
 		b.WriteString(", ")
-		b.ExprFor(fl, doc)
+		exprkit.ExprFor(b, fl, doc)
 		b.WriteString(")")
 	})
 }
@@ -150,14 +150,14 @@ func ToQuery(config, text string) Expr[types.TSQuery] {
 // Match is vec @@ q: true when the document matches the query. Other dialects
 // fail the build with ErrUnsupported.
 func Match(vec momo.Expression[types.TSVector], q momo.Expression[types.TSQuery]) momo.Predicate {
-	return momo.PredicateFunc(func(b *momo.Builder) {
+	return exprkit.Predicate(func(b *momo.Builder) {
 		if !available(b, "@@") {
 			return
 		}
 		fl := sensFlags(b, vec, q)
-		b.ExprFor(fl, vec)
+		exprkit.ExprFor(b, fl, vec)
 		b.WriteString(" @@ ")
-		b.ExprFor(fl, q)
+		exprkit.ExprFor(b, fl, q)
 	})
 }
 
@@ -178,9 +178,9 @@ func rank(fn string, vec momo.Expression[types.TSVector], q momo.Expression[type
 		}
 		fl := sensFlags(b, vec, q)
 		b.WriteString(fn + "(")
-		b.ExprFor(fl, vec)
+		exprkit.ExprFor(b, fl, vec)
 		b.WriteString(", ")
-		b.ExprFor(fl, q)
+		exprkit.ExprFor(b, fl, q)
 		if len(normalization) == 1 {
 			b.WriteString(", ")
 			b.WriteString(strconv.Itoa(normalization[0]))
@@ -213,12 +213,12 @@ func Headline(config string, doc momo.Expression[string], q momo.Expression[type
 		b.WriteString("ts_headline(")
 		writeRegconfig(b, "ts_headline", config, fl)
 		b.WriteString(", ")
-		b.ExprFor(fl, doc)
+		exprkit.ExprFor(b, fl, doc)
 		b.WriteString(", ")
-		b.ExprFor(fl, q)
+		exprkit.ExprFor(b, fl, q)
 		if options != "" {
 			b.WriteString(", ")
-			b.ArgFor(fl, options)
+			exprkit.ArgFor(b, fl, options)
 		}
 		b.WriteString(")")
 	})

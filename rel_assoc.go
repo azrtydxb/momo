@@ -558,7 +558,7 @@ func (r Relation[P, C]) insertJoinChunk(ctx context.Context, q Querier, pkey []a
 	cols := append(append([]string{}, r.Through.ParentCols...), r.Through.ChildCols...)
 	// keyFlags returns nil when no key column is sensitive, so each side is
 	// copied to its own position instead of being appended.
-	colFlags := make([]uint16, len(cols))
+	colFlags := make([]ColumnFlags, len(cols))
 	copy(colFlags, r.ownerFlags())
 	copy(colFlags[len(r.Through.ParentCols):], r.childKeyFlags())
 	st, err := compile(d, func(b *Builder) {

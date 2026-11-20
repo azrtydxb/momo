@@ -9,6 +9,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 )
 
 // FTS5Match is the SQLite predicate "table" MATCH q over an FTS5 table, with q
@@ -18,9 +19,9 @@ import (
 // hook events, because the predicate does not know which columns it reads; use
 // Search over a target with a sensitive column when the text must be masked.
 func FTS5Match(table string, q string) momo.Predicate {
-	return momo.PredicateFunc(func(b *momo.Builder) {
+	return exprkit.Predicate(func(b *momo.Builder) {
 		if b.Dialect().Name != dialect.SQLite {
-			b.Unsupported("full-text search (FTS5 MATCH)")
+			exprkit.Unsupported(b, "full-text search (FTS5 MATCH)")
 			return
 		}
 		b.Ident(table)
@@ -36,7 +37,7 @@ func FTS5Match(table string, q string) momo.Predicate {
 func BM25(table string, weights ...float64) Expr[float64] {
 	return newPortableExpr[float64]("bm25", func(b *momo.Builder) {
 		if b.Dialect().Name != dialect.SQLite {
-			b.Unsupported("full-text search (bm25)")
+			exprkit.Unsupported(b, "full-text search (bm25)")
 			return
 		}
 		for _, w := range weights {

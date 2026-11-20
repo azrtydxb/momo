@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/azrtydxb/momo"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/schema"
 	"github.com/azrtydxb/momo/types"
 )
@@ -59,7 +60,7 @@ func Over[T any, PT momo.Modeler[T]](cols ...momo.Column[string]) Target {
 		return t
 	}
 	t.table = cols[0].Table()
-	ts := momo.MetaTableSchema[T, PT]()
+	ts := exprkit.TableSchema[T, PT]()
 	if ts == nil {
 		t.err = validationError("fts.Over(%s): the model has no table definition", list)
 		return t

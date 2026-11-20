@@ -6,10 +6,8 @@
 // with the list. Other dialects have no array columns, so the build fails with
 // momo.ErrUnsupported there; use momo's In on SQLite and MySQL.
 //
-// The package builds on the exported extension API of the root package
-// (PredicateFunc, Builder.ArgFor, Builder.RenderSensitive, Builder.Unsupported
-// and FlagsOf) and is the reference for writing a feature package outside the
-// root.
+// The package builds on the frozen extension API of the root package plus
+// internal/exprkit.
 package arrayop
 
 import (
@@ -18,32 +16,33 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/types"
 )
 
 // build returns the predicate left op $n, or left = ANY($n) when op is empty,
 // with vals bound as one array parameter. A predicate only renders, so it is a
-// momo.PredicateFunc and needs no comparison methods.
+// exprkit.Predicate and needs no comparison methods.
 //
 // The left operand renders first so that a sensitive column marks the flags
 // that the bind then carries: the values compared with it stay masked in hook
 // events.
 func build(feature string, left momo.Expr, op string, vals any) momo.Predicate {
-	return momo.PredicateFunc(func(b *momo.Builder) {
+	return exprkit.Predicate(func(b *momo.Builder) {
 		if b.Dialect().Name != dialect.Postgres {
-			b.Unsupported(feature)
+			exprkit.Unsupported(b, feature)
 			return
 		}
-		fl := b.RenderSensitive(left, momo.FlagsOf(left))
+		fl := exprkit.RenderSensitive(b, left, exprkit.FlagsOf(left))
 		cast := castFor(vals)
 		if op == "" {
 			b.WriteString(" = ANY(")
-			b.ArgFor(fl, vals)
+			exprkit.ArgFor(b, fl, vals)
 			b.WriteString(cast + ")")
 			return
 		}
 		b.WriteString(op)
-		b.ArgFor(fl, vals)
+		exprkit.ArgFor(b, fl, vals)
 		b.WriteString(cast)
 	})
 }

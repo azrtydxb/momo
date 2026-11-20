@@ -8,6 +8,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/jsonop"
 	"github.com/azrtydxb/momo/types"
 )
@@ -18,7 +19,7 @@ import (
 func ExampleText() {
 	after := momo.NewColumn[types.JSON[map[string]any]]("events", "after", 0)
 
-	b := momo.NewBuilder(dialect.For(dialect.Postgres))
+	b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	jsonop.Text(after, "via").Eq("api").AppendSQL(b)
 	fmt.Println(b.String(), b.Args())
 	// Output:
@@ -30,7 +31,7 @@ func ExampleText() {
 func ExamplePath() {
 	after := momo.NewColumn[types.JSON[map[string]any]]("events", "after", 0)
 
-	b := momo.NewBuilder(dialect.For(dialect.SQLite))
+	b := exprkit.NewBuilder(dialect.For(dialect.SQLite))
 	jsonop.Path(after, "items", "0", "sku").Eq("A1").AppendSQL(b)
 	fmt.Println(b.String(), b.Args())
 	// Output:
@@ -43,11 +44,11 @@ func ExampleContains() {
 	after := momo.NewColumn[types.JSON[map[string]any]]("events", "after", 0)
 	pred := jsonop.Contains(after, map[string]any{"via": "api"})
 
-	pg := momo.NewBuilder(dialect.For(dialect.Postgres))
+	pg := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	pred.AppendSQL(pg)
 	fmt.Println(pg.String(), pg.Args())
 
-	lite := momo.NewBuilder(dialect.For(dialect.SQLite))
+	lite := exprkit.NewBuilder(dialect.For(dialect.SQLite))
 	pred.AppendSQL(lite)
 	fmt.Println(errors.Is(lite.Err(), momo.ErrUnsupported))
 	// Output:
@@ -60,7 +61,7 @@ func ExampleContains() {
 func ExampleHasKey() {
 	after := momo.NewColumn[types.JSON[map[string]any]]("events", "after", 0)
 
-	b := momo.NewBuilder(dialect.For(dialect.Postgres))
+	b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	jsonop.HasKey(after, "via").AppendSQL(b)
 	fmt.Println(b.String(), b.Args())
 	// Output:

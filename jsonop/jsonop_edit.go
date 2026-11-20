@@ -5,6 +5,7 @@ package jsonop
 import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -16,27 +17,27 @@ import (
 // sensitive.
 type Expr[T any] struct {
 	momo.Ops[types.JSON[T]]
-	fl     uint16
+	fl     momo.ColumnFlags
 	render func(b *momo.Builder)
 }
 
-func newExpr[T any](fl uint16, render func(b *momo.Builder)) Expr[T] {
+func newExpr[T any](fl momo.ColumnFlags, render func(b *momo.Builder)) Expr[T] {
 	e := Expr[T]{fl: fl, render: render}
 	e.Ops = momo.NewOps[types.JSON[T]](e)
 	return e
 }
 
 // Flags returns the sensitive and nullable flags of the operands.
-func (e Expr[T]) Flags() uint16 { return e.fl }
+func (e Expr[T]) Flags() momo.ColumnFlags { return e.fl }
 
 // AppendSQL renders the expression.
 func (e Expr[T]) AppendSQL(b *momo.Builder) { e.render(b) }
 
 // opFlags merges the sensitive and nullable flags of the operands.
-func opFlags(es ...momo.Expr) uint16 {
-	var fl uint16
+func opFlags(es ...momo.Expr) momo.ColumnFlags {
+	var fl momo.ColumnFlags
 	for _, e := range es {
-		fl |= momo.FlagsOf(e) & (momo.FlagSensitive | momo.FlagNullable)
+		fl |= exprkit.FlagsOf(e) & (momo.FlagSensitive | momo.FlagNullable)
 	}
 	return fl
 }
@@ -61,24 +62,24 @@ func DeleteKey[T any](c momo.Expression[types.JSON[T]], key string) Expr[T] {
 		switch name {
 		case dialect.Postgres:
 			b.WriteString("(")
-			fl := b.RenderSensitive(c, momo.FlagsOf(c))
+			fl := exprkit.RenderSensitive(b, c, exprkit.FlagsOf(c))
 			b.WriteString(" - CAST(")
-			b.ArgFor(fl, key)
+			exprkit.ArgFor(b, fl, key)
 			b.WriteString(" AS text))")
 		case dialect.SQLite:
 			b.WriteString("json_remove(")
-			fl := b.RenderSensitive(c, momo.FlagsOf(c))
+			fl := exprkit.RenderSensitive(b, c, exprkit.FlagsOf(c))
 			b.WriteString(", ")
-			b.ArgFor(fl, pathString(name, []string{key}, false))
+			exprkit.ArgFor(b, fl, pathString(name, []string{key}, false))
 			b.WriteString(")")
 		case dialect.MySQL:
 			b.WriteString("JSON_REMOVE(")
-			fl := b.RenderSensitive(c, momo.FlagsOf(c))
+			fl := exprkit.RenderSensitive(b, c, exprkit.FlagsOf(c))
 			b.WriteString(", ")
-			b.ArgFor(fl, pathString(name, []string{key}, false))
+			exprkit.ArgFor(b, fl, pathString(name, []string{key}, false))
 			b.WriteString(")")
 		default:
-			b.Unsupported("JSON key delete (DeleteKey)")
+			exprkit.Unsupported(b, "JSON key delete (DeleteKey)")
 		}
 	})
 }
@@ -98,13 +99,13 @@ func DeleteKey[T any](c momo.Expression[types.JSON[T]], key string) Expr[T] {
 func Concat[T, U any](a momo.Expression[types.JSON[T]], b momo.Expression[types.JSON[U]]) Expr[T] {
 	return newExpr[T](opFlags(a, b), func(bl *momo.Builder) {
 		if bl.Dialect().Name != dialect.Postgres {
-			bl.Unsupported("JSON concatenation (Concat)")
+			exprkit.Unsupported(bl, "JSON concatenation (Concat)")
 			return
 		}
 		bl.WriteString("(")
-		fl := bl.RenderSensitive(a, momo.FlagsOf(a))
+		fl := exprkit.RenderSensitive(bl, a, exprkit.FlagsOf(a))
 		bl.WriteString(" || ")
-		bl.ExprFor(fl, b)
+		exprkit.ExprFor(bl, fl, b)
 		bl.WriteString(")")
 	})
 }
@@ -124,15 +125,15 @@ func Concat[T, U any](a momo.Expression[types.JSON[T]], b momo.Expression[types.
 func Set[T, U any](target momo.Expression[types.JSON[T]], path momo.Expression[[]string], value momo.Expression[types.JSON[U]]) Expr[T] {
 	return newExpr[T](opFlags(target, path, value), func(b *momo.Builder) {
 		if b.Dialect().Name != dialect.Postgres {
-			b.Unsupported("JSON set with a computed path (Set)")
+			exprkit.Unsupported(b, "JSON set with a computed path (Set)")
 			return
 		}
 		b.WriteString("jsonb_set(")
-		fl := b.RenderSensitive(target, momo.FlagsOf(target))
+		fl := exprkit.RenderSensitive(b, target, exprkit.FlagsOf(target))
 		b.WriteString(", ")
-		b.ExprFor(fl, path)
+		exprkit.ExprFor(b, fl, path)
 		b.WriteString(", ")
-		b.ExprFor(fl, value)
+		exprkit.ExprFor(b, fl, value)
 		b.WriteString(")")
 	})
 }

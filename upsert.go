@@ -56,7 +56,7 @@ func Upsert[T any, PT Modeler[T]](q Querier) InsertQuery[T] {
 }
 
 // upsertUpdatable reports whether DO UPDATE SET may assign the column.
-func upsertUpdatable(f uint16) bool { return updModelWritable(f) }
+func upsertUpdatable(f ColumnFlags) bool { return updModelWritable(f) }
 
 // resolveUpsert fills the upsert defaults into a copy of r: the primary-key
 // target, the default DO UPDATE list, the identity-in-INSERT decision. It

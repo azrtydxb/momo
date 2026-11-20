@@ -9,12 +9,13 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/vecop"
 	"github.com/azrtydxb/momo/vector"
 )
 
 func renderErr(d *dialect.Dialect, e momo.Expression[float64]) (string, []any, error) {
-	b := momo.NewBuilder(d)
+	b := exprkit.NewBuilder(d)
 	e.AppendSQL(b)
 	return b.String(), b.Args(), b.Err()
 }
@@ -255,13 +256,13 @@ func TestDistanceInQueries(t *testing.T) {
 	d := vecop.L2(col, vector.Vector{1, 2, 3})
 	radius := momo.NewColumn[float64]("docs", "radius", 0)
 
-	b := momo.NewBuilder(dialect.For(dialect.Postgres))
+	b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	b.WriteString("SELECT ")
 	d.AppendSQL(b)
 	b.WriteString(" WHERE ")
 	radius.GtExpr(d).AppendSQL(b)
 	b.WriteString(" ORDER BY ")
-	d.Asc().AppendOrder(b)
+	exprkit.AppendOrder(b, d.Asc())
 	if err := b.Err(); err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +292,7 @@ func TestDistanceThresholdFilter(t *testing.T) {
 		"postgres": {dialect.For(dialect.Postgres), `("t"."c" <-> $1) < $2`},
 		"sqlite":   {dialect.For(dialect.SQLite), `vec_distance_l2("t"."c", ?) < ?`},
 	} {
-		b := momo.NewBuilder(c.d)
+		b := exprkit.NewBuilder(c.d)
 		vecop.L2(col, q).Lt(0.5).AppendSQL(b)
 		if err := b.Err(); err != nil {
 			t.Fatalf("%s: %v", name, err)

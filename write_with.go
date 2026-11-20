@@ -116,7 +116,7 @@ func constrainsTable(d *dialect.Dialect, e Expr, qualifier string, negated bool)
 		}
 		return false
 	}
-	b := NewBuilder(d)
+	b := newBuilder(d)
 	b.pushScope(nil)
 	e.AppendSQL(b)
 	_, ok := b.scopes[0].refs[qualifier]

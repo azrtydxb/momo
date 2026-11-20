@@ -8,6 +8,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -59,7 +60,7 @@ func (o ObjectExpr[T]) AppendSQL(b *momo.Builder) {
 		b.WriteString(lit + ", ")
 		p.Value.AppendSQL(b)
 	}
-	_ = b.WriteByte(')')
+	b.WriteString(")")
 }
 
 // JSONExpr is a value converted to JSON.
@@ -90,11 +91,11 @@ func (t JSONExpr[T]) AppendSQL(b *momo.Builder) {
 	case dialect.SQLite:
 		b.WriteString("json_quote(")
 	default:
-		b.Unsupported("to_jsonb")
+		exprkit.Unsupported(b, "to_jsonb")
 		return
 	}
 	t.e.AppendSQL(b)
-	_ = b.WriteByte(')')
+	b.WriteString(")")
 }
 
 // EmptyJSONArray is the empty JSON array literal, the fallback of

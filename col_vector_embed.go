@@ -383,7 +383,7 @@ func (c *embedCursor[T]) renderAfter(b *Builder) {
 			} else {
 				b.WriteString(" > ")
 			}
-			b.ArgFor(m.Columns[ci].Flags, m.Value(c.after, ci))
+			b.argFor(m.Columns[ci].Flags, m.Value(c.after, ci))
 			if j < i {
 				b.WriteString(" AND ")
 			}
@@ -407,7 +407,7 @@ func (c *embedCursor[T]) update(ctx context.Context, r staleRow[T], vec vector.V
 	}
 	// The hash and the vector are derived from the source values, so they are
 	// bound as sensitive when any source column is.
-	var derived uint16
+	var derived ColumnFlags
 	for _, ci := range c.spec.Sources {
 		derived |= m.Columns[ci].Flags & FlagSensitive
 	}
@@ -420,12 +420,12 @@ func (c *embedCursor[T]) update(ctx context.Context, r staleRow[T], vec vector.V
 		if drop {
 			b.WriteString("NULL")
 		} else {
-			b.ArgFor(m.Columns[c.spec.Vector].Flags|derived, vec)
+			b.argFor(m.Columns[c.spec.Vector].Flags|derived, vec)
 		}
 		b.WriteString(", ")
 		b.Ident(c.spec.HashColumn)
 		b.WriteString(" = ")
-		b.ArgFor(derived, r.hash)
+		b.argFor(derived, r.hash)
 		b.WriteString(" WHERE ")
 		for i, ci := range m.PK {
 			if i > 0 {

@@ -31,7 +31,7 @@ type ReadOnlyColumn[T any] struct {
 }
 
 // NewReadOnlyColumn is used by generated code.
-func NewReadOnlyColumn[T any](table, name string, flags uint16) ReadOnlyColumn[T] {
+func NewReadOnlyColumn[T any](table, name string, flags ColumnFlags) ReadOnlyColumn[T] {
 	return ReadOnlyColumn[T]{colCore: newColCore[T](table, name, flags)}
 }
 
@@ -48,7 +48,7 @@ type NullReadOnlyColumn[T any] struct {
 }
 
 // NewNullReadOnlyColumn is used by generated code.
-func NewNullReadOnlyColumn[T any](table, name string, flags uint16) NullReadOnlyColumn[T] {
+func NewNullReadOnlyColumn[T any](table, name string, flags ColumnFlags) NullReadOnlyColumn[T] {
 	return NullReadOnlyColumn[T]{colCore: newColCore[T](table, name, flags|FlagNullable)}
 }
 
@@ -73,7 +73,7 @@ type CreateOnlyColumn[T any] struct {
 }
 
 // NewCreateOnlyColumn is used by generated code.
-func NewCreateOnlyColumn[T any](table, name string, flags uint16) CreateOnlyColumn[T] {
+func NewCreateOnlyColumn[T any](table, name string, flags ColumnFlags) CreateOnlyColumn[T] {
 	return CreateOnlyColumn[T]{colCore: newColCore[T](table, name, flags)}
 }
 
@@ -97,7 +97,7 @@ type ImmutableColumn[T any] struct {
 }
 
 // NewImmutableColumn is used by generated code.
-func NewImmutableColumn[T any](table, name string, flags uint16) ImmutableColumn[T] {
+func NewImmutableColumn[T any](table, name string, flags ColumnFlags) ImmutableColumn[T] {
 	return ImmutableColumn[T]{colCore: newColCore[T](table, name, flags)}
 }
 

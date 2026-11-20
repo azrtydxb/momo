@@ -9,6 +9,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -23,7 +24,7 @@ var (
 )
 
 func renderAgg(d dialect.Name, e momo.Expr) (string, error) {
-	b := momo.NewBuilder(dialect.For(d))
+	b := exprkit.NewBuilder(dialect.For(d))
 	e.AppendSQL(b)
 	return b.String(), b.Err()
 }
