@@ -26,7 +26,7 @@ func TestOrderAppendOrder(t *testing.T) {
 	}
 	for _, c := range cases {
 		b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
-		c.o.AppendOrder(b)
+		exprkit.AppendOrder(b, c.o)
 		if b.Err() != nil || b.String() != c.want {
 			t.Errorf("%s: got %q, %v; want %q", c.name, b.String(), b.Err(), c.want)
 		}
@@ -46,7 +46,7 @@ func TestOrderAppendOrder(t *testing.T) {
 	}
 	for _, c := range myCases {
 		my := exprkit.NewBuilder(dialect.For(dialect.MySQL))
-		c.o.AppendOrder(my)
+		exprkit.AppendOrder(my, c.o)
 		if my.Err() != nil || my.String() != c.want {
 			t.Errorf("mysql %s: got %q, %v; want %q", c.name, my.String(), my.Err(), c.want)
 		}

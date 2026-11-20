@@ -34,7 +34,7 @@ func ExampleExpr_Desc() {
 	emb := momo.NewVectorColumn[vector.Vector]("docs", "emb", 3, 0)
 
 	b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
-	vecop.L2(emb, vector.Vector{1, 2, 3}).Desc().AppendOrder(b)
+	exprkit.AppendOrder(b, vecop.L2(emb, vector.Vector{1, 2, 3}).Desc())
 	fmt.Println(b.String())
 	// Output:
 	// ("docs"."emb" <-> $1) DESC

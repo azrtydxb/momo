@@ -262,7 +262,7 @@ func TestDistanceInQueries(t *testing.T) {
 	b.WriteString(" WHERE ")
 	radius.GtExpr(d).AppendSQL(b)
 	b.WriteString(" ORDER BY ")
-	d.Asc().AppendOrder(b)
+	exprkit.AppendOrder(b, d.Asc())
 	if err := b.Err(); err != nil {
 		t.Fatal(err)
 	}
