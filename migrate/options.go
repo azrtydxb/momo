@@ -16,7 +16,7 @@ const defaultLockWait = 30 * time.Second
 
 type options struct {
 	clock   func() time.Time
-	config  Config
+	config  Settings
 	dialect Dialect
 	// lockWait is the engine default for waiting on the migration lock;
 	// lockWaitSet distinguishes an explicit zero (do not wait) from unset.
@@ -27,7 +27,7 @@ type options struct {
 	goMigrations []GoMigration
 	goDB         *momo.DB
 	// lockTimeout and statementTimeout, when non-nil, were given explicitly
-	// (possibly as zero) and override the Config values.
+	// (possibly as zero) and override the Settings values.
 	lockTimeout, statementTimeout *time.Duration
 }
 
@@ -39,25 +39,32 @@ func WithClock(now func() time.Time) Option {
 	return func(o *options) { o.clock = now }
 }
 
-// WithConfig sets the engine configuration. A zero LockTimeout keeps the 5s default.
-func WithConfig(c Config) Option {
+// WithSettings sets the engine configuration. A zero LockTimeout keeps the 5s default.
+func WithSettings(s Settings) Option {
 	return func(o *options) {
-		if c.LockTimeout == 0 {
-			c.LockTimeout = defaultLockTimeout
+		if s.LockTimeout == 0 {
+			s.LockTimeout = defaultLockTimeout
 		}
-		o.config = c
+		o.config = s
 	}
 }
 
+// WithConfig sets the engine configuration.
+//
+// Deprecated: use WithSettings. WithConfig is removed in the next release.
+func WithConfig(c Config) Option {
+	return WithSettings(c)
+}
+
 // WithLockTimeout sets the lock_timeout of the migration session. Unlike
-// Config.LockTimeout, an explicit zero is kept and disables the timeout
+// Settings.LockTimeout, an explicit zero is kept and disables the timeout
 // (PostgreSQL treats 0 as off), for example for a long index build.
 func WithLockTimeout(d time.Duration) Option {
 	return func(o *options) { o.lockTimeout = &d }
 }
 
 // WithStatementTimeout sets the statement_timeout of the migration session.
-// Unlike Config.StatementTimeout, an explicit zero is sent to the server and
+// Unlike Settings.StatementTimeout, an explicit zero is sent to the server and
 // disables the timeout.
 func WithStatementTimeout(d time.Duration) Option {
 	return func(o *options) { o.statementTimeout = &d }

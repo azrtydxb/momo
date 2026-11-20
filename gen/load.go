@@ -27,7 +27,7 @@ const loadMode = packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
 // Load loads the packages matching patterns with type information. Package
 // errors become positioned diagnostics; only infrastructure failures (for
 // example go list cannot run) are returned as err.
-func Load(patterns []string, cfg Config) (*Graph, []Diagnostic, error) {
+func Load(patterns []string, cfg LoadConfig) (*Graph, []Diagnostic, error) {
 	if len(patterns) == 0 {
 		return nil, nil, errors.New("gen: no package patterns given")
 	}
@@ -210,7 +210,7 @@ func collisionDiagnostics(models []*Model) []Diagnostic {
 // projectionDiagnostics checks that each field type of a projection is one
 // the type map knows, as for a model; the error names the struct and the
 // field. Column names are positional labels, so repeats are allowed.
-func projectionDiagnostics(projections []*Model, cfg Config) []Diagnostic {
+func projectionDiagnostics(projections []*Model, cfg LoadConfig) []Diagnostic {
 	var diags []Diagnostic
 	b := &schemaBuilder{namer: cfg.Naming, typeDef: cfg.TypeDefaults, primary: dialect.Postgres}
 	if len(cfg.Dialects) > 0 {

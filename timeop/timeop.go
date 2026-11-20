@@ -324,7 +324,7 @@ var intervalUnits = map[IntervalUnit]unitSpec{
 // Interval is a length of time: a count and a unit. It is not an expression
 // of its own, because MySQL only accepts an interval as an operand of date
 // arithmetic; combine it with a timestamp through AddInterval or
-// SubInterval. Build it with IntervalOf or IntervalExpr.
+// SubInterval. Build it with IntervalOf or IntervalOfExpr.
 type Interval struct {
 	lit     int64
 	count   momo.Expression[int64] // nil for a literal
@@ -351,7 +351,7 @@ func IntervalOf(n int64, unit IntervalUnit) Interval {
 // 1 ms). Each distinct duration renders a distinct SQL literal, so a caller
 // with many different durations gets many distinct statement texts, which
 // matters for statement caching and pg_stat_statements; bind the count with
-// IntervalExpr to keep one text.
+// IntervalOfExpr to keep one text.
 func IntervalDuration(d time.Duration) Interval {
 	switch {
 	case d%time.Second == 0:
@@ -363,12 +363,20 @@ func IntervalDuration(d time.Duration) Interval {
 	}
 }
 
-// IntervalExpr is an interval whose count comes from an integer expression:
-// a column, or momo.Value(n) to bind a parameter. On PostgreSQL the count is
-// multiplied into a one-unit INTERVAL. Bind a duration as
-// IntervalExpr(momo.Value(d.Milliseconds()), IntervalMillisecond).
-func IntervalExpr(count momo.Expression[int64], unit IntervalUnit) Interval {
+// IntervalOfExpr is an interval whose count comes from an integer expression:
+// a column, or momo.Value(n) to bind a parameter. It is the expression form of
+// IntervalOf. On PostgreSQL the count is multiplied into a one-unit INTERVAL.
+// Bind a duration as
+// IntervalOfExpr(momo.Value(d.Milliseconds()), IntervalMillisecond).
+func IntervalOfExpr(count momo.Expression[int64], unit IntervalUnit) Interval {
 	return Interval{count: count, unit: unit, isBuilt: true, isExpr: true}
+}
+
+// IntervalExpr is IntervalOfExpr.
+//
+// Deprecated: use IntervalOfExpr.
+func IntervalExpr(count momo.Expression[int64], unit IntervalUnit) Interval {
+	return IntervalOfExpr(count, unit)
 }
 
 // AddInterval is ts + iv: the timestamp moved forward by the interval.
@@ -422,10 +430,10 @@ func intervalExpr(ts momo.Expression[time.Time], iv Interval, sign int64) Expr {
 		spec, ok := intervalUnits[iv.unit]
 		switch {
 		case ts == nil || !iv.isBuilt:
-			b.SetErr(timeErr("interval arithmetic needs a timestamp and an interval built with IntervalOf or IntervalExpr"))
+			b.SetErr(timeErr("interval arithmetic needs a timestamp and an interval built with IntervalOf or IntervalOfExpr"))
 			return
 		case iv.isExpr && iv.count == nil:
-			b.SetErr(timeErr("IntervalExpr needs a count expression"))
+			b.SetErr(timeErr("IntervalOfExpr needs a count expression"))
 			return
 		case !ok:
 			b.SetErr(timeErr("interval unit %q is not one of the Interval... constants", string(iv.unit)))

@@ -18,7 +18,7 @@ import (
 // Inspect reads the live database into a schema.Schema: tables with their
 // columns, primary key, unique constraints, indexes, foreign keys and checks,
 // views, and triggers. opts is not used: SQLite has one namespace per
-// database file (the engine applies Config.Exclude itself), and the bookkeeping
+// database file (the engine applies Settings.Exclude itself), and the bookkeeping
 // tables momo_migrations and momo_migration_lock, the sqlite_ internal tables,
 // virtual tables and the shadow tables of virtual tables are left out.
 //

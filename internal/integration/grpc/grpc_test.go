@@ -74,7 +74,7 @@ func TestProtoGenerator(t *testing.T) {
 	}
 
 	// (a) the plugin output equals the committed .proto, lock and server
-	g, diags, err := gen.Load([]string{"./"}, gen.Config{Dir: modelsDir})
+	g, diags, err := gen.Load([]string{"./"}, gen.LoadConfig{Dir: modelsDir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestProtoGenerator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rg, rdiags, err := gen.Load([]string{"./"}, gen.Config{Dir: renameDir})
+	rg, rdiags, err := gen.Load([]string{"./"}, gen.LoadConfig{Dir: renameDir})
 	if err != nil {
 		t.Fatal(err)
 	}

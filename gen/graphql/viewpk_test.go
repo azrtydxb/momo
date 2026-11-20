@@ -18,7 +18,7 @@ func TestSingleIntPKOfViewModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, diags, err := gen.Load([]string{"./viewpk"}, gen.Config{Dir: dir})
+	g, diags, err := gen.Load([]string{"./viewpk"}, gen.LoadConfig{Dir: dir})
 	if err != nil || len(diags) != 0 {
 		t.Fatalf("load: %v %v", err, diags)
 	}
@@ -42,7 +42,7 @@ func TestViewModelHasNoMutationOrInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, diags, err := gen.Load([]string{"./viewpk"}, gen.Config{Dir: dir})
+	g, diags, err := gen.Load([]string{"./viewpk"}, gen.LoadConfig{Dir: dir})
 	if err != nil || len(diags) != 0 {
 		t.Fatalf("load: %v %v", err, diags)
 	}

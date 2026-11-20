@@ -16,7 +16,7 @@ type InspectOptions struct {
 	Exclude []string
 	// Only limits the tables read to those whose name (or schema.name)
 	// matches a glob; the triggers and policies of the others are skipped too.
-	// Empty reads every table. It is Config.OnlyTables.
+	// Empty reads every table. It is Settings.OnlyTables.
 	Only []string
 }
 

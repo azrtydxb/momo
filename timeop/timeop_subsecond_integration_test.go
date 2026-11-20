@@ -29,7 +29,7 @@ func TestSubSecondIntervalIntegration(t *testing.T) {
 		if got := timeOf(t, db, 1, timeop.SubInterval(suite.DocCreatedAt, timeop.IntervalOf(250, timeop.IntervalMillisecond))); !got.Equal(at.Add(-250 * time.Millisecond)) {
 			t.Errorf("-250 milliseconds = %v", got)
 		}
-		bound := timeop.IntervalExpr(momo.Value(int64(2750)), timeop.IntervalMillisecond)
+		bound := timeop.IntervalOfExpr(momo.Value(int64(2750)), timeop.IntervalMillisecond)
 		if got := timeOf(t, db, 1, timeop.AddInterval(suite.DocCreatedAt, bound)); !got.Equal(at.Add(2750 * time.Millisecond)) {
 			t.Errorf("+2750 bound milliseconds = %v", got)
 		}

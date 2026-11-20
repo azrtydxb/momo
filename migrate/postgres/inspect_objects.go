@@ -122,14 +122,14 @@ func (Dialect) inspectObjects(ctx context.Context, c momo.PinnedConn, s *schema.
 	return nil
 }
 
-// excluded reports whether a Config.Exclude glob matches name or schema.name.
+// excluded reports whether a Settings.Exclude glob matches name or schema.name.
 // An excluded object is skipped before it is read, so one the model cannot
 // represent does not fail the whole inspection.
 func (in *inspector) excluded(ns, name string) bool {
 	return migrate.MatchObject(in.exclude, in.optSchema(ns), name)
 }
 
-// outsideOnly reports whether Config.OnlyTables is set and no glob of it
+// outsideOnly reports whether Settings.OnlyTables is set and no glob of it
 // matches the table name or schema.name.
 func (in *inspector) outsideOnly(ns, name string) bool {
 	if len(in.only) == 0 {

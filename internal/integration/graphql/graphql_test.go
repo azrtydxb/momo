@@ -128,7 +128,7 @@ func TestGraphQLGenerator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, diags, err := gen.Load([]string{"./"}, gen.Config{Dir: models})
+	g, diags, err := gen.Load([]string{"./"}, gen.LoadConfig{Dir: models})
 	if err != nil {
 		t.Fatal(err)
 	}

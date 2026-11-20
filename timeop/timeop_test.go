@@ -87,7 +87,7 @@ func TestTimeKeywordsValidated(t *testing.T) {
 	exprs := map[string]momo.Expr{
 		"extract":   timeop.Extract(timeop.ExtractField(bad), tmCreated),
 		"interval":  timeop.AddInterval(tmCreated, timeop.IntervalOf(1, timeop.IntervalUnit(bad))),
-		"intervalx": timeop.SubInterval(tmCreated, timeop.IntervalExpr(momo.Value(int64(1)), timeop.IntervalUnit("days"))),
+		"intervalx": timeop.SubInterval(tmCreated, timeop.IntervalOfExpr(momo.Value(int64(1)), timeop.IntervalUnit("days"))),
 		"trunc":     timeop.Trunc(timeop.TruncUnit(bad), tmCreated),
 		"truncCase": timeop.Trunc(timeop.TruncUnit("DAY"), tmCreated),
 		"zero":      timeop.AddInterval(tmCreated, timeop.Interval{}),
@@ -98,7 +98,7 @@ func TestTimeKeywordsValidated(t *testing.T) {
 		"tzSpace":   timeop.AtTimeZone(tmCreated, "Europe Brussels"),
 		"tzNul":     timeop.AtTimeZone(tmCreated, "UTC\x00"),
 		"tzLong":    timeop.AtTimeZone(tmCreated, strings.Repeat("a", 65)),
-		"ivNilExpr": timeop.AddInterval(tmCreated, timeop.IntervalExpr(nil, timeop.IntervalDay)),
+		"ivNilExpr": timeop.AddInterval(tmCreated, timeop.IntervalOfExpr(nil, timeop.IntervalDay)),
 	}
 	for _, d := range typedDialects {
 		for name, e := range exprs {
@@ -133,7 +133,7 @@ func TestAtTimeZone(t *testing.T) {
 func TestIntervalGolden(t *testing.T) {
 	const sqliteFmt = `'%Y-%m-%d %H:%M:%f'`
 	five := timeop.IntervalOf(5, timeop.IntervalDay)
-	bound := timeop.IntervalExpr(momo.Value(int64(3)), timeop.IntervalWeek)
+	bound := timeop.IntervalOfExpr(momo.Value(int64(3)), timeop.IntervalWeek)
 	runTimeGoldens(t, []timeGolden{
 		{dialect.Postgres, timeop.AddInterval(tmCreated, five), `(` + tmC + ` + INTERVAL '5 day')`, nil},
 		{dialect.Postgres, timeop.SubInterval(tmCreated, five), `(` + tmC + ` - INTERVAL '5 day')`, nil},
@@ -222,7 +222,7 @@ func TestTimeExprComposition(t *testing.T) {
 // MySQL-family flavors.
 func TestBoundTimeIntervalGoldenPerMySQLFlavor(t *testing.T) {
 	at := time.Unix(0, 0).UTC()
-	bound := timeop.IntervalExpr(momo.Value(int64(3)), timeop.IntervalWeek)
+	bound := timeop.IntervalOfExpr(momo.Value(int64(3)), timeop.IntervalWeek)
 	for _, f := range []dialect.Flavor{dialect.FlavorMySQL, dialect.FlavorMariaDB} {
 		for _, c := range []struct {
 			e    momo.Expr

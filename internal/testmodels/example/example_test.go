@@ -20,7 +20,7 @@ func TestGenerateCompanion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, diags, err := gen.Load([]string{"./"}, gen.Config{Dir: dir})
+	g, diags, err := gen.Load([]string{"./"}, gen.LoadConfig{Dir: dir})
 	if err != nil {
 		t.Fatal(err)
 	}

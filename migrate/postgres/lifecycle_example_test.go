@@ -28,11 +28,11 @@ func exampleSchema(t *testing.T) *schema.Schema {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, diags, err := gen.Load([]string{"./internal/testmodels/example/..."}, gen.Config{Dir: root})
+	g, diags, err := gen.Load([]string{"./internal/testmodels/example/..."}, gen.LoadConfig{Dir: root})
 	if err != nil || len(diags) != 0 {
 		t.Fatalf("load: %v %v", err, diags)
 	}
-	s, bd := gen.BuildSchema(g.Models, gen.Config{})
+	s, bd := gen.BuildSchema(g.Models, gen.LoadConfig{})
 	if len(bd) != 0 {
 		t.Fatalf("build: %v", bd)
 	}
@@ -157,7 +157,7 @@ func TestDriftWithoutCanonicalizePrivilegeStillReports(t *testing.T) {
 	if _, err := engineOn(t, db, files).Apply(ctx, migrate.ApplyOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	e := migratetest.NewEngine(t, noPrivDialect{mpg.New()}, db.Driver(), files, migrate.WithConfig(migrate.Config{Schemas: []string{testdb.Schema(t)}}))
+	e := migratetest.NewEngine(t, noPrivDialect{mpg.New()}, db.Driver(), files, migrate.WithSettings(migrate.Settings{Schemas: []string{testdb.Schema(t)}}))
 	rep, err := e.Drift(ctx)
 	if err != nil || !rep.Clean() {
 		t.Fatalf("drift must fall back to the declared text: %+v %v", rep, err)

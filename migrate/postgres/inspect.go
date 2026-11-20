@@ -128,9 +128,9 @@ type inspector struct {
 	c       momo.PinnedConn
 	current string
 	managed []string
-	// exclude holds the Config.Exclude globs; objects they match are skipped.
+	// exclude holds the Settings.Exclude globs; objects they match are skipped.
 	exclude []string
-	// only holds the Config.OnlyTables globs; a table that matches none of
+	// only holds the Settings.OnlyTables globs; a table that matches none of
 	// them is skipped like an excluded one.
 	only []string
 	// invalid names the indexes left invalid by a failed CONCURRENTLY build.

@@ -24,8 +24,8 @@ func TestSubSecondIntervalGolden(t *testing.T) {
 	const sqliteFmt = `'%Y-%m-%d %H:%M:%f'`
 	ms := timeop.IntervalOf(1500, timeop.IntervalMillisecond)
 	us := timeop.IntervalOf(250, timeop.IntervalMicrosecond)
-	bound := timeop.IntervalExpr(momo.Value(int64(40)), timeop.IntervalMillisecond)
-	boundUs := timeop.IntervalExpr(momo.Value(int64(7)), timeop.IntervalMicrosecond)
+	bound := timeop.IntervalOfExpr(momo.Value(int64(40)), timeop.IntervalMillisecond)
+	boundUs := timeop.IntervalOfExpr(momo.Value(int64(7)), timeop.IntervalMicrosecond)
 	runTimeGoldens(t, []timeGolden{
 		{dialect.Postgres, timeop.AddInterval(tmCreated, ms), `(` + tmC + ` + INTERVAL '1500 millisecond')`, nil},
 		{dialect.Postgres, timeop.SubInterval(tmCreated, us), `(` + tmC + ` - INTERVAL '250 microsecond')`, nil},

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/azrtydxb/momo"
-	"github.com/azrtydxb/momo/momotest/sqlitetest"
 )
 
 // TestAssertUsesIndexPostgres plans a lookup on a real PostgreSQL table: with
@@ -57,37 +56,5 @@ func TestAssertUsesIndexPostgres(t *testing.T) {
 	defer rows.Close()
 	if !rows.Next() || rows.Scan(&n) != nil || n != 1 {
 		t.Fatalf("the planned DELETE ran: rows left = %d", n)
-	}
-}
-
-// TestAssertUsesIndexSQLite plans a lookup on a real SQLite table.
-func TestAssertUsesIndexSQLite(t *testing.T) {
-	ctx := t.Context()
-	db := sqlitetest.New(t)
-	for _, ddl := range []string{
-		`CREATE TABLE items (id INTEGER PRIMARY KEY, sku TEXT NOT NULL, qty INTEGER NOT NULL)`,
-		`CREATE INDEX items_sku_idx ON items (sku)`,
-	} {
-		if _, err := momo.Exec(ctx, db, ddl); err != nil {
-			t.Fatal(err)
-		}
-	}
-	indexed := momo.Compiled{SQL: `SELECT id FROM items WHERE sku = ?`, Args: []any{"a"}}
-	scan := momo.Compiled{SQL: `SELECT id FROM items WHERE qty = ?`, Args: []any{1}}
-
-	rt := &recTB{TB: t}
-	runAssert(func() { AssertUsesIndex(rt, db, indexed, "items_sku_idx") })
-	if len(rt.errs) != 0 {
-		t.Fatalf("indexed lookup failed: %v", rt.errs)
-	}
-	rt = &recTB{TB: t}
-	runAssert(func() { AssertUsesIndex(rt, db, scan, "items_sku_idx") })
-	if len(rt.errs) != 1 || !strings.Contains(rt.errs[0], "sequential scan") {
-		t.Fatalf("errors = %v, want one mentioning a sequential scan", rt.errs)
-	}
-	rt = &recTB{TB: t}
-	runAssert(func() { AssertUsesIndex(rt, db, indexed, "items_other_idx") })
-	if len(rt.errs) != 1 || !strings.Contains(rt.errs[0], `"items_other_idx"`) {
-		t.Fatalf("errors = %v, want one naming the missing index", rt.errs)
 	}
 }

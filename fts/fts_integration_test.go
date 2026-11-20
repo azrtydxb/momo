@@ -102,10 +102,10 @@ func ftsIDs(hits []ftsHit) []int64 {
 // cannot be scanned into types.TSVector.
 func TestFullTextSearch(t *testing.T) {
 	testopen.Each(t, func(t *testing.T, db *momo.DB, d dialect.Name) {
-		q := fts.WebsearchToQuery("english", "reset")
+		q := fts.TSWebsearchQuery("english", "reset")
 		if d != dialect.Postgres {
 			_, err := momo.Select[ftsHit](db).From(momo.TableRef{Name: "kb_articles"}).
-				Columns(kbID, fts.RankCD(kbTsv, q), kbTitle).Where(fts.Match(kbTsv, q)).SQL()
+				Columns(kbID, fts.TSRankCD(kbTsv, q), kbTitle).Where(fts.TSMatch(kbTsv, q)).SQL()
 			if !errors.Is(err, momo.ErrUnsupported) {
 				t.Fatalf("full-text on %s = %v, want ErrUnsupported", d, err)
 			}
@@ -114,35 +114,35 @@ func TestFullTextSearch(t *testing.T) {
 		createKB(t, db)
 		ctx := context.Background()
 		from := momo.TableRef{Name: "kb_articles"}
-		rank := fts.RankCD(kbTsv, q)
+		rank := fts.TSRankCD(kbTsv, q)
 
 		// Where, Columns and OrderBy together: best match first.
 		hits, err := momo.Select[ftsHit](db).From(from).
-			Columns(kbID, rank, kbTitle).Where(fts.Match(kbTsv, q)).OrderBy(rank.Desc()).All(ctx)
+			Columns(kbID, rank, kbTitle).Where(fts.TSMatch(kbTsv, q)).OrderBy(rank.Desc()).All(ctx)
 		if err != nil || !slices.Equal(ftsIDs(hits), []int64{1, 2}) || hits[0].Rank <= hits[1].Rank || hits[1].Rank <= 0 {
 			t.Fatalf("ranked search = %+v, %v; want articles 1 then 2 with falling positive ranks", hits, err)
 		}
 
 		// Web-search syntax: a negated term, then a quoted phrase.
 		neg, err := momo.Select[ftsHit](db).From(from).Columns(kbID, rank, kbTitle).
-			Where(fts.Match(kbTsv, fts.WebsearchToQuery("english", "reset -password"))).All(ctx)
+			Where(fts.TSMatch(kbTsv, fts.TSWebsearchQuery("english", "reset -password"))).All(ctx)
 		if err != nil || !slices.Equal(ftsIDs(neg), []int64{2}) {
 			t.Fatalf("negation = %+v, %v; want article 2", neg, err)
 		}
 		phrase, err := momo.Select[ftsHit](db).From(from).Columns(kbID, rank, kbTitle).
-			Where(fts.Match(kbTsv, fts.WebsearchToQuery("english", `"reset link"`))).All(ctx)
+			Where(fts.TSMatch(kbTsv, fts.TSWebsearchQuery("english", `"reset link"`))).All(ctx)
 		if err != nil || !slices.Equal(ftsIDs(phrase), []int64{1}) {
 			t.Fatalf("phrase = %+v, %v; want article 1", phrase, err)
 		}
 
 		// plainto, phraseto and to_tsquery with a to_tsvector over a text column.
 		for name, query := range map[string]momo.Expression[types.TSQuery]{
-			"plain":  fts.PlainToQuery("english", "ships worldwide"),
-			"phrase": fts.PhraseToQuery("english", "ship worldwide"),
-			"tsq":    fts.ToQuery("english", "ship & world:*"),
+			"plain":  fts.TSPlainQuery("english", "ships worldwide"),
+			"phrase": fts.TSPhraseQuery("english", "ship worldwide"),
+			"tsq":    fts.TSQuery("english", "ship & world:*"),
 		} {
 			got, err := momo.Select[ftsHit](db).From(from).Columns(kbID, rank, kbTitle).
-				Where(fts.Match(fts.ToVector("english", kbBody), query)).All(ctx)
+				Where(fts.TSMatch(fts.TSVector("english", kbBody), query)).All(ctx)
 			if err != nil || !slices.Equal(ftsIDs(got), []int64{3}) {
 				t.Fatalf("%s = %+v, %v; want article 3", name, got, err)
 			}
@@ -150,14 +150,14 @@ func TestFullTextSearch(t *testing.T) {
 
 		// ts_rank with a normalization flag stays positive.
 		norm, err := momo.Select[ftsHit](db).From(from).
-			Columns(kbID, fts.Rank(kbTsv, q, 1), kbTitle).Where(fts.Match(kbTsv, q)).All(ctx)
+			Columns(kbID, fts.TSRank(kbTsv, q, 1), kbTitle).Where(fts.TSMatch(kbTsv, q)).All(ctx)
 		if err != nil || len(norm) != 2 || norm[0].Rank <= 0 {
 			t.Fatalf("ts_rank = %+v, %v", norm, err)
 		}
 
 		// ts_headline with an options string.
 		head, err := momo.Select[ftsHit](db).From(from).
-			Columns(kbID, rank, fts.Headline("english", kbBody, q, "StartSel=<b>, StopSel=</b>")).
+			Columns(kbID, rank, fts.TSHeadline("english", kbBody, q, "StartSel=<b>, StopSel=</b>")).
 			Where(kbID.Eq(1)).All(ctx)
 		if err != nil || len(head) != 1 || !strings.Contains(head[0].Text, "<b>reset</b>") {
 			t.Fatalf("headline = %+v, %v; want marked-up reset", head, err)
@@ -197,9 +197,9 @@ func TestFullTextHybridRanking(t *testing.T) {
 		createKB(t, db)
 		ctx := context.Background()
 
-		q := fts.WebsearchToQuery("english", "reset")
+		q := fts.TSWebsearchQuery("english", "reset")
 		dist := vecop.Cosine(kbEmb, vector.Vector{1, 0, 0})
-		text := fts.RankCD(kbTsv, q)
+		text := fts.TSRankCD(kbTsv, q)
 		// Lower is better: the distance, reduced by half the text rank.
 		score := sqlfn.SubExpr[float64](dist, sqlfn.Mul[float64](text, 0.5))
 

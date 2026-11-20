@@ -77,7 +77,7 @@ func TestMomotestSQLiteEphemeral(t *testing.T) {
 // and LoadFixtures fills the database.
 func TestSQLiteOptionsAndFixtures(t *testing.T) {
 	rec := &obstest.Recorder{}
-	db := sqlitetest.New(t, momo.WithHook(rec))
+	db := sqlitetest.New(t, momotest.WithMomoOptions(momo.WithHook(rec)))
 	for _, ddl := range []string{
 		`CREATE TABLE tags (id BIGINT PRIMARY KEY, name TEXT NOT NULL)`,
 		`CREATE TABLE authors (id BIGINT PRIMARY KEY, name TEXT NOT NULL)`,

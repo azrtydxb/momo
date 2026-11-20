@@ -38,7 +38,7 @@ func ConfigFromFile(fsys fs.FS, path string) ([]Option, error) {
 // command calls migratecfg.Build with the same three constructors.
 func optionsFrom(r migratecfg.Resolved) []Option {
 	return migratecfg.Build(r, migratecfg.Builders[Option]{
-		Config:           func(c migratecfg.EngineConfig) Option { return WithConfig(Config(c)) },
+		Config:           func(c migratecfg.EngineConfig) Option { return WithSettings(Settings(c)) },
 		LockTimeout:      WithLockTimeout,
 		StatementTimeout: WithStatementTimeout,
 	})

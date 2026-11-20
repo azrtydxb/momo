@@ -14,6 +14,7 @@ import (
 	"github.com/azrtydxb/momo/internal/exprtest"
 	"github.com/azrtydxb/momo/internal/testdb/testopen"
 	"github.com/azrtydxb/momo/sqlfn"
+	"github.com/azrtydxb/momo/timeop"
 )
 
 var (
@@ -155,10 +156,10 @@ func TestCurrentDateExecutes(t *testing.T) {
 			"INSERT INTO expr97d VALUES (1, '2000-01-01')",
 			"INSERT INTO expr97d VALUES (2, '2999-12-31')",
 		)
-		if n := count97(t, db, "expr97d", dateDay.LtExpr(sqlfn.CurrentDate())); n != 1 {
+		if n := count97(t, db, "expr97d", dateDay.LtExpr(timeop.CurrentDate())); n != 1 {
 			t.Errorf("%s: day < CURRENT_DATE = %d, want 1", d, n)
 		}
-		if n := count97(t, db, "expr97d", dateDay.GtExpr(sqlfn.CurrentDate())); n != 1 {
+		if n := count97(t, db, "expr97d", dateDay.GtExpr(timeop.CurrentDate())); n != 1 {
 			t.Errorf("%s: day > CURRENT_DATE = %d, want 1", d, n)
 		}
 	})
@@ -172,7 +173,7 @@ func TestInfinityExecutes(t *testing.T) {
 		}
 		createExpr97(t, db)
 		// Finite timestamps: ids 1, 2, 3.
-		if n := count97(t, db, "expr97", momo.And(e97At.LtExpr(sqlfn.Infinity()), e97At.GtExpr(sqlfn.NegInfinity()))); n != 3 {
+		if n := count97(t, db, "expr97", momo.And(e97At.LtExpr(timeop.Infinity()), e97At.GtExpr(timeop.NegInfinity()))); n != 3 {
 			t.Errorf("finite = %d, want 3", n)
 		}
 	})
