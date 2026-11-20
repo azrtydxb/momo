@@ -8,6 +8,32 @@ import (
 	"github.com/azrtydxb/momo/schema"
 )
 
+// Catches: the copy of the comparison in package schema (which Equal uses)
+// and SameCheck here deciding differently on the same two checks.
+func TestSameCheckAgreesWithSchema(t *testing.T) {
+	in := func(col string, values ...string) *schema.CheckIn {
+		return &schema.CheckIn{Column: col, Values: values}
+	}
+	checks := []schema.Check{
+		{Name: "c", Expr: "qty > 0"},
+		{Name: "c", Expr: `"s" IN ('a','b')`},
+		{Name: "c", Expr: `"s" IN ('b','a')`},
+		{Name: "c", Expr: `s = ANY (ARRAY['a'::text, 'b'::text])`},
+		{Name: "c", Expr: "x", In: in("s", "b", "a", "a")},
+		{Name: "c", Expr: "x", In: in("s", "a")},
+		{Name: "c", Expr: "x", In: in("t", "a", "b")},
+		{Name: "c"},
+	}
+	for i, a := range checks {
+		for j, b := range checks {
+			//lint:ignore SA1019 the deprecated forwarder is the copy under comparison
+			if got, want := SameCheck(a, b), schema.SameCheck(a, b); got != want {
+				t.Errorf("checks %d and %d: schemaops.SameCheck = %v, schema.SameCheck = %v", i, j, got, want)
+			}
+		}
+	}
+}
+
 // Catches: SameCheck deciding on the wrong thing: text for value lists, sets
 // for anything else, or a different answer for the declared side and the
 // inspected side depending on which is first.

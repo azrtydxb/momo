@@ -7,10 +7,19 @@ package sqlsplit
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 )
 
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+
+// KnownDirectives lists the names of the `-- momo:` directives a migration
+// header may hold. migrate's directive parser accepts exactly these names (a
+// test in migrate feeds every one of them to it), and the splitter stops its
+// header scan at a name that is not listed.
+var KnownDirectives = []string{
+	"no-transaction", "destructive", "split", "sqlite-foreign-keys-off", "generated", "imported", "ddl",
+}
 
 // hasSplitDirective reports whether the leading comment block of body holds a
 // `-- momo:split` directive. It scans the header the way migrate's directive
@@ -43,11 +52,10 @@ func hasSplitDirective(body []byte) bool {
 			continue
 		}
 		name, _, _ := strings.Cut(strings.TrimSpace(rest), " ")
-		switch name {
-		case "split":
+		if name == "split" {
 			return true
-		case "no-transaction", "destructive", "sqlite-foreign-keys-off", "generated", "imported", "ddl":
-		default:
+		}
+		if !slices.Contains(KnownDirectives, name) {
 			// The migrate parser stops at an unknown directive and reports it.
 			return false
 		}

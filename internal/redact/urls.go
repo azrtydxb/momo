@@ -5,22 +5,37 @@ package redact
 import (
 	"regexp"
 	"strings"
+	"sync"
 )
 
-var (
-	urlUserinfo = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.-]*://)[^/?#\s]*@`)
-	urlInText   = regexp.MustCompile(`(?i)\b(?:postgres(?:ql)?|mysql|mariadb)://[^\s"']+`)
+// urlPatterns holds the compiled expressions of RedactURLs. They compile on
+// the first call, not at package init, because the root package imports this
+// one and most programs never redact a message.
+type urlPatterns struct {
+	userinfo *regexp.Regexp
+	inText   *regexp.Regexp
 	// kvPassword matches a key=value DSN password: password=x, password='a b',
 	// password='it\'s' and environment-style names such as PGPASSWORD=x.
-	kvPassword = regexp.MustCompile(`(?i)\b(\w*(?:password|passwd|pwd))(\s*=)(\s*)('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|[^\s'"&]+)`)
+	kvPassword *regexp.Regexp
 	// kvNextKey matches the next key=value pair that an empty value, as in
 	// "password= host=h", would otherwise swallow; kvPlaceholder matches a bind
 	// placeholder ($1 or ?), which is not a secret.
-	kvNextKey     = regexp.MustCompile(`^\w+=`)
-	kvPlaceholder = regexp.MustCompile(`^(?:\$\d+|\?)$`)
+	kvNextKey     *regexp.Regexp
+	kvPlaceholder *regexp.Regexp
 	// mysqlDSN matches the go-sql-driver form user:password@tcp(host:port)/db.
-	mysqlDSN = regexp.MustCompile(`([^\s:/@"']+):([^\s"']*)@([A-Za-z][A-Za-z0-9]*\()`)
-)
+	mysqlDSN *regexp.Regexp
+}
+
+var patterns = sync.OnceValue(func() *urlPatterns {
+	return &urlPatterns{
+		userinfo:      regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.-]*://)[^/?#\s]*@`),
+		inText:        regexp.MustCompile(`(?i)\b(?:postgres(?:ql)?|mysql|mariadb)://[^\s"']+`),
+		kvPassword:    regexp.MustCompile(`(?i)\b(\w*(?:password|passwd|pwd))(\s*=)(\s*)('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|[^\s'"&]+)`),
+		kvNextKey:     regexp.MustCompile(`^\w+=`),
+		kvPlaceholder: regexp.MustCompile(`^(?:\$\d+|\?)$`),
+		mysqlDSN:      regexp.MustCompile(`([^\s:/@"']+):([^\s"']*)@([A-Za-z][A-Za-z0-9]*\()`),
+	}
+})
 
 // RedactURLs removes passwords and DSNs from msg: every secret given, the
 // userinfo of any URL, any URL-looking text that carries a query, and the value
@@ -37,18 +52,19 @@ func RedactURLs(msg string, secrets ...string) string {
 			msg = strings.ReplaceAll(msg, s, "***")
 		}
 	}
-	msg = urlUserinfo.ReplaceAllString(msg, "${1}***@")
-	msg = urlInText.ReplaceAllStringFunc(msg, func(m string) string {
+	p := patterns()
+	msg = p.userinfo.ReplaceAllString(msg, "${1}***@")
+	msg = p.inText.ReplaceAllStringFunc(msg, func(m string) string {
 		if i := strings.IndexAny(m, "?"); i >= 0 {
 			return m[:i] + "?***"
 		}
 		return m
 	})
-	msg = mysqlDSN.ReplaceAllString(msg, "${1}:***@${3}")
-	return kvPassword.ReplaceAllStringFunc(msg, func(m string) string {
-		g := kvPassword.FindStringSubmatch(m)
+	msg = p.mysqlDSN.ReplaceAllString(msg, "${1}:***@${3}")
+	return p.kvPassword.ReplaceAllStringFunc(msg, func(m string) string {
+		g := p.kvPassword.FindStringSubmatch(m)
 		key, eq, space, val := g[1], g[2], g[3], g[4]
-		if kvPlaceholder.MatchString(val) || space != "" && kvNextKey.MatchString(val) {
+		if p.kvPlaceholder.MatchString(val) || space != "" && p.kvNextKey.MatchString(val) {
 			return m
 		}
 		return key + eq + space + "***"

@@ -20,3 +20,13 @@ func (Momo) ColumnName(goField string) string { return snake.ToSnake(goField) }
 func (m Momo) JoinTableName(owner, target string) string {
 	return m.TableName(owner) + "_" + m.TableName(target)
 }
+
+// ToSnake converts a Go identifier to snake_case, keeping acronyms together.
+//
+// Deprecated: use Momo.ColumnName. Removed in the next release.
+func ToSnake(s string) string { return snake.ToSnake(s) }
+
+// Plural pluralizes the last underscore-separated word of s.
+//
+// Deprecated: use Momo.TableName. Removed in the next release.
+func Plural(s string) string { return pluralize.Plural(s) }

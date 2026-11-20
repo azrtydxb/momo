@@ -55,8 +55,7 @@ const rebuildHint = "rebuild"
 // statement per table, with Hint "rebuild" and no SQL, at the position of the
 // table's first such change, and folds every other change to that table into
 // it. A marker is not executable; RenderSchema, which Engine.Diff and
-// AutoMigrate call, writes the rebuild out in full, and rebuildLive writes it from
-// a live connection.
+// AutoMigrate call, writes the rebuild out in full.
 //
 // Render returns an error wrapping momo.ErrUnsupported for the kinds SQLite has
 // no equivalent of: create_schema, create_extension, create_enum,

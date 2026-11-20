@@ -7,6 +7,7 @@ package sqlite
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -75,6 +76,83 @@ func newRebuildFixture(t *testing.T) momo.PinnedConn {
 	mustExec(t, c, `INSERT INTO items (name, qty) VALUES ('a', 1), ('b', 2), ('c', 3)`)
 	mustExec(t, c, `INSERT INTO links (item_id) VALUES (1), (2)`)
 	return c
+}
+
+// captureDependents reads, in rowid order, every view and every trigger whose SQL mentions
+// table (a whole-word, case-insensitive match that ignores string literals),
+// plus every trigger on table, plus every view or trigger that mentions a view
+// already captured: SQLite fails ALTER TABLE ... RENAME while any view names a
+// missing object, so a view that sits on top of a captured view has to go too.
+// Over-inclusion is safe: recreating an unaffected object verbatim does not
+// change behaviour.
+func captureDependents(ctx context.Context, c momo.PinnedConn, table string) ([]dependent, error) {
+	var all []dependent
+	err := forEach(ctx, c, `SELECT type, name, tbl_name, sql FROM sqlite_schema WHERE type IN ('view', 'trigger') AND sql IS NOT NULL ORDER BY rowid`, nil, func(r momo.Rows) error {
+		var d dependent
+		if err := r.Scan(&d.Type, &d.Name, &d.Table, &d.SQL); err != nil {
+			return err
+		}
+		all = append(all, d)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("migrate/sqlite: read the views and triggers: %w", err)
+	}
+	names := map[string]string{strings.ToLower(table): table}
+	taken := make([]bool, len(all))
+	for changed := true; changed; {
+		changed = false
+		for i, d := range all {
+			if taken[i] {
+				continue
+			}
+			if d.Type == "trigger" && strings.EqualFold(d.Table, table) || mentionsAny(d.SQL, names) {
+				taken[i] = true
+				changed = true
+				if d.Type == "view" {
+					names[strings.ToLower(d.Name)] = d.Name
+				}
+			}
+		}
+	}
+	var out []dependent
+	for i, d := range all {
+		if taken[i] {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+// rebuildLive writes the statements that rebuild table to the desired definition
+// on the live database c: it captures the views and triggers that mention the
+// table, reads the table's current columns, and calls rebuildStatements. Rows
+// are copied for the columns that exist in both.
+//
+// Precondition: the caller ran Setup(ctx, c, SessionOptions{ForeignKeysOff:
+// true}) outside any transaction, and runs the result with migrate.RunStatements
+// (one transaction; the fk-check statement fails it on a violation).
+func rebuildLive(ctx context.Context, c momo.PinnedConn, table string, desired schema.Table, desiredIndexes []schema.Index) ([]migrate.Statement, error) {
+	var old []string
+	err := forEach(ctx, c, `SELECT name FROM pragma_table_xinfo(?) WHERE hidden <> 1 ORDER BY cid`, []any{table}, func(r momo.Rows) error {
+		var n string
+		if err := r.Scan(&n); err != nil {
+			return err
+		}
+		old = append(old, n)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("migrate/sqlite: read the columns of %q: %w", table, err)
+	}
+	if len(old) == 0 {
+		return nil, &momo.Error{Kind: momo.ErrValidation, Op: "migrate/sqlite", Table: table, Err: fmt.Errorf("the table %q does not exist", table)}
+	}
+	deps, err := captureDependents(ctx, c, table)
+	if err != nil {
+		return nil, err
+	}
+	return rebuildStatements(table, old, desired, desiredIndexes, deps)
 }
 
 var itemsDesired = schema.Table{Name: "items", Columns: []schema.Column{
