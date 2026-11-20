@@ -60,9 +60,9 @@ func TestResultHelpers(t *testing.T) {
 		if title != "a" {
 			t.Fatalf("MapRows title = %v, want a", maps[0]["title"])
 		}
-		vals, err := momo.Scalars[string](ctx, db, "SELECT title FROM documents WHERE tenant_id = ? ORDER BY id", 1)
+		vals, err := momo.QueryScalars[string](ctx, db, "SELECT title FROM documents WHERE tenant_id = ? ORDER BY id", 1)
 		if err != nil || len(vals) != 7 || vals[6] != "g" {
-			t.Fatalf("Scalars = %v %v", vals, err)
+			t.Fatalf("QueryScalars =%v %v", vals, err)
 		}
 	})
 }

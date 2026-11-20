@@ -30,7 +30,7 @@ func TestPostgresSchemas(t *testing.T) {
 			t.Errorf("drop extra schema %s: %v", extra, err)
 		}
 	})
-	cfg := migrate.WithConfig(migrate.Config{Schemas: []string{cur, extra}})
+	cfg := migrate.WithSettings(migrate.Settings{Schemas: []string{cur, extra}})
 	desired := &schema.Schema{
 		Dialect: "postgres",
 		Schemas: []schema.Namespace{{Name: extra}},

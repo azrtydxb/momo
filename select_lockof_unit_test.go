@@ -52,7 +52,7 @@ func TestLockOfGolden(t *testing.T) {
 		"blank":                     buildErr(join(pg).ForUpdate().LockOf("")),
 		"unknown":                   buildErr(join(pg).ForUpdate().LockOf("nope")),
 		"model name, not the alias": buildErr(join(pg).ForUpdate().LockOf("documents")),
-		"subquery":                  buildErr(momo.Select[unitDocument](pg).From(momo.FromSubquery(momo.RawSubquery("SELECT 1"), "c")).ForUpdate().LockOf("c")),
+		"subquery":                  buildErr(momo.Select[unitDocument](pg).From(momo.FromSubquery(momo.SubquerySQL("SELECT 1"), "c")).ForUpdate().LockOf("c")),
 		"distinct":                  buildErr(join(pg).Distinct().ForUpdate().LockOf("d")),
 		"group by":                  buildErr(join(pg).GroupBy(DocTenantID.As("d")).ForUpdate()),
 		"both wait options":         buildErr(join(pg).ForUpdate("NOWAIT", "SKIP LOCKED")),
@@ -88,7 +88,7 @@ func TestLockOfSourcesAndRestrictions(t *testing.T) {
 	pg := momo.New(fakedriver.New(dialect.Postgres))
 	base := func() momo.SelectQuery[unitDocument] { return momo.Select[unitDocument](pg) }
 	cteJoin := func() momo.SelectQuery[unitDocument] {
-		return base().With("c", momo.RawSubquery("SELECT 1 AS id"), "id").
+		return base().With("c", momo.SubquerySQL("SELECT 1 AS id"), "id").
 			Join(momo.CTE("c"), DocID.EqExpr(momo.ColumnOf[int64]("c", "id")))
 	}
 

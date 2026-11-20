@@ -24,11 +24,11 @@ func compositeFKSchema(t *testing.T) *schema.Schema {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, diags, err := gen.Load([]string{"./compositefk"}, gen.Config{Dir: dir})
+	g, diags, err := gen.Load([]string{"./compositefk"}, gen.LoadConfig{Dir: dir})
 	if err != nil || len(diags) != 0 {
 		t.Fatalf("load: %v %v", err, diags)
 	}
-	s, sd := gen.BuildSchema(g.Models, gen.Config{Dialects: []dialect.Name{dialect.Postgres}})
+	s, sd := gen.BuildSchema(g.Models, gen.LoadConfig{Dialects: []dialect.Name{dialect.Postgres}})
 	if len(sd) != 0 {
 		t.Fatalf("schema diagnostics: %v", sd)
 	}

@@ -46,7 +46,7 @@ func TestViewModelsNotWritable(t *testing.T) {
 	m := viewItem{ID: 1, Name: "n"}
 	id := momo.NewColumn[int64]("item_view", "id", momo.FlagPK)
 	name := momo.NewColumn[string]("item_view", "name", 0)
-	src := momo.RawSubquery("SELECT 1 AS id, 'x' AS name")
+	src := momo.SubquerySQL("SELECT 1 AS id, 'x' AS name")
 
 	refused := func(op string, err error) {
 		t.Helper()

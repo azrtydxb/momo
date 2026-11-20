@@ -95,7 +95,7 @@ func engineOn(t *testing.T, db *momo.DB, fsys fs.FS) *migrate.Engine {
 // engineIn is engineOn for the schema sch.
 func engineIn(t *testing.T, db *momo.DB, sch string, fsys fs.FS) *migrate.Engine {
 	t.Helper()
-	return migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithConfig(migrate.Config{Schemas: []string{sch}}))
+	return migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithSettings(migrate.Settings{Schemas: []string{sch}}))
 }
 
 // migrationFiles turns rendered statements into migration files, in order.

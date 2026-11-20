@@ -36,7 +36,7 @@ func registryWith(sql ...string) *momo.QueryRegistry {
 		if strings.Contains(s, "$1") {
 			args = []any{1}
 		}
-		r.Register(fmt.Sprintf("q%d", i+1), func(q momo.Querier) momo.Compilable { return momo.RawQuery(q, s, args...) })
+		r.Register(fmt.Sprintf("q%d", i+1), func(q momo.Querier) momo.Compilable { return momo.CompilableSQL(q, s, args...) })
 	}
 	return r
 }
@@ -127,7 +127,7 @@ func TestQueryGoldenStableForMultilineSQL(t *testing.T) {
 	dir := t.TempDir()
 	reg := momo.NewQueryRegistry()
 	reg.Register("multi", func(q momo.Querier) momo.Compilable {
-		return momo.RawQuery(q, `
+		return momo.CompilableSQL(q, `
 			SELECT id,
 			       name -- name: not a header
 			  FROM t

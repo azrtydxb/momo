@@ -47,7 +47,7 @@ func WithTxSetup(fn func(ctx context.Context, tx *Tx) error) Option {
 
 // WithImplicitTx makes every auto-commit statement on a *DB run inside its own
 // short transaction, so WithTxSetup applies to it too. This covers Select,
-// Insert, Update, Delete, Exec, Scalars and the relation loads. Statements
+// Insert, Update, Delete, Exec, QueryScalars and the relation loads. Statements
 // on a *Tx are unaffected, and a *DB pinned with OnConn keeps running on its
 // connection without a transaction.
 //

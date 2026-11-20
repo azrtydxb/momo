@@ -15,7 +15,7 @@ import (
 
 // Compilable is a statement that renders to SQL without running it. The
 // query builders (SelectQuery, InsertQuery, UpdateQuery, DeleteQuery,
-// MergeQuery) implement it through their SQL method, and RawQuery wraps a
+// MergeQuery) implement it through their SQL method, and CompilableSQL wraps a
 // hand-written statement.
 type Compilable interface {
 	SQL() (Compiled, error)
@@ -59,7 +59,7 @@ func RegisterQuery(name string, build func(q Querier) Compilable) {
 
 // Register adds a named query. build receives a Querier that only compiles
 // (see MustNewOffline) and returns the statement, for example a SelectQuery or a
-// RawQuery. It runs once per Compile and dialect, so it must not touch a
+// CompilableSQL. It runs once per Compile and dialect, so it must not touch a
 // database, and the argument values it binds are placeholders that never
 // reach the listed SQL. Register panics when name is empty or contains a line break, build is nil or
 // name is already registered, programming errors like a duplicate
@@ -127,16 +127,23 @@ func (r *QueryRegistry) Compile(d dialect.Name) ([]RegisteredQuery, error) {
 	return out, nil
 }
 
-// RawQuery wraps a hand-written statement as a Compilable, with the
+// RawQuery is CompilableSQL.
+//
+// Deprecated: use CompilableSQL. RawQuery is removed in the next release.
+func RawQuery(q Querier, sql string, args ...any) Compilable {
+	return CompilableSQL(q, sql, args...)
+}
+
+// CompilableSQL wraps a hand-written statement as a Compilable, with the
 // placeholder rules of Exec ('?' binds, "??" is a literal '?', on PostgreSQL
 // native $n placeholders). It is for QueryRegistry builders:
 //
 //	momo.RegisterQuery("open_tasks", func(q momo.Querier) momo.Compilable {
-//		return momo.RawQuery(q, "SELECT id, title FROM tasks WHERE owner = $1 AND NOT done", 0)
+//		return momo.CompilableSQL(q, "SELECT id, title FROM tasks WHERE owner = $1 AND NOT done", 0)
 //	})
 //
 // A malformed statement shows as the error of SQL.
-func RawQuery(q Querier, sql string, args ...any) Compilable {
+func CompilableSQL(q Querier, sql string, args ...any) Compilable {
 	c, err := compile(q.Dialect(), func(b *Builder) { b.appendRaw(sql, args) })
 	return rawCompiled{c, err}
 }

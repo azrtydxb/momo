@@ -119,7 +119,7 @@ func TestMomotestFixturesRowError(t *testing.T) {
 		if len(errs) != 1 || !strings.Contains(errs[0], "table documents row 1") {
 			t.Fatalf("errors = %v, want one naming table documents row 1", errs)
 		}
-		n, err := momo.Scalars[int64](t.Context(), db, "SELECT count(*) FROM authors")
+		n, err := momo.QueryScalars[int64](t.Context(), db, "SELECT count(*) FROM authors")
 		if err != nil || len(n) != 1 || n[0] != 1 {
 			t.Fatalf("authors after the failed load = %v, %v, want the row before the failure", n, err)
 		}

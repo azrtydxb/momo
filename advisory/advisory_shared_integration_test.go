@@ -43,7 +43,7 @@ func TestXactLockSharedReaderWriter(t *testing.T) {
 		t.Fatalf("exclusive try while shared held = %v, %v; want false", ok, err)
 	}
 	// The same key spelled in SQL is the same lock.
-	got, err := momo.Scalars[bool](ctx, writer, "SELECT pg_try_advisory_xact_lock(hashtextextended(?::text, 52))", "obj:ledger")
+	got, err := momo.QueryScalars[bool](ctx, writer, "SELECT pg_try_advisory_xact_lock(hashtextextended(?::text, 52))", "obj:ledger")
 	if err != nil || len(got) != 1 || got[0] {
 		t.Fatalf("raw exclusive try on hashtextextended(key, 52) = %v, %v; want false", got, err)
 	}

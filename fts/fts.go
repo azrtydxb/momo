@@ -7,7 +7,7 @@
 // The text search configuration (english, simple, ...) is a string that is
 // bound as a parameter and cast to regconfig, so it cannot carry SQL. A
 // tsvector operand is typically a momo.Column[types.TSVector] kept current by
-// a trigger, or ToVector over a text column. The operand types types.TSVector
+// a trigger, or TSVector over a text column. The operand types types.TSVector
 // and types.TSQuery live in package types.
 //
 // The package builds on the frozen extension API of the root package plus
@@ -98,9 +98,16 @@ func writeRegconfig(b *momo.Builder, what, config string, fl momo.ColumnFlags) {
 	b.WriteString(" AS regconfig)")
 }
 
-// ToVector is to_tsvector(config, doc): doc parsed into a tsvector with the
-// text search configuration config.
+// ToVector is TSVector.
+//
+// Deprecated: use TSVector. ToVector is removed in the next release.
 func ToVector(config string, doc momo.Expression[string]) Expr[types.TSVector] {
+	return TSVector(config, doc)
+}
+
+// TSVector is to_tsvector(config, doc): doc parsed into a tsvector with the
+// text search configuration config. PostgreSQL only.
+func TSVector(config string, doc momo.Expression[string]) Expr[types.TSVector] {
 	return newExpr[types.TSVector]("to_tsvector", func(b *momo.Builder) {
 		fl := sensFlags(b, doc)
 		b.WriteString("to_tsvector(")
@@ -122,34 +129,71 @@ func query(fn, config, text string) Expr[types.TSQuery] {
 	})
 }
 
-// WebsearchToQuery is websearch_to_tsquery(config, query): the query in the
+// WebsearchToQuery is TSWebsearchQuery.
+//
+// Deprecated: use TSWebsearchQuery. WebsearchToQuery is removed in the next release.
+func WebsearchToQuery(config, text string) Expr[types.TSQuery] {
+	return TSWebsearchQuery(config, text)
+}
+
+// TSWebsearchQuery is websearch_to_tsquery(config, query): the query in the
 // forgiving web-search syntax (quoted phrases, or, a leading minus). It never
 // fails on user input, which makes it the right choice for a search box.
-func WebsearchToQuery(config, text string) Expr[types.TSQuery] {
+// PostgreSQL only.
+func TSWebsearchQuery(config, text string) Expr[types.TSQuery] {
 	return query("websearch_to_tsquery", config, text)
 }
 
-// PlainToQuery is plainto_tsquery(config, query): the words of query ANDed
-// together, punctuation ignored.
+// PlainToQuery is TSPlainQuery.
+//
+// Deprecated: use TSPlainQuery. PlainToQuery is removed in the next release.
 func PlainToQuery(config, text string) Expr[types.TSQuery] {
+	return TSPlainQuery(config, text)
+}
+
+// TSPlainQuery is plainto_tsquery(config, query): the words of query ANDed
+// together, punctuation ignored. PostgreSQL only.
+func TSPlainQuery(config, text string) Expr[types.TSQuery] {
 	return query("plainto_tsquery", config, text)
 }
 
-// PhraseToQuery is phraseto_tsquery(config, query): the words of query as one
-// phrase.
+// PhraseToQuery is TSPhraseQuery.
+//
+// Deprecated: use TSPhraseQuery. PhraseToQuery is removed in the next release.
 func PhraseToQuery(config, text string) Expr[types.TSQuery] {
+	return TSPhraseQuery(config, text)
+}
+
+// TSPhraseQuery is phraseto_tsquery(config, query): the words of query as one
+// phrase. PostgreSQL only.
+func TSPhraseQuery(config, text string) Expr[types.TSQuery] {
 	return query("phraseto_tsquery", config, text)
 }
 
-// ToQuery is to_tsquery(config, query): query must already be in tsquery
-// syntax (& | ! <-> and prefix:*); a malformed query is a database error.
+// ToQuery is TSQuery.
+//
+// Deprecated: use TSQuery. ToQuery is removed in the next release.
 func ToQuery(config, text string) Expr[types.TSQuery] {
+	return TSQuery(config, text)
+}
+
+// TSQuery is to_tsquery(config, query): query must already be in tsquery
+// syntax (& | ! <-> and prefix:*); a malformed query is a database error.
+// PostgreSQL only.
+func TSQuery(config, text string) Expr[types.TSQuery] {
 	return query("to_tsquery", config, text)
 }
 
-// Match is vec @@ q: true when the document matches the query. Other dialects
-// fail the build with ErrUnsupported.
+// Match is TSMatch.
+//
+// Deprecated: use TSMatch. Match is removed in the next release.
 func Match(vec momo.Expression[types.TSVector], q momo.Expression[types.TSQuery]) momo.Predicate {
+	return TSMatch(vec, q)
+}
+
+// TSMatch is vec @@ q: true when the document matches the query. It is
+// PostgreSQL only; other dialects fail the build with ErrUnsupported.
+func TSMatch(vec momo.Expression[types.TSVector], q momo.Expression[types.TSQuery]) momo.Predicate {
 	return exprkit.Predicate(func(b *momo.Builder) {
 		if !available(b, "@@") {
 			return
@@ -189,25 +233,46 @@ func rank(fn string, vec momo.Expression[types.TSVector], q momo.Expression[type
 	})
 }
 
-// Rank is ts_rank(vec, q [, normalization]): a relevance score from how often
-// the query terms occur. normalization is the optional bit mask of
-// PostgreSQL's ts_rank flags (0 to 63), rendered as a literal.
+// Rank is TSRank.
+//
+// Deprecated: use TSRank. Rank is removed in the next release.
 func Rank(vec momo.Expression[types.TSVector], q momo.Expression[types.TSQuery], normalization ...int) Expr[float64] {
+	return TSRank(vec, q, normalization...)
+}
+
+// TSRank is ts_rank(vec, q [, normalization]): a relevance score from how often
+// the query terms occur. normalization is the optional bit mask of
+// PostgreSQL's ts_rank flags (0 to 63), rendered as a literal. PostgreSQL only.
+func TSRank(vec momo.Expression[types.TSVector], q momo.Expression[types.TSQuery], normalization ...int) Expr[float64] {
 	return rank("ts_rank", vec, q, normalization)
 }
 
-// RankCD is ts_rank_cd(vec, q [, normalization]): the cover-density score,
-// which also rewards query terms that sit close together.
+// RankCD is TSRankCD.
+//
+// Deprecated: use TSRankCD. RankCD is removed in the next release.
 func RankCD(vec momo.Expression[types.TSVector], q momo.Expression[types.TSQuery], normalization ...int) Expr[float64] {
+	return TSRankCD(vec, q, normalization...)
+}
+
+// TSRankCD is ts_rank_cd(vec, q [, normalization]): the cover-density score,
+// which also rewards query terms that sit close together. PostgreSQL only.
+func TSRankCD(vec momo.Expression[types.TSVector], q momo.Expression[types.TSQuery], normalization ...int) Expr[float64] {
 	return rank("ts_rank_cd", vec, q, normalization)
 }
 
-// Headline is ts_headline(config, doc, q [, options]): doc with the query
+// Headline is TSHeadline.
+//
+// Deprecated: use TSHeadline. Headline is removed in the next release.
+func Headline(config string, doc momo.Expression[string], q momo.Expression[types.TSQuery], options string) Expr[string] {
+	return TSHeadline(config, doc, q, options)
+}
+
+// TSHeadline is ts_headline(config, doc, q [, options]): doc with the query
 // matches marked up. options is PostgreSQL's comma-separated option string
 // (for example StartSel=<b>, StopSel=</b>, MaxFragments=2); it is bound as a
 // parameter, and an empty string leaves the server defaults. doc is the
-// original text, not the tsvector.
-func Headline(config string, doc momo.Expression[string], q momo.Expression[types.TSQuery], options string) Expr[string] {
+// original text, not the tsvector. PostgreSQL only.
+func TSHeadline(config string, doc momo.Expression[string], q momo.Expression[types.TSQuery], options string) Expr[string] {
 	return newExpr[string]("ts_headline", func(b *momo.Builder) {
 		fl := sensFlags(b, doc, q)
 		b.WriteString("ts_headline(")

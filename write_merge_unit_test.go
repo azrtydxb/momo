@@ -29,7 +29,7 @@ func newVersioned(version int) versioned {
 }
 
 func mergeInsertQuery(q momo.Querier) momo.MergeQuery[suite.Document] {
-	src := momo.RawSubquery("SELECT 3 AS id, 1 AS tenant_id, 'merged' AS title")
+	src := momo.SubquerySQL("SELECT 3 AS id, 1 AS tenant_id, 'merged' AS title")
 	return momo.Merge[suite.Document](q, src).
 		On(suite.DocID.EqExpr(momo.TypedSQL[int64]("src.id"))).
 		WhenNotMatchedInsert([]momo.ColumnRef{suite.DocID, suite.DocTenantID, suite.DocTitle},
@@ -104,7 +104,7 @@ func TestMergeStatementsIsTheMergeOnPostgres(t *testing.T) {
 // writes a column Update refuses.
 func TestMergeValidation(t *testing.T) {
 	db := momo.New(fakedriver.New(dialect.Postgres))
-	src := momo.RawSubquery("SELECT 1 AS id")
+	src := momo.SubquerySQL("SELECT 1 AS id")
 	on := suite.DocID.EqExpr(momo.TypedSQL[int64]("src.id"))
 	cols := []momo.ColumnRef{suite.DocTitle}
 	cases := map[string]momo.MergeQuery[suite.Document]{
@@ -212,7 +212,7 @@ func TestMergeMasksSensitiveArgs(t *testing.T) {
 	rec := &obstest.Recorder{}
 	drv := newVersioned(170000)
 	db := momo.New(drv, momo.WithHook(rec), momo.WithArgLogging())
-	src := momo.RawSubquery("SELECT 3 AS id")
+	src := momo.SubquerySQL("SELECT 3 AS id")
 	_, err := momo.Merge[suite.Document](db, src).
 		On(suite.DocID.EqExpr(momo.TypedSQL[int64]("src.id"))).
 		WhenMatchedUpdate(suite.DocSecret.Set(sensitiveValue)).

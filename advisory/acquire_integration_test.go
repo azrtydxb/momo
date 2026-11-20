@@ -40,7 +40,7 @@ func TestAcquireTransactionLocks(t *testing.T) {
 	if ok, err := advisory.Acquire(ctx, writer, "obj:acquire", advisory.Xact(), advisory.Try(), advisory.WithHash64(52)); err != nil || ok {
 		t.Fatalf("exclusive try while shared held = %v, %v; want false", ok, err)
 	}
-	got, err := momo.Scalars[bool](ctx, writer, "SELECT pg_try_advisory_xact_lock(hashtextextended(?::text, 52))", "obj:acquire")
+	got, err := momo.QueryScalars[bool](ctx, writer, "SELECT pg_try_advisory_xact_lock(hashtextextended(?::text, 52))", "obj:acquire")
 	if err != nil || len(got) != 1 || got[0] {
 		t.Fatalf("raw exclusive try on hashtextextended(key, 52) = %v, %v; want false", got, err)
 	}

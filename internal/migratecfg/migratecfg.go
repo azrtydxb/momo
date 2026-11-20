@@ -105,8 +105,8 @@ func ValidateOnly(only []string) error {
 	return nil
 }
 
-// EngineConfig has exactly the fields of migrate.Config, in the same order, so
-// the caller converts it with migrate.Config(c); the compiler rejects the
+// EngineConfig has exactly the fields of migrate.Settings, in the same order, so
+// the caller converts it with migrate.Settings(c); the compiler rejects the
 // conversion if the two ever drift apart.
 type EngineConfig struct {
 	Schemas            []string
@@ -153,7 +153,7 @@ func Resolve(m Migrate, only []string) (Resolved, error) {
 }
 
 // Builders are the constructors Build calls; the caller passes the engine's
-// WithConfig, WithLockTimeout and WithStatementTimeout.
+// WithSettings, WithLockTimeout and WithStatementTimeout.
 type Builders[O any] struct {
 	Config           func(EngineConfig) O
 	LockTimeout      func(time.Duration) O

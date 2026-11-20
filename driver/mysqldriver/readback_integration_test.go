@@ -191,11 +191,11 @@ func TestCreateGraphReadBackMySQLFamily(t *testing.T) {
 			ctx := context.Background()
 			db := s.open(t)
 			rbSchema(t, db)
-			rows, err := momo.Scalars[int64](ctx, db, "SELECT @@auto_increment_increment")
+			rows, err := momo.QueryScalars[int64](ctx, db, "SELECT @@auto_increment_increment")
 			if err != nil || len(rows) != 1 {
 				t.Fatal(err)
 			}
-			if modes, err := momo.Scalars[int64](ctx, db, "SELECT @@innodb_autoinc_lock_mode"); err == nil && len(modes) == 1 {
+			if modes, err := momo.QueryScalars[int64](ctx, db, "SELECT @@innodb_autoinc_lock_mode"); err == nil && len(modes) == 1 {
 				t.Logf("%s: innodb_autoinc_lock_mode=%d auto_increment_increment=%d", s.name, modes[0], rows[0])
 			}
 
@@ -428,7 +428,7 @@ func TestFindOrCreateSoftDeletedMySQLFamily(t *testing.T) {
 			if again.ID != 0 {
 				t.Fatalf("the model was overwritten with the deleted row: %+v", again)
 			}
-			rows, err := momo.Scalars[int64](ctx, db, "SELECT COUNT(*) FROM rb_docs")
+			rows, err := momo.QueryScalars[int64](ctx, db, "SELECT COUNT(*) FROM rb_docs")
 			if err != nil || len(rows) != 1 || rows[0] != 1 {
 				t.Fatalf("rows = %v, %v; want the one soft-deleted row untouched", rows, err)
 			}

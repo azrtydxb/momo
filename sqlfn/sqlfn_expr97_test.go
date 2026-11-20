@@ -11,6 +11,7 @@ import (
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/internal/exprtest"
 	"github.com/azrtydxb/momo/sqlfn"
+	"github.com/azrtydxb/momo/timeop"
 )
 
 var (
@@ -62,11 +63,11 @@ func TestNullIfExprGolden(t *testing.T) {
 // on a dialect that cannot parse them instead of failing with ErrUnsupported.
 func TestCurrentDateAndInfinityGolden(t *testing.T) {
 	for _, d := range typedDialects {
-		got, err := exprtest.CompileColumns(d, sqlfn.CurrentDate())
+		got, err := exprtest.CompileColumns(d, timeop.CurrentDate())
 		if err != nil || got.SQL != quoteFor(d, `SELECT CURRENT_DATE FROM "documents"`) {
 			t.Errorf("%s CURRENT_DATE = %q, %v", d, got.SQL, err)
 		}
-		for name, e := range map[string]momo.Expr{"infinity": sqlfn.Infinity(), "-infinity": sqlfn.NegInfinity()} {
+		for name, e := range map[string]momo.Expr{"infinity": timeop.Infinity(), "-infinity": timeop.NegInfinity()} {
 			got, err := exprtest.CompileColumns(d, e)
 			if d == dialect.Postgres {
 				want := `SELECT '` + name + `'::timestamptz FROM "documents"`
@@ -85,7 +86,7 @@ func TestCurrentDateAndInfinityGolden(t *testing.T) {
 // Catches: the infinity and date values losing the comparison methods.
 func TestInfinityComparison(t *testing.T) {
 	at := momo.NewColumn[time.Time]("docs", "at", 0)
-	got, err := exprtest.Compile(dialect.Postgres, at.LtExpr(sqlfn.Infinity()))
+	got, err := exprtest.Compile(dialect.Postgres, at.LtExpr(timeop.Infinity()))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -50,7 +50,7 @@ func prismaModels(t *testing.T, typeDefaults map[string]string) *schema.Schema {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := gen.Config{Dir: dir, Naming: naming.Prisma{}, TypeDefaults: typeDefaults, Dialects: []dialect.Name{dialect.Postgres}}
+	cfg := gen.LoadConfig{Dir: dir, Naming: naming.Prisma{}, TypeDefaults: typeDefaults, Dialects: []dialect.Name{dialect.Postgres}}
 	g, diags, err := gen.Load([]string{"./prisma"}, cfg)
 	if err != nil || len(diags) != 0 {
 		t.Fatalf("load: %v %v", err, diags)

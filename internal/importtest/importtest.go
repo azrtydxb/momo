@@ -92,7 +92,7 @@ func CheckImport(t *testing.T, live *momo.DB, in Input) {
 			t.Fatalf("history row %s: %v", row.Version, err)
 		}
 	}
-	e := migratetest.NewEngine(t, mpg.New(), live.Driver(), fsys, migrate.WithConfig(migrate.Config{
+	e := migratetest.NewEngine(t, mpg.New(), live.Driver(), fsys, migrate.WithSettings(migrate.Settings{
 		Exclude: append([]string{"momo_migrations", "momo_migration_lock"}, in.Exclude...),
 	}))
 	states, err := e.Status(ctx)

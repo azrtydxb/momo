@@ -40,7 +40,7 @@ opened, so `db.Close` leaves it alone and you close it.
 
 `db.Tx` runs a function in a transaction and commits when it returns nil.
 Inside it, use the `tx` handle for every statement. `momo.Exec` and
-`momo.Scalars` are the raw SQL path: `?` binds the next argument, so values
+`momo.QueryScalars` are the raw SQL path: `?` binds the next argument, so values
 never become part of the SQL text.
 
 The program reads the connection string from `MOMO_EXAMPLE_DSN`, for example
@@ -83,7 +83,7 @@ func run(ctx context.Context) error {
 		if _, err := momo.Exec(ctx, tx, "INSERT INTO notes (id, body) VALUES (?, ?)", 1, "hello"); err != nil {
 			return err
 		}
-		bodies, err := momo.Scalars[string](ctx, tx, "SELECT body FROM notes WHERE id = ?", 1)
+		bodies, err := momo.QueryScalars[string](ctx, tx, "SELECT body FROM notes WHERE id = ?", 1)
 		if err != nil {
 			return err
 		}

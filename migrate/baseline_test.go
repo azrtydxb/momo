@@ -249,7 +249,7 @@ func TestDriftExcludesHistoryTableAndHonoursExclude(t *testing.T) {
 	ctx := context.Background()
 	fsys := migratetestFS(t, initVersion)
 	mustExecDB(t, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
-	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithConfig(migrate.Config{Exclude: []string{"tmp_*", "legacy.*"}}))
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithSettings(migrate.Settings{Exclude: []string{"tmp_*", "legacy.*"}}))
 	if err := e.Baseline(context.Background(), initVersion, false); err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +343,7 @@ func TestDriftReportsInvalidIndex(t *testing.T) {
 }
 
 // excludedInvalidSetup leaves a failed CONCURRENTLY unique index on tmp_x, a
-// table Config.Exclude hides, next to the clean users table of the snapshot.
+// table Settings.Exclude hides, next to the clean users table of the snapshot.
 func excludedInvalidSetup(t *testing.T, db *momo.DB) fs.FS {
 	t.Helper()
 	mustExecDB(t, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
@@ -358,7 +358,7 @@ func excludedInvalidSetup(t *testing.T, db *momo.DB) fs.FS {
 func TestBaselineIgnoresInvalidIndexOfExcludedTable(t *testing.T) {
 	db := testopen.Postgres(t)
 	fsys := excludedInvalidSetup(t, db)
-	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithConfig(migrate.Config{Exclude: []string{"tmp_*"}}))
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithSettings(migrate.Settings{Exclude: []string{"tmp_*"}}))
 	if err := e.Baseline(context.Background(), initVersion, false); err != nil {
 		t.Fatalf("an invalid index on an excluded table must not refuse the baseline: %v", err)
 	}
@@ -378,7 +378,7 @@ func TestDriftIgnoresInvalidIndexOfExcludedTable(t *testing.T) {
 	db := testopen.Postgres(t)
 	ctx := context.Background()
 	fsys := excludedInvalidSetup(t, db)
-	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithConfig(migrate.Config{Exclude: []string{"tmp_*"}}))
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithSettings(migrate.Settings{Exclude: []string{"tmp_*"}}))
 	if err := e.Baseline(ctx, initVersion, true); err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func TestDriftIgnoresInvalidIndexOfExcludedTable(t *testing.T) {
 	}
 }
 
-// An object present in the snapshot only and hidden by Config.Exclude is not
+// An object present in the snapshot only and hidden by Settings.Exclude is not
 // Missing: the exclusion applies to the snapshot side of drift as well.
 func TestDriftAppliesExcludeToSnapshotSide(t *testing.T) {
 	db := testopen.Postgres(t)
@@ -406,7 +406,7 @@ func TestDriftAppliesExcludeToSnapshotSide(t *testing.T) {
 	s.Tables = append(s.Tables, schema.Table{Name: "tmp_scratch", Columns: []schema.Column{{Name: "id", Type: "INTEGER"}}})
 	fsys := snapshotFS(t, initVersion, s, "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT);\n")
 	mustExecDB(t, db, `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)`)
-	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithConfig(migrate.Config{Exclude: []string{"tmp_*"}}))
+	e := migratetest.NewEngine(t, mpg.New(), db.Driver(), fsys, migrate.WithSettings(migrate.Settings{Exclude: []string{"tmp_*"}}))
 	if err := e.Baseline(ctx, initVersion, true); err != nil {
 		t.Fatal(err)
 	}

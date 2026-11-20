@@ -53,7 +53,7 @@ func ImportPath(modulePath, moduleDir, pkgDir string) (string, error) {
 }
 
 // ValidTimeType reports whether s is an accepted value for the time.Time entry
-// of Config.TypeDefaults.
+// of LoadConfig.TypeDefaults.
 //
 // Deprecated: not part of the plugin contract. Removed in the next release.
 func ValidTimeType(s string) bool { return genutil.ValidTimeType(s) }

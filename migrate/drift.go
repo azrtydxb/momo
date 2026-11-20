@@ -20,8 +20,8 @@ import (
 // invalidIndexDetail is the Detail of an index PostgreSQL marks invalid.
 const invalidIndexDetail = "invalid index (failed CONCURRENTLY build)"
 
-// excludeMatcher validates the glob patterns of the Config field named by
-// field (Config.Exclude, Config.OnlyTables) and returns a function reporting
+// excludeMatcher validates the glob patterns of the Settings field named by
+// field (Settings.Exclude, Settings.OnlyTables) and returns a function reporting
 // whether any pattern matches name or schema.name.
 func excludeMatcher(field string, globs []string) (func(schemaName, name string) bool, error) {
 	for _, g := range globs {
@@ -32,15 +32,15 @@ func excludeMatcher(field string, globs []string) (func(schemaName, name string)
 	return func(ns, name string) bool { return schema.MatchObject(globs, ns, name) }, nil
 }
 
-// checkOnlyTables validates Config.OnlyTables: every glob well formed, and no
+// checkOnlyTables validates Settings.OnlyTables: every glob well formed, and no
 // empty entry, which would match no table and so hide every one.
 func checkOnlyTables(globs []string) error {
 	for i, g := range globs {
 		if strings.TrimSpace(g) == "" {
-			return fmt.Errorf("migrate: Config.OnlyTables[%d] is empty: it would hide every table", i)
+			return fmt.Errorf("migrate: Settings.OnlyTables[%d] is empty: it would hide every table", i)
 		}
 	}
-	_, err := excludeMatcher("Config.OnlyTables", globs)
+	_, err := excludeMatcher("Settings.OnlyTables", globs)
 	return err
 }
 
@@ -70,7 +70,7 @@ func applyExclude(s *schema.Schema, globs []string) *schema.Schema {
 	if len(globs) == 0 {
 		return s
 	}
-	match, err := excludeMatcher("Config.Exclude", globs)
+	match, err := excludeMatcher("Settings.Exclude", globs)
 	if err != nil {
 		return s
 	}
@@ -116,7 +116,7 @@ func applyOnly(s *schema.Schema, globs []string) *schema.Schema {
 	if len(globs) == 0 {
 		return s
 	}
-	match, err := excludeMatcher("Config.OnlyTables", globs)
+	match, err := excludeMatcher("Settings.OnlyTables", globs)
 	if err != nil {
 		return s
 	}
@@ -566,7 +566,7 @@ func snapshotUpTo(dir fs.FS, version string) (*SnapshotFile, error) {
 // path the views, triggers and policies it cannot compare are listed in
 // DriftReport.Unverified; Clean ignores it. Function bodies, which PostgreSQL
 // stores verbatim, are compared. The history table is left out and
-// Config.Exclude patterns hide matching objects on both sides. An index
+// Settings.Exclude patterns hide matching objects on both sides. An index
 // PostgreSQL marks invalid (a failed CREATE INDEX CONCURRENTLY) is reported as
 // Changed with Detail "invalid index (failed CONCURRENTLY build)".
 func (e *Engine) Drift(ctx context.Context) (*DriftReport, error) {

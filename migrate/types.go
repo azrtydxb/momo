@@ -293,8 +293,11 @@ type DiffOptions struct {
 	Name           string // not used; name is passed to Diff
 }
 
-// Config is the engine configuration.
-type Config struct {
+// Deprecated: use Settings. Config is removed in the next release.
+type Config = Settings
+
+// Settings is the engine configuration.
+type Settings struct {
 	// Schemas lists the PostgreSQL schemas the engine manages. Default (nil or empty): the single schema
 	// returned by `SELECT current_schema()` on the pinned connection, resolved when the engine starts
 	// (Plan/Apply/Status/Diff/Drift/Inspect each resolve it once per call). An app with search_path=app

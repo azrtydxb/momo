@@ -42,7 +42,7 @@ func seedBank(t *testing.T, q momo.Querier, tag string) (ada, grace string) {
 	t.Helper()
 	a := &models.Account{Owner: "ada-" + tag, Balance: 100}
 	g := &models.Account{Owner: "grace-" + tag, Balance: 50}
-	momotest.Seed(t, q, momotest.Insert(a, g))
+	momotest.Seed(t, q, momotest.Rows(a, g))
 	if a.ID == 0 || g.ID == 0 {
 		t.Fatal("Insert did not read the generated ids back")
 	}

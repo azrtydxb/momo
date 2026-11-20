@@ -2,11 +2,13 @@
 
 // Package sqlfn holds the typed scalar SQL functions and operators: Substr,
 // Lower, Upper, Length, CurrentSchema, Case, the arithmetic helpers Add, Sub,
-// Mul and Div, NullIf, CurrentDate, Infinity, CoalesceExpr, Greatest and
-// Least, Floor and Ceil, Cast and Concat.
+// Mul and Div, NullIf, CoalesceExpr, Greatest and Least, Floor and Ceil, Cast
+// and Concat.
 // Each is a value expression with the comparison and ordering methods of a
 // column (Eq, Lt, In, Asc, ...), and each can be named in a select list with
-// As.
+// As. The date functions CurrentDate, Infinity and NegInfinity live in the
+// timeop package (timeop.CurrentDate, timeop.Infinity, timeop.NegInfinity);
+// the sqlfn names remain as deprecated functions with the same behavior.
 //
 // The package builds on the frozen extension API of the root package
 // (momo.Func, momo.Ops, momo.NewOps) plus internal/exprkit, and uses no
@@ -37,14 +39,29 @@ type intLit int
 func (n intLit) AppendSQL(b *momo.Builder) { b.WriteString(strconv.Itoa(int(n))) }
 
 // Substr is substr(e, from, length): length characters of e starting at the
-// 1-based position from. The positions render as literals.
+// 1-based position from. The positions are Go values and render as literals;
+// SubstrExpr takes them as expressions.
 func Substr(e momo.Expression[string], from, length int) momo.FuncExpr[string] {
 	return momo.Func[string]("substr", e, intLit(from), intLit(length))
 }
 
-// SubstrFrom is substr(e, from): everything from the 1-based position from.
-func SubstrFrom(e momo.Expression[string], from int) momo.FuncExpr[string] {
+// SubstrExpr is substr(e, from, length) with the positions as expressions, for
+// example a column. The positions are int32 because PostgreSQL substr takes
+// integer. Substr takes the same operands as Go values.
+func SubstrExpr(e momo.Expression[string], from, length momo.Expression[int32]) momo.FuncExpr[string] {
+	return momo.Func[string]("substr", e, from, length)
+}
+
+// SubstrToEnd is substr(e, from): everything from the 1-based position from.
+func SubstrToEnd(e momo.Expression[string], from int) momo.FuncExpr[string] {
 	return momo.Func[string]("substr", e, intLit(from))
+}
+
+// SubstrFrom is substr(e, from): everything from the 1-based position from.
+//
+// Deprecated: use SubstrToEnd.
+func SubstrFrom(e momo.Expression[string], from int) momo.FuncExpr[string] {
+	return SubstrToEnd(e, from)
 }
 
 // Lower is lower(e).
@@ -288,17 +305,25 @@ func DivExpr[T Numeric](e, other momo.Expression[T]) ArithExpr[T] {
 }
 
 // NullIf is NULLIF(e, v): NULL when e equals v, else e. v renders as a
-// literal (as momo.Lit does), not a bound parameter. For a types.Numeric, v
-// renders as a numeric literal such as '0'::numeric on PostgreSQL, and the
-// build fails with momo.ErrUnsupported on SQLite and MySQL; an invalid
-// types.Numeric fails with momo.ErrValidation.
-func NullIf[T Numeric](e momo.Expression[T], v T) momo.FuncExpr[T] {
+// literal (as momo.Lit does), not a bound parameter; strings are written as
+// quoted literals, so NullIf(name, "") compares against an empty string
+// literal rather than a bound parameter. For a
+// types.Numeric, v renders as a numeric literal such as '0'::numeric on
+// PostgreSQL, and the build fails with momo.ErrUnsupported on SQLite and
+// MySQL; an invalid types.Numeric fails with momo.ErrValidation. A v of a type
+// that has no literal form fails the build with momo.ErrValidation, which
+// shows at SQL(). A time.Time operand renders as a date literal (it must be
+// midnight UTC), so comparing it with a timestamp column does not match a
+// non-midnight value, notably on SQLite, where timestamps are stored as full
+// text. NullIfExpr
+// takes the second operand as an expression.
+func NullIf[T any](e momo.Expression[T], v T) momo.FuncExpr[T] {
 	return momo.Func[T]("nullif", e, nullIfLit[T]{v})
 }
 
 // nullIfLit is the literal operand of NullIf. It renders the Go kinds exactly
 // as momo.Lit does and adds types.Numeric, which Lit does not accept.
-type nullIfLit[T Numeric] struct{ v T }
+type nullIfLit[T any] struct{ v T }
 
 func (l nullIfLit[T]) AppendSQL(b *momo.Builder) {
 	if n, ok := any(l.v).(types.Numeric); ok {
@@ -319,16 +344,27 @@ func (l nullIfLit[T]) AppendSQL(b *momo.Builder) {
 		b.WriteString("'" + w.(string) + "'::numeric")
 		return
 	}
+	if t, ok := any(l.v).(time.Time); ok {
+		momo.Lit(t).AppendSQL(b)
+		return
+	}
 	rv := reflect.ValueOf(any(l.v))
 	switch rv.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		momo.Lit(rv.Int()).AppendSQL(b)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		momo.Lit(rv.Uint()).AppendSQL(b)
+	case reflect.String:
+		momo.Lit(rv.String()).AppendSQL(b)
+	case reflect.Bool:
+		momo.Lit(rv.Bool()).AppendSQL(b)
 	case reflect.Float32:
 		momo.Lit(float32(rv.Float())).AppendSQL(b)
-	default:
+	case reflect.Float64:
 		momo.Lit(rv.Float()).AppendSQL(b)
+	default:
+		b.SetErr(&momo.Error{Kind: momo.ErrValidation, Op: "build", Err: fmt.Errorf("sqlfn.NullIf: unsupported literal type %T", l.v)})
+		b.WriteString("NULL")
 	}
 }
 
@@ -338,6 +374,10 @@ func NullIfExpr[T any](e, other momo.Expression[T]) momo.FuncExpr[T] {
 }
 
 // DateExpr is a date or timestamp value without operands.
+//
+// Deprecated: use timeop.Expr, which timeop.CurrentDate, timeop.Infinity and
+// timeop.NegInfinity return. A feature package may not import another, so
+// this type keeps its own implementation for the release it stays.
 type DateExpr struct {
 	momo.Ops[time.Time]
 	kind int
@@ -357,14 +397,20 @@ func dateExpr(kind int) DateExpr {
 
 // CurrentDate is CURRENT_DATE: the transaction date on PostgreSQL, the
 // session date on MySQL, the UTC date as text on SQLite.
+//
+// Deprecated: use timeop.CurrentDate.
 func CurrentDate() DateExpr { return dateExpr(kindCurrentDate) }
 
 // Infinity is 'infinity'::timestamptz, later than every timestamp. PostgreSQL
 // only; MySQL and SQLite fail with ErrUnsupported.
+//
+// Deprecated: use timeop.Infinity.
 func Infinity() DateExpr { return dateExpr(kindInfinity) }
 
 // NegInfinity is '-infinity'::timestamptz, earlier than every timestamp.
 // PostgreSQL only; MySQL and SQLite fail with ErrUnsupported.
+//
+// Deprecated: use timeop.NegInfinity.
 func NegInfinity() DateExpr { return dateExpr(kindNegInfinity) }
 
 // As names the expression in a select list.
@@ -392,6 +438,9 @@ func (d DateExpr) AppendSQL(b *momo.Builder) {
 // CoalesceExpr is COALESCE(a, b, more...): the first non-NULL expression.
 // Unlike momo.Coalesce, whose fallback is a bound value, every argument is an
 // expression of the same type T, for example CoalesceExpr(site, licenseID).
+// Both stay: momo.Coalesce is the value form and CoalesceExpr the expression
+// form of the same operands, the X / XExpr pairing the other sqlfn helpers
+// follow.
 func CoalesceExpr[T any](a, b momo.Expression[T], more ...momo.Expression[T]) momo.FuncExpr[T] {
 	args := make([]any, 0, 2+len(more))
 	args = append(args, a, b)

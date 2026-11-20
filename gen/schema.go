@@ -35,7 +35,7 @@ import (
 //
 // The output is canonical: models are processed in sorted order, every named
 // collection is sorted by schema.Sort, and column order is declaration order.
-func BuildSchema(models []*Model, cfg Config) (*schema.Schema, []Diagnostic) {
+func BuildSchema(models []*Model, cfg LoadConfig) (*schema.Schema, []Diagnostic) {
 	s, _, diags := buildSchema(models, cfg)
 	return s, diags
 }
@@ -43,7 +43,7 @@ func BuildSchema(models []*Model, cfg Config) (*schema.Schema, []Diagnostic) {
 // buildSchema is BuildSchema that also returns the table built for each view
 // model. The tables are not part of the schema (a view is not created as a
 // table) but the metadata emitter needs their columns.
-func buildSchema(models []*Model, cfg Config) (*schema.Schema, map[*Model]*schema.Table, []Diagnostic) {
+func buildSchema(models []*Model, cfg LoadConfig) (*schema.Schema, map[*Model]*schema.Table, []Diagnostic) {
 	b := &schemaBuilder{
 		viewTab: map[*Model]*schema.Table{},
 		namer:   cfg.Naming,
@@ -497,7 +497,7 @@ func (b *schemaBuilder) columnType(f *Field, core string) string {
 		goType = inner
 	}
 	// The type default applies to the primary dialect (the first of
-	// Config.Dialects) only, and only when it is PostgreSQL.
+	// LoadConfig.Dialects) only, and only when it is PostgreSQL.
 	// Only the time.Time entry is a column type default; BuildSchema reports
 	// every other key.
 	def := ""

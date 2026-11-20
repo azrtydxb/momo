@@ -25,7 +25,7 @@ import (
 func TestMySQLApplyRefusedWhileLockHeld(t *testing.T) {
 	testopen.EachMySQL(t, func(t *testing.T, db *momo.DB) {
 		ctx := context.Background()
-		names, err := momo.Scalars[string](ctx, db, "SELECT DATABASE()")
+		names, err := momo.QueryScalars[string](ctx, db, "SELECT DATABASE()")
 		if err != nil || len(names) != 1 {
 			t.Fatalf("DATABASE(): %v, %v", names, err)
 		}

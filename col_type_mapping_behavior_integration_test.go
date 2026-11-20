@@ -32,15 +32,15 @@ func TestTypeMappingDocumentedBehaviors(t *testing.T) {
 		[]byte{}, types.JSON[[]string]{V: []string{}}, types.Date{Time: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)}); err != nil {
 		t.Fatal(err)
 	}
-	nulls, err := momo.Scalars[bool](ctx, db, "SELECT b IS NULL FROM tm_beh ORDER BY id")
+	nulls, err := momo.QueryScalars[bool](ctx, db, "SELECT b IS NULL FROM tm_beh ORDER BY id")
 	if err != nil || len(nulls) != 2 || !nulls[0] || nulls[1] {
 		t.Fatalf("nil/empty []byte NULL-ness = %v, %v", nulls, err)
 	}
-	js, err := momo.Scalars[string](ctx, db, "SELECT CAST(j AS text) FROM tm_beh ORDER BY id")
+	js, err := momo.QueryScalars[string](ctx, db, "SELECT CAST(j AS text) FROM tm_beh ORDER BY id")
 	if err != nil || len(js) != 2 || js[0] != "null" || js[1] != "[]" {
 		t.Fatalf("JSON nil/empty slice = %v, %v", js, err)
 	}
-	ds, err := momo.Scalars[types.Date](ctx, db, "SELECT d FROM tm_beh ORDER BY id")
+	ds, err := momo.QueryScalars[types.Date](ctx, db, "SELECT d FROM tm_beh ORDER BY id")
 	if err != nil || len(ds) != 2 {
 		t.Fatal(err)
 	}

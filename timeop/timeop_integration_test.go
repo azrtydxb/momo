@@ -249,7 +249,7 @@ func TestIntervalAndNowIntegration(t *testing.T) {
 		if got := timeOf(t, db, 1, timeop.SubInterval(suite.DocCreatedAt, timeop.IntervalOf(2, timeop.IntervalWeek))); !got.Equal(at.Add(-14 * 24 * time.Hour)) {
 			t.Errorf("-2 weeks = %v", got)
 		}
-		bound := timeop.IntervalExpr(momo.Value(int64(90)), timeop.IntervalMinute)
+		bound := timeop.IntervalOfExpr(momo.Value(int64(90)), timeop.IntervalMinute)
 		if got := timeOf(t, db, 1, timeop.AddInterval(suite.DocCreatedAt, bound)); !got.Equal(at.Add(90 * time.Minute)) {
 			t.Errorf("+90 bound minutes = %v", got)
 		}

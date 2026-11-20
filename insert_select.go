@@ -167,7 +167,7 @@ func (s ExprSelect) renderBare(b *Builder, onConflictFollows bool) {
 // INSERT INTO t (cols) SELECT ... in one atomic statement. cols are the typed
 // target columns of T, in the order of the select list; the select must
 // yield exactly that many columns, otherwise the build fails with
-// ErrValidation (a RawSubquery or set operation has no known width, so the
+// ErrValidation (a SubquerySQL or set operation has no known width, so the
 // database checks it).
 //
 // The select is the row source, for example a FROM-less select guarded by

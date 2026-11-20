@@ -63,7 +63,7 @@ func TestLockingHintsTableNameGolden(t *testing.T) {
 		"empty table name": func() error { _, err := momo.Select[unitDocument](pg).WithTableName("").SQL(); return err },
 		"empty index name": func() error { _, err := momo.Select[unitDocument](sq).IndexedBy("").SQL(); return err },
 		"IndexedBy on subquery": func() error {
-			_, err := momo.Select[unitDocument](sq).From(momo.FromSubquery(momo.RawSubquery("SELECT 1"), "c")).IndexedBy("i").SQL()
+			_, err := momo.Select[unitDocument](sq).From(momo.FromSubquery(momo.SubquerySQL("SELECT 1"), "c")).IndexedBy("i").SQL()
 			return err
 		},
 	} {

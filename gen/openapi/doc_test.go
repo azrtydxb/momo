@@ -25,7 +25,7 @@ func TestOpenAPIDocumentGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, diags, err := gen.Load([]string{"./"}, gen.Config{Dir: root})
+	g, diags, err := gen.Load([]string{"./"}, gen.LoadConfig{Dir: root})
 	if err != nil {
 		t.Fatal(err)
 	}

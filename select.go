@@ -679,7 +679,14 @@ func (r rawSubquery) AppendSQL(b *Builder) {
 // render writes the fragment bare; a set operation renders members this way.
 func (r rawSubquery) render(b *Builder) { b.appendRaw(r.sql, r.args) }
 
-// RawSubquery is an explicit escape hatch: a raw SELECT usable as a Subquery
+// RawSubquery is SubquerySQL.
+//
+// Deprecated: use SubquerySQL. RawSubquery is removed in the next release.
+func RawSubquery(sql string, args ...any) Subquery {
+	return SubquerySQL(sql, args...)
+}
+
+// SubquerySQL is an explicit escape hatch: a raw SELECT usable as a Subquery
 // (IN, EXISTS, CTE body, set operation member, FromSubquery source).
 //
 // Safety contract: as for SQL, sql is inserted verbatim and must be a
@@ -689,7 +696,7 @@ func (r rawSubquery) render(b *Builder) { b.appendRaw(r.sql, r.args) }
 // pgx and sqlc statements port unchanged; momo renumbers it. For a scalar subquery as a typed
 // comparison operand use TypedSQL[T]("?", sub): the subquery renders its own
 // parentheses.
-func RawSubquery(sql string, args ...any) Subquery {
+func SubquerySQL(sql string, args ...any) Subquery {
 	return rawSubquery{sql, slices.Clone(args)}
 }
 

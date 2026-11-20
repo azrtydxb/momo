@@ -66,7 +66,7 @@ func seedEmployees(t *testing.T, db *momo.DB, from, to int64) {
 
 func assocQueryIDs(t *testing.T, db *momo.DB, sql string, args ...any) []int64 {
 	t.Helper()
-	out, err := momo.Scalars[int64](context.Background(), db, sql, args...)
+	out, err := momo.QueryScalars[int64](context.Background(), db, sql, args...)
 	if err != nil {
 		t.Fatal(err)
 	}

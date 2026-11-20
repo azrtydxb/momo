@@ -42,7 +42,7 @@ var (
 	mrgN   = momo.NewColumn[int64]("mrg_rows", "n", 0)
 )
 
-func mrgSource() momo.Subquery { return momo.RawSubquery("SELECT id, k, val, n FROM mrg_src") }
+func mrgSource() momo.Subquery { return momo.SubquerySQL("SELECT id, k, val, n FROM mrg_src") }
 
 func mrgOn() momo.Predicate { return mrgKey.EqExpr(momo.TypedSQL[string]("src.k")) }
 
@@ -80,7 +80,7 @@ var (
 
 // mrgPairMerge updates v and inserts the unmatched rows, on both key columns.
 func mrgPairMerge(q momo.Querier) momo.MergeQuery[mrgPair] {
-	src := momo.RawSubquery("SELECT a, b, v FROM mrg_pairs_src")
+	src := momo.SubquerySQL("SELECT a, b, v FROM mrg_pairs_src")
 	return momo.Merge[mrgPair](q, src).
 		On(mrgPairA.EqExpr(momo.TypedSQL[int64]("src.a")), mrgPairB.EqExpr(momo.TypedSQL[int64]("src.b"))).
 		WhenMatchedUpdate(mrgPairV.SetExpr(momo.TypedSQL[string]("src.v"))).

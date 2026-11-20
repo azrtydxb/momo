@@ -232,7 +232,7 @@ func TestPostgresInspectPolicyPublicMixedWithRole(t *testing.T) {
 	}
 }
 
-// Catches: Config.OnlyTables not limiting what inspection reads, so a table
+// Catches: Settings.OnlyTables not limiting what inspection reads, so a table
 // outside the list (and its trigger and policy) is read, and one the model
 // cannot represent fails the run.
 func TestPostgresInspectOnlySkipsOtherTables(t *testing.T) {
@@ -261,7 +261,7 @@ func TestPostgresInspectOnlySkipsOtherTables(t *testing.T) {
 	}
 }
 
-// Catches: Config.OnlyTables matching only the bare table name, so
+// Catches: Settings.OnlyTables matching only the bare table name, so
 // only: ["app.*"] reads no table of a schema that is not the current one while
 // migrate.exclude would match schema.name.
 func TestPostgresInspectOnlyMatchesSchemaQualifiedNames(t *testing.T) {

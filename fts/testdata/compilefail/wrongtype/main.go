@@ -10,6 +10,6 @@ import (
 var title = momo.NewColumn[string]("docs", "title", 0)
 
 func main() {
-	// A text column is not a tsvector: Match takes Expression[types.TSVector].
-	_ = fts.Match(title, fts.WebsearchToQuery("english", "x"))
+	// A text column is not a tsvector: TSMatch takes Expression[types.TSVector].
+	_ = fts.TSMatch(title, fts.TSWebsearchQuery("english", "x"))
 }

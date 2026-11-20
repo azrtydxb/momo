@@ -51,8 +51,8 @@ A database is usable when a driver package for it exists under `driver/`:
   [vectors.md](vectors.md#hybrid-search)). Full-text search runs on PostgreSQL,
   SQLite and MySQL or MariaDB: declare it once on the model (the `search` tag or
   `c.FullText`) and search with `fts.Search`, `fts.Score` and `fts.Snippet`
-  (see [fulltext.md](fulltext.md)); `types.TSVector`, `fts.Match`,
-  `fts.RankCD`, `fts.Headline` and the query builders are PostgreSQL SQL. To
+  (see [fulltext.md](fulltext.md)); `types.TSVector`, `fts.TSMatch`,
+  `fts.TSRankCD`, `fts.TSHeadline` and the query builders are PostgreSQL SQL. To
   weigh the signals yourself, combine a vector distance with a text rank in one
   score as shown in [fulltext.md](fulltext.md).
 
@@ -1282,8 +1282,10 @@ momo.Select[Pair](q).From(momo.FromSubquery(inner, "s")).
 // CTE, no positional column names needed:
 momo.Select[Pair](q).With("s", inner).From(momo.CTE("s")).Columns(pairK, n.Ref("s"))
 
-// Strings (package sqlfn): Substr(e, from, length), SubstrFrom, Lower, Upper, Length. Positions are
-// literals, so the same expression works in SELECT and GROUP BY.
+// Strings (package sqlfn): sqlfn.Substr(e, from, length), sqlfn.SubstrToEnd, sqlfn.SubstrExpr (positions as
+// int32 expressions), sqlfn.Lower, sqlfn.Upper, sqlfn.Length. Substr positions are Go values rendered
+// as literals, so the same expression works in SELECT and GROUP BY.
+// sqlfn.NullIf renders its value as a literal, strings included: sqlfn.NullIf(doc.Title, "").
 sqlfn.Substr(doc.Title, 1, 10)
 // Filter and order on a computed value:
 //   Where(sqlfn.Substr(doc.Title, 1, 3).Eq("abc"), sqlfn.Length(doc.Title).Ge(3))
@@ -1300,6 +1302,9 @@ sqlfn.Concat(sqlfn.Upper(doc.Title), momo.Value("-x"))
 // Plain values bound by Func or an aggregate are not masked in hook events, even
 // beside a sensitive column; only comparison predicates mask their other operands.
 momo.Func[string]("btrim", doc.Title)
+// momo.Func is for scalar (per-row) functions and returns an Expression[T] with no aggregate modifiers.
+// agg.Func is for aggregate functions and returns an agg.Call[T], which adds Distinct, OrderBy,
+// WithinGroup, Filter and Over. A custom aggregate called through momo.Func has none of those.
 // Aggregates with their own ORDER BY (agg.Call[T], package momo/agg); chain OrderBy, inside the call.
 agg.String(label, ", ").OrderBy(label.Asc())        // string_agg / group_concat / GROUP_CONCAT
 agg.Array[string](label).OrderBy(label.Asc())       // []string; ErrUnsupported on other dialects
@@ -1321,7 +1326,7 @@ sqlfn.CurrentSchema()
 // Row-value comparison, the keyset position check; both rows need 2+ elements of the same count:
 //   Where(momo.Row(w.CreatedAt, w.ID).Lt(momo.Row(me.At, momo.Value(id)))); also Le, Gt, Ge
 // CURRENT_DATE, and 'infinity' / '-infinity' timestamptz (PostgreSQL only; ErrUnsupported elsewhere):
-//   sqlfn.CurrentDate(); sqlfn.Infinity(); sqlfn.NegInfinity()
+//   timeop.CurrentDate(); timeop.Infinity(); timeop.NegInfinity()
 // Inline literal for text that must match in SELECT and GROUP BY (a bound value gets a new $n each
 // time, PostgreSQL 42803). Ints, floats, bool, string and time.Time. A string has ' doubled and is
 // refused (ErrValidation) with a backslash or NUL; a time.Time must be exactly 00:00:00 UTC and
@@ -1340,7 +1345,7 @@ timeop.ClockTimestamp()                                  // clock_timestamp(): r
 timeop.StatementTimestamp()                              // statement_timestamp(): start of the current statement; MySQL is ErrUnsupported
 // Intervals are an operand of AddInterval/SubInterval, not an expression of their own.
 timeop.SubInterval(timeop.Now(), timeop.IntervalOf(7, timeop.IntervalDay))              // literal count
-timeop.AddInterval(doc.CreatedAt, timeop.IntervalExpr(momo.Value(int64(n)), timeop.IntervalHour)) // bound or column count
+timeop.AddInterval(doc.CreatedAt, timeop.IntervalOfExpr(momo.Value(int64(n)), timeop.IntervalHour)) // bound or column count
 timeop.AddInterval(doc.CreatedAt, timeop.IntervalOf(1500, timeop.IntervalMillisecond))           // also IntervalMicrosecond; SQLite rounds to the nearest millisecond (1500us adds 2 ms)
 timeop.AddDuration(doc.CreatedAt, 1500*time.Millisecond)                                         // a time.Duration as a literal interval, no rounding; also SubDuration
 // Difference of two timestamps, read as seconds: a Span has no value of its own on MySQL and SQLite.
@@ -1551,7 +1556,7 @@ dead, _ := momo.Select[models.Task](q).OnlyDeleted().All(ctx)
   `ErrValidation`. Use `SoftDelete` or `ForceDelete`.
 - The soft-delete filter applies automatically to `Select`, `Count`, relation
   loads and `Has`/`HasNo` of a model. It does NOT apply to raw SQL (`momo.SQL`,
-  `momo.Exec`, `momo.Scalars`), or to a projection whose `From` is a subquery or
+  `momo.Exec`, `momo.QueryScalars`), or to a projection whose `From` is a subquery or
   a hand-built `TableRef` (see "Projections" in section 4): add
   `deleted_at IS NULL` / `<table>.DeletedAt.IsNull()` yourself. A projection
   read `From` a generated table (also with joins) is filtered automatically.
@@ -1613,7 +1618,7 @@ res, err := momo.Insert[models.Meter](q).
   `SelectExprs` (a FROM-less or single-source select of expressions, with `From`,
   `Where`, `Join`/`LeftJoin`/`CrossJoin`, `GroupBy`, `Having` and `OrderBy`; the clauses
   work like those of `Select[T]`, and a join, `GroupBy` or `Having` needs a `From`) or a `Select[T]` query. The select list must have as many columns as the
-  target columns (`ErrValidation` otherwise; a `RawSubquery` is checked by the
+  target columns (`ErrValidation` otherwise; a `SubquerySQL` is checked by the
   database). `FromSelect` runs no model hooks.
 - The soft-delete filter on a `SelectExprs` source (including inside `NotExists`) is
   added only when `From` gets a `TableRef` that carries the soft-delete marker.
@@ -1729,11 +1734,11 @@ momo.Select[models.Task](q).Where(momo.SQL(`lower("tasks"."title") LIKE ?`, "%go
 momo.TypedSQL[int64]("balance + ?", delta)
 // Statements and scalar lists:
 affected, err := momo.Exec(ctx, q, `UPDATE tasks SET done = ? WHERE id IN (?)`, true, momo.In(ids))
-ids, err := momo.Scalars[int64](ctx, q, `SELECT id FROM tasks WHERE done = ?`, true)
+ids, err := momo.QueryScalars[int64](ctx, q, `SELECT id FROM tasks WHERE done = ?`, true)
 // Several columns into Row1..Row10 (positional), a model or a projection (matched by column name):
 rows, err := momo.Query[momo.Row2[int64, string]](ctx, q, `SELECT id, title FROM tasks WHERE done = ?`, true)
 for row, err := range momo.QueryRows[momo.Row2[int64, string]](ctx, q, `SELECT id, title FROM tasks`) { _, _ = row, err }
-// Helpers: momo.In(slice) (empty slice is a build error), momo.Ident("col"), momo.RawSubquery(sql, args...)
+// Helpers: momo.In(slice) (empty slice is a build error), momo.Ident("col"), momo.SubquerySQL(sql, args...)
 ```
 
 - DON'T build SQL text with `fmt.Sprintf` from user input. Use `?`, `In`, `Ident`.
@@ -1774,7 +1779,7 @@ for row, err := range momo.QueryRows[momo.Row2[int64, string]](ctx, q, `SELECT i
   argument redaction are those of `Exec`; interceptors, soft-delete filters and
   `AfterLoad` do not apply to raw SQL. `QueryRows` closes the cursor on early
   break, on an error and on a canceled context (`ErrCanceled`).
-- `RawRows(ctx, q, sql, args...)` returns the open cursor (`momo.ColumnRows`:
+- `QueryCursor(ctx, q, sql, args...)` returns the open cursor (`momo.ColumnRows`:
   `Next`, `Scan(dest...)`, `Columns`, `Err`, `Close`) for a result whose shape is
   only known at run time. It has the hooks (op `raw`), `WithTxSetup`,
   error classification and redaction of `Query`, on a `*DB`, `*Tx` or `AdoptTx`
@@ -1789,10 +1794,44 @@ for row, err := range momo.QueryRows[momo.Row2[int64, string]](ctx, q, `SELECT i
   `UPDATE` without `RETURNING`) or an unnamed driver. Prefer `Query[T]` when the
   shape is known.
 
+#### The raw SQL family
+
+Nine functions of the root package take hand-written SQL. They share one
+placeholder contract (`?` binds the next argument, `??` is a literal `?`, `$n`
+on PostgreSQL, `momo.In`, `momo.Ident` and `momo.Named` as arguments) and one
+safety rule: the SQL text is a trusted constant and user input is an argument.
+They fall into two groups.
+
+Functions that run a statement take a context, a querier, the SQL text and its
+arguments, hit the database at once and have hooks with the op `raw`:
+
+| Function            | Returns                           | Use it for                                                |
+| ------------------- | --------------------------------- | --------------------------------------------------------- |
+| `momo.Exec`         | rows affected, error              | a statement that writes or changes the schema             |
+| `momo.Query`        | `[]T`, buffered                   | a result whose row type is known                          |
+| `momo.QueryRows`    | `iter.Seq2[T, error]`, streamed   | the same result without buffering it                      |
+| `momo.QueryScalars` | `[]V`, one column                 | a single-column result such as ids                        |
+| `momo.QueryCursor`  | `momo.ColumnRows`, an open cursor | a result whose shape is known only at run time (close it) |
+
+Functions that wrap a fragment for a builder take no context, run nothing and
+return a value that another builder renders:
+
+| Function             | Returns              | Use it for                                                    |
+| -------------------- | -------------------- | ------------------------------------------------------------- |
+| `momo.SQL`           | `momo.Predicate`     | a condition in `Where`, `Having` or `On`                      |
+| `momo.TypedSQL`      | `momo.Expression[T]` | a value in a select list, an assignment or a typed comparison |
+| `momo.SubquerySQL`   | `momo.Subquery`      | a SELECT used in `IN`, `EXISTS`, a CTE or a set operation     |
+| `momo.CompilableSQL` | `momo.Compilable`    | a hand-written statement registered with `momo.RegisterQuery` |
+
+The naming rule: a function that runs hand-written SQL is a verb (`Exec`,
+`Query`, `QueryRows`, `QueryScalars`, `QueryCursor`); a function that wraps
+hand-written SQL for a builder ends in `SQL` (`SQL`, `TypedSQL`, `SubquerySQL`,
+`CompilableSQL`). No name carries the word Raw.
+
 #### Porting pgx and sqlc SQL
 
-On the PostgreSQL dialect, raw SQL (`Exec`, `Scalars`, `Query`, `QueryRows`, `SQL`, `TypedSQL`,
-`RawSubquery`) accepts PostgreSQL's native `$1, $2, ...` placeholders, so a
+On the PostgreSQL dialect, raw SQL (`Exec`, `QueryScalars`, `Query`, `QueryRows`, `SQL`, `TypedSQL`,
+`SubquerySQL`) accepts PostgreSQL's native `$1, $2, ...` placeholders, so a
 statement written for pgx or sqlc moves over unchanged:
 
 <!-- docscheck:fragment -->
@@ -1806,7 +1845,7 @@ Rules:
 
 - `$n` binds positional argument n of that call. A reused `$n` (here `$2`) binds
   the argument once. An `In`, `Ident` or `Expr` argument is rendered again at each
-  use. Momo renumbers: inside a larger statement (`TypedSQL` or `RawSubquery`
+  use. Momo renumbers: inside a larger statement (`TypedSQL` or `SubquerySQL`
   after earlier `Where` binds) `$1` still means the fragment's first argument.
 - One style per fragment. Mixing `$n` with `?`, `@name` or `Named` is
   `ErrValidation`.
@@ -2411,7 +2450,7 @@ Test against a real PostgreSQL with pgvector, not a mock. CI of Momo itself runs
 
 To list or freeze the SQL an app issues without a database, register named
 builders with `momo.RegisterQuery(name, func(q momo.Querier) momo.Compilable)`
-(use `momo.RawQuery` for hand-written SQL), read them with
+(use `momo.CompilableSQL` for hand-written SQL), read them with
 `QueryRegistry.Compile(dialect)` and freeze them with `momotest.QueryGolden`
 (`MOMO_UPDATE_GOLDEN=1` rewrites the files; registering a name twice panics).
 The SQL of `InsertQuery[T].Model` depends on the sample model's dbdefault fields (a
@@ -2430,12 +2469,14 @@ Use the public kit `github.com/azrtydxb/momo/momotest` (see
 
 db := momotest.New(t, momotest.WithMigrations(app.Migrations()))  // schema per test, dropped after
 tx := momotest.NewTx(t, momotest.WithMigrations(app.Migrations())) // rolled back after; Commit refused
-momotest.Seed(t, tx, momotest.Insert(&org), momotest.Insert(&user))
+momotest.Seed(t, tx, momotest.Rows(&org), momotest.Rows(&user))
 ```
 
 `momotest.LoadFixtures(t, q, "fixtures.yaml")` inserts a YAML file of
 `table: [rows]` in file order (columns sorted, `null` is `NULL`, values bound),
-and `sqlitetest.New(t)` (package `momotest/sqlitetest`, cgo) returns a
+and `sqlitetest.New(t)` (package `momotest/sqlitetest`, cgo; it takes the same
+`momotest.Option` values as `momotest.New`, applies `momotest.WithMomoOptions`
+and gives the options that configure a server no effect) returns a
 `*momo.DB` on a throwaway SQLite file per test. `momotest.AssertSQL(t,
 query.SQL(), want)` compares compiled SQL ignoring
 whitespace without running it (the failure never shows an argument value), and
@@ -2572,7 +2613,7 @@ Examples: every `examples/*/example_test.go`, harness
    is filtered automatically; do not add the predicate.
 10. Page with `OrderBy` + `After` and a unique tie-break; pass one value per
     effective ORDER BY key (primary key included).
-11. Pass user input only as arguments to `momo.SQL`/`TypedSQL`/`Exec`/`Scalars`/`Query`/`QueryRows`;
+11. Pass user input only as arguments to `momo.SQL`/`TypedSQL`/`Exec`/`QueryScalars`/`Query`/`QueryRows`;
     qualify column names in raw fragments inside joins.
 12. Inside `db.Tx`, use only the `tx` handle. Retry the whole transaction on
     `ErrSerialization` with jittered backoff; never retry inside it.

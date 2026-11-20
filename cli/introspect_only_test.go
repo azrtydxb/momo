@@ -115,7 +115,7 @@ func TestExcludeHintNamesOmittedSequences(t *testing.T) {
 }
 
 // Catches: a bad introspect.only reaching the engine, where the error names
-// migrate.Config.OnlyTables instead of the momo.yaml key.
+// migrate.Settings.OnlyTables instead of the momo.yaml key.
 func TestEngineOptionsValidatesIntrospect(t *testing.T) {
 	l := &cli{file: &config.File{}, dialectName: string(dialect.Postgres)}
 	l.file.Introspect.Only = []string{"["}

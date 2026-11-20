@@ -24,16 +24,21 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/driver/sqlitedriver"
+	"github.com/azrtydxb/momo/momotest"
 )
 
 // New returns a momo.DB on a new SQLite database file inside tb.TempDir(). The
 // database starts empty. Every call opens its own file, so two calls never see
 // each other's tables, and tests may run in parallel. The database is closed
-// and its file removed when the test ends. opts go to momo.New, for example
-// momo.WithHook; sqlitedriver's default configuration applies.
-func New(tb testing.TB, opts ...momo.Option) *momo.DB {
+// and its file removed when the test ends. New takes the same options as
+// momotest.New. momotest.WithMomoOptions is honored: its options go to
+// momo.New, for example momo.WithHook. The PostgreSQL-only options
+// (momotest.WithEnv, momotest.WithMigrations, momotest.WithExtensions,
+// momotest.WithMaxConns, momotest.WithTemplateClone) are ignored.
+// sqlitedriver's default configuration applies.
+func New(tb testing.TB, opts ...momotest.Option) *momo.DB {
 	tb.Helper()
-	return open(tb, filepath.Join(tb.TempDir(), "momotest.db"), opts)
+	return open(tb, filepath.Join(tb.TempDir(), "momotest.db"), momotest.MomoOptionsOf(opts...))
 }
 
 // Template is a SQLite database built once and copied for each test, so a
@@ -58,10 +63,13 @@ func NewTemplate(build func(ctx context.Context, db *momo.DB) error) *Template {
 // New returns a *momo.DB on a copy of the template database, in a file of its
 // own in tb.TempDir(). Writes to the copy are visible to no other test and not
 // to the template, so tests may run in parallel. The copy is closed and removed
-// when the test ends. opts go to momo.New. When the template could not be built
+// when the test ends. opts are the options of momotest.New: momotest.WithMomoOptions
+// goes to momo.New, and the PostgreSQL-only options (momotest.WithEnv,
+// momotest.WithMigrations, momotest.WithExtensions, momotest.WithMaxConns,
+// momotest.WithTemplateClone) are ignored. When the template could not be built
 // the test fails; when SQLite is unavailable on this build it is skipped, like
 // New.
-func (tp *Template) New(tb testing.TB, opts ...momo.Option) *momo.DB {
+func (tp *Template) New(tb testing.TB, opts ...momotest.Option) *momo.DB {
 	tb.Helper()
 	tp.once.Do(tp.load)
 	if errors.Is(tp.err, momo.ErrUnsupported) {
@@ -77,7 +85,7 @@ func (tp *Template) New(tb testing.TB, opts ...momo.Option) *momo.DB {
 		tb.Fatalf("sqlitetest: copy template: %v", err)
 		return nil
 	}
-	return open(tb, path, opts)
+	return open(tb, path, momotest.MomoOptionsOf(opts...))
 }
 
 // load builds the template in a scratch directory and keeps a self-contained

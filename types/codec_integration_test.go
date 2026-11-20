@@ -38,7 +38,7 @@ func roundTrip[C types.Codec](t *testing.T, db *momo.DB, d dialect.Name, name st
 	if _, err := momo.Exec(ctx, db, "INSERT INTO "+tbl+" (id, v) VALUES (1, ?)", in); err != nil {
 		t.Fatalf("%s: insert: %v", name, err)
 	}
-	got, err := momo.Scalars[C](ctx, db, "SELECT v FROM "+tbl+" WHERE id = 1")
+	got, err := momo.QueryScalars[C](ctx, db, "SELECT v FROM "+tbl+" WHERE id = 1")
 	if err != nil || len(got) != 1 {
 		t.Fatalf("%s: select: %v (%d rows)", name, err, len(got))
 	}
@@ -46,7 +46,7 @@ func roundTrip[C types.Codec](t *testing.T, db *momo.DB, d dialect.Name, name st
 	if d == dialect.MySQL {
 		castText = "CHAR"
 	}
-	txt, err := momo.Scalars[string](ctx, db, "SELECT CAST(v AS "+castText+") FROM "+tbl+" WHERE id = 1")
+	txt, err := momo.QueryScalars[string](ctx, db, "SELECT CAST(v AS "+castText+") FROM "+tbl+" WHERE id = 1")
 	if err != nil || len(txt) != 1 {
 		t.Fatalf("%s: select text: %v", name, err)
 	}
@@ -72,7 +72,7 @@ func rejectSpecial(t *testing.T, db *momo.DB, d dialect.Name, name, sqlType stri
 	}); !errors.Is(err, momo.ErrValidation) {
 		t.Fatalf("%s on %s: insert %+v in a transaction: err = %v, want ErrValidation", name, d, in, err)
 	}
-	n, err := momo.Scalars[int64](ctx, db, "SELECT count(*) FROM "+tbl)
+	n, err := momo.QueryScalars[int64](ctx, db, "SELECT count(*) FROM "+tbl)
 	if err != nil || len(n) != 1 || n[0] != 0 {
 		t.Fatalf("%s on %s: rows after the rejected inserts = %v, %v; want 0", name, d, n, err)
 	}

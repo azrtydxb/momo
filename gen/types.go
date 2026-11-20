@@ -18,8 +18,11 @@ import (
 // FormatVersion is the generated-file format version.
 const FormatVersion = 1
 
-// Config configures Load and later generation stages.
-type Config struct {
+// Deprecated: use LoadConfig. Config is removed in the next release.
+type Config = LoadConfig
+
+// LoadConfig configures Load and later generation stages.
+type LoadConfig struct {
 	// Dir is the directory patterns resolve against; empty means the
 	// current directory.
 	Dir string

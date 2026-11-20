@@ -32,16 +32,20 @@ const momoPath = "github.com/azrtydxb/momo"
 // rawSQLFuncs maps each raw-SQL function of the momo package to the index of
 // its SQL text argument.
 var rawSQLFuncs = map[string]int{
-	"Exec":        2, // Exec(ctx, q, sql, args...)
-	"Scalars":     2, // Scalars(ctx, q, sql, args...)
-	"MapRows":     2, // MapRows(ctx, q, sql, args...)
-	"Query":       2, // Query[T](ctx, q, sql, args...)
-	"QueryRows":   2, // QueryRows[T](ctx, q, sql, args...)
-	"RawRows":     2, // RawRows(ctx, q, sql, args...)
-	"RawQuery":    1, // RawQuery(q, sql, args...)
-	"SQL":         0, // SQL(sql, args...)
-	"TypedSQL":    0, // TypedSQL(sql, args...)
-	"RawSubquery": 0, // RawSubquery(sql, args...)
+	"Exec":          2, // Exec(ctx, q, sql, args...)
+	"QueryScalars":  2, // QueryScalars(ctx, q, sql, args...)
+	"Scalars":       2, // Scalars(ctx, q, sql, args...), deprecated
+	"MapRows":       2, // MapRows(ctx, q, sql, args...)
+	"Query":         2, // Query[T](ctx, q, sql, args...)
+	"QueryRows":     2, // QueryRows[T](ctx, q, sql, args...)
+	"QueryCursor":   2, // QueryCursor(ctx, q, sql, args...)
+	"RawRows":       2, // RawRows(ctx, q, sql, args...), deprecated
+	"CompilableSQL": 1, // CompilableSQL(q, sql, args...)
+	"RawQuery":      1, // RawQuery(q, sql, args...), deprecated
+	"SQL":           0, // SQL(sql, args...)
+	"TypedSQL":      0, // TypedSQL(sql, args...)
+	"SubquerySQL":   0, // SubquerySQL(sql, args...)
+	"RawSubquery":   0, // RawSubquery(sql, args...), deprecated
 }
 
 // directivePrefix starts the line directive that marks a call as vetted.
@@ -125,8 +129,9 @@ func find(pass *analysis.Pass, dirs map[lineKey]*directive, call *ast.CallExpr, 
 }
 
 // Analyzer flags non-constant SQL strings passed to Momo's raw-SQL entry
-// points: momo.Exec, momo.Scalars, momo.MapRows, momo.Query, momo.QueryRows and momo.RawRows (argument index 2), momo.RawQuery (index 1), momo.SQL,
-// momo.TypedSQL and momo.RawSubquery (argument index 0). A string literal, a
+// points: momo.Exec, momo.QueryScalars, momo.MapRows, momo.Query, momo.QueryRows and momo.QueryCursor (argument index 2), momo.CompilableSQL (index 1), momo.SQL,
+// momo.TypedSQL and momo.SubquerySQL (argument index 0), and the deprecated
+// momo.Scalars, momo.RawRows, momo.RawQuery and momo.RawSubquery. A string literal, a
 // constant, or an expression of constants is accepted. A //momovet:ok <reason>
 // comment on the call's line, or alone on the line above, suppresses the
 // report for that call; the directive is itself reported when it has no reason or

@@ -352,7 +352,7 @@ func TestReplicaRefusedWithImplicitTx(t *testing.T) {
 	}
 }
 
-// A raw read through Scalars is routed by its own SQL text and does not mark
+// A raw read through QueryScalars is routed by its own SQL text and does not mark
 // the unit of work as written, so later reads may still use a replica.
 func TestReplicaScalarsReadDoesNotMarkUnitOfWork(t *testing.T) {
 	var pReads, rReads int
@@ -360,12 +360,12 @@ func TestReplicaScalarsReadDoesNotMarkUnitOfWork(t *testing.T) {
 	rep := countingDriver{Driver: replicaStubDriver{}, reads: &rReads}
 	rd, _ := New(prim, WithReplicas(rep)).Replica(0)
 	uow := NewUnitOfWork(context.Background())
-	if _, err := Scalars[int64](uow, rd, `SELECT 1`); err != nil {
+	if _, err := QueryScalars[int64](uow, rd, `SELECT 1`); err != nil {
 		t.Fatal(err)
 	}
 	before := rReads
 	readOnceSQL(uow, t, rd.conn(), `SELECT 2`)
 	if rReads != before+1 {
-		t.Fatal("a Scalars read must not force later reads of the unit of work to the primary")
+		t.Fatal("a QueryScalars read must not force later reads of the unit of work to the primary")
 	}
 }

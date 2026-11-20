@@ -21,7 +21,7 @@ func TestDiffExternalExtensionAlreadyInSnapshot(t *testing.T) {
 	dir := initDir(t) // its snapshot holds the vector extension
 	now := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	e := migratetest.NewEngine(t, mpg.New(), nil, dir, migrate.WithClock(func() time.Time { return now }),
-		migrate.WithConfig(migrate.Config{ExternalExtensions: []string{"vector"}}))
+		migrate.WithSettings(migrate.Settings{ExternalExtensions: []string{"vector"}}))
 
 	withoutVector := docsSchema()
 	withoutVector.Extensions = nil

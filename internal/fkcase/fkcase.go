@@ -101,7 +101,7 @@ func Schema(d dialect.Name, cases []Case) (*schema.Schema, error) {
 	rel(loose, "", "", true)
 	models = append(models, loose)
 
-	s, diags := gen.BuildSchema(models, gen.Config{Dialects: []dialect.Name{d}})
+	s, diags := gen.BuildSchema(models, gen.LoadConfig{Dialects: []dialect.Name{d}})
 	if len(diags) != 0 {
 		return nil, fmt.Errorf("fkcase: schema diagnostics: %v", diags)
 	}

@@ -1474,6 +1474,40 @@ Decisions made while implementing (2026-11-20, the implementer), with the reason
 - The directive names the splitter knows are one exported list, `sqlsplit.KnownDirectives`, and a `migrate` test feeds each name to `parseDirectives`. A test compares `schemaops.SameCheck` with `schema.SameCheck` (the copy `Equal` uses). `internal/redact` compiles its expressions on first use with `sync.OnceValue`, because the root package imports it.
 - `SplitStatements` moves to `internal/sqlsplit`; its `-- momo:split` header scan is its own copy of the part of the directive parser that reads that one directive, so the splitter has no dependency on `migrate`.
 
+## Colliding and inconsistent API names (#272)
+
+Decision (2026-11-20, the maintainer, in the task brief): rename the names the issue lists, keep each old name one release as a deprecated alias or forwarder where Go allows it, and do not rename the raw SQL family yet.
+
+Choices made while carrying it out (the issue left the exact names open):
+
+- `migrate.Config` becomes `migrate.Settings` (`Config` is a type alias). The option that takes it becomes `migrate.WithSettings`, so the With* rule of #266 holds; `WithConfig` forwards. `gen.Config` becomes `gen.LoadConfig` (alias kept). `migrate.ConfigFromFile` and `gen/config.File` keep their names: they read a file.
+- `migrate.FormatVersion` becomes `migrate.HistoryFormat` (constant forwarder). `schema.FormatVersion` and `gen.FormatVersion` stay: each versions a file format, and the suffix rule the review wants ("`*Format` for file formats") is met by the history table being the one name that hid its artifact.
+- Date functions: `sqlfn.CurrentDate`, `Infinity`, `NegInfinity` move to `timeop` and return `timeop.Expr` (the existing time-valued expression), so no second date type is added. A feature package may import only the core packages (`TestFeaturePackagesImportOnlyAllowed`), so `sqlfn` cannot forward to `timeop`: the deprecated `sqlfn.CurrentDate`, `Infinity`, `NegInfinity` and `DateExpr` keep their own implementation for one release. `timeop.DateExpr` (the `types.Date` expression) is untouched.
+- fts: all PostgreSQL-only names get the TS prefix, not only the four the issue names: `TSVector`, `TSQuery`, `TSWebsearchQuery`, `TSPlainQuery`, `TSPhraseQuery`, `TSMatch`, `TSRank`, `TSRankCD`, `TSHeadline`. Leaving `ToVector` and `Headline` bare would keep the prefix rule half applied. `Search`, `Score`, `Snippet`, `FTS5Match`, `BM25`, `MySQLMatch`, `MySQLRelevance` stay.
+- Coalesce: both stay. `momo.Coalesce(e, fallback)` takes a bound value and `sqlfn.CoalesceExpr(a, b, more...)` takes expressions, which is the X / XExpr pair. Dropping the sqlfn form would leave no n-ary expression form, and the root form cannot move (#270 is shrinking the root package). `momo.Func` (any scalar function) and `agg.Func` (an aggregate call) stay and are documented as a pair.
+- `sqlfn.NullIf` takes `T any`, like `NullIfExpr`, so the value form now also accepts strings, booleans and dates; widening is compatible and narrowing `NullIfExpr` would have broken string callers.
+- X / XExpr rule: X takes Go values, XExpr takes expressions for the same operands. `sqlfn.SubstrFrom` is not an expression form, so it becomes `SubstrToEnd` and `SubstrExpr` is added (positions are `Expression[int32]`, since PostgreSQL's `substr` takes integers); `timeop.IntervalExpr` becomes `IntervalOfExpr` (value form `IntervalOf`). The other packages were read for the same pairs and follow the rule already (`Add`/`AddExpr`, `AddDays`/`AddDaysExpr`, `AtTimeZone`/`AtTimeZoneExpr`).
+- `momotest.New` and `sqlitetest.New` take `momotest.Option`; `sqlitetest` honors `WithMomoOptions` and ignores the PostgreSQL-only options. `momotest.MomoOptionsOf` is the exported reader. `New` cannot keep an old form, since a Go function has one signature. `momotest.Insert` becomes `Rows` and `momotest.Graph` becomes `GraphOf` (forwarders kept).
+- Marker types: no change. `momo.Model`, `momo.View` and `momo.Projection` are embedded zero-sized structs and `momo.Config` is the receiver of `MomoConfig`; the collision was `migrate.Config` and `gen.Config`, now renamed. `momo.Config` stays because user models and generated code name it.
+
+### Raw SQL family renames (approved)
+
+Decision (2026-11-20, the maintainer, via the coordinator): approved exactly as proposed. `Scalars` becomes `QueryScalars`, `RawRows` becomes `QueryCursor`, `RawSubquery` becomes `SubquerySQL` and `RawQuery` becomes `CompilableSQL`; `Exec`, `Query`, `QueryRows`, `SQL` and `TypedSQL` stay. The old names are deprecated forwarders for one release, and `momovet` checks both. It was a proposal (pending) until then; the docs list the family in `docs/ai-guide.md`, "The raw SQL family".
+
+Rule: a function that runs hand-written SQL is a verb and takes no `Raw` prefix (`Exec`, `Query`, `QueryRows`, `QueryScalars`, `QueryCursor`). A function that wraps hand-written SQL for a builder ends in `SQL` and names what it makes (`SQL`, `TypedSQL`, `SubquerySQL`, `CompilableSQL`). `Raw` is in no name, because every function here is raw.
+
+| Old           | New             | Why                                                                                  |
+| ------------- | --------------- | ------------------------------------------------------------------------------------ |
+| `Exec`        | `Exec`          | already the verb for a statement that returns a count                                |
+| `Query`       | `Query`         | already the verb for typed rows                                                      |
+| `QueryRows`   | `QueryRows`     | already the streaming form of `Query`                                                |
+| `Scalars`     | `QueryScalars`  | joins the `Query*` verbs: it is `Query` for one column                               |
+| `RawRows`     | `QueryCursor`   | the open-cursor form beside `QueryRows`; `RawRows` looked like a twin of `QueryRows` |
+| `SQL`         | `SQL`           | already the predicate fragment                                                       |
+| `TypedSQL`    | `TypedSQL`      | already the typed fragment                                                           |
+| `RawSubquery` | `SubquerySQL`   | fragment that ends in `SQL`, no `Raw`                                                |
+| `RawQuery`    | `CompilableSQL` | `RawQuery` next to `Query` suggests it runs; it only wraps                           |
+
 ## Expression extension surface (#270)
 
 Decision (2026-11-19, the maintainer, on #254 items 1.7 and 1.8): third-party typed expressions are supported, with a small frozen surface; the rest moves behind an internal bridge; `momo.ColumnFlags` types the column flags.

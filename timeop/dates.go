@@ -226,3 +226,33 @@ func DaysBetween(a, b momo.Expression[types.Date]) DaysExpr {
 		}
 	})
 }
+
+// CurrentDate is CURRENT_DATE: the transaction date on PostgreSQL, the
+// session date on MySQL, the UTC date as text on SQLite.
+func CurrentDate() Expr {
+	return newExpr(func(b *momo.Builder) { b.WriteString("CURRENT_DATE") })
+}
+
+// Infinity is 'infinity'::timestamptz, later than every timestamp. PostgreSQL
+// only; MySQL and SQLite fail with ErrUnsupported.
+func Infinity() Expr {
+	return newExpr(func(b *momo.Builder) {
+		if b.Dialect().Name != dialect.Postgres {
+			exprkit.Unsupported(b, "infinity timestamps")
+			return
+		}
+		b.WriteString("'infinity'::timestamptz")
+	})
+}
+
+// NegInfinity is '-infinity'::timestamptz, earlier than every timestamp.
+// PostgreSQL only; MySQL and SQLite fail with ErrUnsupported.
+func NegInfinity() Expr {
+	return newExpr(func(b *momo.Builder) {
+		if b.Dialect().Name != dialect.Postgres {
+			exprkit.Unsupported(b, "infinity timestamps")
+			return
+		}
+		b.WriteString("'-infinity'::timestamptz")
+	})
+}

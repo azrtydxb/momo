@@ -156,8 +156,8 @@ func TestFullTextWrongDialectUnsupported(t *testing.T) {
 	}{
 		{dialect.Postgres, fts.FTS5Match("articles_fts", `"x"`)},
 		{dialect.MySQL, fts.FTS5Match("articles_fts", `"x"`)},
-		{dialect.SQLite, fts.Match(tsv, fts.WebsearchToQuery("english", "x"))},
-		{dialect.MySQL, fts.Match(tsv, fts.WebsearchToQuery("english", "x"))},
+		{dialect.SQLite, fts.TSMatch(tsv, fts.TSWebsearchQuery("english", "x"))},
+		{dialect.MySQL, fts.TSMatch(tsv, fts.TSWebsearchQuery("english", "x"))},
 	}
 	for _, c := range cases {
 		db := momo.New(fakedriver.New(c.d))

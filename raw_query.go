@@ -15,7 +15,7 @@ import (
 // build error; on PostgreSQL native $n placeholders bind argument n, see SQL)
 // and scans every row into a T. T is a model, a projection struct, one of
 // the tuple rows Row1 to Row10, or a plain struct. It is the multi-column
-// counterpart of Scalars for a hand-written SELECT or a statement with RETURNING:
+// counterpart of QueryScalars for a hand-written SELECT or a statement with RETURNING:
 //
 //	rows, err := momo.Query[momo.Row2[string, int64]](ctx, db,
 //		`SELECT title, count(*) FROM documents WHERE tenant_id = $1 GROUP BY title`, tenant)
@@ -107,21 +107,28 @@ func QueryRows[T any](ctx context.Context, q Querier, sql string, args ...any) i
 	}
 }
 
-// ColumnRows is the cursor RawRows returns: a Rows that also names its result
-// columns.
+// ColumnRows is the cursor QueryCursor returns: a Rows that also names its
+// result columns.
 type ColumnRows interface {
 	Rows
 	ColumnNamer
 }
 
-// RawRows runs sql through the raw path and returns the open cursor, for a
+// RawRows is QueryCursor.
+//
+// Deprecated: use QueryCursor. RawRows is removed in the next release.
+func RawRows(ctx context.Context, q Querier, sql string, args ...any) (ColumnRows, error) {
+	return QueryCursor(ctx, q, sql, args...)
+}
+
+// QueryCursor runs sql through the raw path and returns the open cursor, for a
 // result whose shape is only known at run time: a statement whose column
 // count or types depend on its input, which Query and QueryRows cannot type
 // and MapRows would buffer into maps. Placeholders, hooks (op "raw"),
 // interceptors, WithTxSetup, WithImplicitTx, error classification and
 // argument redaction are those of Query, on a *DB, a *Tx or an AdoptTx handle.
 //
-//	rows, err := momo.RawRows(ctx, db, sql, args...)
+//	rows, err := momo.QueryCursor(ctx, db, sql, args...)
 //	if err != nil {
 //		return err
 //	}
@@ -150,7 +157,7 @@ type ColumnRows interface {
 // column names as the driver gives them: an empty list means the statement
 // returns no columns (an UPDATE without RETURNING) or the driver cannot name
 // them, and ErrUnsupported means the cursor does not implement ColumnNamer.
-func RawRows(ctx context.Context, q Querier, sql string, args ...any) (ColumnRows, error) {
+func QueryCursor(ctx context.Context, q Querier, sql string, args ...any) (ColumnRows, error) {
 	c, err := compile(q.Dialect(), func(b *Builder) { b.appendRaw(sql, args) })
 	if err != nil {
 		return nil, err

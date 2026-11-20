@@ -114,7 +114,7 @@ func (d *tmVec) MomoMeta() *momo.Meta[tmVec] { return &tmVecMeta }
 // MySQL 9.7 and MariaDB 11.8 store and read it back.
 func tmVectorMySQL(t *testing.T, db *momo.DB, cell string) {
 	ctx := context.Background()
-	version, err := momo.Scalars[string](ctx, db, "SELECT VERSION()")
+	version, err := momo.QueryScalars[string](ctx, db, "SELECT VERSION()")
 	if err != nil || len(version) != 1 {
 		t.Fatalf("VERSION(): %v, %v", version, err)
 	}
@@ -219,7 +219,7 @@ func TestTypeMappingMySQL(t *testing.T) {
 				if _, err := momo.Exec(ctx, db, "INSERT INTO "+tbl+" (id, v) VALUES (1000000, NULL)"); err != nil {
 					t.Fatalf("insert NULL into %s: %v", colType, err)
 				}
-				n, err := momo.Scalars[int64](ctx, db, "SELECT count(*) FROM "+tbl+" WHERE v IS NULL")
+				n, err := momo.QueryScalars[int64](ctx, db, "SELECT count(*) FROM "+tbl+" WHERE v IS NULL")
 				if err != nil || len(n) != 1 || n[0] != 1 {
 					t.Fatalf("NULL in %s: count = %v, %v", colType, n, err)
 				}
@@ -254,27 +254,27 @@ func TestTypeMappingMySQLNull(t *testing.T) {
 				t.Errorf("%s: NULL read back as %v, %v", name, got, err)
 			}
 		}
-		i, err := momo.Scalars[*int64](ctx, db, "SELECT i FROM tm_nulls")
+		i, err := momo.QueryScalars[*int64](ctx, db, "SELECT i FROM tm_nulls")
 		check("*int64", i, err, err == nil && len(i) == 1 && i[0] == nil)
-		s, err := momo.Scalars[*string](ctx, db, "SELECT s FROM tm_nulls")
+		s, err := momo.QueryScalars[*string](ctx, db, "SELECT s FROM tm_nulls")
 		check("*string", s, err, err == nil && len(s) == 1 && s[0] == nil)
-		ts, err := momo.Scalars[*time.Time](ctx, db, "SELECT t FROM tm_nulls")
+		ts, err := momo.QueryScalars[*time.Time](ctx, db, "SELECT t FROM tm_nulls")
 		check("*time.Time", ts, err, err == nil && len(ts) == 1 && ts[0] == nil)
-		b, err := momo.Scalars[[]byte](ctx, db, "SELECT b FROM tm_nulls")
+		b, err := momo.QueryScalars[[]byte](ctx, db, "SELECT b FROM tm_nulls")
 		check("[]byte", b, err, err == nil && len(b) == 1 && b[0] == nil)
-		j, err := momo.Scalars[*types.JSON[tmDoc]](ctx, db, "SELECT j FROM tm_nulls")
+		j, err := momo.QueryScalars[*types.JSON[tmDoc]](ctx, db, "SELECT j FROM tm_nulls")
 		check("*types.JSON", j, err, err == nil && len(j) == 1 && j[0] == nil)
-		u, err := momo.Scalars[*types.UUID](ctx, db, "SELECT u FROM tm_nulls")
+		u, err := momo.QueryScalars[*types.UUID](ctx, db, "SELECT u FROM tm_nulls")
 		check("*types.UUID", u, err, err == nil && len(u) == 1 && u[0] == nil)
-		d, err := momo.Scalars[*types.Numeric](ctx, db, "SELECT d FROM tm_nulls")
+		d, err := momo.QueryScalars[*types.Numeric](ctx, db, "SELECT d FROM tm_nulls")
 		check("*types.Numeric", d, err, err == nil && len(d) == 1 && d[0] == nil)
-		x, err := momo.Scalars[*types.Numeric](ctx, db, "SELECT x FROM tm_nulls")
+		x, err := momo.QueryScalars[*types.Numeric](ctx, db, "SELECT x FROM tm_nulls")
 		check("*types.Numeric (text)", x, err, err == nil && len(x) == 1 && x[0] == nil)
-		dt, err := momo.Scalars[*types.Date](ctx, db, "SELECT dt FROM tm_nulls")
+		dt, err := momo.QueryScalars[*types.Date](ctx, db, "SELECT dt FROM tm_nulls")
 		check("*types.Date", dt, err, err == nil && len(dt) == 1 && dt[0] == nil)
-		f, err := momo.Scalars[*float64](ctx, db, "SELECT f FROM tm_nulls")
+		f, err := momo.QueryScalars[*float64](ctx, db, "SELECT f FROM tm_nulls")
 		check("*float64", f, err, err == nil && len(f) == 1 && f[0] == nil)
-		if _, err := momo.Scalars[int64](ctx, db, "SELECT i FROM tm_nulls"); err == nil {
+		if _, err := momo.QueryScalars[int64](ctx, db, "SELECT i FROM tm_nulls"); err == nil {
 			t.Error("scanning NULL into int64 succeeded; want an error")
 		}
 	})
@@ -307,7 +307,7 @@ func TestTypeMappingMySQLUnsigned(t *testing.T) {
 					return fmt.Errorf("insert %d: %w", v, err)
 				}
 			}
-			got, err := momo.Scalars[uint64](ctx, db, "SELECT v FROM "+tbl+" ORDER BY id")
+			got, err := momo.QueryScalars[uint64](ctx, db, "SELECT v FROM "+tbl+" ORDER BY id")
 			if err != nil || len(got) != len(vals) {
 				return fmt.Errorf("select: %v, %v", got, err)
 			}
@@ -395,7 +395,7 @@ func TestTypeMappingMySQLLimits(t *testing.T) {
 			"CAST AS DOUBLE": {"SELECT CAST(v AS DOUBLE) FROM tm_f32", nil},
 			"v + 0e0":        {"SELECT v + 0e0 FROM tm_f32", nil},
 		} {
-			got, err := momo.Scalars[float32](ctx, db, q.sql, q.args...)
+			got, err := momo.QueryScalars[float32](ctx, db, q.sql, q.args...)
 			if err != nil || len(got) != 1 || got[0] != math.MaxFloat32 {
 				t.Errorf("%s: MaxFloat32 read back %v, %v", name, got, err)
 			}
@@ -421,7 +421,7 @@ func TestTypeMappingMySQLLimits(t *testing.T) {
 		}
 		// A query with no argument comes back over the text protocol, where the
 		// server prints a FLOAT with six significant digits.
-		plain, err := momo.Scalars[float32](ctx, db, "SELECT v FROM tm_f32")
+		plain, err := momo.QueryScalars[float32](ctx, db, "SELECT v FROM tm_f32")
 		if err != nil || len(plain) != 1 || math.Abs(float64(plain[0])-math.MaxFloat32)/math.MaxFloat32 > 1e-5 {
 			t.Errorf("text protocol: MaxFloat32 read back %v, %v; want six digits", plain, err)
 		}
@@ -465,7 +465,7 @@ func TestTypeMappingMySQLLimits(t *testing.T) {
 				t.Errorf("types.Date %s: err = %v, want ErrValidation", name, err)
 			}
 		}
-		if n, err := momo.Scalars[int64](ctx, db, "SELECT count(*) FROM tm_ref"); err != nil || len(n) != 1 || n[0] != 0 {
+		if n, err := momo.QueryScalars[int64](ctx, db, "SELECT count(*) FROM tm_ref"); err != nil || len(n) != 1 || n[0] != 0 {
 			t.Errorf("rows stored after refused values = %v, %v", n, err)
 		}
 	})

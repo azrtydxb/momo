@@ -143,17 +143,17 @@ func TestColumnChangesReachTheHistoryTableInOnePlan(t *testing.T) {
 	if _, err := momo.Exec(ctx, db, "UPDATE notes SET rank = 5 WHERE id = 1"); err != nil {
 		t.Fatalf("a write after the column change: %v", err)
 	}
-	ranks, err := momo.Scalars[int64](ctx, db, "SELECT rank FROM notes_history WHERE id = 1 ORDER BY history_id DESC LIMIT 1")
+	ranks, err := momo.QueryScalars[int64](ctx, db, "SELECT rank FROM notes_history WHERE id = 1 ORDER BY history_id DESC LIMIT 1")
 	if err != nil || len(ranks) != 1 || ranks[0] != 5 {
 		t.Fatalf("the newest history row has rank %v (%v), want 5", ranks, err)
 	}
 	// The versions recorded before the change are kept.
-	n, err := momo.Scalars[int64](ctx, db, "SELECT count(*) FROM notes_history WHERE id = 1")
+	n, err := momo.QueryScalars[int64](ctx, db, "SELECT count(*) FROM notes_history WHERE id = 1")
 	if err != nil || len(n) != 1 || n[0] != 2 {
 		t.Fatalf("history rows of the note = %v (%v), want 2 (the insert and the update)", n, err)
 	}
 	// The column the model dropped is still on the history table, with its data.
-	bodies, err := momo.Scalars[string](ctx, db, "SELECT body FROM notes_history WHERE id = 1 AND history_operation = 'INSERT'")
+	bodies, err := momo.QueryScalars[string](ctx, db, "SELECT body FROM notes_history WHERE id = 1 AND history_operation = 'INSERT'")
 	if err != nil || len(bodies) != 1 || bodies[0] != "gone soon" {
 		t.Fatalf("the recorded body = %v (%v), want it kept", bodies, err)
 	}
@@ -220,11 +220,11 @@ func TestDroppedNotNullColumnKeepsItsHistory(t *testing.T) {
 	if _, err := momo.Exec(ctx, db, "INSERT INTO notes (id, body) VALUES (2, 'new')"); err != nil {
 		t.Fatalf("a write after the model dropped a NOT NULL column: %v", err)
 	}
-	titles, err := momo.Scalars[string](ctx, db, "SELECT title FROM notes_history WHERE id = 1")
+	titles, err := momo.QueryScalars[string](ctx, db, "SELECT title FROM notes_history WHERE id = 1")
 	if err != nil || len(titles) != 1 || titles[0] != "kept forever" {
 		t.Fatalf("the recorded title = %v (%v), want it kept", titles, err)
 	}
-	nulls, err := momo.Scalars[int64](ctx, db, "SELECT count(*) FROM notes_history WHERE id = 2 AND title IS NULL")
+	nulls, err := momo.QueryScalars[int64](ctx, db, "SELECT count(*) FROM notes_history WHERE id = 2 AND title IS NULL")
 	if err != nil || len(nulls) != 1 || nulls[0] != 1 {
 		t.Fatalf("new history rows with a NULL title = %v (%v), want 1", nulls, err)
 	}
@@ -247,14 +247,14 @@ func TestColumnRenameKeepsTheRecordedValues(t *testing.T) {
 		schema.Column{Name: "headline", Type: "text"},
 	), "rename_title", 2, migrate.DiffOptions{RenameColumns: map[string]string{"notes.title": "headline"}})
 
-	got, err := momo.Scalars[string](ctx, db, "SELECT headline FROM notes_history WHERE id = 1")
+	got, err := momo.QueryScalars[string](ctx, db, "SELECT headline FROM notes_history WHERE id = 1")
 	if err != nil || len(got) != 1 || got[0] != "before" {
 		t.Fatalf("the recorded headline = %v (%v), want the old title", got, err)
 	}
 	if _, err := momo.Exec(ctx, db, "UPDATE notes SET headline = 'after' WHERE id = 1"); err != nil {
 		t.Fatalf("a write after the rename: %v", err)
 	}
-	if n, err := momo.Scalars[int64](ctx, db, "SELECT count(*) FROM notes_history WHERE id = 1"); err != nil || n[0] != 2 {
+	if n, err := momo.QueryScalars[int64](ctx, db, "SELECT count(*) FROM notes_history WHERE id = 1"); err != nil || n[0] != 2 {
 		t.Fatalf("history rows = %v (%v), want 2", n, err)
 	}
 }
@@ -281,7 +281,7 @@ func TestTableRenameKeepsTheRecordedVersions(t *testing.T) {
 	if _, err := momo.Exec(ctx, db, "UPDATE memos SET title = 'after' WHERE id = 1"); err != nil {
 		t.Fatalf("a write after the rename: %v", err)
 	}
-	got, err := momo.Scalars[string](ctx, db, "SELECT title FROM memos_history WHERE id = 1 ORDER BY history_id")
+	got, err := momo.QueryScalars[string](ctx, db, "SELECT title FROM memos_history WHERE id = 1 ORDER BY history_id")
 	if err != nil || len(got) != 2 || got[0] != "before" || got[1] != "after" {
 		t.Fatalf("the versions on memos_history = %v (%v), want before then after", got, err)
 	}
@@ -309,7 +309,7 @@ func TestNullableColumnMadeNotNullKeepsOldHistory(t *testing.T) {
 		schema.Column{Name: "body", Type: "text", Default: "''"},
 	), "body_not_null", 2, migrate.DiffOptions{})
 
-	nulls, err := momo.Scalars[int64](ctx, db, "SELECT count(*) FROM notes_history WHERE id = 1 AND body IS NULL")
+	nulls, err := momo.QueryScalars[int64](ctx, db, "SELECT count(*) FROM notes_history WHERE id = 1 AND body IS NULL")
 	if err != nil || len(nulls) != 1 || nulls[0] != 1 {
 		t.Fatalf("history rows with a NULL body = %v (%v), want the one recorded before the change", nulls, err)
 	}
@@ -334,7 +334,7 @@ func TestHistoryWorksForAMixedCaseTableName(t *testing.T) {
 	execAllNotes(ctx, t, db,
 		`INSERT INTO "Orders" (id, title) VALUES (1, 'a')`,
 		`UPDATE "Orders" SET title = 'b' WHERE id = 1`)
-	got, err := momo.Scalars[string](ctx, db, `SELECT title FROM "Orders_history" WHERE id = 1 ORDER BY history_id`)
+	got, err := momo.QueryScalars[string](ctx, db, `SELECT title FROM "Orders_history" WHERE id = 1 ORDER BY history_id`)
 	if err != nil || len(got) != 2 || got[0] != "a" || got[1] != "b" {
 		t.Fatalf("the versions of Orders = %v (%v), want a then b", got, err)
 	}
@@ -355,7 +355,7 @@ func TestUpdateThatOnlyChangesNumericScaleIsRecorded(t *testing.T) {
 		`INSERT INTO notes (id, amount, doc) VALUES (1, 1.0, '{"a": 1}')`,
 		`UPDATE notes SET amount = 1.00 WHERE id = 1`,
 		`UPDATE notes SET amount = 1.00 WHERE id = 1`)
-	n, err := momo.Scalars[int64](ctx, db, "SELECT count(*) FROM notes_history WHERE id = 1")
+	n, err := momo.QueryScalars[int64](ctx, db, "SELECT count(*) FROM notes_history WHERE id = 1")
 	if err != nil || len(n) != 1 || n[0] != 2 {
 		t.Fatalf("history rows = %v (%v), want 2: the insert and the scale change, not the repeated no-op", n, err)
 	}

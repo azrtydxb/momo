@@ -396,7 +396,7 @@ func (r *Relay) checkServer(ctx context.Context) error {
 	if r.d.Name != dialect.MySQL || r.serverOK.Load() {
 		return nil
 	}
-	got, err := momo.Scalars[string](ctx, r.db, "SELECT VERSION()")
+	got, err := momo.QueryScalars[string](ctx, r.db, "SELECT VERSION()")
 	if err != nil {
 		return err
 	}

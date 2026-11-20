@@ -27,10 +27,13 @@ const (
 // MetaVersion is the version of the history table's metadata row.
 const MetaVersion = "__momo_meta__"
 
-// FormatVersion is the format version of the momo_migrations history table.
+// HistoryFormat is the format version of the momo_migrations history table.
 // It is stored in the checksum column of the metadata row and is independent
 // of the module version.
-const FormatVersion = 1
+const HistoryFormat = 1
+
+// Deprecated: use HistoryFormat. FormatVersion is removed in the next release.
+const FormatVersion = HistoryFormat
 
 const timeLayout = time.RFC3339Nano
 
@@ -117,7 +120,7 @@ func ensureHistory(ctx context.Context, c momo.PinnedConn, d Dialect, tbl string
 		ins = fmt.Sprintf(`INSERT INTO %s (version, name, checksum, status, error, applied_at) VALUES (%s, %s, %s, %s, '', %s) ON DUPLICATE KEY UPDATE version = version`,
 			tbl, ph(d, 1), ph(d, 2), ph(d, 3), ph(d, 4), ph(d, 5))
 	}
-	if _, err := c.Exec(ctx, ins, []any{MetaVersion, "meta", strconv.Itoa(FormatVersion), StatusMeta, time.Now().UTC().Format(timeLayout)}); err != nil {
+	if _, err := c.Exec(ctx, ins, []any{MetaVersion, "meta", strconv.Itoa(HistoryFormat), StatusMeta, time.Now().UTC().Format(timeLayout)}); err != nil {
 		return fmt.Errorf("migrate: write history metadata: %w", err)
 	}
 	return checkHistoryFormat(ctx, c, tbl)
@@ -149,8 +152,8 @@ func checkHistoryFormat(ctx context.Context, c momo.PinnedConn, tbl string) erro
 	if err != nil {
 		return fmt.Errorf("migrate: history format %q is not a number; upgrade momo or repair the %s row", raw, MetaVersion)
 	}
-	if v > FormatVersion {
-		return fmt.Errorf("migrate: the history table has format %d but this momo reads up to format %d; upgrade momo", v, FormatVersion)
+	if v > HistoryFormat {
+		return fmt.Errorf("migrate: the history table has format %d but this momo reads up to format %d; upgrade momo", v, HistoryFormat)
 	}
 	return nil
 }

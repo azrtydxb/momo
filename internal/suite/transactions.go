@@ -18,7 +18,7 @@ var errRollMeBack = errors.New("suite: roll me back")
 // count returns the number of documents with the given title.
 func count(t *testing.T, q momo.Querier, title string) int64 {
 	t.Helper()
-	got, err := momo.Scalars[int64](context.Background(), q, "SELECT count(*) FROM documents WHERE title = ?", title)
+	got, err := momo.QueryScalars[int64](context.Background(), q, "SELECT count(*) FROM documents WHERE title = ?", title)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("count(%q) = %v, %v", title, got, err)
 	}
@@ -162,7 +162,7 @@ func Transactions(t *testing.T, db *momo.DB, caps Caps) {
 				if caps.Dialect == dialect.MySQL {
 					query = "SELECT @@transaction_isolation"
 				}
-				got, err := momo.Scalars[string](ctx, tx, query)
+				got, err := momo.QueryScalars[string](ctx, tx, query)
 				if err != nil {
 					return err
 				}

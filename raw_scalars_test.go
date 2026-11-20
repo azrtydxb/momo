@@ -15,8 +15,8 @@ import (
 // PostgreSQL only: ::int is PostgreSQL cast syntax.
 func TestScalarsRawPlaceholders(t *testing.T) {
 	db := testopen.Postgres(t)
-	got, err := momo.Scalars[int](context.Background(), db, "SELECT ?::int + ?", 1, 2)
+	got, err := momo.QueryScalars[int](context.Background(), db, "SELECT ?::int + ?", 1, 2)
 	if err != nil || len(got) != 1 || got[0] != 3 {
-		t.Fatalf("Scalars = %v, %v; want [3], nil", got, err)
+		t.Fatalf("QueryScalars =%v, %v; want [3], nil", got, err)
 	}
 }

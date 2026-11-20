@@ -34,7 +34,7 @@ func TestJSONRawMessageNullLive(t *testing.T) {
 				t.Fatalf("insert %d: %v", id, err)
 			}
 		}
-		got, err := momo.Scalars[*types.JSON[json.RawMessage]](ctx, db, "SELECT v FROM "+tbl+" ORDER BY id")
+		got, err := momo.QueryScalars[*types.JSON[json.RawMessage]](ctx, db, "SELECT v FROM "+tbl+" ORDER BY id")
 		if err != nil || len(got) != 3 {
 			t.Fatalf("select: %v (%d rows)", err, len(got))
 		}

@@ -26,7 +26,7 @@ import (
 // graphCount returns the single integer a COUNT(*) statement selects.
 func graphCount(t *testing.T, q momo.Querier, sql string, args ...any) int64 {
 	t.Helper()
-	out, err := momo.Scalars[int64](context.Background(), q, sql, args...)
+	out, err := momo.QueryScalars[int64](context.Background(), q, sql, args...)
 	if err != nil || len(out) != 1 {
 		t.Fatalf("count %q: %v %v", sql, out, err)
 	}

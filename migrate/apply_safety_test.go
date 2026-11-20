@@ -266,20 +266,20 @@ func TestSessionTimeouts(t *testing.T) {
 		}
 	})
 	t.Run("config values apply", func(t *testing.T) {
-		s := setup(t, migrate.WithConfig(migrate.Config{LockTimeout: 2 * time.Second, StatementTimeout: 30 * time.Second}))
+		s := setup(t, migrate.WithSettings(migrate.Settings{LockTimeout: 2 * time.Second, StatementTimeout: 30 * time.Second}))
 		if s.LockTimeout != 2*time.Second || s.StatementTimeout != 30*time.Second || s.LockTimeoutSet || s.StatementTimeoutSet {
 			t.Fatalf("got %+v", s)
 		}
 	})
 	t.Run("explicit zero disables", func(t *testing.T) {
-		s := setup(t, migrate.WithConfig(migrate.Config{LockTimeout: 2 * time.Second, StatementTimeout: 30 * time.Second}),
+		s := setup(t, migrate.WithSettings(migrate.Settings{LockTimeout: 2 * time.Second, StatementTimeout: 30 * time.Second}),
 			migrate.WithLockTimeout(0), migrate.WithStatementTimeout(0))
 		if s.LockTimeout != 0 || !s.LockTimeoutSet || s.StatementTimeout != 0 || !s.StatementTimeoutSet {
 			t.Fatalf("got %+v", s)
 		}
 	})
-	t.Run("explicit zero survives a later WithConfig", func(t *testing.T) {
-		s := setup(t, migrate.WithLockTimeout(0), migrate.WithConfig(migrate.Config{}))
+	t.Run("explicit zero survives a later WithSettings", func(t *testing.T) {
+		s := setup(t, migrate.WithLockTimeout(0), migrate.WithSettings(migrate.Settings{}))
 		if s.LockTimeout != 0 || !s.LockTimeoutSet {
 			t.Fatalf("got %+v", s)
 		}

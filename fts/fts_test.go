@@ -86,21 +86,21 @@ func TestFullTextHooksSeeMaskedArgs(t *testing.T) {
 			return err
 		}
 	}
-	web := fts.WebsearchToQuery
+	web := fts.TSWebsearchQuery
 
 	maskCase(t, "match sensitive column", 1, []any{"english"},
-		sel(fts.Match(secretTsv, web("english", sensitiveValue))))
+		sel(fts.TSMatch(secretTsv, web("english", sensitiveValue))))
 	maskCase(t, "match plain column", 0, nil,
-		sel(fts.Match(plainTsv, web("english", "visible"))))
+		sel(fts.TSMatch(plainTsv, web("english", "visible"))))
 	maskCase(t, "to_tsvector over a sensitive column", 1, []any{"english", "simple"},
-		sel(fts.Match(fts.ToVector("english", suite.DocSecret), web("simple", sensitiveValue))))
+		sel(fts.TSMatch(fts.TSVector("english", suite.DocSecret), web("simple", sensitiveValue))))
 	maskCase(t, "rank over a sensitive column", 1, []any{"english", 0.1},
-		sel(fts.RankCD(secretTsv, web("english", sensitiveValue)).Gt(0.1)))
+		sel(fts.TSRankCD(secretTsv, web("english", sensitiveValue)).Gt(0.1)))
 	maskCase(t, "rank over a plain column", 0, nil,
-		sel(fts.Rank(plainTsv, web("english", "visible")).Gt(0.1)))
+		sel(fts.TSRank(plainTsv, web("english", "visible")).Gt(0.1)))
 	maskCase(t, "headline over a sensitive column", 0, []any{"english", "simple", "x", "StartSel=<b>"},
 		func(ctx context.Context, db *momo.DB) error {
-			h := fts.Headline("english", suite.DocSecret, web("simple", "x"), "StartSel=<b>")
+			h := fts.TSHeadline("english", suite.DocSecret, web("simple", "x"), "StartSel=<b>")
 			_, err := momo.Select[suite.Document](db).OrderBy(h.Asc()).All(ctx)
 			return err
 		})
@@ -121,7 +121,7 @@ func compile(e momo.Expr, mod func(q tallyQuery) tallyQuery) (momo.Compiled, err
 // placeholders, which PostgreSQL rejects as an ungrouped column. Group by a
 // stored tsvector, or compute the call in a subquery or CTE.
 func TestFullTextBindsAreNotGroupable(t *testing.T) {
-	rank := fts.Rank(tsv, fts.WebsearchToQuery("english", "red fox"))
+	rank := fts.TSRank(tsv, fts.TSWebsearchQuery("english", "red fox"))
 	got, err := compile(rank, func(q tallyQuery) tallyQuery {
 		return q.GroupBy(rank)
 	})
@@ -138,7 +138,7 @@ func TestFullTextBindsAreNotGroupable(t *testing.T) {
 // without its regconfig cast, a value interpolated instead of bound, a
 // normalization that is not a literal, and options that are not bound.
 func TestFullTextGolden(t *testing.T) {
-	q := fts.WebsearchToQuery("english", "red fox")
+	q := fts.TSWebsearchQuery("english", "red fox")
 	order := func(o momo.Order) func(tallyQuery) tallyQuery {
 		return func(s tallyQuery) tallyQuery { return s.OrderBy(o) }
 	}
@@ -153,29 +153,29 @@ func TestFullTextGolden(t *testing.T) {
 		want string
 		args []any
 	}{
-		{"match with websearch", momo.CountAll(), where(fts.Match(tsv, q)),
+		{"match with websearch", momo.CountAll(), where(fts.TSMatch(tsv, q)),
 			`SELECT COUNT(*) FROM "articles" WHERE "articles"."search_tsv" @@ websearch_to_tsquery(CAST($1 AS regconfig), $2)`,
 			[]any{"english", "red fox"}},
 		{"plain phrase and to_tsquery", momo.CountAll(), where(momo.Or(
-			fts.Match(tsv, fts.PlainToQuery("simple", "a b")),
-			fts.Match(tsv, fts.PhraseToQuery("simple", "a b")),
-			fts.Match(tsv, fts.ToQuery("simple", "a & b:*")),
+			fts.TSMatch(tsv, fts.TSPlainQuery("simple", "a b")),
+			fts.TSMatch(tsv, fts.TSPhraseQuery("simple", "a b")),
+			fts.TSMatch(tsv, fts.TSQuery("simple", "a & b:*")),
 		)),
 			`WHERE ("articles"."search_tsv" @@ plainto_tsquery(CAST($1 AS regconfig), $2) OR "articles"."search_tsv" @@ phraseto_tsquery(CAST($3 AS regconfig), $4) OR "articles"."search_tsv" @@ to_tsquery(CAST($5 AS regconfig), $6))`,
 			[]any{"simple", "a b", "simple", "a b", "simple", "a & b:*"}},
-		{"to_tsvector on a text column", momo.CountAll(), where(fts.Match(fts.ToVector("english", title), q)),
+		{"to_tsvector on a text column", momo.CountAll(), where(fts.TSMatch(fts.TSVector("english", title), q)),
 			`WHERE to_tsvector(CAST($1 AS regconfig), "articles"."title") @@ websearch_to_tsquery(CAST($2 AS regconfig), $3)`,
 			[]any{"english", "english", "red fox"}},
-		{"rank in order by, descending", title, order(fts.RankCD(tsv, q).Desc()),
+		{"rank in order by, descending", title, order(fts.TSRankCD(tsv, q).Desc()),
 			`ORDER BY ts_rank_cd("articles"."search_tsv", websearch_to_tsquery(CAST($1 AS regconfig), $2)) DESC`,
 			[]any{"english", "red fox"}},
-		{"rank with normalization in the select list", fts.Rank(tsv, q, 33).As("rank"), nil,
+		{"rank with normalization in the select list", fts.TSRank(tsv, q, 33).As("rank"), nil,
 			`SELECT ts_rank("articles"."search_tsv", websearch_to_tsquery(CAST($1 AS regconfig), $2), 33) AS "rank" FROM`,
 			[]any{"english", "red fox"}},
-		{"headline with options", fts.Headline("english", title, q, "StartSel=<b>, StopSel=</b>"), nil,
+		{"headline with options", fts.TSHeadline("english", title, q, "StartSel=<b>, StopSel=</b>"), nil,
 			`ts_headline(CAST($1 AS regconfig), "articles"."title", websearch_to_tsquery(CAST($2 AS regconfig), $3), $4)`,
 			[]any{"english", "english", "red fox", "StartSel=<b>, StopSel=</b>"}},
-		{"headline without options", fts.Headline("english", title, q, ""), nil,
+		{"headline without options", fts.TSHeadline("english", title, q, ""), nil,
 			`SELECT ts_headline(CAST($1 AS regconfig), "articles"."title", websearch_to_tsquery(CAST($2 AS regconfig), $3)) FROM`,
 			[]any{"english", "english", "red fox"}},
 	}
@@ -198,21 +198,21 @@ func TestFullTextGolden(t *testing.T) {
 // configuration or normalization that reaches the database instead of failing
 // at build time with a typed error.
 func TestFullTextUnsupportedAndInvalid(t *testing.T) {
-	q := fts.WebsearchToQuery("english", "x")
+	q := fts.TSWebsearchQuery("english", "x")
 	for _, d := range []dialect.Name{dialect.SQLite, dialect.MySQL} {
-		if _, err := exprtest.Compile(d, fts.Match(tsv, q)); !errors.Is(err, momo.ErrUnsupported) {
-			t.Errorf("Match on %s = %v, want ErrUnsupported", d, err)
+		if _, err := exprtest.Compile(d, fts.TSMatch(tsv, q)); !errors.Is(err, momo.ErrUnsupported) {
+			t.Errorf("TSMatch on %s = %v, want ErrUnsupported", d, err)
 		}
-		if _, err := exprtest.Compile(d, fts.RankCD(tsv, q).Gt(0.1)); !errors.Is(err, momo.ErrUnsupported) {
-			t.Errorf("RankCD on %s = %v, want ErrUnsupported", d, err)
+		if _, err := exprtest.Compile(d, fts.TSRankCD(tsv, q).Gt(0.1)); !errors.Is(err, momo.ErrUnsupported) {
+			t.Errorf("TSRankCD on %s = %v, want ErrUnsupported", d, err)
 		}
 	}
 	bad := map[string]momo.Predicate{
-		"empty config":      fts.Match(tsv, fts.WebsearchToQuery("", "x")),
-		"empty vec config":  fts.Match(fts.ToVector("", title), q),
-		"negative norm":     fts.RankCD(tsv, q, -1).Gt(0),
-		"norm out of range": fts.Rank(tsv, q, 64).Gt(0),
-		"two norms":         fts.Rank(tsv, q, 1, 2).Gt(0),
+		"empty config":      fts.TSMatch(tsv, fts.TSWebsearchQuery("", "x")),
+		"empty vec config":  fts.TSMatch(fts.TSVector("", title), q),
+		"negative norm":     fts.TSRankCD(tsv, q, -1).Gt(0),
+		"norm out of range": fts.TSRank(tsv, q, 64).Gt(0),
+		"two norms":         fts.TSRank(tsv, q, 1, 2).Gt(0),
 	}
 	for name, p := range bad {
 		if _, err := exprtest.Compile(dialect.Postgres, p); !errors.Is(err, momo.ErrValidation) {

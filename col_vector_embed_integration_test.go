@@ -103,7 +103,7 @@ func embStr(s string) *string { return &s }
 // embHashes returns the stored source hash of every row.
 func embHashes(t *testing.T, db *momo.DB) map[int64]sql.NullString {
 	t.Helper()
-	rows, err := momo.RawRows(t.Context(), db, "SELECT id, emb_hash FROM embed_docs")
+	rows, err := momo.QueryCursor(t.Context(), db, "SELECT id, emb_hash FROM embed_docs")
 	if err != nil {
 		t.Fatal(err)
 	}

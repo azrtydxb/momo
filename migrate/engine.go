@@ -31,7 +31,7 @@ type Engine struct {
 // NewEngine returns an engine for the migration directory dir. The option
 // WithDialect is required.
 func NewEngine(drv momo.Driver, dir fs.FS, opts ...Option) (*Engine, error) {
-	o := options{clock: time.Now, config: Config{LockTimeout: defaultLockTimeout}}
+	o := options{clock: time.Now, config: Settings{LockTimeout: defaultLockTimeout}}
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -236,7 +236,7 @@ func (e *Engine) Plan(ctx context.Context) ([]Pending, error) {
 	return e.pendingFrom(hist)
 }
 
-// resolveSchemas returns the managed schemas: Config.Schemas, or the
+// resolveSchemas returns the managed schemas: Settings.Schemas, or the
 // connection's current_schema() when none are configured. On PostgreSQL the
 // first one must be current_schema(), the schema a new history table is created
 // in (an existing one is found through the search_path and used wherever it is).
@@ -267,7 +267,7 @@ func (e *Engine) resolveSchemas(ctx context.Context, c momo.PinnedConn) ([]strin
 		return []string{cur}, nil
 	}
 	if schemas[0] != cur {
-		return nil, fmt.Errorf("migrate: configuration error: Config.Schemas[0] is %q but the connection's current_schema() is %q; a new history table is created in the current schema, so set search_path to %q or list %q first", schemas[0], cur, schemas[0], cur)
+		return nil, fmt.Errorf("migrate: configuration error: Settings.Schemas[0] is %q but the connection's current_schema() is %q; a new history table is created in the current schema, so set search_path to %q or list %q first", schemas[0], cur, schemas[0], cur)
 	}
 	return schemas, nil
 }
@@ -354,7 +354,7 @@ func joinErr(err, cleanup error) error {
 	return errors.Join(err, cleanup)
 }
 
-// sessionOptions merges Config with the explicit WithLockTimeout and
+// sessionOptions merges Settings with the explicit WithLockTimeout and
 // WithStatementTimeout values, which win and keep a zero.
 func (e *Engine) sessionOptions() SessionOptions {
 	s := SessionOptions{LockTimeout: e.opts.config.LockTimeout, StatementTimeout: e.opts.config.StatementTimeout}
@@ -742,10 +742,10 @@ func (e *Engine) Inspect(ctx context.Context) (*schema.Schema, error) {
 
 // inspectOn is Inspect on a connection the caller holds. It also returns the
 // indexes the dialect reports as invalid (a failed CONCURRENTLY build) when the
-// dialect implements InvalidInspector, and applies Config.Exclude to the result
+// dialect implements InvalidInspector, and applies Settings.Exclude to the result
 // because the dialects do not.
 func (e *Engine) inspectOn(ctx context.Context, c momo.PinnedConn) (*schema.Schema, []string, error) {
-	if _, err := excludeMatcher("Config.Exclude", e.opts.config.Exclude); err != nil {
+	if _, err := excludeMatcher("Settings.Exclude", e.opts.config.Exclude); err != nil {
 		return nil, nil, err
 	}
 	if err := checkOnlyTables(e.opts.config.OnlyTables); err != nil {
@@ -778,13 +778,13 @@ func (e *Engine) inspectOn(ctx context.Context, c momo.PinnedConn) (*schema.Sche
 }
 
 // dropExcludedInvalid removes from invalid the indexes of a table or view that
-// Config.Exclude hides. It must run on the schema before applyExclude strips
+// Settings.Exclude hides. It must run on the schema before applyExclude strips
 // that table, because the index is located through it.
 func dropExcludedInvalid(s *schema.Schema, invalid []string, globs []string) []string {
 	if len(globs) == 0 || len(invalid) == 0 {
 		return invalid
 	}
-	match, err := excludeMatcher("Config.Exclude", globs)
+	match, err := excludeMatcher("Settings.Exclude", globs)
 	if err != nil {
 		return invalid
 	}
@@ -838,7 +838,7 @@ func (e *Engine) Diff(_ context.Context, desired *schema.Schema, name string, op
 	if err := checkOnlyTables(e.opts.config.OnlyTables); err != nil {
 		return nil, err
 	}
-	// Tables outside Config.OnlyTables are not managed: a snapshot that still
+	// Tables outside Settings.OnlyTables are not managed: a snapshot that still
 	// holds one (its model was removed) must not plan to drop it.
 	to = *applyOnly(&to, e.opts.config.OnlyTables)
 	if v, ok := e.opts.dialect.(SchemaValidator); ok {

@@ -41,7 +41,7 @@ Run on MySQL 8.4, MySQL 9.7 and MariaDB 11.8:
   `SelectQuery.Each` and `SelectQuery.Iter`, including an early stop, a query
   while the cursor is open, a canceled context and a stream inside a `Tx`;
 - typed predicates, row-value comparison, projections, select-list aliases,
-  the `sqlfn` string, CASE, cast and arithmetic helpers, `sqlfn.CurrentDate`,
+  the `sqlfn` string, CASE, cast and arithmetic helpers, `timeop.CurrentDate`,
   the `agg` aggregates and bulk-insert chunking with `WithMaxParams`;
 - every `timeop` extract field, truncation unit and interval, `timeop.Now`,
   `timeop.EpochSeconds` and the typed date arithmetic.

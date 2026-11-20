@@ -219,9 +219,10 @@ var features = []feature{
 		Name: "Date and time expressions",
 		API: []string{
 			"timeop.Extract", "timeop.AtTimeZone", "timeop.Trunc", "timeop.Now", "timeop.CurrentTimestamp",
-			"timeop.IntervalOf", "timeop.IntervalExpr", "timeop.IntervalDuration", "timeop.AddInterval", "timeop.SubInterval",
+			"timeop.IntervalOf", "timeop.IntervalOfExpr", "timeop.IntervalDuration", "timeop.AddInterval", "timeop.SubInterval",
 			"timeop.AddDuration", "timeop.SubDuration", "timeop.Sub", "timeop.Age", "timeop.EpochSeconds",
 			"timeop.AddDays", "timeop.AddDaysExpr", "timeop.DaysBetween",
+			"timeop.CurrentDate", "timeop.Infinity", "timeop.NegInfinity",
 		},
 		PG: "yes",
 		SQLite: "every `timeop.ExtractField`, `timeop.TruncUnit`, interval and `timeop.Now` run on both SQLite drivers; month arithmetic overflows into the next month " +
