@@ -69,7 +69,7 @@ func ContainsLiteral(e Expression[string], s string) Predicate {
 type containsLiteral struct {
 	e     Expr
 	p     string
-	flags uint16
+	flags ColumnFlags
 }
 
 func (x containsLiteral) AppendSQL(b *Builder) {

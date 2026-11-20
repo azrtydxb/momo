@@ -9,6 +9,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/internal/schemautil"
 )
 
@@ -47,9 +48,9 @@ func dispatch(b *momo.Builder, what string, pg, sqlite, mysql func()) {
 			mysql()
 			return
 		}
-		b.Unsupported("full-text search (" + what + ")")
+		exprkit.Unsupported(b, "full-text search ("+what+")")
 	default:
-		b.Unsupported("full-text search (" + what + ")")
+		exprkit.Unsupported(b, "full-text search ("+what+")")
 	}
 }
 
@@ -59,7 +60,7 @@ func dispatch(b *momo.Builder, what string, pg, sqlite, mysql func()) {
 // bound parameter. A query without a positive word
 // renders as a false predicate and sends no MATCH.
 func Search(t Target, q Query) momo.Predicate {
-	return momo.PredicateFunc(func(b *momo.Builder) {
+	return exprkit.Predicate(func(b *momo.Builder) {
 		if !t.check(b) {
 			return
 		}
@@ -109,7 +110,7 @@ type pgCall struct {
 	t      Target
 	q      Query
 	pq     pgQuery
-	fl     uint16
+	fl     momo.ColumnFlags
 	config string // declared configuration; empty for an OverVector target
 }
 
@@ -146,7 +147,7 @@ func (c pgCall) writeVector(b *momo.Builder) {
 	t := c.t
 	switch {
 	case t.kind == kindVector:
-		b.ExprFor(c.fl, t.vec)
+		exprkit.ExprFor(b, c.fl, t.vec)
 	case t.ft.Expression:
 		b.WriteString("to_tsvector(")
 		c.writeConfig(b, "to_tsvector")
@@ -156,7 +157,7 @@ func (c pgCall) writeVector(b *momo.Builder) {
 				b.WriteString(" || ' ' || ")
 			}
 			b.WriteString("COALESCE(")
-			b.ExprFor(c.fl, col)
+			exprkit.ExprFor(b, c.fl, col)
 			b.WriteString(", '')")
 		}
 		b.WriteString(")")
@@ -170,7 +171,7 @@ func (c pgCall) writeQuery(b *momo.Builder) {
 	b.WriteString(c.pq.fn + "(")
 	c.writeConfig(b, c.pq.fn)
 	b.WriteString(", ")
-	b.ArgFor(c.fl, c.pq.arg)
+	exprkit.ArgFor(b, c.fl, c.pq.arg)
 	b.WriteString(")")
 }
 
@@ -232,11 +233,11 @@ func pgSnippet(b *momo.Builder, t Target, q Query, o SnippetOpts) {
 	b.WriteString("ts_headline(")
 	c.writeConfig(b, "ts_headline")
 	b.WriteString(", ")
-	b.ExprFor(c.fl, o.Column)
+	exprkit.ExprFor(b, c.fl, o.Column)
 	b.WriteString(", ")
 	c.writeQuery(b)
 	b.WriteString(", ")
-	b.ArgFor(c.fl, headlineOption("StartSel", open)+", "+headlineOption("StopSel", closing))
+	exprkit.ArgFor(b, c.fl, headlineOption("StartSel", open)+", "+headlineOption("StopSel", closing))
 	b.WriteString(")")
 }
 
@@ -249,13 +250,13 @@ type sqliteCall struct {
 	empty bool
 	fts   string // the FTS5 table
 	pk    string // the integer primary key column
-	fl    uint16
+	fl    momo.ColumnFlags
 }
 
 func sqlitePrepare(b *momo.Builder, t Target, q Query, extra ...momo.Expr) (sqliteCall, bool) {
 	c := sqliteCall{t: t}
 	if t.kind != kindDeclared {
-		b.Unsupported("full-text search (a tsvector column target)")
+		exprkit.Unsupported(b, "full-text search (a tsvector column target)")
 		return c, false
 	}
 	if len(t.tbl.PrimaryKey) != 1 {
@@ -276,7 +277,7 @@ func sqlitePrepare(b *momo.Builder, t Target, q Query, extra ...momo.Expr) (sqli
 func (c sqliteCall) writeMatch(b *momo.Builder) {
 	b.Ident(c.fts)
 	b.WriteString(" MATCH ")
-	b.ArgFor(c.fl, c.match)
+	exprkit.ArgFor(b, c.fl, c.match)
 }
 
 // writeCorrelation writes the join of the FTS5 row to the outer row.
@@ -361,11 +362,11 @@ func sqliteSnippet(b *momo.Builder, t Target, q Query, o SnippetOpts) {
 	b.WriteString("(SELECT snippet(")
 	b.Ident(c.fts)
 	b.WriteString(", " + strconv.Itoa(slices.Index(t.ft.Columns, o.Column.ColumnName())) + ", ")
-	b.ArgFor(c.fl, open)
+	exprkit.ArgFor(b, c.fl, open)
 	b.WriteString(", ")
-	b.ArgFor(c.fl, closing)
+	exprkit.ArgFor(b, c.fl, closing)
 	b.WriteString(", ")
-	b.ArgFor(c.fl, ellipsis)
+	exprkit.ArgFor(b, c.fl, ellipsis)
 	b.WriteString(", " + strconv.Itoa(tokens) + ") FROM ")
 	b.Ident(c.fts)
 	b.WriteString(" WHERE ")

@@ -91,6 +91,25 @@ schemas without being fooled by spelling differences.
   clock for tests.
 - Errors: one `Error` type and the `Err*` sentinels. Match them with
   `errors.Is`, never on message text.
+- The expression extension API: `Expr`, `Expression`, `Ops`, `NewOps`,
+  `Typed` and `Flagged`, with the `Builder` methods `Ident`, `Arg`, `momo.Builder.Dialect`,
+  `SetErr` and `WriteString`. This is all that code outside the module needs to
+  define a typed expression, and it is frozen; see the
+  [compatibility policy](compatibility.md#the-expression-extension-api).
+- Generated-code support: the `New*Column` constructors that the generated
+  descriptors call, with their `ColumnFlags` parameter. They are stable for
+  generated code and are not the way to declare a column by hand.
+
+The feature packages (`agg`, `arrayop`, `fts`, `jsonop`, `rangeop`, `sqlfn`,
+`timeop` and `vecop`) build their expressions on that same API and on a few
+root internals that are not public: binding a value with the sensitive-column
+mask, rendering an operand to learn whether it read a sensitive column, a
+`FILTER` clause and name validation. The root hands them over through a
+registry in `internal/bridge`, which the root fills from an `init` function and
+which imports nothing from the root, so the dependency arrow stays one-way. The
+feature packages call it through the typed functions of `internal/exprkit`.
+Both packages are under `internal/`, so nothing outside the module can reach
+the registry and no exported name in the root package is an escape hatch to it.
 
 ### `vector`
 

@@ -5,6 +5,7 @@ package fts
 import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 )
 
 // MySQLMode is the search modifier of MATCH AGAINST on MySQL and MariaDB.
@@ -40,17 +41,17 @@ func (m MySQLMode) modifier() (string, bool) {
 // The columns must be exactly the columns of one FULLTEXT index, in its order;
 // a server without such an index answers with an error that becomes
 // ErrValidation.
-func writeMySQLMatch(b *momo.Builder, cols []momo.Column[string], text string, mode MySQLMode, fl uint16) {
+func writeMySQLMatch(b *momo.Builder, cols []momo.Column[string], text string, mode MySQLMode, fl momo.ColumnFlags) {
 	mod, _ := mode.modifier()
 	b.WriteString("MATCH(")
 	for i, c := range cols {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.ExprFor(fl, c)
+		exprkit.ExprFor(b, fl, c)
 	}
 	b.WriteString(") AGAINST (")
-	b.ArgFor(fl, text)
+	exprkit.ArgFor(b, fl, text)
 	b.WriteString(" " + mod + ")")
 }
 
@@ -58,7 +59,7 @@ func writeMySQLMatch(b *momo.Builder, cols []momo.Column[string], text string, m
 // whether it may render.
 func mysqlMatchCheck(b *momo.Builder, what string, cols []momo.Column[string], mode MySQLMode) bool {
 	if b.Dialect().Name != dialect.MySQL {
-		b.Unsupported("full-text search (" + what + ")")
+		exprkit.Unsupported(b, "full-text search ("+what+")")
 		return false
 	}
 	if len(cols) == 0 {
@@ -87,7 +88,7 @@ func columnExprs(cols []momo.Column[string]) []momo.Expr {
 // FULLTEXT index, in its order, else the server refuses and the build result is
 // ErrValidation. Other dialects fail the build with ErrUnsupported.
 func MySQLMatch(cols []momo.Column[string], q string, mode MySQLMode) momo.Predicate {
-	return momo.PredicateFunc(func(b *momo.Builder) {
+	return exprkit.Predicate(func(b *momo.Builder) {
 		if !mysqlMatchCheck(b, "MATCH AGAINST", cols, mode) {
 			return
 		}
@@ -136,9 +137,9 @@ func mysqlScore(b *momo.Builder, t Target, q Query) {
 	writeMySQLMatch(b, t.cols, text, Boolean, fl)
 }
 
-func mysqlPrepare(b *momo.Builder, t Target, q Query) (text string, empty bool, fl uint16, ok bool) {
+func mysqlPrepare(b *momo.Builder, t Target, q Query) (text string, empty bool, fl momo.ColumnFlags, ok bool) {
 	if t.kind != kindDeclared {
-		b.Unsupported("full-text search (a tsvector column target)")
+		exprkit.Unsupported(b, "full-text search (a tsvector column target)")
 		return "", false, 0, false
 	}
 	text, empty = q.mysql()

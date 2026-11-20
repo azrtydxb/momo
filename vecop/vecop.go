@@ -14,9 +14,9 @@
 // vector type, so a bit vector column cannot be given to a dense-vector
 // metric and the compiler says so.
 //
-// The package builds on the exported extension API of the root package (Ops,
-// VectorColumnOf, Builder.ArgFor and Builder.MarkSensitive). The vector column
-// types themselves stay in package momo because generated code names them.
+// The package builds on the frozen extension API of the root package plus
+// internal/exprkit. The vector column types themselves stay in package momo
+// because generated code names them.
 package vecop
 
 import (
@@ -25,6 +25,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/vector"
 )
 
@@ -65,11 +66,19 @@ type Expr struct {
 	dim         int
 	metric      dialect.Metric
 	arg         any
-	flags       uint16
+	flags       momo.ColumnFlags
+}
+
+// vectorInfo is what every vector column variant reports about itself.
+type vectorInfo interface {
+	Table() string
+	ColumnName() string
+	Dim() int
+	Flags() momo.ColumnFlags
 }
 
 func newExpr[V momo.VectorValue](src momo.VectorSource[V], m dialect.Metric, v V) Expr {
-	c := momo.VectorColumnOf(src)
+	c := any(src).(vectorInfo)
 	e := Expr{table: c.Table(), name: c.ColumnName(), dim: c.Dim(), metric: m, arg: v, flags: c.Flags()}
 	e.Ops = momo.NewOps[float64](e)
 	return e
@@ -154,13 +163,13 @@ func (e Expr) AppendSQL(b *momo.Builder) {
 		return
 	}
 	if e.flags&momo.FlagSensitive != 0 {
-		b.MarkSensitive() // an enclosing predicate masks its other operands too
+		exprkit.MarkSensitive(b) // an enclosing predicate masks its other operands too
 	}
 	if d.Name == dialect.Postgres {
 		b.WriteString("(")
 		b.QualifiedIdent(e.table, e.name)
 		b.WriteString(" " + pgOperators[e.metric] + " ")
-		b.ArgFor(e.flags, e.arg)
+		exprkit.ArgFor(b, e.flags, e.arg)
 		b.WriteString(")")
 		return
 	}
@@ -173,7 +182,7 @@ func (e Expr) AppendSQL(b *momo.Builder) {
 		b.WriteString(fn + "(")
 		b.QualifiedIdent(e.table, e.name)
 		b.WriteString(", ")
-		b.ArgFor(e.flags, e.arg) // wrapped in VEC_FromText
+		exprkit.ArgFor(b, e.flags, e.arg) // wrapped in VEC_FromText
 		b.WriteString(")")
 		return
 	}
@@ -195,7 +204,7 @@ func (e Expr) AppendSQL(b *momo.Builder) {
 	if bitOperands {
 		b.WriteString("vec_bit(")
 	}
-	b.ArgFor(e.flags, e.arg)
+	exprkit.ArgFor(b, e.flags, e.arg)
 	if bitOperands {
 		b.WriteString(")")
 	}

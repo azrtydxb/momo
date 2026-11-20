@@ -47,7 +47,7 @@ func TestMySQLVectorSensitiveArg(t *testing.T) {
 	ma := dialect.MySQLFlavor(dialect.FlavorMariaDB)
 	q := vector.Vector{1, 2, 3}
 	for _, c := range []struct {
-		flags uint16
+		flags ColumnFlags
 		want  []int
 	}{{FlagSensitive, []int{0}}, {0, nil}} {
 		col := NewVectorColumn[vector.Vector]("docs", "emb", 3, c.flags)

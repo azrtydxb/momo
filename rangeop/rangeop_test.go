@@ -110,7 +110,7 @@ func TestRangePredicatesUnsupportedOffPostgres(t *testing.T) {
 // values compared with a sensitive column into hook events.
 func TestRangePredicatesMaskSensitiveColumn(t *testing.T) {
 	for _, sensitive := range []bool{true, false} {
-		var fl uint16
+		var fl momo.ColumnFlags
 		if sensitive {
 			fl = momo.FlagSensitive
 		}

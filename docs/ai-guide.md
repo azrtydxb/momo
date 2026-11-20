@@ -1845,10 +1845,11 @@ Examples: [crud-zero-null](../examples/crud-zero-null/),
 
 ### Writing your own expression
 
-Code outside the root package (your own package, or a Momo subpackage) builds
-typed expressions with a small extension API. Every name below is an extension
-point: writing one correctly means identifiers go through `Builder.Ident` and
-values through `Builder.Arg` or `Builder.ArgFor`, never concatenated into the SQL.
+Code outside the root package builds typed expressions with a small frozen
+extension API, listed with the reason for each name in the
+[compatibility policy](compatibility.md#the-expression-extension-api). Writing
+one correctly means identifiers go through `Builder.Ident` and values through
+`Builder.Arg`, never concatenated into the SQL.
 
 - `momo.Ops[T]`: embed it in your struct to make the struct an `Expression[T]`
   (a `Predicate` when `T` is `bool`) with `Eq`, `Ne`, `Lt`, `Le`, `Gt`, `Ge`,
@@ -1857,35 +1858,20 @@ values through `Builder.Arg` or `Builder.ArgFor`, never concatenated into the SQ
   the constructor, as the example below does. An unbound `Ops` fails the
   build with `ErrValidation`.
 - `momo.Typed[T]`: wraps any `Expr` as an `Expression[T]` without comparison
-  methods.
-- `momo.PredicateFunc`: turns `func(*momo.Builder)` into a `Predicate`.
-- `momo.Flagged` and `momo.FlagsOf`: the column flags of an expression, or 0. Give your
-  expression a `Flags() uint16` method that returns `FlagsOf` of the wrapped
-  column so a sensitive column stays masked.
-- `Builder.ArgFor`: binds a value, masked as `momo.RedactedArg` in hook
-  events when the flags argument has `FlagSensitive`.
-- `Builder.RenderSensitive`: renders an expression and returns the flags with
-  `FlagSensitive` added when it read a sensitive column; pass the result to the
-  other operands.
-- `Builder.ExprFor`: renders an expression with every argument it binds masked
-  when the flags argument has `FlagSensitive`.
-- `Builder.Unsupported`: records `ErrUnsupported` for a dialect that
-  cannot express the feature. `Builder.WriteByte` appends a trusted SQL byte.
-- `Order.AppendOrder`: renders one ORDER BY item (`expr ASC|DESC [NULLS ...]`) for
-  an expression that carries its own ordering, such as `agg.Call.OrderBy`.
-- `Builder.AppendFilter`: writes ` FILTER (WHERE p)` after an aggregate call
-  and fails the build for a nil predicate or on MySQL. MySQL has no FILTER, so an
-  aggregate that wants MySQL support rewrites its own arguments to
-  `CASE WHEN p THEN x END` instead, as `momo.Agg.Filter` and `agg.Call.Filter` do.
-- `momo.WindowOf[T]`: turns your aggregate call into a window function,
-  `call OVER (...)`; `agg.Call.Over` is built on it.
-- `Builder.MarkSensitive`: call it from an expression that writes a sensitive
-  column's identifier directly, so an enclosing comparison masks its other
-  operands. A column reference does this by itself.
-- `momo.ValidName`: checks a function name or alias before you write it with
-  `Builder.Ident`.
-- `momo.VectorColumnOf`: the `VectorColumn` behind any `VectorSource`
-  (read its table, name, dimension and flags for a custom distance expression).
+  methods, which is how a predicate that has no methods of its own is built.
+- `momo.Flagged`: the column flags of an expression. Give your expression a
+  `Flags() momo.ColumnFlags` method that returns the flags of the wrapped
+  column (assert `momo.Flagged` on it, or return 0) so a sensitive column stays
+  masked in hook events when you compare through the `Ops` methods.
+- `Builder.Ident`, `Builder.Arg`, `Builder.WriteString`, `Builder.Dialect` and
+  `Builder.SetErr`: identifiers, values, the fixed SQL text, the dialect being
+  rendered, and the build error. Call `SetErr` with a `*momo.Error` of kind
+  `momo.ErrUnsupported` for a dialect that cannot express the feature.
+
+A value you bind with `Builder.Arg` yourself is not masked beside a sensitive
+column; compare through the `Ops` methods when an operand can be one. The
+helpers the Momo subpackages (`agg`, `fts`, `jsonop`, `sqlfn` and the others)
+use beyond this list are internal and not available to you.
 
 ```go
 package main
@@ -1913,7 +1899,12 @@ func (s shout) AppendSQL(b *momo.Builder) {
 	b.WriteString(")")
 }
 
-func (s shout) Flags() uint16 { return momo.FlagsOf(s.src) }
+func (s shout) Flags() momo.ColumnFlags {
+	if f, ok := s.src.(momo.Flagged); ok {
+		return f.Flags()
+	}
+	return 0
+}
 
 // newShout(col) works in Columns, Where (newShout(col).Eq("X")) and OrderBy.
 func main() {
@@ -1924,7 +1915,7 @@ func main() {
 ```
 
 DON'T build the SQL text from caller input with `WriteString`; use `Ident` and
-`Arg`. A tested version is `TestExtensionOpsCustomExpressions` in `expr_ops_test.go`.
+`Arg`. A tested version is the `NewOps` example in `expr_extension_example_test.go`.
 
 ## 7. Transactions
 

@@ -5,6 +5,7 @@ package jsonop
 import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -42,7 +43,7 @@ func TypeOf[T any](c momo.Expression[types.JSON[T]]) TypeExpr {
 }
 
 // Flags returns the sensitive flag of the column operand plus FlagNullable.
-func (e TypeExpr) Flags() uint16 { return flags(e.src) }
+func (e TypeExpr) Flags() momo.ColumnFlags { return flags(e.src) }
 
 // As names the expression in a select list.
 func (e TypeExpr) As(alias string) momo.Aliased[string] { return momo.As[string](e, alias) }
@@ -50,7 +51,7 @@ func (e TypeExpr) As(alias string) momo.Aliased[string] { return momo.As[string]
 // AppendSQL renders the type name. Other dialects than PostgreSQL, SQLite and
 // MySQL fail the build with ErrUnsupported.
 func (e TypeExpr) AppendSQL(b *momo.Builder) {
-	src := func() { b.RenderSensitive(e.src, momo.FlagsOf(e.src)) }
+	src := func() { exprkit.RenderSensitive(b, e.src, exprkit.FlagsOf(e.src)) }
 	switch b.Dialect().Name {
 	case dialect.Postgres:
 		b.WriteString("jsonb_typeof(")
@@ -70,6 +71,6 @@ func (e TypeExpr) AppendSQL(b *momo.Builder) {
 			" WHEN 'DOUBLE' THEN 'number' WHEN 'DECIMAL' THEN 'number'" +
 			" WHEN 'BOOLEAN' THEN 'boolean' WHEN 'NULL' THEN 'null' END")
 	default:
-		b.Unsupported("JSON type name (TypeOf)")
+		exprkit.Unsupported(b, "JSON type name (TypeOf)")
 	}
 }

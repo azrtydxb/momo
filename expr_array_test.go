@@ -10,6 +10,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/arrayop"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/internal/exprtest"
 )
 
@@ -91,13 +92,13 @@ func TestArrayOfFlags(t *testing.T) {
 	secret := momo.NewColumn[string]("t", "secret", momo.FlagSensitive)
 	maybe := momo.NewNullColumn[string]("t", "maybe", 0)
 	plain := momo.ColumnOf[string]("t", "a")
-	if f := momo.FlagsOf(momo.ArrayOf[string](plain, secret)); f&momo.FlagSensitive == 0 {
+	if f := exprkit.FlagsOf(momo.ArrayOf[string](plain, secret)); f&momo.FlagSensitive == 0 {
 		t.Errorf("flags = %b, want sensitive", f)
 	}
-	if f := momo.FlagsOf(momo.ArrayOf[string](plain, maybe)); f&momo.FlagNullable == 0 {
+	if f := exprkit.FlagsOf(momo.ArrayOf[string](plain, maybe)); f&momo.FlagNullable == 0 {
 		t.Errorf("flags = %b, want nullable", f)
 	}
-	if f := momo.FlagsOf(momo.ArrayOf[string](plain, momo.Value("x"))); f != 0 {
+	if f := exprkit.FlagsOf(momo.ArrayOf[string](plain, momo.Value("x"))); f != 0 {
 		t.Errorf("flags = %b, want none", f)
 	}
 }

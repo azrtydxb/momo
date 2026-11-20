@@ -15,7 +15,7 @@ func assignForTest(col string) Assignment { return Assignment{col: col, kind: se
 
 func TestMySQLUpsertRendering(t *testing.T) {
 	render := func(flavor dialect.Flavor) string {
-		b := NewBuilder(dialect.MySQLFlavor(flavor))
+		b := newBuilder(dialect.MySQLFlavor(flavor))
 		b.WriteString("INSERT INTO `users` (`id`, `email`) VALUES (?, ?)")
 		sets := []Assignment{assignForTest("email")}
 		renderMySQLUpsert(b, flavor, "users", "id", sets, false, true, func(b *Builder, a Assignment) { b.writeExcluded(a.col) })
@@ -28,7 +28,7 @@ func TestMySQLUpsertRendering(t *testing.T) {
 	if got, want := render(dialect.FlavorMariaDB), "ON DUPLICATE KEY UPDATE `email` = VALUES(`email`)"; !strings.HasSuffix(got, want) || strings.Contains(got, "momo_new") {
 		t.Fatalf("MariaDB upsert = %s, want suffix %s and no row alias", got, want)
 	}
-	b := NewBuilder(dialect.MySQLFlavor(dialect.FlavorMySQL))
+	b := newBuilder(dialect.MySQLFlavor(dialect.FlavorMySQL))
 	renderMySQLUpsert(b, dialect.FlavorMySQL, "users", "id", nil, true, true, nil)
 	if got, want := b.String(), " AS `momo_new` ON DUPLICATE KEY UPDATE `id` = `users`.`id`"; got != want {
 		t.Fatalf("DoNothing = %s, want %s", got, want)

@@ -8,10 +8,10 @@
 // column (Eq, Lt, In, Asc, ...), and each can be named in a select list with
 // As.
 //
-// The package builds on the exported extension API of the root package
-// (momo.Func, momo.Ops, momo.NewOps, Builder.Unsupported, momo.ValidTypeName)
-// and uses no unexported name. Functions the package does not wrap are called
-// with momo.Func, which stays in the root package.
+// The package builds on the frozen extension API of the root package
+// (momo.Func, momo.Ops, momo.NewOps) plus internal/exprkit, and uses no
+// unexported name. Functions the package does not wrap are called with
+// momo.Func, which stays in the root package.
 package sqlfn
 
 import (
@@ -25,6 +25,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -108,7 +109,7 @@ func (CurrentSchemaExpr) AppendSQL(b *momo.Builder) {
 	case dialect.MySQL:
 		b.WriteString("DATABASE()")
 	default:
-		b.Unsupported("current_schema()")
+		exprkit.Unsupported(b, "current_schema()")
 	}
 }
 
@@ -376,7 +377,7 @@ func (d DateExpr) AppendSQL(b *momo.Builder) {
 		return
 	}
 	if b.Dialect().Name != dialect.Postgres {
-		b.Unsupported("infinity timestamps")
+		exprkit.Unsupported(b, "infinity timestamps")
 		return
 	}
 	if d.kind == kindInfinity {
@@ -409,7 +410,7 @@ type CastExpr[T any] struct {
 
 // Cast is CAST(e AS sqlType). T is the Go type of the result; Momo cannot
 // verify that it matches sqlType. sqlType is not portable (MySQL casts to
-// SIGNED, not bigint) and is validated by momo.ValidTypeName: words of
+// SIGNED, not bigint) and is validated by exprkit.ValidTypeName: words of
 // letters, digits and underscores separated by single spaces, with an
 // optional (n) or (n,m) suffix, such as bigint, double precision or
 // numeric(10,2). Anything else fails the build with ErrValidation.
@@ -424,7 +425,7 @@ func (c CastExpr[T]) As(alias string) momo.Aliased[T] { return momo.As[T](c, ali
 
 // AppendSQL writes the CAST expression to b.
 func (c CastExpr[T]) AppendSQL(b *momo.Builder) {
-	if err := momo.ValidTypeName(c.sqlType); err != nil {
+	if err := exprkit.ValidTypeName(c.sqlType); err != nil {
 		b.SetErr(&momo.Error{Kind: momo.ErrValidation, Op: "build", Err: fmt.Errorf("cast type %q: %w", c.sqlType, err)})
 		return
 	}

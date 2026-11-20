@@ -9,6 +9,7 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/timeop"
 	"github.com/azrtydxb/momo/types"
 )
@@ -19,7 +20,7 @@ func ExampleExtract() {
 	created := momo.NewColumn[time.Time]("docs", "created_at", 0)
 
 	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite} {
-		b := momo.NewBuilder(dialect.For(d))
+		b := exprkit.NewBuilder(dialect.For(d))
 		timeop.Extract(timeop.ExtractYear, created).AppendSQL(b)
 		fmt.Println(b.String())
 	}
@@ -33,7 +34,7 @@ func ExampleExtract() {
 func ExampleTrunc() {
 	created := momo.NewColumn[time.Time]("docs", "created_at", 0)
 
-	b := momo.NewBuilder(dialect.For(dialect.Postgres))
+	b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	timeop.Trunc(timeop.TruncDay, created).AppendSQL(b)
 	fmt.Println(b.String())
 	// Output:
@@ -47,11 +48,11 @@ func ExampleAddInterval() {
 	created := momo.NewColumn[time.Time]("docs", "created_at", 0)
 	week := timeop.IntervalOf(1, timeop.IntervalWeek)
 
-	b := momo.NewBuilder(dialect.For(dialect.MySQL))
+	b := exprkit.NewBuilder(dialect.For(dialect.MySQL))
 	timeop.SubInterval(timeop.Now(), week).AppendSQL(b)
 	fmt.Println(b.String())
 
-	b = momo.NewBuilder(dialect.For(dialect.Postgres))
+	b = exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	timeop.AddInterval(created, week).AppendSQL(b)
 	fmt.Println(b.String())
 	// Output:
@@ -65,11 +66,11 @@ func ExampleAtTimeZone() {
 	created := momo.NewColumn[time.Time]("docs", "created_at", 0)
 	expr := timeop.AtTimeZone(created, "Europe/Brussels")
 
-	pg := momo.NewBuilder(dialect.For(dialect.Postgres))
+	pg := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	expr.AppendSQL(pg)
 	fmt.Println(pg.String())
 
-	lite := momo.NewBuilder(dialect.For(dialect.SQLite))
+	lite := exprkit.NewBuilder(dialect.For(dialect.SQLite))
 	expr.AppendSQL(lite)
 	fmt.Println(errors.Is(lite.Err(), momo.ErrUnsupported))
 	// Output:
@@ -88,10 +89,10 @@ func ExampleAddDays() {
 	today := momo.Value(types.Date{Time: time.Date(2028, 2, 26, 0, 0, 0, 0, time.UTC)})
 
 	for _, d := range []dialect.Name{dialect.Postgres, dialect.SQLite, dialect.MySQL} {
-		b := momo.NewBuilder(dialect.For(d))
+		b := exprkit.NewBuilder(dialect.For(d))
 		timeop.AddDays(today, 3).AppendSQL(b)
 		fmt.Println(b.String())
-		b = momo.NewBuilder(dialect.For(d))
+		b = exprkit.NewBuilder(dialect.For(d))
 		timeop.DaysBetween(respondBy, today).AppendSQL(b)
 		fmt.Println(b.String())
 	}

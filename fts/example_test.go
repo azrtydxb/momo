@@ -9,6 +9,7 @@ import (
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
 	"github.com/azrtydxb/momo/fts"
+	"github.com/azrtydxb/momo/internal/exprkit"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -19,11 +20,11 @@ func Example() {
 	body := momo.NewColumn[types.TSVector]("articles", "search_tsv", 0)
 	pred := fts.Match(body, fts.WebsearchToQuery("english", "red fox"))
 
-	pg := momo.NewBuilder(dialect.For(dialect.Postgres))
+	pg := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	pred.AppendSQL(pg)
 	fmt.Println(pg.String(), pg.Args())
 
-	lite := momo.NewBuilder(dialect.For(dialect.SQLite))
+	lite := exprkit.NewBuilder(dialect.For(dialect.SQLite))
 	pred.AppendSQL(lite)
 	fmt.Println(errors.Is(lite.Err(), momo.ErrUnsupported))
 	// Output:
@@ -37,7 +38,7 @@ func ExampleRankCD() {
 	body := momo.NewColumn[types.TSVector]("articles", "search_tsv", 0)
 	rank := fts.RankCD(body, fts.WebsearchToQuery("english", "fox"), 1)
 
-	b := momo.NewBuilder(dialect.For(dialect.Postgres))
+	b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	rank.Desc().Expr.AppendSQL(b)
 	fmt.Println(b.String(), b.Args())
 	// Output:
@@ -50,7 +51,7 @@ func ExampleHeadline() {
 	text := momo.NewColumn[string]("articles", "body", 0)
 	q := fts.PlainToQuery("english", "fox")
 
-	b := momo.NewBuilder(dialect.For(dialect.Postgres))
+	b := exprkit.NewBuilder(dialect.For(dialect.Postgres))
 	fts.Headline("english", text, q, "StartSel=<b>, StopSel=</b>").AppendSQL(b)
 	fmt.Println(b.String(), b.Args())
 	// Output:

@@ -21,11 +21,11 @@ import (
 // ErrUnsupported. To bind a Go slice as one array parameter use Value.
 func ArrayOf[T any](elems ...Expression[T]) Expression[[]T] {
 	cp := make([]Expr, len(elems))
-	var fl uint16
+	var fl ColumnFlags
 	for i, e := range elems {
 		cp[i] = e
 		if e != nil {
-			fl |= FlagsOf(e) & (FlagSensitive | FlagNullable)
+			fl |= flagsOf(e) & (FlagSensitive | FlagNullable)
 		}
 	}
 	return arrayExpr[T]{elems: cp, fl: fl}
@@ -35,17 +35,17 @@ func ArrayOf[T any](elems ...Expression[T]) Expression[[]T] {
 // elements so a value bound beside a sensitive column stays masked.
 type arrayExpr[T any] struct {
 	elems []Expr
-	fl    uint16
+	fl    ColumnFlags
 }
 
 func (arrayExpr[T]) resultType() []T { return nil }
 
 // Flags returns the sensitive and nullable flags of the elements.
-func (a arrayExpr[T]) Flags() uint16 { return a.fl }
+func (a arrayExpr[T]) Flags() ColumnFlags { return a.fl }
 
 func (a arrayExpr[T]) AppendSQL(b *Builder) {
 	if b.Dialect().Name != dialect.Postgres {
-		b.Unsupported("ARRAY[...] constructor (ArrayOf)")
+		b.unsupported("ARRAY[...] constructor (ArrayOf)")
 		return
 	}
 	if len(a.elems) == 0 {
@@ -82,7 +82,7 @@ type arraySubquery struct{ q Subquery }
 
 func (a arraySubquery) AppendSQL(b *Builder) {
 	if b.Dialect().Name != dialect.Postgres {
-		b.Unsupported("ARRAY(subquery) (ArraySubquery)")
+		b.unsupported("ARRAY(subquery) (ArraySubquery)")
 		return
 	}
 	if a.q == nil {
