@@ -2485,7 +2485,7 @@ momotest.Seed(t, tx, momotest.Rows(&org), momotest.Rows(&user))
 `table: [rows]` in file order (columns sorted, `null` is `NULL`, values bound),
 and `sqlitetest.New(t)` (package `momotest/sqlitetest`, cgo; it takes the same
 `momotest.Option` values as `momotest.New`, applies `momotest.WithMomoOptions`
-and gives the PostgreSQL-only ones no effect) returns a
+and gives the options that configure a server no effect) returns a
 `*momo.DB` on a throwaway SQLite file per test. `momotest.AssertSQL(t,
 query.SQL(), want)` compares compiled SQL ignoring
 whitespace without running it (the failure never shows an argument value), and

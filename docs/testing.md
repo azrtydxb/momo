@@ -273,7 +273,7 @@ one test never see each other's tables and parallel tests do not collide. The
 database is closed and the file removed when the test ends. `sqlitetest.New`
 takes the same options as `momotest.New`, of type `momotest.Option`.
 `momotest.WithMomoOptions` is honored and its options go to `momo.New`, for
-example `momo.WithHook`; the PostgreSQL-only options (`momotest.WithEnv`,
+example `momo.WithHook`; the options that configure a server (`momotest.WithEnv`,
 `momotest.WithMigrations`, `momotest.WithExtensions`, `momotest.WithMaxConns`,
 `momotest.WithTemplateClone`) have no effect. `momotest.LoadFixtures` fills the
 database like any other. The database starts empty: create the tables with your
