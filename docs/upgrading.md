@@ -2040,7 +2040,7 @@ read it. The MySQL and SQLite inspectors ignore `migrate.InspectOptions.Only` an
 every table, which is filtered afterwards, so a table they cannot represent can
 still fail inspection. `migrate.MatchObject` is the glob rule shared by
 `Exclude`, `OnlyTables` and the inspector. An empty or malformed entry is an
-error that names `Settings.OnlyTables`.
+error that names `migrate.Settings.OnlyTables`.
 
 ### `skip` globs match `schema.name`
 
