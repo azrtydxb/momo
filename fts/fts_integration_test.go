@@ -179,7 +179,7 @@ func TestFullTextSearch(t *testing.T) {
 		if _, err := momo.Exec(ctx, db, "INSERT INTO fts_tmp (v) VALUES (?)", in); err != nil {
 			t.Fatal(err)
 		}
-		back, err := momo.Scalars[string](ctx, db, "SELECT CAST(v AS text) FROM fts_tmp")
+		back, err := momo.QueryScalars[string](ctx, db, "SELECT CAST(v AS text) FROM fts_tmp")
 		if err != nil || len(back) != 1 || back[0] != string(in) {
 			t.Fatalf("tsvector bind = %v, %v; want %q", back, err, in)
 		}

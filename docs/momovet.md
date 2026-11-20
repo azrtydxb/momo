@@ -6,18 +6,22 @@ Momo binds every value as a parameter, but the raw-SQL functions take the statem
 
 A call to one of these functions of `github.com/azrtydxb/momo` whose SQL argument is not a constant:
 
-| Function           | SQL argument                              |
-| ------------------ | ----------------------------------------- |
-| `momo.Exec`        | third (after the context and the querier) |
-| `momo.Scalars`     | third (after the context and the querier) |
-| `momo.MapRows`     | third (after the context and the querier) |
-| `momo.Query`       | third (after the context and the querier) |
-| `momo.QueryRows`   | third (after the context and the querier) |
-| `momo.RawRows`     | third (after the context and the querier) |
-| `momo.RawQuery`    | second (after the querier)                |
-| `momo.SQL`         | first                                     |
-| `momo.TypedSQL`    | first                                     |
-| `momo.RawSubquery` | first                                     |
+| Function             | SQL argument                                          |
+| -------------------- | ----------------------------------------------------- |
+| `momo.Exec`          | third (after the context and the querier)             |
+| `momo.QueryScalars`  | third (after the context and the querier)             |
+| `momo.Scalars`       | third (after the context and the querier); deprecated |
+| `momo.MapRows`       | third (after the context and the querier)             |
+| `momo.Query`         | third (after the context and the querier)             |
+| `momo.QueryRows`     | third (after the context and the querier)             |
+| `momo.QueryCursor`   | third (after the context and the querier)             |
+| `momo.RawRows`       | third (after the context and the querier); deprecated |
+| `momo.CompilableSQL` | second (after the querier)                            |
+| `momo.RawQuery`      | second (after the querier); deprecated                |
+| `momo.SQL`           | first                                                 |
+| `momo.TypedSQL`      | first                                                 |
+| `momo.SubquerySQL`   | first                                                 |
+| `momo.RawSubquery`   | first; deprecated                                     |
 
 A constant is a string literal, a `const`, or an expression made only of constants (`"UPDATE t SET " + "x = 1"`). Anything else is reported as `non-constant SQL string passed to momo.<Name>`. Pass values as arguments after the SQL text instead of concatenating them.
 

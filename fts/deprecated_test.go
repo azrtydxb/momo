@@ -63,11 +63,11 @@ func TestDeprecatedMatchMatchesReplacement(t *testing.T) {
 	q := fts.TSWebsearchQuery("english", "red fox")
 	old, now := fts.Match(tsv, q), fts.TSMatch(tsv, q)
 
-	got, err := exprtest.Compile(dialect.Postgres, old)
+	got, err := compilePred(dialect.Postgres, old)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := exprtest.Compile(dialect.Postgres, now)
+	want, err := compilePred(dialect.Postgres, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,12 +76,22 @@ func TestDeprecatedMatchMatchesReplacement(t *testing.T) {
 	}
 
 	for _, d := range []dialect.Name{dialect.SQLite, dialect.MySQL} {
-		_, errOld := exprtest.Compile(d, old)
-		_, errNow := exprtest.Compile(d, now)
+		_, errOld := compilePred(d, old)
+		_, errNow := compilePred(d, now)
 		if (errOld == nil) != (errNow == nil) || (errOld != nil && errOld.Error() != errNow.Error()) {
 			t.Errorf("%s: Match error %v, TSMatch error %v", d, errOld, errNow)
 		}
 	}
+}
+
+// compilePred renders p as the WHERE of a count over the articles table, the
+// table the fixture columns belong to.
+func compilePred(d dialect.Name, p momo.Predicate) (momo.Compiled, error) {
+	return momo.Select[exprtest.Tally](exprtest.DB(d)).
+		From(momo.TableRef{Name: "articles"}).
+		Columns(momo.CountAll()).
+		Where(p).
+		SQL()
 }
 
 // assertSameSQL renders old and now through build and fails unless the SQL text

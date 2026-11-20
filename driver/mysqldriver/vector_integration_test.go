@@ -45,7 +45,7 @@ func (d *vecDoc) MomoMeta() *momo.Meta[vecDoc] { return &vecDocMeta }
 // serverVersion returns SELECT VERSION().
 func serverVersion(t *testing.T, q momo.Querier) string {
 	t.Helper()
-	v, err := momo.Scalars[string](context.Background(), q, "SELECT VERSION()")
+	v, err := momo.QueryScalars[string](context.Background(), q, "SELECT VERSION()")
 	if err != nil || len(v) != 1 {
 		t.Fatalf("VERSION(): %v, %d rows", err, len(v))
 	}
@@ -59,7 +59,7 @@ var usesVectorIndex = regexp.MustCompile(`"key":\s*"emb"`)
 // explainJSON returns the EXPLAIN FORMAT=JSON plan of sql.
 func explainJSON(t *testing.T, q momo.Querier, sql string, args ...any) string {
 	t.Helper()
-	rows, err := momo.Scalars[string](context.Background(), q, "EXPLAIN FORMAT=JSON "+sql, args...)
+	rows, err := momo.QueryScalars[string](context.Background(), q, "EXPLAIN FORMAT=JSON "+sql, args...)
 	if err != nil {
 		t.Fatalf("EXPLAIN %s: %v", sql, err)
 	}
@@ -105,7 +105,7 @@ func TestMariaDBVectorParity(t *testing.T) {
 	}
 
 	// Exact path: "+ 0" keeps the server from using the index.
-	exact, err := momo.Scalars[int64](ctx, db, "SELECT id FROM docs ORDER BY VEC_DISTANCE_COSINE(emb, VEC_FromText(?)) + 0, id LIMIT 10", vecText(t, query))
+	exact, err := momo.QueryScalars[int64](ctx, db, "SELECT id FROM docs ORDER BY VEC_DISTANCE_COSINE(emb, VEC_FromText(?)) + 0, id LIMIT 10", vecText(t, query))
 	if err != nil {
 		t.Fatal(err)
 	}

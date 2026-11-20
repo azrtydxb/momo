@@ -51,8 +51,8 @@ func TestRawDollarPlaceholdersGolden(t *testing.T) {
 		t.Fatalf("args wrong: %#v", c.Args)
 	}
 
-	// A TypedSQL fragment holding a RawSubquery, after WHERE binds.
-	sub := momo.RawSubquery("SELECT max(v) FROM x WHERE a = $1 AND b = $1", int64(5))
+	// A TypedSQL fragment holding a SubquerySQL, after WHERE binds.
+	sub := momo.SubquerySQL("SELECT max(v) FROM x WHERE a = $1 AND b = $1", int64(5))
 	c, err = momo.Select[unitDocument](pg).
 		Where(DocTitle.Eq("t")).
 		Where(momo.TypedSQL[bool]("tenant_id > ? AND tenant_id < $1", sub)).

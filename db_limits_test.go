@@ -70,10 +70,10 @@ func TestWithMaxInListPanicsOnNonPositive(t *testing.T) {
 func TestMaxInListRawAndFilter(t *testing.T) {
 	ctx := context.Background()
 	db := momo.New(fakedriver.New(dialect.Postgres), momo.WithMaxInList(2))
-	if _, err := momo.Scalars[int64](ctx, db, "SELECT 1 WHERE x IN (?)", momo.In([]int{1, 2, 3})); !errors.Is(err, momo.ErrLimitExceeded) {
+	if _, err := momo.QueryScalars[int64](ctx, db, "SELECT 1 WHERE x IN (?)", momo.In([]int{1, 2, 3})); !errors.Is(err, momo.ErrLimitExceeded) {
 		t.Fatalf("raw In over cap err = %v, want ErrLimitExceeded", err)
 	}
-	if _, err := momo.Scalars[int64](ctx, db, "SELECT 1 WHERE x IN (?)", momo.In([]int{1, 2})); err != nil {
+	if _, err := momo.QueryScalars[int64](ctx, db, "SELECT 1 WHERE x IN (?)", momo.In([]int{1, 2})); err != nil {
 		t.Fatalf("raw In at cap: %v", err)
 	}
 	al := momo.NewAllowlist(DocTitle)

@@ -275,7 +275,7 @@ takes the same options as `momotest.New`, of type `momotest.Option`.
 `momotest.WithMomoOptions` is honored and its options go to `momo.New`, for
 example `momo.WithHook`; the PostgreSQL-only options (`momotest.WithEnv`,
 `momotest.WithMigrations`, `momotest.WithExtensions`, `momotest.WithMaxConns`,
-`momotest.WithTemplateClone`) are ignored. `momotest.LoadFixtures` fills the
+`momotest.WithTemplateClone`) have no effect. `momotest.LoadFixtures` fills the
 database like any other. The database starts empty: create the tables with your
 own DDL, for example `momo.SQLiteVectorType` for a vector column (see
 [Vector search](vectors.md)); `momotest.WithMigrations` and `momotest.NewTx` are
@@ -351,7 +351,7 @@ dialect.
 (`momo.DefaultQueries`); `momo.NewQueryRegistry` makes an isolated one for a
 test. `build` receives a `momo.Querier` that compiles but never executes (see
 `momo.NewOffline`) and returns anything with an `SQL()` method: a `Select`,
-`Insert`, `Update`, `Delete` or `Merge` query, or `momo.RawQuery` for a
+`Insert`, `Update`, `Delete` or `Merge` query, or `momo.CompilableSQL` for a
 hand-written statement. Registering a name twice panics, naming the query. The
 values you bind in `build` are placeholders and never appear in the listing.
 `Registry.Compile(dialect.Postgres)` returns every query sorted by name with
@@ -405,7 +405,7 @@ import (
 
 func init() {
 	momo.RegisterQuery("open_tasks", func(q momo.Querier) momo.Compilable {
-		return momo.RawQuery(q, "SELECT id, title FROM tasks WHERE owner = $1 AND NOT done", 0)
+		return momo.CompilableSQL(q, "SELECT id, title FROM tasks WHERE owner = $1 AND NOT done", 0)
 	})
 }
 

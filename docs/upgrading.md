@@ -284,9 +284,21 @@ Notes on the rows that are more than a rename:
   the snapshot and the generated-file formats, and `migrate.HistoryFormat`
   versions the history table.
 
-The raw SQL functions (`momo.Exec`, `momo.Query`, `momo.QueryRows`,
-`momo.Scalars`, `momo.RawRows`, `momo.RawQuery`, `momo.SQL`, `momo.TypedSQL`
-and `momo.RawSubquery`) keep their names in this release.
+The nine raw SQL functions follow one rule: a function that runs hand-written
+SQL is a verb and a function that wraps it for a builder ends in `SQL`, and no
+name carries the word Raw. `momo.Exec`, `momo.Query`, `momo.QueryRows`,
+`momo.SQL` and `momo.TypedSQL` already followed it and keep their names. The
+other four are renamed, with identical signatures; the old names are deprecated
+forwarders for this release:
+
+| Old name           | New name             |
+| ------------------ | -------------------- |
+| `momo.Scalars`     | `momo.QueryScalars`  |
+| `momo.RawRows`     | `momo.QueryCursor`   |
+| `momo.RawSubquery` | `momo.SubquerySQL`   |
+| `momo.RawQuery`    | `momo.CompilableSQL` |
+
+`momovet` checks the new names and the deprecated ones alike.
 
 ## Upgrading to 0.19.0
 

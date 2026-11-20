@@ -36,7 +36,7 @@ func storedKind(t *testing.T, db *momo.DB, d dialect.Name, tbl string, id int) s
 		// MySQL: the column is TEXT, so compare the text.
 		q = "SELECT CASE WHEN v IS NULL THEN NULL WHEN v = 'null' THEN 'null' ELSE 'other' END FROM " + tbl + " WHERE id = ?"
 	}
-	got, err := momo.Scalars[*string](context.Background(), db, q, id)
+	got, err := momo.QueryScalars[*string](context.Background(), db, q, id)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("stored kind of id %d: %v (%d rows)", id, err, len(got))
 	}
@@ -71,7 +71,7 @@ func jsonNullRoundTrip(t *testing.T, db *momo.DB, d dialect.Name) {
 		}
 	}
 
-	got, err := momo.Scalars[*types.JSON[*doc]](ctx, db, "SELECT v FROM "+tbl+" ORDER BY id")
+	got, err := momo.QueryScalars[*types.JSON[*doc]](ctx, db, "SELECT v FROM "+tbl+" ORDER BY id")
 	if err != nil || len(got) != 3 {
 		t.Fatalf("select: %v (%d rows)", err, len(got))
 	}
@@ -161,7 +161,7 @@ func jsonStructRoundTrip(t *testing.T, db *momo.DB, d dialect.Name) {
 		if d == dialect.Postgres {
 			q = "SELECT jsonb_typeof(" + col + ") FROM " + tbl + " WHERE id = 3"
 		}
-		got, err := momo.Scalars[string](ctx, db, q)
+		got, err := momo.QueryScalars[string](ctx, db, q)
 		if err != nil || len(got) != 1 || got[0] != "null" {
 			t.Fatalf("stored %s: %v, %v; want the JSON null", col, got, err)
 		}

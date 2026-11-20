@@ -66,7 +66,7 @@ func TestMySQLStagedChange(t *testing.T) {
 		}
 		count := func(q string) int64 {
 			t.Helper()
-			n, err := momo.Scalars[int64](ctx, db, q)
+			n, err := momo.QueryScalars[int64](ctx, db, q)
 			if err != nil || len(n) != 1 {
 				t.Fatalf("%s: %v, %v", q, n, err)
 			}
@@ -179,7 +179,7 @@ func appliedVersions(t *testing.T, db *momo.DB) map[string]int {
 func tableCount(t *testing.T, db *momo.DB, names ...string) int64 {
 	t.Helper()
 	q := "SELECT count(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('" + strings.Join(names, "', '") + "')"
-	n, err := momo.Scalars[int64](context.Background(), db, q)
+	n, err := momo.QueryScalars[int64](context.Background(), db, q)
 	if err != nil || len(n) != 1 {
 		t.Fatalf("%s: %v, %v", q, n, err)
 	}

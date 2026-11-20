@@ -20,7 +20,7 @@ import (
 //
 // Identifiers go through Ident (always quoted); values go through Arg
 // (always bound as parameters). Raw text is only written by Momo itself or
-// by the explicit raw-SQL escape hatches (SQL and RawSubquery), whose safety
+// by the explicit raw-SQL escape hatches (SQL and SubquerySQL), whose safety
 // contract is documented on those functions.
 type Builder struct {
 	d    *dialect.Dialect

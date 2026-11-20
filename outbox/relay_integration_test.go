@@ -212,7 +212,7 @@ func TestTwoRelaysKeepKeyOrder(t *testing.T) {
 // and are idle: the relays' listeners waiting for a notification.
 func listenerCount(t *testing.T, db *momo.DB) int64 {
 	t.Helper()
-	got, err := momo.Scalars[int64](context.Background(), db,
+	got, err := momo.QueryScalars[int64](context.Background(), db,
 		`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND state = 'idle' AND query LIKE 'LISTEN%'`)
 	if err != nil || len(got) != 1 {
 		t.Fatalf("listener count: %v %v", got, err)
@@ -304,7 +304,7 @@ func TestWithoutNotifyNeedsWake(t *testing.T) {
 // LISTEN.
 func listenerPIDs(t *testing.T, db *momo.DB) map[int64]bool {
 	t.Helper()
-	got, err := momo.Scalars[int64](context.Background(), db,
+	got, err := momo.QueryScalars[int64](context.Background(), db,
 		`SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND state = 'idle' AND query LIKE 'LISTEN%'`)
 	if err != nil {
 		t.Fatalf("listener pids: %v", err)
@@ -345,7 +345,7 @@ func TestListenerReconnectWakesRelay(t *testing.T) {
 	case <-time.After(750 * time.Millisecond):
 	}
 	for _, pid := range mine {
-		if _, err := momo.Scalars[bool](context.Background(), db, `SELECT pg_terminate_backend(?)`, pid); err != nil {
+		if _, err := momo.QueryScalars[bool](context.Background(), db, `SELECT pg_terminate_backend(?)`, pid); err != nil {
 			t.Fatalf("terminate the listener session: %v", err)
 		}
 	}

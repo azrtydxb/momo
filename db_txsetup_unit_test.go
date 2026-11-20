@@ -35,16 +35,16 @@ func TestImplicitTxDrainedReadCommitsDespiteCancel(t *testing.T) {
 	}
 }
 
-// Raw SQL may change data (INSERT ... RETURNING through Scalars), so a drained
+// Raw SQL may change data (INSERT ... RETURNING through QueryScalars), so a drained
 // raw statement under a cancelled context is rolled back and reports it.
 func TestImplicitTxRawStatementRollsBackOnCancel(t *testing.T) {
 	drv := fakedriver.New(dialect.Postgres)
 	drv.SetRows([][]any{{int64(1)}})
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, err := momo.Scalars[int64](ctx, implicitDB(drv), "INSERT INTO t (a) VALUES (1) RETURNING a")
+	_, err := momo.QueryScalars[int64](ctx, implicitDB(drv), "INSERT INTO t (a) VALUES (1) RETURNING a")
 	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("Scalars = %v, want context.Canceled", err)
+		t.Fatalf("QueryScalars = %v, want context.Canceled", err)
 	}
 	if drv.Commits() != 0 || drv.Rollbacks() != 1 {
 		t.Fatalf("commits = %d rollbacks = %d, want 0 and 1", drv.Commits(), drv.Rollbacks())
@@ -217,12 +217,12 @@ func TestModelRowsCloseUnderPanicReleasesCursorOnPlainHandle(t *testing.T) {
 	}
 }
 
-// Raw SQL read through Scalars reaches hooks as op "raw".
+// Raw SQL read through QueryScalars reaches hooks as op "raw".
 func TestRawReadsReportOpRaw(t *testing.T) {
 	rec := &obstest.Recorder{}
 	drv := fakedriver.New(dialect.Postgres)
 	drv.SetRows([][]any{{int64(1)}})
-	if _, err := momo.Scalars[int64](t.Context(), momo.New(drv, momo.WithHook(rec)), "SELECT 1"); err != nil {
+	if _, err := momo.QueryScalars[int64](t.Context(), momo.New(drv, momo.WithHook(rec)), "SELECT 1"); err != nil {
 		t.Fatal(err)
 	}
 	evs := rec.Events()

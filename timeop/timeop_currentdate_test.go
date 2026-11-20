@@ -39,7 +39,11 @@ func TestCurrentDateAndInfinityGolden(t *testing.T) {
 // Catches: the infinity value losing the comparison methods of a timestamp
 // expression.
 func TestInfinityComparison(t *testing.T) {
-	got, err := exprtest.Compile(dialect.Postgres, tmCreated.LtExpr(timeop.Infinity()))
+	got, err := momo.Select[exprtest.Tally](exprtest.DB(dialect.Postgres)).
+		From(momo.TableRef{Name: "documents"}).
+		Columns(momo.CountAll()).
+		Where(tmCreated.LtExpr(timeop.Infinity())).
+		SQL()
 	if err != nil {
 		t.Fatal(err)
 	}

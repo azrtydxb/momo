@@ -17,7 +17,7 @@ func testRegistry() *momo.QueryRegistry {
 		return momo.Select[hookedDoc](q).Where(hookedTitle.Eq("x"))
 	})
 	r.Register("a_raw", func(q momo.Querier) momo.Compilable {
-		return momo.RawQuery(q, "SELECT id FROM t WHERE a = ? AND b = ?", 1, 2)
+		return momo.CompilableSQL(q, "SELECT id FROM t WHERE a = ? AND b = ?", 1, 2)
 	})
 	return r
 }
@@ -58,7 +58,7 @@ func TestQueryRegistryDuplicatePanics(t *testing.T) {
 			t.Fatalf("panic = %v, want a message naming the duplicate", p)
 		}
 	}()
-	r.Register("a_raw", func(q momo.Querier) momo.Compilable { return momo.RawQuery(q, "SELECT 1") })
+	r.Register("a_raw", func(q momo.Querier) momo.Compilable { return momo.CompilableSQL(q, "SELECT 1") })
 	t.Fatal("registering a name twice must panic")
 }
 
@@ -82,7 +82,7 @@ func TestQueryRegistryRejectsBadRegistrations(t *testing.T) {
 // Catches: a failing builder being skipped instead of failing the listing.
 func TestQueryRegistryCompileErrorNamesQuery(t *testing.T) {
 	r := momo.NewQueryRegistry()
-	r.Register("bad_args", func(q momo.Querier) momo.Compilable { return momo.RawQuery(q, "SELECT ?", 1, 2) })
+	r.Register("bad_args", func(q momo.Querier) momo.Compilable { return momo.CompilableSQL(q, "SELECT ?", 1, 2) })
 	_, err := r.Compile(dialect.Postgres)
 	if err == nil || !strings.Contains(err.Error(), `"bad_args"`) {
 		t.Fatalf("Compile = %v, want an error naming bad_args", err)
@@ -96,7 +96,7 @@ func TestQueryRegistryCompileErrorNamesQuery(t *testing.T) {
 
 // Catches: RegisterQuery not reaching the process-wide registry.
 func TestRegisterQueryUsesDefaultRegistry(t *testing.T) {
-	momo.RegisterQuery("registry_test_default", func(q momo.Querier) momo.Compilable { return momo.RawQuery(q, "SELECT 1") })
+	momo.RegisterQuery("registry_test_default", func(q momo.Querier) momo.Compilable { return momo.CompilableSQL(q, "SELECT 1") })
 	found := false
 	for _, n := range momo.DefaultQueries().Names() {
 		found = found || n == "registry_test_default"
@@ -118,7 +118,7 @@ func TestOfflineNeverExecutes(t *testing.T) {
 func TestQueryRegistryTrimsSQL(t *testing.T) {
 	r := momo.NewQueryRegistry()
 	r.Register("indented", func(q momo.Querier) momo.Compilable {
-		return momo.RawQuery(q, "\n\t\tSELECT id\n\t\t  FROM t\n\t")
+		return momo.CompilableSQL(q, "\n\t\tSELECT id\n\t\t  FROM t\n\t")
 	})
 	got, err := r.Compile(dialect.SQLite)
 	if err != nil || len(got) != 1 || got[0].SQL != "SELECT id\n\t\t  FROM t" {

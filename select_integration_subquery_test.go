@@ -52,7 +52,7 @@ func TestSubqueriesCTEsRecursive(t *testing.T) {
 		// A recursive CTE that references itself, selected from the main query.
 		seqN := momo.ColumnOf[int64]("seq", "n")
 		body := momo.Union(true,
-			momo.RawSubquery(`SELECT 1 AS n`),
+			momo.SubquerySQL(`SELECT 1 AS n`),
 			momo.Select[intRow](db).From(momo.CTE("seq")).
 				Columns(momo.TypedSQL[int64](`"seq"."n" + 1`)).Where(seqN.Lt(5)),
 		)
@@ -69,10 +69,10 @@ func TestSubqueriesCTEsRecursive(t *testing.T) {
 			t.Fatalf("recursive CTE returned %+v", rows)
 		}
 
-		// The raw-SQL path scans the same recursive CTE through Scalars.
-		ints, err := momo.Scalars[int64](ctx, db, `WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 5) SELECT n FROM seq ORDER BY n`)
+		// The raw-SQL path scans the same recursive CTE through QueryScalars.
+		ints, err := momo.QueryScalars[int64](ctx, db, `WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 5) SELECT n FROM seq ORDER BY n`)
 		if err != nil || len(ints) != 5 || ints[4] != 5 {
-			t.Fatalf("Scalars over recursive CTE = %v, %v", ints, err)
+			t.Fatalf("QueryScalars over recursive CTE = %v, %v", ints, err)
 		}
 	})
 }

@@ -103,7 +103,7 @@ func TestMergeEmulationCompositeKeySQL(t *testing.T) {
 // bind anything.
 func TestMergeEmulationBindsItsArguments(t *testing.T) {
 	db := momo.New(fakedriver.New(dialect.SQLite))
-	src := momo.RawSubquery("SELECT id, k, val, n FROM mrg_src WHERE n >= ?", int64(7))
+	src := momo.SubquerySQL("SELECT id, k, val, n FROM mrg_src WHERE n >= ?", int64(7))
 	cs, err := momo.Merge[mrgRow](db, src).On(mrgOn(), mrgN.Eq(0)).
 		WhenMatchedUpdate(mrgVal.Set("x")).Statements()
 	if err != nil {
@@ -178,7 +178,7 @@ func TestMergeEmulationRefusals(t *testing.T) {
 			t.Errorf("%s Exec with Returning = %v, want ErrUnsupported", db.Dialect().Name, err)
 		}
 
-		src := momo.RawSubquery("SELECT k, v FROM mrg_nopk_src")
+		src := momo.SubquerySQL("SELECT k, v FROM mrg_nopk_src")
 		on := momo.NewColumn[string]("mrg_nopk", "k", 0).EqExpr(momo.TypedSQL[string]("src.k"))
 		_, err = momo.Merge[mrgNoPK](db, src).On(on).
 			WhenMatchedUpdate(momo.NewColumn[string]("mrg_nopk", "v", 0).SetExpr(momo.TypedSQL[string]("src.v"))).Statements()

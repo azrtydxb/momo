@@ -223,10 +223,10 @@ func (o *Outbox) Add(ctx context.Context, tx *momo.Tx, e Event) (int64, error) {
 	if d.Name == dialect.MySQL {
 		// MySQL has no INSERT ... RETURNING; the id is the connection's own.
 		if _, err = momo.Exec(ctx, tx, st.insert, e.Topic, key, payload, headers, now, now); err == nil {
-			ids, err = momo.Scalars[int64](ctx, tx, "SELECT LAST_INSERT_ID()")
+			ids, err = momo.QueryScalars[int64](ctx, tx, "SELECT LAST_INSERT_ID()")
 		}
 	} else {
-		ids, err = momo.Scalars[int64](ctx, tx, st.insert, e.Topic, key, payload, headers, now, now)
+		ids, err = momo.QueryScalars[int64](ctx, tx, st.insert, e.Topic, key, payload, headers, now, now)
 	}
 	if err != nil {
 		return 0, err

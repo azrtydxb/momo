@@ -93,7 +93,7 @@ func TestAssociationHelpers(t *testing.T) {
 
 func tagIDs(t *testing.T, db *momo.DB, doc int64) []int64 {
 	t.Helper()
-	ids, err := momo.Scalars[int64](context.Background(), db,
+	ids, err := momo.QueryScalars[int64](context.Background(), db,
 		`SELECT tag_id FROM taggings WHERE document_id = ? ORDER BY tag_id`, doc)
 	if err != nil {
 		t.Fatal(err)
@@ -189,7 +189,7 @@ func TestAssociationHasManyReplaceInTx(t *testing.T) {
 		if n, _ := employee.Reports.Count(ctx, db, boss); n != 1 {
 			t.Fatalf("Replace must leave one report: %d", n)
 		}
-		mgr, err := momo.Scalars[int64](ctx, db, `SELECT id FROM employees WHERE manager_id = ? ORDER BY id`, int64(1))
+		mgr, err := momo.QueryScalars[int64](ctx, db, `SELECT id FROM employees WHERE manager_id = ? ORDER BY id`, int64(1))
 		if err != nil || len(mgr) != 1 || mgr[0] != 3 {
 			t.Fatalf("reports = %v err=%v", mgr, err)
 		}
@@ -231,7 +231,7 @@ func TestAssociationPolymorphicAndComposite(t *testing.T) {
 		if n, err := document.Images.Count(ctx, db, doc); err != nil || n != 1 {
 			t.Fatalf("polymorphic count: n=%d err=%v", n, err)
 		}
-		types, err := momo.Scalars[string](ctx, db, `SELECT owner_type FROM images WHERE id = ?`, int64(2))
+		types, err := momo.QueryScalars[string](ctx, db, `SELECT owner_type FROM images WHERE id = ?`, int64(2))
 		if err != nil || len(types) != 1 || types[0] != "document" {
 			t.Fatalf("discriminator not written: %v err=%v", types, err)
 		}

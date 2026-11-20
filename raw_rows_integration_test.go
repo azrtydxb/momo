@@ -132,7 +132,7 @@ func rrRead(t *testing.T, rows momo.ColumnRows) [][2]any {
 	return out
 }
 
-// Catches: RawRows bypassing hooks (op "raw"), WithTxSetup, or the
+// Catches: QueryCursor bypassing hooks (op "raw"), WithTxSetup, or the
 // *DB / *Tx / adopted-transaction paths, on a real driver.
 func TestRawRowsPaths(t *testing.T) {
 	rec := &rrRecorder{}
@@ -142,7 +142,7 @@ func TestRawRowsPaths(t *testing.T) {
 		const stmt = "SELECT id, name FROM rq_items WHERE id > ? ORDER BY id"
 		check := func(t *testing.T, q momo.Querier) {
 			t.Helper()
-			rows, err := momo.RawRows(ctx, q, stmt, 1)
+			rows, err := momo.QueryCursor(ctx, q, stmt, 1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -158,7 +158,7 @@ func TestRawRowsPaths(t *testing.T) {
 			t.Fatalf("*DB: %d raw hook events, want 1", n)
 		}
 		if rec.setups() <= setupsBefore {
-			t.Fatal("*DB: WithTxSetup did not run for RawRows")
+			t.Fatal("*DB: WithTxSetup did not run for QueryCursor")
 		}
 		if ev := rec.raw()[len(rec.raw())-1]; ev.Err != nil || ev.Rows != 2 || ev.SQL == "" {
 			t.Fatalf("*DB hook event = %+v", ev)
@@ -196,7 +196,7 @@ func TestRawRowsClosesOnCancel(t *testing.T) {
 		cctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		before := len(rec.raw())
-		rows, err := momo.RawRows(cctx, db, "SELECT id, name FROM rq_items ORDER BY id")
+		rows, err := momo.QueryCursor(cctx, db, "SELECT id, name FROM rq_items ORDER BY id")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -244,7 +244,7 @@ func TestRawRowsEarlyClose(t *testing.T) {
 
 		// Close with no Next.
 		before := len(rec.raw())
-		rows, err := momo.RawRows(ctx, db, stmt)
+		rows, err := momo.QueryCursor(ctx, db, stmt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -258,7 +258,7 @@ func TestRawRowsEarlyClose(t *testing.T) {
 		rrReleased(t, db)
 
 		// Close mid-iteration.
-		rows, err = momo.RawRows(ctx, db, stmt)
+		rows, err = momo.QueryCursor(ctx, db, stmt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -269,7 +269,7 @@ func TestRawRowsEarlyClose(t *testing.T) {
 		rrReleased(t, db)
 
 		// Read to the end: a clean Close.
-		rows, err = momo.RawRows(ctx, db, stmt)
+		rows, err = momo.QueryCursor(ctx, db, stmt)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -285,7 +285,7 @@ func TestRawRowsEarlyClose(t *testing.T) {
 func TestRawRowsScanError(t *testing.T) {
 	rrBothModes(t, func(t *testing.T, rec *rrRecorder, db *momo.DB, implicit bool) {
 		before := len(rec.raw())
-		rows, err := momo.RawRows(context.Background(), db, "SELECT id, name FROM rq_items ORDER BY id")
+		rows, err := momo.QueryCursor(context.Background(), db, "SELECT id, name FROM rq_items ORDER BY id")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -308,16 +308,16 @@ func TestRawRowsScanError(t *testing.T) {
 	})
 }
 
-// Catches: a build or driver error from RawRows escaping classification.
+// Catches: a build or driver error from QueryCursor escaping classification.
 func TestRawRowsErrors(t *testing.T) {
 	rrBothModes(t, func(t *testing.T, rec *rrRecorder, db *momo.DB, implicit bool) {
 		ctx := context.Background()
-		_, err := momo.RawRows(ctx, db, "SELECT id FROM rq_items WHERE id = ?")
+		_, err := momo.QueryCursor(ctx, db, "SELECT id FROM rq_items WHERE id = ?")
 		if !errors.Is(err, momo.ErrValidation) {
 			t.Fatalf("argument-count mismatch = %v, want ErrValidation", err)
 		}
 		// A driver may report a server error at open or on the first Next.
-		rows, err := momo.RawRows(ctx, db, "INSERT INTO rq_items (id, name) VALUES (1, 'dup') RETURNING id")
+		rows, err := momo.QueryCursor(ctx, db, "INSERT INTO rq_items (id, name) VALUES (1, 'dup') RETURNING id")
 		if err == nil {
 			if rows.Next() {
 				t.Fatal("a duplicate key returned a row")

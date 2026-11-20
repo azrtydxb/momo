@@ -51,7 +51,7 @@ func serverVersionOf(ctx context.Context, q Querier) (int, error) {
 		v, err := sv.ServerVersion(ctx)
 		return v, db.ex.wrapErr("merge", "", err)
 	}
-	vs, err := Scalars[int](ctx, q, serverVersionQuery)
+	vs, err := QueryScalars[int](ctx, q, serverVersionQuery)
 	if err == nil && len(vs) == 0 {
 		err = &Error{Kind: ErrNotFound, Op: "merge", Err: errors.New("server_version_num returned no row")}
 	}
@@ -914,7 +914,7 @@ func Truncate[T any, PT Modeler[T]](ctx context.Context, q Querier) error {
 // resetSQLiteSequence deletes the table's sqlite_sequence row; the sequence
 // table exists only once a table with AUTOINCREMENT was created.
 func resetSQLiteSequence(ctx context.Context, q Querier, table string) error {
-	has, err := Scalars[int64](ctx, q, "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'")
+	has, err := QueryScalars[int64](ctx, q, "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'")
 	if err != nil || len(has) == 0 {
 		return q.conn().wrapErr("truncate", table, err)
 	}

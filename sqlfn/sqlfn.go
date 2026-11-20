@@ -8,7 +8,7 @@
 // column (Eq, Lt, In, Asc, ...), and each can be named in a select list with
 // As. The date functions CurrentDate, Infinity and NegInfinity live in the
 // timeop package (timeop.CurrentDate, timeop.Infinity, timeop.NegInfinity);
-// the sqlfn names remain as deprecated forwarders.
+// the sqlfn names remain as deprecated functions with the same behavior.
 //
 // The package builds on the exported extension API of the root package
 // (momo.Func, momo.Ops, momo.NewOps, Builder.Unsupported, momo.ValidTypeName)
@@ -27,7 +27,6 @@ import (
 
 	"github.com/azrtydxb/momo"
 	"github.com/azrtydxb/momo/dialect"
-	"github.com/azrtydxb/momo/timeop"
 	"github.com/azrtydxb/momo/types"
 )
 
@@ -371,23 +370,63 @@ func NullIfExpr[T any](e, other momo.Expression[T]) momo.FuncExpr[T] {
 
 // DateExpr is a date or timestamp value without operands.
 //
-// Deprecated: use timeop.Expr.
-type DateExpr = timeop.Expr
+// Deprecated: use timeop.Expr, which timeop.CurrentDate, timeop.Infinity and
+// timeop.NegInfinity return. A feature package may not import another, so
+// this type keeps its own implementation for the release it stays.
+type DateExpr struct {
+	momo.Ops[time.Time]
+	kind int
+}
 
-// CurrentDate is CURRENT_DATE.
+const (
+	kindCurrentDate = iota
+	kindInfinity
+	kindNegInfinity
+)
+
+func dateExpr(kind int) DateExpr {
+	d := DateExpr{kind: kind}
+	d.Ops = momo.NewOps[time.Time](d)
+	return d
+}
+
+// CurrentDate is CURRENT_DATE: the transaction date on PostgreSQL, the
+// session date on MySQL, the UTC date as text on SQLite.
 //
 // Deprecated: use timeop.CurrentDate.
-func CurrentDate() DateExpr { return timeop.CurrentDate() }
+func CurrentDate() DateExpr { return dateExpr(kindCurrentDate) }
 
-// Infinity is 'infinity'::timestamptz.
+// Infinity is 'infinity'::timestamptz, later than every timestamp. PostgreSQL
+// only; MySQL and SQLite fail with ErrUnsupported.
 //
 // Deprecated: use timeop.Infinity.
-func Infinity() DateExpr { return timeop.Infinity() }
+func Infinity() DateExpr { return dateExpr(kindInfinity) }
 
-// NegInfinity is '-infinity'::timestamptz.
+// NegInfinity is '-infinity'::timestamptz, earlier than every timestamp.
+// PostgreSQL only; MySQL and SQLite fail with ErrUnsupported.
 //
 // Deprecated: use timeop.NegInfinity.
-func NegInfinity() DateExpr { return timeop.NegInfinity() }
+func NegInfinity() DateExpr { return dateExpr(kindNegInfinity) }
+
+// As names the expression in a select list.
+func (d DateExpr) As(alias string) momo.Aliased[time.Time] { return momo.As[time.Time](d, alias) }
+
+// AppendSQL writes the value to b.
+func (d DateExpr) AppendSQL(b *momo.Builder) {
+	if d.kind == kindCurrentDate {
+		b.WriteString("CURRENT_DATE")
+		return
+	}
+	if b.Dialect().Name != dialect.Postgres {
+		b.Unsupported("infinity timestamps")
+		return
+	}
+	if d.kind == kindInfinity {
+		b.WriteString("'infinity'::timestamptz")
+		return
+	}
+	b.WriteString("'-infinity'::timestamptz")
+}
 
 // ------------------------------------------- coalesce, cast, concatenation
 

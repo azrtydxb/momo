@@ -121,7 +121,7 @@ func TestImplicitTxRLSFailClosed(t *testing.T) {
 	if n, err := momo.Select[suite.Document](db).Count(t2); err != nil || n != 3 {
 		t.Fatalf("tenant 2 count = %d, %v; want 3", n, err)
 	}
-	if got, err := momo.Scalars[int64](t2, db, "SELECT count(*) FROM documents"); err != nil || len(got) != 1 || got[0] != 3 {
+	if got, err := momo.QueryScalars[int64](t2, db, "SELECT count(*) FROM documents"); err != nil || len(got) != 1 || got[0] != 3 {
 		t.Fatalf("raw scalars as tenant 2 = %v, %v; want [3]", got, err)
 	}
 
@@ -290,11 +290,11 @@ func TestImplicitTxPgBouncer(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < rounds; i++ {
-				got, err := momo.Scalars[string](withTenant(ctx, tn), db, "SELECT current_setting('app.tenant_id', true)")
+				got, err := momo.QueryScalars[string](withTenant(ctx, tn), db, "SELECT current_setting('app.tenant_id', true)")
 				if err != nil || len(got) != 1 || got[0] != strconv.FormatInt(tn, 10) {
 					errs <- fmt.Errorf("tenant %d saw %v, %v", tn, got, err)
 				}
-				got, err = momo.Scalars[string](ctx, db, "SELECT coalesce(current_setting('app.tenant_id', true), '')")
+				got, err = momo.QueryScalars[string](ctx, db, "SELECT coalesce(current_setting('app.tenant_id', true), '')")
 				if err != nil || len(got) != 1 || got[0] != "" {
 					errs <- fmt.Errorf("unscoped statement saw %v, %v; the setting leaked", got, err)
 				}

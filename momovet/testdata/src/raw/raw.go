@@ -28,6 +28,9 @@ func constants(ctx context.Context, db *momo.DB, user string) {
 	momo.SQL("x = ?", user)
 	momo.TypedSQL[int]("count(*)")
 	momo.RawSubquery("SELECT 1")
+	momo.QueryScalars[int](ctx, db, "SELECT id FROM t WHERE name = ?", user)
+	momo.CompilableSQL(db, "SELECT id FROM t WHERE name = ?", user)
+	momo.SubquerySQL("SELECT 1")
 }
 
 func concatenated(ctx context.Context, db *momo.DB, user string) {
@@ -52,6 +55,12 @@ func concatenated(ctx context.Context, db *momo.DB, user string) {
 	momo.TypedSQL[int]("count(" + user + ")") // want "non-constant SQL string passed to momo.TypedSQL"
 
 	momo.RawSubquery(user) // want "non-constant SQL string passed to momo.RawSubquery"
+
+	momo.QueryScalars[int](ctx, db, "SELECT "+user) // want "non-constant SQL string passed to momo.QueryScalars"
+
+	momo.CompilableSQL(db, "SELECT "+user) // want "non-constant SQL string passed to momo.CompilableSQL"
+
+	momo.SubquerySQL(user) // want "non-constant SQL string passed to momo.SubquerySQL"
 }
 
 func marked(ctx context.Context, db *momo.DB, user string) {
