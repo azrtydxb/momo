@@ -137,7 +137,6 @@ func TestMustNewOfflineUnknownDialectPanics(t *testing.T) {
 
 // Catches: the deprecated forwarder drifting from MustNewOffline.
 func TestNewOfflineForwardsToMustNewOffline(t *testing.T) {
-	//lint:ignore SA1019 the deprecated forwarder is the code under test
 	db := momo.NewOffline(dialect.Postgres)
 	if db.Dialect().Name != dialect.Postgres {
 		t.Fatalf("dialect = %s, want postgres", db.Dialect().Name)
@@ -147,6 +146,5 @@ func TestNewOfflineForwardsToMustNewOffline(t *testing.T) {
 			t.Fatal("an unknown dialect must panic")
 		}
 	}()
-	//lint:ignore SA1019 the deprecated forwarder is the code under test
 	momo.NewOffline("oracle")
 }

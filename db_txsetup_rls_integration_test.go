@@ -32,7 +32,6 @@ func withTenant(ctx context.Context, id int64) context.Context {
 // context, and sets nothing when the context carries no tenant.
 func tenantSetup(ctx context.Context, tx *momo.Tx) error {
 	if id, ok := ctx.Value(tenantKey{}).(int64); ok {
-		//lint:ignore SA1019 the deprecated forwarder is the code under test
 		return momo.SetConfigLocal(ctx, tx, "app.tenant_id", strconv.FormatInt(id, 10))
 	}
 	return nil

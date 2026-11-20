@@ -52,6 +52,8 @@ type dependent struct {
 // missing object, so a view that sits on top of a captured view has to go too.
 // Over-inclusion is safe: recreating an unaffected object verbatim does not
 // change behaviour.
+//
+//lint:ignore U1000 only the integration tests (build tag integration) call it
 func captureDependents(ctx context.Context, c momo.PinnedConn, table string) ([]dependent, error) {
 	var all []dependent
 	err := forEach(ctx, c, `SELECT type, name, tbl_name, sql FROM sqlite_schema WHERE type IN ('view', 'trigger') AND sql IS NOT NULL ORDER BY rowid`, nil, func(r momo.Rows) error {
@@ -106,6 +108,8 @@ func mentionsAny(src string, names map[string]string) bool {
 // Precondition: the caller ran Setup(ctx, c, SessionOptions{ForeignKeysOff:
 // true}) outside any transaction, and runs the result with migrate.RunStatements
 // (one transaction; the fk-check statement fails it on a violation).
+//
+//lint:ignore U1000 only the integration tests (build tag integration) call it
 func rebuildLive(ctx context.Context, c momo.PinnedConn, table string, desired schema.Table, desiredIndexes []schema.Index) ([]migrate.Statement, error) {
 	var old []string
 	err := forEach(ctx, c, `SELECT name FROM pragma_table_xinfo(?) WHERE hidden <> 1 ORDER BY cid`, []any{table}, func(r momo.Rows) error {
