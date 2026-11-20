@@ -286,3 +286,65 @@ func TestTableRenameKeepsTheRecordedVersions(t *testing.T) {
 		t.Fatalf("the versions on memos_history = %v (%v), want before then after", got, err)
 	}
 }
+
+// Catches: a history column that copies NOT NULL or the default of its model
+// column. Old versions hold NULL where the column was nullable, so making the
+// model column NOT NULL would fail on the history table, and a default would
+// write a value into old rows that was never recorded.
+func TestNullableColumnMadeNotNullKeepsOldHistory(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	files := evolve(ctx, t, db, nil, notesHistorySchema(t,
+		schema.Column{Name: "id", Type: "bigint"},
+		schema.Column{Name: "title", Type: "text"},
+		schema.Column{Name: "body", Type: "text", Nullable: true},
+	), "init", 1, migrate.DiffOptions{})
+	execAllNotes(ctx, t, db,
+		"INSERT INTO notes (id, title, body) VALUES (1, 't', 'x')",
+		"UPDATE notes SET body = NULL WHERE id = 1",
+		"UPDATE notes SET body = 'y' WHERE id = 1")
+	evolve(ctx, t, db, files, notesHistorySchema(t,
+		schema.Column{Name: "id", Type: "bigint"},
+		schema.Column{Name: "title", Type: "text"},
+		schema.Column{Name: "body", Type: "text", Default: "''"},
+	), "body_not_null", 2, migrate.DiffOptions{})
+
+	nulls, err := momo.Scalars[int64](ctx, db, "SELECT count(*) FROM notes_history WHERE id = 1 AND body IS NULL")
+	if err != nil || len(nulls) != 1 || nulls[0] != 1 {
+		t.Fatalf("history rows with a NULL body = %v (%v), want the one recorded before the change", nulls, err)
+	}
+	if _, err := momo.Exec(ctx, db, "UPDATE notes SET body = 'z' WHERE id = 1"); err != nil {
+		t.Fatalf("a write after the change: %v", err)
+	}
+}
+
+// Catches: a trigger that names its function unquoted while the function is
+// created quoted, so a table with a capital letter has a trigger that finds no
+// function and every write to it fails.
+func TestHistoryWorksForAMixedCaseTableName(t *testing.T) {
+	db := testopen.Postgres(t)
+	ctx := context.Background()
+	tbl := schema.Table{Name: "Orders", Columns: []schema.Column{{Name: "id", Type: "bigint"}, {Name: "title", Type: "text"}}, PrimaryKey: []string{"id"}}
+	h, err := schema.HistoryFor(&tbl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	desired := &schema.Schema{Dialect: "postgres", Extensions: []schema.Extension{{Name: "vector"}}, Tables: []schema.Table{tbl, h.Table}, Functions: []schema.Function{h.Function}, Triggers: []schema.Trigger{h.Trigger}}
+	evolve(ctx, t, db, nil, desired, "init", 1, migrate.DiffOptions{})
+	execAllNotes(ctx, t, db,
+		`INSERT INTO "Orders" (id, title) VALUES (1, 'a')`,
+		`UPDATE "Orders" SET title = 'b' WHERE id = 1`)
+	got, err := momo.Scalars[string](ctx, db, `SELECT title FROM "Orders_history" WHERE id = 1 ORDER BY history_id`)
+	if err != nil || len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Fatalf("the versions of Orders = %v (%v), want a then b", got, err)
+	}
+}
+
+func execAllNotes(ctx context.Context, t *testing.T, db *momo.DB, stmts ...string) {
+	t.Helper()
+	for _, s := range stmts {
+		if _, err := momo.Exec(ctx, db, s); err != nil {
+			t.Fatalf("%s: %v", s, err)
+		}
+	}
+}
