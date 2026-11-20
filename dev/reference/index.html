@@ -782,6 +782,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../outbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactional outbox
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../testing/" class="md-nav__link">
         
   
@@ -1320,6 +1348,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#outbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        outbox
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#rangeop" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1630,6 +1669,17 @@
     <span class="md-ellipsis">
       
         obs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#outbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        outbox
       
     </span>
   </a>
@@ -8232,6 +8282,174 @@
 <td><code>obs.WithScope</code></td>
 <td>func</td>
 <td>WithScope returns a context that groups statements and relation loads for the N+1 detectors, NPlusOne and StatementNPlusOne.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="outbox">outbox<a class="headerlink" href="#outbox" title="Permanent link">&para;</a></h2>
+<p>Import path: <code>github.com/azrtydxb/momo/outbox</code></p>
+<table>
+<thead>
+<tr>
+<th>Identifier</th>
+<th>Kind</th>
+<th>Synopsis</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>outbox.DefaultTable</code></td>
+<td>const</td>
+<td>DefaultTable is the table name an Outbox uses unless WithTable says otherwise.</td>
+</tr>
+<tr>
+<td><code>outbox.ErrLeaseLost</code></td>
+<td>var</td>
+<td>ErrLeaseLost is reported to the WithOnError function when the relay could not record the outcome of an event because another relay holds it now: the lease ended before the publish returned, and the event was claimed again, so the statement that records the outcome matched no row.</td>
+</tr>
+<tr>
+<td><code>outbox.Event</code></td>
+<td>type</td>
+<td>Event is one event of the outbox.</td>
+</tr>
+<tr>
+<td><code>outbox.New</code></td>
+<td>func</td>
+<td>New returns an Outbox.</td>
+</tr>
+<tr>
+<td><code>outbox.Option</code></td>
+<td>type</td>
+<td>Option configures an Outbox.</td>
+</tr>
+<tr>
+<td><code>outbox.Outbox</code></td>
+<td>type</td>
+<td>Outbox is the handle to one outbox table.</td>
+</tr>
+<tr>
+<td><code>outbox.Outbox.Add</code></td>
+<td>method</td>
+<td>Add writes e into the outbox inside tx and returns its id.</td>
+</tr>
+<tr>
+<td><code>outbox.Outbox.Cleanup</code></td>
+<td>method</td>
+<td>Cleanup deletes the events that were published longer than retention ago and returns how many it removed.</td>
+</tr>
+<tr>
+<td><code>outbox.Outbox.NewRelay</code></td>
+<td>method</td>
+<td>NewRelay returns a Relay that publishes the events of o, read through db, with pub.</td>
+</tr>
+<tr>
+<td><code>outbox.Outbox.Requeue</code></td>
+<td>method</td>
+<td>Requeue makes the dead events with the given ids pending again, with their attempts reset, and returns how many it changed.</td>
+</tr>
+<tr>
+<td><code>outbox.Outbox.Table</code></td>
+<td>method</td>
+<td>Table returns the table name.</td>
+</tr>
+<tr>
+<td><code>outbox.Outcome</code></td>
+<td>type</td>
+<td>Outcome is the result of one delivery attempt, passed to the function given to WithObserver.</td>
+</tr>
+<tr>
+<td><code>outbox.Publisher</code></td>
+<td>type</td>
+<td>Publisher sends an event to the broker.</td>
+</tr>
+<tr>
+<td><code>outbox.PublisherFunc</code></td>
+<td>type</td>
+<td>PublisherFunc adapts a function to a Publisher.</td>
+</tr>
+<tr>
+<td><code>outbox.PublisherFunc.Publish</code></td>
+<td>method</td>
+<td>Publish calls f.</td>
+</tr>
+<tr>
+<td><code>outbox.Relay</code></td>
+<td>type</td>
+<td>Relay claims the events of an outbox and hands them to a Publisher.</td>
+</tr>
+<tr>
+<td><code>outbox.Relay.Run</code></td>
+<td>method</td>
+<td>Run publishes events until ctx ends, and then returns nil.</td>
+</tr>
+<tr>
+<td><code>outbox.Relay.RunOnce</code></td>
+<td>method</td>
+<td>RunOnce claims one batch of due events and publishes them in id order.</td>
+</tr>
+<tr>
+<td><code>outbox.Relay.Wake</code></td>
+<td>method</td>
+<td>Wake makes an idle Run look for events now instead of at the end of its poll interval.</td>
+</tr>
+<tr>
+<td><code>outbox.RelayOption</code></td>
+<td>type</td>
+<td>RelayOption configures a Relay.</td>
+</tr>
+<tr>
+<td><code>outbox.WithBackoff</code></td>
+<td>func</td>
+<td>WithBackoff sets the delay before a failed event is tried again: base after the first failure, doubling with every further failure up to top.</td>
+</tr>
+<tr>
+<td><code>outbox.WithBatchSize</code></td>
+<td>func</td>
+<td>WithBatchSize sets how many events one claim takes, from 1 to 1000.</td>
+</tr>
+<tr>
+<td><code>outbox.WithLease</code></td>
+<td>func</td>
+<td>WithLease sets how long a claimed event is reserved for the relay that claimed it.</td>
+</tr>
+<tr>
+<td><code>outbox.WithListen</code></td>
+<td>func</td>
+<td>WithListen makes Run wake on the notifications Add sends on PostgreSQL, so a committed event is published within a round trip instead of within a poll interval.</td>
+</tr>
+<tr>
+<td><code>outbox.WithMaxAttempts</code></td>
+<td>func</td>
+<td>WithMaxAttempts sets how many times an event is tried before it becomes dead.</td>
+</tr>
+<tr>
+<td><code>outbox.WithObserver</code></td>
+<td>func</td>
+<td>WithObserver sets a function called after every delivery attempt with its Outcome, on the goroutine that ran it.</td>
+</tr>
+<tr>
+<td><code>outbox.WithOnError</code></td>
+<td>func</td>
+<td>WithOnError sets a function called with the errors the relay cannot handle itself: a failed claim, a failed bookkeeping statement, an outcome dropped because the lease was lost (an error that wraps ErrLeaseLost), a header value that is not a JSON object of strings, a publisher panic (with its stack), an event abandoned because it exhausted its attempts while a relay was publishing it, a failed LISTEN.</td>
+</tr>
+<tr>
+<td><code>outbox.WithPollInterval</code></td>
+<td>func</td>
+<td>WithPollInterval sets how long an idle Run waits before it looks for events again.</td>
+</tr>
+<tr>
+<td><code>outbox.WithRetention</code></td>
+<td>func</td>
+<td>WithRetention makes Run delete events published longer than d ago, once a minute, as Outbox.Cleanup does.</td>
+</tr>
+<tr>
+<td><code>outbox.WithTable</code></td>
+<td>func</td>
+<td>WithTable sets the table name.</td>
+</tr>
+<tr>
+<td><code>outbox.WithoutNotify</code></td>
+<td>func</td>
+<td>WithoutNotify stops Add from sending NOTIFY on PostgreSQL.</td>
 </tr>
 </tbody>
 </table>

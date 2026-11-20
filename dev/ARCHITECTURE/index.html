@@ -782,6 +782,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../outbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactional outbox
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../testing/" class="md-nav__link">
         
   
@@ -1750,6 +1778,9 @@ carries the format number and no release version.</p>
   N+1 relation-load detector and an N+1 statement detector that share one
   scope, and a slow-query hook); imports only <code>momo</code> and the internal package
   the two detectors share. See <a href="../observability/">observability</a>.</li>
+<li><code>outbox</code>: the transactional outbox, <code>outbox.Outbox.Add</code> in the caller's
+  transaction and <code>outbox.Relay</code> with a publisher the application supplies. It
+  imports <code>momo</code> and <code>driver/pgxdriver</code> for <code>LISTEN</code>; see <a href="../outbox/">outbox</a>.</li>
 <li><code>importer</code>, <code>importer/{gorm,bun,ent}</code>: static readers of other ORMs' models;
   see <a href="../importers/">importers</a>.</li>
 <li><code>bench</code> is a separate Go module with the comparison benchmarks; see

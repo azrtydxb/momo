@@ -849,6 +849,34 @@
   
   
     <li class="md-nav__item">
+      <a href="outbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactional outbox
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="testing/" class="md-nav__link">
         
   
@@ -1336,6 +1364,7 @@ PostgreSQL.</p>
 <li><a href="guides/bun/">Coming from Bun</a>: the same mapping for Bun users.</li>
 <li><a href="guides/ent/">Coming from Ent</a>: the same mapping for Ent users, with the <code>momo import ent</code> path.</li>
 <li><a href="listen-notify/">LISTEN and NOTIFY</a>: <code>pgxdriver.Listen</code> and <code>pgxdriver.Notify</code>, reconnecting, and payload limits.</li>
+<li><a href="outbox/">Transactional outbox</a>: <code>outbox.Outbox.Add</code> in the caller's transaction, the relay with leases, retries, per-key order and retention, and waking it with <code>LISTEN</code>.</li>
 <li><a href="replicas/">Read replicas</a>: <code>WithReplicas</code>, which statements go to a replica, reading your own writes, and what happens when a replica is down.</li>
 <li><a href="testing/">Testing applications</a>: the <code>momotest</code> kit: a schema or a rolled-back transaction per test, migrations applied, fixture seeding, parallel-safe.</li>
 <li><a href="PRIVACY_RULES/">Interceptors</a>: application-level per-handle rules that add predicates or deny typed statements, the tenant recipe, and the paths they do not cover (not a security boundary).</li>

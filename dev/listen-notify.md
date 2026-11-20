@@ -63,7 +63,7 @@ twice.
 When the connection drops (a restart, a failover, `pg_terminate_backend`),
 `Wait` reconnects inside the same call, re-issues `LISTEN` for every channel,
 runs the `WithOnReconnect` function and goes on waiting. The delay before a
-redial starts at the `WithBackoff` minimum and doubles up to its maximum
+redial starts at the `pgxdriver.WithBackoff` minimum and doubles up to its maximum
 (default 100ms to 10s) while connections keep failing. That includes a
 connection that connects and is then lost before it delivered a notification
 or stayed up for the maximum delay, so a server that accepts and kills

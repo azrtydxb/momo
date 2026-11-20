@@ -1091,6 +1091,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../outbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactional outbox
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../testing/" class="md-nav__link">
         
   
@@ -3731,8 +3759,20 @@ values through <code>Builder.Arg</code> or <code>Builder.ArgFor</code>, never co
 <ul>
 <li>On a pinned connection (<code>db.OnConn(pc)</code>) transactions are not available:
   <code>Begin</code>, <code>Tx</code>, <code>Replace</code>, <code>CreateGraph</code> return <code>ErrUnsupported</code>.</li>
-<li>Several momo helpers open their own transaction on a <code>*DB</code> and a savepoint on a
-  <code>*Tx</code>: <code>Replace</code>, <code>CreateGraph</code>, chunked <code>InsertQuery.Models</code>, <code>vecsearch.With</code>.</li>
+<li>
+<p>Several momo helpers open their own transaction on a <code>*DB</code> and a savepoint on a
+  <code>*Tx</code>: <code>Replace</code>, <code>CreateGraph</code>, chunked <code>InsertQuery.Models</code>, <code>vecsearch.With</code>.</p>
+</li>
+<li>
+<p>Publish an event together with a data change through the transactional
+  outbox (which databases it runs on, and how the relay wakes on each, is in
+  <a href="../outbox/">outbox</a> and the generated <a href="../capabilities/">capabilities</a>):
+  declare the outbox table as a model, call <code>outbox.Outbox.Add(ctx, tx, event)</code> with the
+  <code>tx</code> that writes the data, and run <code>outbox.Relay.Run</code> with a <code>outbox.Publisher</code>
+  you implement. Delivery is at least once, so consumers deduplicate on
+  <code>outbox.Event.ID</code>; events with the same key keep their order. See
+  <a href="../outbox/">outbox</a>.</p>
+</li>
 </ul>
 <p>Details: README section 8. Example: <a href="https://github.com/azrtydxb/momo/tree/main/examples/transactions/">transactions</a>.</p>
 <h2 id="8-relations">8. Relations<a class="headerlink" href="#8-relations" title="Permanent link">&para;</a></h2>

@@ -782,6 +782,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../outbox/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactional outbox
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../testing/" class="md-nav__link">
         
   
@@ -1978,6 +2006,13 @@ a distance function, and MariaDB 11.8 has L2 and cosine distance functions. See
 <td>yes: <code>DEFERRABLE</code> and <code>DEFERRABLE INITIALLY DEFERRED</code> on a unique constraint, a primary key and a foreign key are declared, read from <code>pg_constraint</code>, written by <code>generate --from-db</code>, rendered, compared by <code>diff</code>, <code>Baseline</code> and <code>drift</code>, and kept by a snapshot; a change of deferrability drops and adds the constraint again</td>
 <td><code>ErrUnsupported</code>: a declaration is a generator error and the renderer refuses it, because <code>PRAGMA foreign_key_list</code> does not report the deferrability of a foreign key and a primary key or unique constraint cannot be deferred</td>
 <td><code>ErrUnsupported</code>: MySQL and MariaDB check each constraint at the end of the statement and have no <code>DEFERRABLE</code>; a declaration is a generator error and the renderer refuses it</td>
+</tr>
+<tr>
+<td>Transactional outbox</td>
+<td><code>outbox.New</code>, <code>outbox.Outbox</code>, <code>outbox.Relay</code>, <code>outbox.Publisher</code>, <code>outbox.WithListen</code></td>
+<td>yes: <code>outbox.Outbox.Add</code> writes the event in the caller's transaction and sends <code>NOTIFY</code>; <code>outbox.Relay</code> claims batches with <code>FOR UPDATE SKIP LOCKED</code> and a lease, publishes with no lock held, retries with backoff up to a maximum of attempts, keeps the order of each key, and wakes on <code>NOTIFY</code> through <code>outbox.WithListen</code> with polling as the fallback; several relays in several processes share one table</td>
+<td>yes: the same table, <code>outbox.Outbox.Add</code> and <code>outbox.Relay</code>, polling only; the single writer serializes the claims, and <code>outbox.WithListen</code> is <code>ErrUnsupported</code></td>
+<td>yes on MySQL 8.4, MySQL 9.7 and MariaDB 11.8: the claim is one short <code>READ COMMITTED</code> transaction that selects with <code>FOR UPDATE SKIP LOCKED</code>, leases the rows and commits before anything is published; polling only, <code>outbox.WithListen</code> is <code>ErrUnsupported</code>; a server before MySQL 8.0 or MariaDB 10.6 makes <code>outbox.Relay.Run</code> return <code>ErrUnsupported</code></td>
 </tr>
 <tr>
 <td>Embeddings kept in sync with their source columns (<code>embed_from</code>)</td>
