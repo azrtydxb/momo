@@ -2032,7 +2032,7 @@ What `only` hides, and what it does not:
   a difference. Move the target table into `only`, or accept the report. The
   column itself is still modeled, without the relation.
 
-Library users: `migrate.Config.OnlyTables` and `migrate.InspectOptions.Only`
+Library users: `migrate.Settings.OnlyTables` (then `migrate.Config.OnlyTables`) and `migrate.InspectOptions.Only`
 are new fields. `OnlyTables` is what `introspect.only` sets: when it is not
 empty, a table that matches none of its globs is hidden from drift, baseline
 and diff, with its triggers and policies, and the PostgreSQL inspector does not
@@ -2040,7 +2040,7 @@ read it. The MySQL and SQLite inspectors ignore `migrate.InspectOptions.Only` an
 every table, which is filtered afterwards, so a table they cannot represent can
 still fail inspection. `migrate.MatchObject` is the glob rule shared by
 `Exclude`, `OnlyTables` and the inspector. An empty or malformed entry is an
-error that names `migrate.Config.OnlyTables`.
+error that names `Settings.OnlyTables`.
 
 ### `skip` globs match `schema.name`
 
@@ -2471,6 +2471,15 @@ as an argument.
 | `momo.L1Distance`                   | `github.com/azrtydxb/momo/vecop`     | `vecop.L1`                        |
 | `momo.HammingDistance`              | `github.com/azrtydxb/momo/vecop`     | `vecop.Hamming`                   |
 | `momo.JaccardDistance`              | `github.com/azrtydxb/momo/vecop`     | `vecop.Jaccard`                   |
+
+Renamed again in 0.20.0 (see
+[Colliding and inconsistent names are renamed](#colliding-and-inconsistent-names-are-renamed)):
+the `fts` names in this table (`fts.ToVector`, `fts.ToQuery`,
+`fts.WebsearchToQuery`, `fts.PlainToQuery`, `fts.PhraseToQuery`, `fts.Match`,
+`fts.Rank`, `fts.RankCD`, `fts.Headline`) are now the `TS` names, `sqlfn.SubstrFrom`
+is `sqlfn.SubstrToEnd`, and `timeop.IntervalExpr` is `timeop.IntervalOfExpr`.
+The rows above stay as written, and the old names still compile as deprecated
+forwarders for one release.
 
 ### Rewrite recipe
 

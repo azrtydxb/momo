@@ -26,6 +26,16 @@ func QueryScalars[V any](ctx context.Context, q Querier, sql string, args ...any
 	return nil, nil
 }
 
+type ColumnRows interface{}
+
+func QueryCursor(ctx context.Context, q Querier, sql string, args ...any) (ColumnRows, error) {
+	return nil, nil
+}
+
+func RawRows(ctx context.Context, q Querier, sql string, args ...any) (ColumnRows, error) {
+	return nil, nil
+}
+
 func MapRows(ctx context.Context, q Querier, sql string, args ...any) ([]map[string]any, error) {
 	return nil, nil
 }

@@ -310,7 +310,11 @@ func DivExpr[T Numeric](e, other momo.Expression[T]) ArithExpr[T] {
 // types.Numeric, v renders as a numeric literal such as '0'::numeric on
 // PostgreSQL, and the build fails with momo.ErrUnsupported on SQLite and
 // MySQL; an invalid types.Numeric fails with momo.ErrValidation. A v of a type
-// that has no literal form fails the build with momo.ErrValidation. NullIfExpr
+// that has no literal form fails the build with momo.ErrValidation, which
+// shows at SQL(). A time.Time operand renders as a date literal (it must be
+// midnight UTC), so comparing it with a timestamp column does not match a
+// non-midnight value, notably on SQLite, where timestamps are stored as full
+// text. NullIfExpr
 // takes the second operand as an expression.
 func NullIf[T any](e momo.Expression[T], v T) momo.FuncExpr[T] {
 	return momo.Func[T]("nullif", e, nullIfLit[T]{v})

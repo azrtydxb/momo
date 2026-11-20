@@ -222,6 +222,7 @@ var features = []feature{
 			"timeop.IntervalOf", "timeop.IntervalOfExpr", "timeop.IntervalDuration", "timeop.AddInterval", "timeop.SubInterval",
 			"timeop.AddDuration", "timeop.SubDuration", "timeop.Sub", "timeop.Age", "timeop.EpochSeconds",
 			"timeop.AddDays", "timeop.AddDaysExpr", "timeop.DaysBetween",
+			"timeop.CurrentDate", "timeop.Infinity", "timeop.NegInfinity",
 		},
 		PG: "yes",
 		SQLite: "every `timeop.ExtractField`, `timeop.TruncUnit`, interval and `timeop.Now` run on both SQLite drivers; month arithmetic overflows into the next month " +
