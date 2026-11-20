@@ -68,6 +68,10 @@ var phases = [][]ChangeKind{
 // constraints and columns, drop_table (partitions before parents), and, last
 // of all, drop_function, drop_sequence and drop_enum. Renames run before everything else.
 //
+// A foreign key in a create_table whose referenced columns become unique only
+// through a create_index, add_unique or add_primary_key of the same plan is
+// moved out of the create_table into an add_fk, which runs after them.
+//
 // Renames run before every drop, so renaming A to B while dropping a
 // different table B in the same plan would clash; Diff does not produce that.
 //
@@ -97,6 +101,7 @@ func OrderErr(changes []Change) ([]Change, error) {
 // dependent that is not otherwise in the diff is rebuilt after its base.
 func OrderWithViews(changes []Change, from, to []schema.View) ([]Change, error) {
 	changes = expandViewDependents(changes, from, to)
+	changes = deferKeyDependentFKs(changes)
 	rank := map[ChangeKind]int{}
 	for i, p := range phases {
 		for _, k := range p {
