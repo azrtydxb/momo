@@ -1,0 +1,2129 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Go ORM with typed queries, explicit SQL and a self-contained migration engine">
+      
+      
+      
+        <link rel="canonical" href="https://azrtydxb.github.io/momo/v0.20/outbox/">
+      
+      
+        <link rel="prev" href="../listen-notify/">
+      
+      
+        <link rel="next" href="../testing/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+    
+    
+      
+        <title>Transactional outbox - momo</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#transactional-outbox" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="momo" class="md-header__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            momo
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Transactional outbox
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_1">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="momo" class="md-nav__button md-logo" aria-label="momo" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    momo
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/azrtydxb/momo" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ai-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent usage and AGENTS.md snippet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TYPE_MAPPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Type mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../projections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../relations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Relations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vector search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fulltext/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full-text search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mysql/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MySQL and MariaDB
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audit history tables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../importers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Importing from other ORMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/gorm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from GORM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/bun/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Bun
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/ent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming from Ent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../replicas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read replicas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../listen-notify/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LISTEN and NOTIFY
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactional outbox
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transactional outbox
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#declare-the-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Declare the table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#write-an-event-with-the-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Write an event with the data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-the-relay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run the relay
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-a-batch-is-delivered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a batch is delivered
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delivery-guarantees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delivery guarantees
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Delivery guarantees">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Order
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#several-relays" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Several relays
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dialects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dialects
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#waking-the-relay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Waking the relay
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retention-and-dead-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retention and dead events
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing applications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability hooks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PRIVACY_RULES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interceptors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../momovet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    momovet raw-SQL check
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PERFORMANCE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../supported-versions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Supported versions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compatibility policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#declare-the-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Declare the table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#write-an-event-with-the-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Write an event with the data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-the-relay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run the relay
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-a-batch-is-delivered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a batch is delivered
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delivery-guarantees" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delivery guarantees
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Delivery guarantees">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Order
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#several-relays" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Several relays
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dialects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dialects
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#waking-the-relay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Waking the relay
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retention-and-dead-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retention and dead events
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="transactional-outbox">Transactional outbox<a class="headerlink" href="#transactional-outbox" title="Permanent link">&para;</a></h1>
+<p>A service often has to publish an event together with a data change: an order
+is marked paid, and a message goes to a broker. Writing to the database and
+then to the broker is two steps, and a crash between them loses the message or
+sends one for a change that never committed. The transactional outbox removes
+the gap. The event is written into an outbox table in the same transaction as
+the data, and a relay publishes it afterwards.</p>
+<p>The <code>outbox</code> package has two parts. <code>outbox.Outbox.Add</code> writes an event inside
+the caller's transaction. <code>outbox.Relay</code> reads the committed events and hands
+them to a <code>outbox.Publisher</code> that the application implements. Momo ships no
+broker client: the publisher is your code for Kafka, NATS, SQS or an HTTP
+endpoint.</p>
+<p>It runs on PostgreSQL, SQLite, MySQL and MariaDB; see
+<a href="#dialects">Dialects</a>.</p>
+<h2 id="declare-the-table">Declare the table<a class="headerlink" href="#declare-the-table" title="Permanent link">&para;</a></h2>
+<p>The outbox table is an ordinary model, so <code>momo migrate diff</code> creates it and
+your other tooling sees it. Copy the struct below into your models package and
+run <code>momo generate</code> and <code>momo migrate diff</code>. The default table name is
+<code>outbox_events</code>; <code>outbox.WithTable</code> selects another, and the model's table tag
+must then match.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="s">"fmt"</span>
+<span class="w">    </span><span class="s">"time"</span>
+
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo"</span>
+<span class="p">)</span>
+
+<span class="c1">// OutboxEvent is one event that waits to be published.</span>
+<span class="kd">type</span><span class="w"> </span><span class="nx">OutboxEvent</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Model</span><span class="w">  </span><span class="s">`momo:"table:outbox_events"`</span>
+<span class="w">    </span><span class="nx">ID</span><span class="w">          </span><span class="kt">int64</span><span class="w">      </span><span class="s">`momo:"column:id,pk,identity"`</span>
+<span class="w">    </span><span class="nx">Topic</span><span class="w">       </span><span class="kt">string</span><span class="w">     </span><span class="s">`momo:"column:topic,size:255"`</span>
+<span class="w">    </span><span class="nx">Key</span><span class="w">         </span><span class="o">*</span><span class="kt">string</span><span class="w">    </span><span class="s">`momo:"column:key,size:255"`</span>
+<span class="w">    </span><span class="nx">Payload</span><span class="w">     </span><span class="p">[]</span><span class="kt">byte</span><span class="w">     </span><span class="s">`momo:"column:payload"`</span>
+<span class="w">    </span><span class="nx">Headers</span><span class="w">     </span><span class="o">*</span><span class="kt">string</span><span class="w">    </span><span class="s">`momo:"column:headers,type:text"`</span>
+<span class="w">    </span><span class="nx">CreatedAt</span><span class="w">   </span><span class="nx">time</span><span class="p">.</span><span class="nx">Time</span><span class="w">  </span><span class="s">`momo:"column:created_at"`</span>
+<span class="w">    </span><span class="nx">AvailableAt</span><span class="w"> </span><span class="nx">time</span><span class="p">.</span><span class="nx">Time</span><span class="w">  </span><span class="s">`momo:"column:available_at"`</span>
+<span class="w">    </span><span class="nx">Attempts</span><span class="w">    </span><span class="kt">int32</span><span class="w">      </span><span class="s">`momo:"column:attempts,default:0"`</span>
+<span class="w">    </span><span class="nx">PublishedAt</span><span class="w"> </span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Time</span><span class="w"> </span><span class="s">`momo:"column:published_at"`</span>
+<span class="w">    </span><span class="nx">DeadAt</span><span class="w">      </span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Time</span><span class="w"> </span><span class="s">`momo:"column:dead_at"`</span>
+<span class="w">    </span><span class="nx">LastError</span><span class="w">   </span><span class="o">*</span><span class="kt">string</span><span class="w">    </span><span class="s">`momo:"column:last_error,type:text"`</span>
+<span class="p">}</span>
+
+<span class="c1">// MomoConfig declares the two indexes the relay and the retention cleanup read</span>
+<span class="c1">// through. They are plain indexes, not partial ones, because MySQL and MariaDB</span>
+<span class="c1">// have no partial indexes; a NULL published_at or dead_at is searched as a key</span>
+<span class="c1">// value.</span>
+<span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">e</span><span class="w"> </span><span class="o">*</span><span class="nx">OutboxEvent</span><span class="p">)</span><span class="w"> </span><span class="nx">MomoConfig</span><span class="p">(</span><span class="nx">c</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Config</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">Index</span><span class="p">(</span><span class="s">"outbox_events_due_idx"</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">e</span><span class="p">.</span><span class="nx">PublishedAt</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">e</span><span class="p">.</span><span class="nx">DeadAt</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">e</span><span class="p">.</span><span class="nx">AvailableAt</span><span class="p">)</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">Index</span><span class="p">(</span><span class="s">"outbox_events_key_idx"</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">e</span><span class="p">.</span><span class="nx">Key</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">e</span><span class="p">.</span><span class="nx">PublishedAt</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">e</span><span class="p">.</span><span class="nx">ID</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Println</span><span class="p">(</span><span class="s">"the outbox model is declared"</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>What each column is for:</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>Identity key. It orders the events of a key and is the deduplication key for consumers.</td>
+</tr>
+<tr>
+<td><code>topic</code></td>
+<td>Where the event goes. Required.</td>
+</tr>
+<tr>
+<td><code>key</code></td>
+<td>Orders events: the events of one key are published in order. NULL means no order.</td>
+</tr>
+<tr>
+<td><code>payload</code></td>
+<td>The message body.</td>
+</tr>
+<tr>
+<td><code>headers</code></td>
+<td>Optional metadata, a JSON object of strings.</td>
+</tr>
+<tr>
+<td><code>created_at</code></td>
+<td>When <code>outbox.Outbox.Add</code> ran.</td>
+</tr>
+<tr>
+<td><code>available_at</code></td>
+<td>The earliest time the event can be claimed: the retry time, or the end of a claim lease.</td>
+</tr>
+<tr>
+<td><code>attempts</code></td>
+<td>How many delivery attempts were counted.</td>
+</tr>
+<tr>
+<td><code>published_at</code></td>
+<td>Set when the publisher accepted the event.</td>
+</tr>
+<tr>
+<td><code>dead_at</code></td>
+<td>Set when the last allowed attempt failed.</td>
+</tr>
+<tr>
+<td><code>last_error</code></td>
+<td>The text of the last publish error, cut to 1000 bytes.</td>
+</tr>
+</tbody>
+</table>
+<p>The table holds only what the relay needs. The two indexes keep the claim and
+the retention cleanup fast however many published rows are kept. On MySQL and
+MariaDB <code>payload</code> is a <code>blob</code>, which holds 65,535 bytes at most, and <code>headers</code>
+is <code>text</code>. PostgreSQL (<code>bytea</code>) and SQLite (<code>blob</code>) have no such limit. The
+model has one type tag for every database, so it cannot name <code>mediumblob</code> or
+<code>longblob</code> without breaking the other two; if events on MySQL or MariaDB can be
+larger, widen the column in a migration, for example
+<code>ALTER TABLE outbox_events MODIFY payload longblob NOT NULL</code>. An event that is
+too large for the column makes <code>outbox.Outbox.Add</code> return an error (the
+default strict SQL mode), so the caller rolls the transaction back.</p>
+<h2 id="write-an-event-with-the-data">Write an event with the data<a class="headerlink" href="#write-an-event-with-the-data" title="Permanent link">&para;</a></h2>
+<p><code>outbox.Outbox.Add</code> takes the <code>*momo.Tx</code> that writes the data. The parameter is
+a transaction, not a <code>momo.Querier</code>, so passing a <code>*momo.DB</code> does not compile:
+an event written outside the transaction would defeat the purpose. A nil
+transaction and an empty topic fail with <code>momo.ErrValidation</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="s">"context"</span>
+<span class="w">    </span><span class="s">"log"</span>
+<span class="w">    </span><span class="s">"os"</span>
+
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo"</span>
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo/driver/pgxdriver"</span>
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo/outbox"</span>
+<span class="p">)</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">ctx</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Background</span><span class="p">()</span>
+<span class="w">    </span><span class="nx">pool</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">NewPool</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nx">Getenv</span><span class="p">(</span><span class="s">"DATABASE_URL"</span><span class="p">))</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">pool</span><span class="p">.</span><span class="nx">Close</span><span class="p">()</span>
+<span class="w">    </span><span class="nx">db</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pool</span><span class="p">))</span>
+
+<span class="w">    </span><span class="nx">ob</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">New</span><span class="p">()</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="nx">err</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">db</span><span class="p">.</span><span class="nx">Tx</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">TxOptions</span><span class="p">{},</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">tx</span><span class="w"> </span><span class="o">*</span><span class="nx">momo</span><span class="p">.</span><span class="nx">Tx</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">Exec</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">tx</span><span class="p">,</span><span class="w"> </span><span class="s">"UPDATE orders SET status = ? WHERE id = ?"</span><span class="p">,</span><span class="w"> </span><span class="s">"paid"</span><span class="p">,</span><span class="w"> </span><span class="mi">42</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">ob</span><span class="p">.</span><span class="nx">Add</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">tx</span><span class="p">,</span><span class="w"> </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">Event</span><span class="p">{</span>
+<span class="w">            </span><span class="nx">Topic</span><span class="p">:</span><span class="w">   </span><span class="s">"orders.paid"</span><span class="p">,</span>
+<span class="w">            </span><span class="nx">Key</span><span class="p">:</span><span class="w">     </span><span class="s">"order-42"</span><span class="p">,</span>
+<span class="w">            </span><span class="nx">Payload</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span><span class="kt">byte</span><span class="p">(</span><span class="s">`{"id":42}`</span><span class="p">),</span>
+<span class="w">            </span><span class="nx">Headers</span><span class="p">:</span><span class="w"> </span><span class="kt">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span><span class="s">"trace"</span><span class="p">:</span><span class="w"> </span><span class="s">"4bf92f35"</span><span class="p">},</span>
+<span class="w">        </span><span class="p">})</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">err</span>
+<span class="w">    </span><span class="p">})</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>If the function returns an error, both the update and the event roll back.
+<code>outbox.Outbox.Add</code> returns the id of the new row. On PostgreSQL it also runs
+<code>SELECT pg_notify(table, '')</code> in the same transaction, which PostgreSQL
+delivers at commit and drops on rollback; <code>outbox.WithoutNotify</code> turns that
+off. The payload and the headers are bound as statement arguments, so a hook
+opened with <code>momo.WithArgLogging</code> sees them.</p>
+<h2 id="run-the-relay">Run the relay<a class="headerlink" href="#run-the-relay" title="Permanent link">&para;</a></h2>
+<p><code>outbox.Outbox.NewRelay</code> takes the <code>*momo.DB</code>, your publisher and options.
+<code>outbox.Relay.Run</code> publishes until its context ends. In the program below the
+relay wakes on <code>NOTIFY</code> through <code>outbox.WithListen</code>, and deletes events that were
+published more than a week ago.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="s">"context"</span>
+<span class="w">    </span><span class="s">"log"</span>
+<span class="w">    </span><span class="s">"os"</span>
+<span class="w">    </span><span class="s">"os/signal"</span>
+<span class="w">    </span><span class="s">"time"</span>
+
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo"</span>
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo/driver/pgxdriver"</span>
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo/outbox"</span>
+<span class="w">    </span><span class="s">"github.com/jackc/pgx/v5"</span>
+<span class="p">)</span>
+
+<span class="c1">// broker is the application's publisher. Replace the log call with the</span>
+<span class="c1">// broker's client and return its error.</span>
+<span class="kd">type</span><span class="w"> </span><span class="nx">broker</span><span class="w"> </span><span class="kd">struct</span><span class="p">{}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">broker</span><span class="p">)</span><span class="w"> </span><span class="nx">Publish</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="w"> </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">Event</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">log</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">"publish topic=%s key=%s id=%d attempt=%d bytes=%d"</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">Topic</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">Key</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="p">.</span><span class="nx">Attempt</span><span class="p">,</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="nx">e</span><span class="p">.</span><span class="nx">Payload</span><span class="p">))</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span>
+<span class="p">}</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">stop</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">signal</span><span class="p">.</span><span class="nx">NotifyContext</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nx">Background</span><span class="p">(),</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nx">Interrupt</span><span class="p">)</span>
+<span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">stop</span><span class="p">()</span>
+<span class="w">    </span><span class="nx">dsn</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nx">Getenv</span><span class="p">(</span><span class="s">"DATABASE_URL"</span><span class="p">)</span>
+<span class="w">    </span><span class="nx">pool</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">NewPool</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">dsn</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">pool</span><span class="p">.</span><span class="nx">Close</span><span class="p">()</span>
+<span class="w">    </span><span class="nx">db</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pool</span><span class="p">))</span>
+
+<span class="w">    </span><span class="nx">ob</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">New</span><span class="p">()</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="nx">cfg</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">pgx</span><span class="p">.</span><span class="nx">ParseConfig</span><span class="p">(</span><span class="nx">dsn</span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="nx">relay</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">ob</span><span class="p">.</span><span class="nx">NewRelay</span><span class="p">(</span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="nx">broker</span><span class="p">{},</span>
+<span class="w">        </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">WithListen</span><span class="p">(</span><span class="nx">cfg</span><span class="p">),</span>
+<span class="w">        </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">WithPollInterval</span><span class="p">(</span><span class="mi">10</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">),</span>
+<span class="w">        </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">WithMaxAttempts</span><span class="p">(</span><span class="mi">8</span><span class="p">),</span>
+<span class="w">        </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">WithBackoff</span><span class="p">(</span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span><span class="p">,</span><span class="w"> </span><span class="nx">time</span><span class="p">.</span><span class="nx">Minute</span><span class="p">),</span>
+<span class="w">        </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">WithRetention</span><span class="p">(</span><span class="mi">7</span><span class="o">*</span><span class="mi">24</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Hour</span><span class="p">),</span>
+<span class="w">    </span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">relay</span><span class="p">.</span><span class="nx">Run</span><span class="p">(</span><span class="nx">ctx</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>outbox.Relay.Run</code> returns nil when its context ends. The relay can also be
+driven by hand: <code>outbox.Relay.RunOnce</code> claims and publishes one batch and returns
+how many events it claimed, which suits a cron job or a test. <code>outbox.Relay.Wake</code>
+makes an idle <code>outbox.Relay.Run</code> look at once, for example from the code that
+just committed an event.</p>
+<h2 id="how-a-batch-is-delivered">How a batch is delivered<a class="headerlink" href="#how-a-batch-is-delivered" title="Permanent link">&para;</a></h2>
+<p>One statement claims a batch of due events. It moves each event's
+<code>available_at</code> to the end of a lease (30 seconds by default) and counts an
+attempt. The statement selects with <code>FOR UPDATE SKIP LOCKED</code>, so a second relay
+skips the rows the first is claiming. The row locks end with that statement (on
+MySQL and MariaDB with one short transaction). The events are then published
+one at a time, in id order, with no transaction and no lock held, so a slow
+broker does not hold a row lock or a connection. After each publish the relay
+records the outcome:</p>
+<ul>
+<li>Published: <code>published_at</code> is set.</li>
+<li>Failed: <code>last_error</code> is set and <code>available_at</code> moves to the retry time. The
+  delay is the backoff base after the first failure and doubles with each
+  failure up to the maximum (one second up to five minutes by default). Each
+  delay is spread at random by up to 20 percent either way, and never exceeds
+  the maximum, so events that failed together do not come back together.</li>
+<li>Failed on the last allowed attempt (10 by default): <code>dead_at</code> is set. The
+  event is not retried.</li>
+</ul>
+<p>Each of these statements applies only while the relay still holds the claim: it
+matches the <code>attempts</code> value the claim counted. If a publish outlives its lease
+and another relay claims the event, the first relay's late outcome changes
+nothing. It is reported to the <code>outbox.WithOnError</code> function as an error that
+wraps <code>outbox.ErrLeaseLost</code>, and <code>outbox.Outcome.LeaseLost</code> is true, so the
+count of publishes that outlive <code>outbox.WithLease</code> is visible.</p>
+<p>If a relay dies, its leases run out and the events are claimed again. A batch
+must fit in the lease: the context given to the publisher ends at the end of the
+lease, and the events of the batch that were not reached by then are released,
+not counted as attempts. If a publisher panics, the relay treats it as a failed
+attempt and reports the panic with its stack to <code>outbox.WithOnError</code>.</p>
+<p>A crash during a publish consumes an attempt, because the claim counts it before
+the publish starts. An event that keeps crashing the relay therefore reaches the
+maximum of attempts: the next claim marks it dead without publishing it, and
+reports it to <code>outbox.WithOnError</code>. A poison event cannot take the process down
+forever; look for dead events with a <code>last_error</code> that says the attempt never
+ended, and <code>outbox.Outbox.Requeue</code> them once the cause is fixed. If a publish
+that outlives its lease on the last allowed attempt did reach the broker, the
+event is still marked dead, so the broker may hold a message for a dead event.</p>
+<h2 id="delivery-guarantees">Delivery guarantees<a class="headerlink" href="#delivery-guarantees" title="Permanent link">&para;</a></h2>
+<p>Delivery is at least once. An event is published twice when a relay crashes
+after the publisher returned and before the relay marked the event, and when a
+publish runs past its lease. Make consumers idempotent. <code>outbox.Event.ID</code> is the
+same on every attempt and works as the deduplication key; <code>outbox.Event.Attempt</code>
+says which attempt this is.</p>
+<h3 id="order">Order<a class="headerlink" href="#order" title="Permanent link">&para;</a></h3>
+<p>Events with the same non-empty key are published in the order they were added.
+The relay claims an event only when every earlier event of its key is published,
+so the head of each key is claimed and the rest wait. Consequences:</p>
+<ul>
+<li>A key advances by at most one event per batch. <code>outbox.Relay.Run</code> claims again
+  at once while there is work, so a backlog drains without waiting for the poll
+  interval.</li>
+<li>An event that fails holds back the later events of its key until it succeeds
+  or dies, and a dead event holds them back until <code>outbox.Outbox.Requeue</code> brings
+  it back or the row is deleted. This keeps the order; it also means one
+  poisoned event can stall its key. Watch for dead events.</li>
+<li>Events of different keys, and events without a key, have no order between
+  them.</li>
+</ul>
+<p>Order is by <code>id</code>, and PostgreSQL assigns an <code>id</code> when the row is inserted, not
+when the transaction commits. Two transactions that add events of the same key
+at the same time can therefore commit in the opposite order. Serialize the
+writers of one key, for example by locking the row of the entity the key names
+(<code>SELECT ... FOR UPDATE</code>) before adding the event.</p>
+<h2 id="several-relays">Several relays<a class="headerlink" href="#several-relays" title="Permanent link">&para;</a></h2>
+<p>Run as many relays as you like, in one process or many, against one table. They
+share the work and do not publish the same event, except in the at-least-once
+cases above. Every time in the table comes from the Go clock of the process that
+writes it, not from the database: the relays measure leases and backoff, and
+<code>outbox.Outbox.Add</code>, <code>outbox.Outbox.Requeue</code> and <code>outbox.Outbox.Cleanup</code> stamp
+<code>created_at</code>, <code>available_at</code> and the retention cutoff. The hosts that write to
+or read from one table therefore need clocks that agree to within a small part
+of the lease.</p>
+<p>On SQLite there is one writer: each claim is one statement, so claims are
+serialized. There is no <code>LISTEN</code> on SQLite, MySQL or MariaDB, so the relay polls
+there, and <code>outbox.WithListen</code> fails with <code>momo.ErrUnsupported</code>.</p>
+<h2 id="dialects">Dialects<a class="headerlink" href="#dialects" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Dialect</th>
+<th>Claim</th>
+<th>Wake-up</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PostgreSQL</td>
+<td>One <code>UPDATE ... RETURNING</code> over a <code>FOR UPDATE SKIP LOCKED</code> selection</td>
+<td><code>LISTEN</code>, then polling</td>
+</tr>
+<tr>
+<td>SQLite</td>
+<td>One <code>UPDATE ... RETURNING</code>; the single writer serializes claims</td>
+<td>Polling</td>
+</tr>
+<tr>
+<td>MySQL 8.0+</td>
+<td>A short <code>READ COMMITTED</code> transaction: <code>SELECT ... FOR UPDATE SKIP LOCKED</code>, <code>UPDATE</code> with the lease, commit</td>
+<td>Polling</td>
+</tr>
+<tr>
+<td>MariaDB 10.6+</td>
+<td>The same transaction as MySQL</td>
+<td>Polling</td>
+</tr>
+</tbody>
+</table>
+<p>MySQL and MariaDB have no <code>UPDATE ... RETURNING</code>, so the claim selects and
+leases in one transaction and commits before anything is published: the
+semantics are those of the PostgreSQL claim, with the same lease, retries,
+order and at-least-once delivery. The relay asks the server for its version
+when it first claims. A server older than MySQL 8.0 or MariaDB 10.6 has no
+<code>SKIP LOCKED</code>, and <code>outbox.Relay.RunOnce</code> and <code>outbox.Relay.Run</code> return
+<code>momo.ErrUnsupported</code>. <code>outbox.WithListen</code> on a database other than PostgreSQL
+fails in <code>outbox.Outbox.NewRelay</code> with <code>momo.ErrUnsupported</code>. The remaining
+statements are the same on every dialect, apart from the quoting of
+identifiers and the retention delete, which MySQL writes as
+<code>DELETE ... ORDER BY id LIMIT</code>.</p>
+<h2 id="waking-the-relay">Waking the relay<a class="headerlink" href="#waking-the-relay" title="Permanent link">&para;</a></h2>
+<p>Without <code>outbox.WithListen</code>, a relay finds new events when its poll interval
+(one second by default) ends. On PostgreSQL, <code>outbox.Outbox.Add</code> sends a
+notification at commit and <code>outbox.WithListen</code> makes the relay wait for it on
+its own connection, using the listener described in
+<a href="../listen-notify/">LISTEN and NOTIFY</a>: connect to the server directly, or to
+PgBouncer in session mode. A notification that arrives while the relay is busy
+is not lost; the relay looks again before it idles. A notification sent while
+the listener was disconnected is lost, so the relay also looks at every
+reconnect, and the poll interval stays as the fallback. With a listener you can
+lengthen the poll interval, but do not make it infinite. If the listener cannot
+connect, the relay reports the error, keeps polling and retries.</p>
+<h2 id="retention-and-dead-events">Retention and dead events<a class="headerlink" href="#retention-and-dead-events" title="Permanent link">&para;</a></h2>
+<p>Published rows stay in the table until you remove them.
+<code>outbox.Outbox.Cleanup</code> deletes the rows published longer ago than a retention,
+in chunks of 1000. <code>outbox.WithRetention</code> makes <code>outbox.Relay.Run</code> do that once
+a minute. Cleanup never touches pending or dead events.</p>
+<p>A dead event stays for an operator. Find it with
+<code>SELECT id, topic, key, last_error FROM outbox_events WHERE dead_at IS NOT NULL</code>,
+fix the cause, and call <code>outbox.Outbox.Requeue</code> with its ids: the event is
+pending again with its attempts reset, and the later events of its key are
+released. Deleting the row also releases the key, and drops the event.</p>
+<h2 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h2>
+<p>Every statement of <code>outbox.Outbox.Add</code> and the relay goes through the <code>*momo.DB</code>
+or <code>*momo.Tx</code> it was given, so the hooks of <a href="../observability/">observability</a>
+see the claims, the marks and the cleanup like any other statement.
+<code>outbox.WithObserver</code> adds one callback per delivery attempt with an
+<code>outbox.Outcome</code>: the event, the publisher's error, whether the event became
+dead and how long the publish took. <code>outbox.WithOnError</code> receives the errors the
+relay handles on its own, such as a failed claim or a listener that cannot
+connect; without it they go to <code>log/slog</code> as warnings. A useful alert is a
+count of rows with <code>dead_at</code> set, and the age of the oldest row with
+<code>published_at</code> unset.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">package</span><span class="w"> </span><span class="nx">main</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="s">"context"</span>
+<span class="w">    </span><span class="s">"log"</span>
+<span class="w">    </span><span class="s">"os"</span>
+<span class="w">    </span><span class="s">"time"</span>
+
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo"</span>
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo/driver/pgxdriver"</span>
+<span class="w">    </span><span class="s">"github.com/azrtydxb/momo/outbox"</span>
+<span class="p">)</span>
+
+<span class="kd">func</span><span class="w"> </span><span class="nx">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">ctx</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Background</span><span class="p">()</span>
+<span class="w">    </span><span class="nx">pool</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">NewPool</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">os</span><span class="p">.</span><span class="nx">Getenv</span><span class="p">(</span><span class="s">"DATABASE_URL"</span><span class="p">))</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">pool</span><span class="p">.</span><span class="nx">Close</span><span class="p">()</span>
+<span class="w">    </span><span class="nx">db</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">momo</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pgxdriver</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">pool</span><span class="p">))</span>
+<span class="w">    </span><span class="nx">ob</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">New</span><span class="p">()</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="nx">publish</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">PublisherFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">e</span><span class="w"> </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">Event</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">})</span>
+<span class="w">    </span><span class="nx">relay</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">ob</span><span class="p">.</span><span class="nx">NewRelay</span><span class="p">(</span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="nx">publish</span><span class="p">,</span>
+<span class="w">        </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">WithObserver</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">oc</span><span class="w"> </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">Outcome</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="nx">oc</span><span class="p">.</span><span class="nx">Err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="nx">log</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">"event %d attempt %d failed (dead=%v): %v"</span><span class="p">,</span><span class="w"> </span><span class="nx">oc</span><span class="p">.</span><span class="nx">Event</span><span class="p">.</span><span class="nx">ID</span><span class="p">,</span><span class="w"> </span><span class="nx">oc</span><span class="p">.</span><span class="nx">Event</span><span class="p">.</span><span class="nx">Attempt</span><span class="p">,</span><span class="w"> </span><span class="nx">oc</span><span class="p">.</span><span class="nx">Dead</span><span class="p">,</span><span class="w"> </span><span class="nx">oc</span><span class="p">.</span><span class="nx">Err</span><span class="p">)</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}),</span>
+<span class="w">        </span><span class="nx">outbox</span><span class="p">.</span><span class="nx">WithOnError</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">err</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">log</span><span class="p">.</span><span class="nx">Printf</span><span class="p">(</span><span class="s">"outbox: %v"</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span><span class="w"> </span><span class="p">}),</span>
+<span class="w">    </span><span class="p">)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">relay</span><span class="p">.</span><span class="nx">RunOnce</span><span class="p">(</span><span class="nx">ctx</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="c1">// Remove what was published more than a day ago, then bring dead events 7</span>
+<span class="w">    </span><span class="c1">// and 9 back.</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">ob</span><span class="p">.</span><span class="nx">Cleanup</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="mi">24</span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Hour</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">ob</span><span class="p">.</span><span class="nx">Requeue</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">db</span><span class="p">,</span><span class="w"> </span><span class="mi">7</span><span class="p">,</span><span class="w"> </span><span class="mi">9</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">Fatal</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<h2 id="limits">Limits<a class="headerlink" href="#limits" title="Permanent link">&para;</a></h2>
+<ul>
+<li>MySQL needs 8.0 and MariaDB 10.6 for <code>SKIP LOCKED</code>.</li>
+<li>The table name is one identifier of at most 63 letters, digits and
+  underscores. <code>outbox.New</code> rejects anything else with <code>momo.ErrValidation</code>.</li>
+<li>Delivery is at least once and order holds per key only, as described above.</li>
+<li>A batch is at most 1000 events. The PostgreSQL notification carries no
+  payload: it only tells the relay to look.</li>
+<li>A dead key with a large backlog is probed on every claim: the <code>NOT EXISTS</code>
+  check that holds back the later events of a key runs for each of them, so the
+  claim gets slower the more events wait behind a dead one. Requeue or delete
+  the dead event promptly.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.a5f9d56c.min.js"></script>
+      
+    
+  </body>
+</html>
