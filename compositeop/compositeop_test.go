@@ -19,7 +19,7 @@ type addr struct {
 	Floor  int32
 }
 
-var colHome = momo.NewColumn[types.Composite[addr]]("customers", "home", 0)
+var colHome = momo.NewColumn[types.Composite[addr]]("docs", "home", 0)
 
 // Catches: an operand bound without the cast to the composite type (the server
 // then reads the parameter as an anonymous record and refuses it), a type name
@@ -32,16 +32,16 @@ func TestCompositePredicatesGolden(t *testing.T) {
 		pred momo.Predicate
 		want string
 	}{
-		{"equal", compositeop.Eq(colHome, "address", v), `"customers"."home" = $1::"address"`},
-		{"not equal", compositeop.Ne(colHome, "address", v), `"customers"."home" <> $1::"address"`},
-		{"qualified", compositeop.Eq(colHome, "billing.address", v), `"customers"."home" = $1::"billing"."address"`},
+		{"equal", compositeop.Equals(colHome, "address", v), `"docs"."home" = $1::"address"`},
+		{"not equal", compositeop.NotEquals(colHome, "address", v), `"docs"."home" <> $1::"address"`},
+		{"qualified", compositeop.Equals(colHome, "billing.address", v), `"docs"."home" = $1::"billing"."address"`},
 	} {
 		got, err := exprtest.Compile(dialect.Postgres, c.pred)
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
 		}
-		if want := `SELECT COUNT(*) FROM "customers" WHERE ` + c.want; got.SQL != want {
+		if want := `SELECT COUNT(*) FROM "docs" WHERE ` + c.want; got.SQL != want {
 			t.Errorf("%s:\n got %s\nwant %s", c.name, got.SQL, want)
 		}
 		if !reflect.DeepEqual(got.Args, []any{v}) {
@@ -55,8 +55,8 @@ func TestCompositePredicatesGolden(t *testing.T) {
 func TestCompositePredicatesUnsupportedOffPostgres(t *testing.T) {
 	v := types.Composite[addr]{}
 	preds := map[string]momo.Predicate{
-		"equal":     compositeop.Eq(colHome, "address", v),
-		"not equal": compositeop.Ne(colHome, "address", v),
+		"equal":     compositeop.Equals(colHome, "address", v),
+		"not equal": compositeop.NotEquals(colHome, "address", v),
 	}
 	for _, d := range []dialect.Name{dialect.SQLite, dialect.MySQL} {
 		for name, p := range preds {

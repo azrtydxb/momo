@@ -134,13 +134,13 @@ func TestCompositeEqualityAndUpdateLive(t *testing.T) {
 		pred momo.Predicate
 		want []int64
 	}{
-		"home equals":      {compositeop.Eq(dcHome, "dc_address", home), []int64{1}},
-		"other equals":     {compositeop.Eq(dcHome, "dc_address", other), []int64{2}},
-		"home differs":     {compositeop.Ne(dcHome, "dc_address", home), []int64{2}},
-		"work equals":      {compositeop.Eq(dcWork, "dc_address", home), []int64{2}},
+		"home equals":      {compositeop.Equals(dcHome, "dc_address", home), []int64{1}},
+		"other equals":     {compositeop.Equals(dcHome, "dc_address", other), []int64{2}},
+		"home differs":     {compositeop.NotEquals(dcHome, "dc_address", home), []int64{2}},
+		"work equals":      {compositeop.Equals(dcWork, "dc_address", home), []int64{2}},
 		"work is null":     {dcWork.IsNull(), []int64{1}},
-		"a missing value":  {compositeop.Eq(dcHome, "dc_address", types.Composite[dcAddress]{V: dcAddress{Street: "Main St", Floor: 3}}), []int64{}},
-		"domain and value": {momo.And(dcEmail.Eq("x@y.z"), compositeop.Eq(dcHome, "dc_address", other)), []int64{2}},
+		"a missing value":  {compositeop.Equals(dcHome, "dc_address", types.Composite[dcAddress]{V: dcAddress{Street: "Main St", Floor: 3}}), []int64{}},
+		"domain and value": {momo.And(dcEmail.Eq("x@y.z"), compositeop.Equals(dcHome, "dc_address", other)), []int64{2}},
 	} {
 		if got := ids(c.pred); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s: ids = %v, want %v", name, got, c.want)
@@ -155,7 +155,7 @@ func TestCompositeEqualityAndUpdateLive(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("UPDATE changed %d rows", n)
 	}
-	if got := ids(compositeop.Eq(dcHome, "dc_address", moved)); !reflect.DeepEqual(got, []int64{2}) {
+	if got := ids(compositeop.Equals(dcHome, "dc_address", moved)); !reflect.DeepEqual(got, []int64{2}) {
 		t.Errorf("after the update, home equals moved: ids = %v", got)
 	}
 	if got := ids(dcWork.IsNull()); !reflect.DeepEqual(got, []int64{1, 2}) {

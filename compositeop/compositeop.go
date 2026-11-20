@@ -44,15 +44,15 @@ func compare(feature string, left momo.Expr, op string, arg any, typeName string
 	})
 }
 
-// Eq is true when the composite column col equals v. typeName is the composite
-// type of the column, as its type tag spells it, and casts the bound value. The
-// record is compared field by field, so every attribute type needs an equality
-// operator.
-func Eq[T any](col momo.Expression[types.Composite[T]], typeName string, v types.Composite[T]) momo.Predicate {
+// Equals is true when the composite column col equals v. typeName is the
+// composite type of the column, as its type tag spells it, and casts the bound
+// value. The record is compared field by field, so every attribute type needs an
+// equality operator.
+func Equals[T any](col momo.Expression[types.Composite[T]], typeName string, v types.Composite[T]) momo.Predicate {
 	return compare("composite equality (=)", col, " = ", v, typeName)
 }
 
-// Ne is true when the composite column col differs from v; see Eq.
-func Ne[T any](col momo.Expression[types.Composite[T]], typeName string, v types.Composite[T]) momo.Predicate {
+// NotEquals is true when the composite column col differs from v; see Equals.
+func NotEquals[T any](col momo.Expression[types.Composite[T]], typeName string, v types.Composite[T]) momo.Predicate {
 	return compare("composite inequality (<>)", col, " <> ", v, typeName)
 }

@@ -261,8 +261,8 @@ array of a composite type are not supported yet: the generator, `generate
 --from-db` and the inspector refuse them with a diagnostic that wraps
 `momo.ErrUnsupported`.
 
-Equality on the whole value is `compositeop.Eq(col, "address", value)` and
-`compositeop.Ne`: the type name casts the bound value, because PostgreSQL reads
+Equality on the whole value is `compositeop.Equals(col, "address", value)` and
+`compositeop.NotEquals`: the type name casts the bound value, because PostgreSQL reads
 the parameter of a plain `col.Eq(value)` as an anonymous record and refuses it.
 Access to one attribute is not part of the API; write it as a raw expression,
 `(home).street`.

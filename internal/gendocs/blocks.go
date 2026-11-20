@@ -284,8 +284,8 @@ var features = []feature{
 	},
 	{
 		Name:   "Composite types on `types.Composite[T]`",
-		API:    []string{"types.Composite", "compositeop.Eq", "compositeop.Ne", "schema.Composite", "schema.CompositeAttr", "schema.Schema"},
-		PG:     "yes: `CREATE TYPE ... AS (...)` is declared with `Config.Composite`, read from `pg_type` and `pg_attribute`, written by `generate --from-db` together with its Go struct, rendered, compared by `diff` (add, drop and retype an attribute with `ALTER TYPE`), `Baseline` and `drift`, and kept by a snapshot; a column is a `types.Composite` of the struct and names the type in its `type` tag, with the record text of PostgreSQL read and written through `Value` and `Scan`, and compared as a whole value with `compositeop.Eq` and `compositeop.Ne`; a nested composite type and an array of composite types are `ErrUnsupported`",
+		API:    []string{"types.Composite", "compositeop.Equals", "compositeop.NotEquals", "schema.Composite", "schema.CompositeAttr", "schema.Schema"},
+		PG:     "yes: `CREATE TYPE ... AS (...)` is declared with `Config.Composite`, read from `pg_type` and `pg_attribute`, written by `generate --from-db` together with its Go struct, rendered, compared by `diff` (add, drop and retype an attribute with `ALTER TYPE`), `Baseline` and `drift`, and kept by a snapshot; a column is a `types.Composite` of the struct and names the type in its `type` tag, with the record text of PostgreSQL read and written through `Value` and `Scan`, and compared as a whole value with `compositeop.Equals` and `compositeop.NotEquals`; a nested composite type and an array of composite types are `ErrUnsupported`",
 		SQLite: "`ErrUnsupported`: a declaration is a generator error and the renderer refuses it, because SQLite has no composite types, and each `compositeop` builder fails the build",
 		MySQL:  "`ErrUnsupported`: a declaration is a generator error and the renderer refuses it, because MySQL and MariaDB have no composite types, and each `compositeop` builder fails the build",
 	},
