@@ -165,6 +165,9 @@ carries the format number and no release version.
   N+1 relation-load detector and an N+1 statement detector that share one
   scope, and a slow-query hook); imports only `momo` and the internal package
   the two detectors share. See [observability](observability.md).
+- `outbox`: the transactional outbox, `outbox.Outbox.Add` in the caller's
+  transaction and `outbox.Relay` with a publisher the application supplies. It
+  imports `momo` and `driver/pgxdriver` for `LISTEN`; see [outbox](outbox.md).
 - `importer`, `importer/{gorm,bun,ent}`: static readers of other ORMs' models;
   see [importers](importers.md).
 - `bench` is a separate Go module with the comparison benchmarks; see
